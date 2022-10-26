@@ -4,7 +4,7 @@ Requires=docker-photo.service
 
 [Service]
 Type=oneshot
-ExecStart=/bin/zsh /home/cda/photoprism/index-photos.sh
+ExecStart=/bin/zsh /home/cda/servyy-container/photoprism/index-photos.sh
 #ExecStart=echo 1
 
 [Install]

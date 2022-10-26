@@ -4,7 +4,7 @@ StartLimitIntervalSec=60
 Requires=docker-traefik.service
 
 [Service]
-WorkingDirectory=/home/cda/git
+WorkingDirectory=/home/cda/servyy-container/git
 ExecStart=/usr/bin/docker-compose up
 ExecStop=/usr/bin/docker-compose down
 TimeoutStartSec=0

@@ -24,4 +24,3 @@ test_domain xn--hfer-architekten-mwb.de
 test_domain achim.servyy.duckdns.org
 test_domain bumbleflies.servyy.duckdns.org
 test_domain git.servyy.duckdns.org
-test_domain traefik.servyy.duckdns.org

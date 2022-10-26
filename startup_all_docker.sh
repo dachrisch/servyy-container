@@ -1,6 +1,6 @@
 #!/bin/zsh
 
-services=(traefik photo bumbleflies achim_hoefer git)
+services=(traefik photoprism bumbleflies achim_hoefer git)
 
 for service in ${services[@]};do
   systemctl --user start docker-$service
