@@ -1,6 +1,6 @@
 #!/bin/zsh
 
-services=(traefik photoprism bumbleflies achim_hoefer git)
+services=(traefik photoprism bumbleflies achim-hoefer git)
 
 for service in ${services[@]};do
   pushd $service
