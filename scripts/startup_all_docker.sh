@@ -3,7 +3,7 @@
 services=(traefik photoprism bumbleflies achim-hoefer git)
 
 for service in ${services[@]};do
-  pushd $service
+  pushd ../$service
   docker-compose up -d
   popd
 done
