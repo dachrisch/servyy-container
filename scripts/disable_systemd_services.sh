@@ -1,7 +1,7 @@
 #!/bin/bash
 
 system_path=~/.config/systemd/user
-for service in ../systemd/docker-*.service;do
+for service in ../systemd/docker-*;do
 	service_name=$( basename $service )
 	service_path=$( realpath $service )
 	
