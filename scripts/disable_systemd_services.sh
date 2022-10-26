@@ -7,5 +7,4 @@ for service in ../systemd/docker-*.service;do
 	
 	systemctl --user stop $service_name
 	systemctl --user disable $service_name
-	rm $system_path/$service_name
 done
