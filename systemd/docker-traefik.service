@@ -1,0 +1,14 @@
+[Unit]
+Description=Docker Compose - Traefik
+StartLimitIntervalSec=60
+
+[Service]
+WorkingDirectory=/home/cda/traefik
+ExecStart=/usr/bin/docker-compose up
+ExecStop=/usr/bin/docker-compose down
+TimeoutStartSec=0
+Restart=on-failure
+StartLimitBurst=3
+
+[Install]
+WantedBy=default.target

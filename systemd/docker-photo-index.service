@@ -1,0 +1,11 @@
+[Unit]
+Description=Docker Compose - Photo Index
+Requires=docker-photo.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/zsh /home/cda/photoprism/index-photos.sh
+#ExecStart=echo 1
+
+[Install]
+WantedBy=default.target
