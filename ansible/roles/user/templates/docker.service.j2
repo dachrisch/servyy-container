@@ -1,0 +1,17 @@
+[Unit]
+Description=Docker Compose - {{ service.name }}
+StartLimitIntervalSec=60
+StartLimitBurst=3
+{% if service.depends is defined %}
+Requires=docker-{{ service.depends }}.service
+{% endif %}
+
+[Service]
+WorkingDirectory={{ (docker.remote_dir, service.dir) | path_join }}
+ExecStart=/usr/bin/docker-compose up
+ExecStop=/usr/bin/docker-compose down
+TimeoutStartSec=0
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

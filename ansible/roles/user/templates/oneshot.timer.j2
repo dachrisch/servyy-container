@@ -1,0 +1,10 @@
+[Unit]
+Description={{ timer.name }}
+
+[Timer]
+OnCalendar={{ timer.schedule }}
+RandomizedDelaySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

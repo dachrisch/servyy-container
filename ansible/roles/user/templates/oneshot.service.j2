@@ -1,0 +1,12 @@
+[Unit]
+Description={{ service.name }}
+{% if service.depends is defined %}
+Requires={{ service.depends }}.service
+{% endif %}
+
+[Service]
+Type=oneshot
+ExecStart=/bin/zsh {{ service.command }}
+
+[Install]
+WantedBy=default.target
