@@ -15,10 +15,14 @@
     group: "{{ create_user }}"
     mode: "0755"
 
+# XXX: first time fails
 - name: Create fstab entry for folder share
   mount:
-    state: mounted
+    state: present
     fstype: cifs
     opts: "credentials={{ storagebox.file }},iocharset=utf8,uid=1000,gid=1000"
     src: "{{ storagebox_credentials.remote }}"
     path: "{{ storagebox.mount }}"
+
+- name: Mount storagebox
+  command: mount "{{ storagebox.mount }}"
