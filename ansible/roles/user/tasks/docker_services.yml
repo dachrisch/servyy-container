@@ -4,6 +4,14 @@
     path: "{{ remote_user_systemd }}"
     state: directory
 
+- name: Stop docker services
+  systemd:
+    scope: user
+    name: "{{ 'docker-' + item.dir | lower }}"
+    state: stopped
+  with_items:
+    - "{{ docker.services }}"
+
 - name: Create docker systemctl services
   template:
     src: docker.service.j2
