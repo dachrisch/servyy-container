@@ -20,6 +20,11 @@
     backup_dest: "{{(storagebox.mount, 'backup', inventory_hostname, 'home') | path_join}}"
     backup_source: "{{remote_user_home}}"
 
+- name: Create cron job to backup homes
+  cron:
+    name: 'Backup homes every day'
+    day: '*/1'
+    job: "{{(remote_user_home, 'backup_home.sh') | path_join}}"
 
 - name: Create backup for server
   template:
@@ -41,3 +46,9 @@
     with_sudo:
     backup_dest: "{{(storagebox.mount, 'backup', inventory_hostname, 'root') | path_join}}"
     backup_source: "/"
+
+- name: Create cron job to backup root
+  cron:
+    name: 'Backup root every day'
+    day: '*/1'
+    job: "{{(remote_user_home, 'backup_root.sh') | path_join}}"
