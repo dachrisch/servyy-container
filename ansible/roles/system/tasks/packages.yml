@@ -2,6 +2,10 @@
 - name: Install Prerequisites
   apt: name=aptitude update_cache=yes state=latest force_apt_get=yes
 
+- name: Upgrade the OS (apt-get dist-upgrade)
+  apt:
+    upgrade: dist
+
 - name: Install required system packages
   apt: name={{ sys_packages }} state=latest
 
@@ -9,3 +13,6 @@
   community.general.locale_gen:
     name: de_DE.UTF-8
     state: present
+
+- name: Reboot to apply changes
+  reboot:

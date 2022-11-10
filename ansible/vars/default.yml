@@ -3,7 +3,7 @@ local_user: "{{ lookup('env', 'USER') }}"
 remote_user_home: "{{ ('/home/', create_user) | path_join }}"
 remote_user_systemd: "{{ (remote_user_home, '.config/systemd/user') | path_join }}"
 copy_local_key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
-sys_packages: [ 'curl', 'vim', 'git', 'zsh', 'cifs-utils', 'git-crypt', 'locales']
+sys_packages: [ 'curl', 'vim', 'git', 'zsh', 'cifs-utils', 'git-crypt', 'locales', 'linux-modules-extra-{{ansible_kernel}}']
 
 storagebox:
   file: /etc/storagebox.cred
