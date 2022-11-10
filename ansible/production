@@ -1,0 +1,6 @@
+all:
+  hosts:
+    servyy.duckdns.org:
+test:
+  hosts:
+    192.168.1.149:
