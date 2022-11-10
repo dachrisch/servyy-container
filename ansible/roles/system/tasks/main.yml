@@ -1,3 +1,4 @@
 - import_tasks: packages.yml
 - import_tasks: user.yml
 - import_tasks: storagebox.yml
+- import_tasks: swap.yml
