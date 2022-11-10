@@ -11,6 +11,9 @@
     src: docker.env.j2
     dest: "{{(docker.remote_dir, item.dir, '.env') | path_join}}"
   vars:
-    service_url: "{{item.dir}}.{{inventory_hostname}}.duckdns.org"
+    service:
+      host: "{{item.dir}}.{{inventory_hostname}}.duckdns.org"
+      name: "{{item.dir}}"
+
   with_items:
     - "{{ docker.services }}"
