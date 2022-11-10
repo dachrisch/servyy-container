@@ -27,6 +27,7 @@
 - name: Check if storagebox is already mounted
   command: '/bin/mountpoint -q {{storagebox.mount}}'
   register: storagebox_mount
+  ignore_errors: yes
   changed_when: "storagebox_mount.rc != 0"
 
 - name: Mount storagebox
