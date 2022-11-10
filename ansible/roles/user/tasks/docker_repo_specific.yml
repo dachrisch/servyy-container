@@ -12,7 +12,7 @@
     dest: "{{(docker.remote_dir, item.dir, '.env') | path_join}}"
   vars:
     service:
-      host: "{{item.dir}}.{{inventory_hostname}}.duckdns.org"
+      host: "{{item.dir}}.{{inventory_hostname}}"
       name: "{{item.dir}}"
 
   with_items:

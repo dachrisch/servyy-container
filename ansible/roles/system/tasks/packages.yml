@@ -5,6 +5,7 @@
 - name: Upgrade the OS (apt-get dist-upgrade)
   apt:
     upgrade: dist
+  register: upgrade
 
 - name: Install required system packages
   apt: name={{ sys_packages }} state=latest
@@ -16,3 +17,4 @@
 
 - name: Reboot to apply changes
   reboot:
+  when: upgrade.changed
