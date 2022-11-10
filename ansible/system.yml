@@ -2,7 +2,7 @@
   hosts: all
   become: true
   remote_user: provision
-  gather_facts: no
+  gather_facts: yes
   vars_files:
     - vars/default.yml
     - vars/secrets.yml
