@@ -1,0 +1,7 @@
+- name: Create dyndns update file
+  template:
+    src: duck.sh.j2
+    dest: "{{ (docker.remote_dir, 'duckdns', 'duck.sh') | path_join }}"
+  vars:
+    server_name: "{{inventory_hostname}}"
+    duck_log: "{{ (docker.remote_dir, 'duckdns', 'duck.log') | path_join }}"
