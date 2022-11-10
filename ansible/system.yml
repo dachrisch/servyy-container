@@ -1,0 +1,10 @@
+- name: Setup core system
+  hosts: all
+  become: true
+  remote_user: root
+  vars_files:
+    - vars/default.yml
+    - vars/secrets.yml
+  roles: 
+    - system
+  

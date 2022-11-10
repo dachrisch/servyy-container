@@ -1,0 +1,10 @@
+- name: Setup user specific options
+  hosts: all
+  remote_user: "{{ create_user }}"
+  become: true
+  become_user: "{{ create_user }}"
+  vars_files:
+    - vars/default.yml
+    - vars/secrets.yml
+  roles: 
+    - user

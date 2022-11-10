@@ -1,0 +1,8 @@
+---
+local_user: "{{ lookup('env', 'USER') }}"
+copy_local_key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
+sys_packages: [ 'curl', 'vim', 'git', 'zsh', 'cifs-utils', 'git-crypt', 'docker-compose']
+
+storagebox:
+  file: /etc/storagebox.cred
+  mount: /mnt/storagebox
