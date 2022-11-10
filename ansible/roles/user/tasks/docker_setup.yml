@@ -1,0 +1,13 @@
+# Docker Setup
+- name: adding existing user '{{ create_user }}' to group docker
+  user:
+    name: '{{ create_user }}'
+    groups: docker
+    append: yes
+
+- name: Create external network
+  docker_network:
+    name: proxy
+
+- name: Reboot to apply changes
+  reboot:
