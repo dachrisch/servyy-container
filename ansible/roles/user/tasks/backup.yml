@@ -14,7 +14,6 @@
     mode: 0774
   vars:
     excludes:
-      - database
       - .git
       - .zprezto
     backup_dest: "{{(storagebox.mount, 'backup', inventory_hostname, 'home') | path_join}}"
