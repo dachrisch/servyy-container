@@ -5,6 +5,8 @@
     owner: "{{ create_user }}"
     group: "{{ create_user }}"
     mode: "0755"
+  tags:
+    - user.docker.repo.database
 
 - name: Create local .env files for docker service
   template:
@@ -17,3 +19,5 @@
 
   with_items:
     - "{{ docker.services }}"
+  tags:
+    - user.docker.repo.env
