@@ -1,0 +1,24 @@
+# Mount storgabox
+- name: Create credential file (used for fstab entry)
+  copy:
+    content: |
+      username={{ storagebox_credentials.user }}
+      password={{ storagebox_credentials.password }}
+    dest: "{{ storagebox.file }}"
+    mode: 0600
+
+- name: Check mountpoint exist
+  file:
+    path: "{{ storagebox.mount }}"
+    state: directory
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: "0755"
+
+- name: Create fstab entry for folder share
+  mount:
+    state: mounted
+    fstype: cifs
+    opts: "credentials={{ storagebox.file }},iocharset=utf8,uid=1000,gid=1000"
+    src: "{{ storagebox_credentials.remote }}"
+    path: "{{ storagebox.mount }}"

@@ -1,6 +1,6 @@
 ---
 local_user: "{{ lookup('env', 'USER') }}"
-copy_local_key: "{{ lookup('file', (lookup('env','HOME'), '/.ssh/id_rsa.pub') | path_join ) }}"
+copy_local_key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
 sys_packages: [ 'curl', 'vim', 'git', 'zsh', 'cifs-utils', 'git-crypt', 'docker-compose']
 local_user_systemd: "{{ ('/home/', create_user, '.config/systemd/user') | path_join }}"
 

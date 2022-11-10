@@ -37,7 +37,7 @@
       }
     }
 
-- name: Create Index timer
+- name: Create Photo Index timer
   template:
     src: oneshot.timer.j2
     dest: "{{ (local_user_systemd, 'docker-photo-index') | path_join }}.timer"
@@ -46,3 +46,11 @@
       'name': 'Trigger Docker Compose - Photo Index Every two Hours',
       'schedule': '00/2:30'
     }
+
+
+- name: Start Photo Index timer
+  systemd:
+    scope: user
+    name: docker-photo-index.timer
+    state: started
+    enabled: yes

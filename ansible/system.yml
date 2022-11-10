@@ -1,7 +1,8 @@
 - name: Setup core system
   hosts: all
   become: true
-  remote_user: root
+  remote_user: provision
+  gather_facts: no
   vars_files:
     - vars/default.yml
     - vars/secrets.yml
