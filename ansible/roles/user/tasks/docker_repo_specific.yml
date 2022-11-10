@@ -1,0 +1,7 @@
+- name: Ensure Photo database has correct filemod
+  file:
+    path: "{{ ('docker.remote_dir', 'photoprism', 'database' | path_join ) }}"
+    state: directory
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: "0755"
