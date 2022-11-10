@@ -17,6 +17,7 @@
 
 - name: Reboot to apply changes
   reboot:
+    msg: Reboot to make docker user available
   become_user: root
   when: group_added.changed
   tags:

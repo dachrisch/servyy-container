@@ -17,4 +17,5 @@
 
 - name: Reboot to apply changes
   reboot:
+    msg: Reboot after system update
   when: upgrade.changed
