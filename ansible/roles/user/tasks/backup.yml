@@ -4,7 +4,7 @@
 
 - name: Ensure backup dir exists
   file:
-    path: "{{(storagebox.mount, 'backup', inventory_hostname, 'home') | path_join}}"
+    path: "{{(storagebox.mount, 'backup', inventory_hostname) | path_join}}"
     state: directory
 
 - name: Create backup for homes
@@ -30,6 +30,8 @@
     excludes:
       - '*.sock'
       - 'cache'
+      - 'swap.img'
+      - '*.swap'
     includes:
       - '/*'
       - '/etc/***'
