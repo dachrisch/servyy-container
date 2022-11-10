@@ -1,13 +1,13 @@
 # Docker Services
-- name: Ensures {{ local_user_systemd }} dir exists
+- name: Ensures {{ remote_user_systemd }} dir exists
   file:
-    path: "{{ local_user_systemd }}"
+    path: "{{ remote_user_systemd }}"
     state: directory
 
 - name: Create docker systemctl services
   template:
     src: docker.service.j2
-    dest: "{{ (local_user_systemd, 'docker-' + item.dir | lower) | path_join }}.service"
+    dest: "{{ (remote_user_systemd, 'docker-' + item.dir | lower) | path_join }}.service"
   vars:
     service: "{{item}}"
   with_items:
@@ -25,7 +25,7 @@
 - name: Create Index service
   template:
     src: oneshot.service.j2
-    dest: "{{ (local_user_systemd, 'docker-photo-index') | path_join }}.service"
+    dest: "{{ (remote_user_systemd, 'docker-photo-index') | path_join }}.service"
   vars:
     service: {
       'name': 'Docker Compose - Photo Index',
@@ -40,7 +40,7 @@
 - name: Create Photo Index timer
   template:
     src: oneshot.timer.j2
-    dest: "{{ (local_user_systemd, 'docker-photo-index') | path_join }}.timer"
+    dest: "{{ (remote_user_systemd, 'docker-photo-index') | path_join }}.timer"
   vars:
     timer: {
       'name': 'Trigger Docker Compose - Photo Index Every two Hours',

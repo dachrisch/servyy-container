@@ -1,8 +1,9 @@
 ---
 local_user: "{{ lookup('env', 'USER') }}"
+remote_user_home: "{{ ('/home/', create_user) | path_join }}"
+remote_user_systemd: "{{ (remote_user_home, '.config/systemd/user') | path_join }}"
 copy_local_key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
-sys_packages: [ 'curl', 'vim', 'git', 'zsh', 'cifs-utils', 'git-crypt', 'docker-compose']
-local_user_systemd: "{{ ('/home/', create_user, '.config/systemd/user') | path_join }}"
+sys_packages: [ 'curl', 'vim', 'git', 'zsh', 'cifs-utils', 'git-crypt', 'locales']
 
 storagebox:
   file: /etc/storagebox.cred

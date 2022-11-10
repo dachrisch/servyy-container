@@ -1,0 +1,41 @@
+- name: Install rsync
+  apt: name=rsync state=latest
+  become_user: root
+
+- name: Ensure backup dir exists
+  file:
+    path: "{{(storagebox.mount, 'backup', inventory_hostname, 'home') | path_join}}"
+    state: directory
+
+- name: Create backup for homes
+  template:
+    src: backup.sh.j2
+    dest: "{{(remote_user_home, 'backup_home.sh') | path_join}}"
+    mode: 0774
+  vars:
+    excludes:
+      - database
+      - .git
+      - .zprezto
+    backup_dest: "{{(storagebox.mount, 'backup', inventory_hostname, 'home') | path_join}}"
+    backup_source: "{{remote_user_home}}"
+
+
+- name: Create backup for server
+  template:
+    src: backup.sh.j2
+    dest: "{{(remote_user_home, 'backup_root.sh') | path_join}}"
+    mode: 0774
+  vars:
+    excludes:
+      - '*.sock'
+      - 'cache'
+    includes:
+      - '/*'
+      - '/etc/***'
+      - '/var/*'
+      - '/var/spool/*'
+      - '/var/spool/cron/***'
+    with_sudo:
+    backup_dest: "{{(storagebox.mount, 'backup', inventory_hostname, 'root') | path_join}}"
+    backup_source: "/"

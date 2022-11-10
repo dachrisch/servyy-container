@@ -1,4 +1,8 @@
 # Docker Setup
+- name: Install docker compose
+  apt: name=docker-compose state=latest
+  become_user: root
+
 - name: adding existing user '{{ create_user }}' to group docker
   user:
     name: '{{ create_user }}'
