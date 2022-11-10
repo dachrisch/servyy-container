@@ -29,12 +29,8 @@
   vars:
     service: {
       'name': 'Docker Compose - Photo Index',
-      'depends': 'docker-photo',
-      'command': "{{ docker.remote_dir, '/scripts/index-photos.sh' | path_join }}",
-      'with_timer' : {
-        'name' : '',
-        'schedule': '00/2:30'
-      }
+      'depends': 'docker-photoprism',
+      'command': "{{ (docker.remote_dir, 'scripts/index-photos.sh') | path_join }}"
     }
 
 - name: Create Photo Index timer
