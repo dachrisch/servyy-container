@@ -1,2 +1,9 @@
+# Create provision user
+#> adduser --uid 1001 provision
+
+# Add User to sudoer
+#> usermod -aG sudo username
+#https://linuxize.com/post/how-to-add-user-to-sudoers-in-ubuntu/
+
 - import_playbook: system.yml
 - import_playbook: user.yml

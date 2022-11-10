@@ -11,6 +11,7 @@
     state: stopped
   with_items:
     - "{{ docker.services }}"
+  ignore_errors: yes
 
 - name: Create docker systemctl services
   template:
