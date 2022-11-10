@@ -5,3 +5,13 @@
   vars:
     server_name: "{{inventory_hostname}}"
     duck_log: "{{ (docker.remote_dir, 'duckdns', 'duck.log') | path_join }}"
+
+- name: Install cron
+  apt: name=cron state=latest
+  become_user: root
+
+- name: Create cron job to update server name
+  cron:
+    name: 'Update server name every 2 hours'
+    hour: '*/2'
+    job: "{{ (docker.remote_dir, 'duckdns', 'duck.sh') | path_join }}"

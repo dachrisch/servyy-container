@@ -1,0 +1,15 @@
+#!/bin/zsh
+
+{%if with_sudo is defined %}
+sudo \
+{% endif %}
+rsync \
+-rav --safe-links --prune-empty-dirs --delete-after \
+{%if excludes is defined %}
+{{ ['--exclude '] | product(excludes | map('quote')) | map('join') | join(' ') }} \
+{% endif %}
+{%if includes is defined %}
+{{ ['--include '] | product(includes | map('quote')) | map('join') | join(' ') }} \
+--exclude '*' \
+{% endif %}
+{{backup_source}} {{backup_dest}}

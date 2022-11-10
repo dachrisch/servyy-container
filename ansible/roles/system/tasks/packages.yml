@@ -4,3 +4,8 @@
 
 - name: Install required system packages
   apt: name={{ sys_packages }} state=latest
+
+- name: Ensure a locale exists
+  community.general.locale_gen:
+    name: de_DE.UTF-8
+    state: present
