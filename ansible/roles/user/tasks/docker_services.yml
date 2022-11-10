@@ -3,6 +3,8 @@
   file:
     path: "{{ remote_user_systemd }}"
     state: directory
+  tags:
+    - user.docker.systemd.dir.check
 
 - name: Stop docker services
   systemd:
@@ -12,6 +14,8 @@
   with_items:
     - "{{ docker.services }}"
   ignore_errors: yes
+  tags:
+    - user.docker.systemd.stop
 
 - name: Create docker systemctl services
   template:
@@ -21,6 +25,8 @@
     service: "{{item}}"
   with_items:
     - "{{ docker.services }}"
+  tags:
+    - user.docker.systemd.create
 
 - name: Start docker services
   systemd:
@@ -30,6 +36,8 @@
     enabled: yes
   with_items:
     - "{{ docker.services }}"
+  tags:
+    - user.docker.systemd.start
 
 - name: Create Index service
   template:
@@ -41,6 +49,8 @@
       'depends': 'docker-photoprism',
       'command': "{{ (docker.remote_dir, 'scripts/index-photos.sh') | path_join }}"
     }
+  tags:
+    - user.docker.systemd.create.index
 
 - name: Create Photo Index timer
   template:
@@ -51,6 +61,8 @@
       'name': 'Trigger Docker Compose - Photo Index Every two Hours',
       'schedule': '00/2:30'
     }
+  tags:
+    - user.docker.systemd.create.timer
 
 
 - name: Start Photo Index timer
@@ -59,3 +71,5 @@
     name: docker-photo-index.timer
     state: started
     enabled: yes
+  tags:
+    - user.docker.systemd.start.timer
