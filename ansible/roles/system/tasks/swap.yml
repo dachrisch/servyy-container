@@ -32,6 +32,7 @@
 
 - name: turn on swap
   command: swapon -a
+  when: not swap_file_check.stat.exists
 
 - name: set swapiness
   sysctl:

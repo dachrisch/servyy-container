@@ -24,5 +24,11 @@
     src: "{{ storagebox_credentials.remote }}"
     path: "{{ storagebox.mount }}"
 
+- name: Check if storagebox is already mounted
+  command: '/bin/mountpoint -q {{storagebox.mount}}'
+  register: storagebox_mount
+  changed_when: "storagebox_mount.rc != 0"
+
 - name: Mount storagebox
   command: mount "{{ storagebox.mount }}"
+  when: storagebox_mount.changed
