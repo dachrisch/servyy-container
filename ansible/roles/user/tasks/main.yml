@@ -1,4 +1,4 @@
-#- import_tasks: zpresto.yml
-#- import_tasks: docker_repository.yml
+- import_tasks: zpresto.yml
+- import_tasks: docker_repository.yml
 - import_tasks: docker_setup.yml
 - import_tasks: docker_services.yml

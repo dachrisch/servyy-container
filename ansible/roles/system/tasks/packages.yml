@@ -1,0 +1,6 @@
+# Install packages
+- name: Install Prerequisites
+  apt: name=aptitude update_cache=yes state=latest force_apt_get=yes
+
+- name: Install required system packages
+  apt: name={{ sys_packages }} state=latest

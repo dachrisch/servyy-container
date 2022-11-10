@@ -4,10 +4,14 @@
     name: '{{ create_user }}'
     groups: docker
     append: yes
+  become_user: root
+  register: group_added
+
+- name: Reboot to apply changes
+  reboot:
+  become_user: root
+  when: group_added.changed
 
 - name: Create external network
   docker_network:
     name: proxy
-
-- name: Reboot to apply changes
-  reboot:
