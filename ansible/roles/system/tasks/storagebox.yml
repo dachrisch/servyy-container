@@ -40,8 +40,11 @@
 - block:
   - name: Mount storagebox
     command: mount "{{ storagebox.mount }}"
+
+  - name: Check if storagebox mounted
+    command: '/bin/mountpoint -q {{storagebox.mount}}'
     register: storagebox_mount
-    failed_when: not (storagebox_mount.rc == 0 or storagebox_mount.rc == 32) # success or operation waiting (restart required)
+
   - block:
     - name: Reboot when mount was unsuccessful
       reboot:
@@ -52,7 +55,7 @@
       retries: 3
       delay: 2
       until: remount.rc == 0
-    when: storagebox_mount.rc == 32
+    when: storagebox_mount.rc == 1
   when: storagebox_check.changed
   tags:
     - system.storagebox.mount
