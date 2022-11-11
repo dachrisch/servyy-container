@@ -1,81 +1,84 @@
-# Docker Services
-- name: Ensures {{ remote_user_systemd }} dir exists
-  file:
-    path: "{{ remote_user_systemd }}"
-    state: directory
-  tags:
-    - user.docker.systemd.dir.check
+- block:
+  # Docker Services
+  - name: Ensures {{ remote_user_systemd }} dir exists
+    file:
+      path: "{{ remote_user_systemd }}"
+      state: directory
+    tags:
+      - user.docker.systemd.dir.check
 
-- name: Stop docker services
-  systemd:
-    scope: user
-    name: "{{ 'docker-' + item.dir | lower }}"
-    state: stopped
-  with_items:
-    - "{{ docker.services }}"
-  ignore_errors: yes
-  tags:
-    - user.docker.systemd.stop
+  - name: Stop docker services
+    systemd:
+      scope: user
+      name: "{{ 'docker-' + item.dir | lower }}"
+      state: stopped
+    with_items:
+      - "{{ docker.services }}"
+    ignore_errors: yes
+    tags:
+      - user.docker.systemd.stop
 
-- name: Create docker systemctl services
-  template:
-    src: docker.service.j2
-    dest: "{{ (remote_user_systemd, 'docker-' + item.dir | lower) | path_join }}.service"
-  vars:
-    service: "{{item}}"
-  with_items:
-    - "{{ docker.services }}"
-  tags:
-    - user.docker.systemd.create
+  - name: Create docker systemctl services
+    template:
+      src: docker.service.j2
+      dest: "{{ (remote_user_systemd, 'docker-' + item.dir | lower) | path_join }}.service"
+    vars:
+      service: "{{item}}"
+    with_items:
+      - "{{ docker.services }}"
+    tags:
+      - user.docker.systemd.create
 
-- name: Ensure lingering enabled
-  command: "loginctl enable-linger {{ create_user }}"
-  args:
-    creates: "/var/lib/systemd/linger/{{ create_user }}"
-  tags:
-    - user.docker.systemd.linger
+  - name: Ensure lingering enabled
+    command: "loginctl enable-linger {{ create_user }}"
+    args:
+      creates: "/var/lib/systemd/linger/{{ create_user }}"
+    tags:
+      - user.docker.systemd.linger
 
-- name: Start docker services
-  systemd:
-    scope: user
-    name: "{{ 'docker-' + item.dir | lower }}"
-    state: started
-    enabled: yes
-  with_items:
-    - "{{ docker.services }}"
-  tags:
-    - user.docker.systemd.start
+  - name: Start docker services
+    systemd:
+      scope: user
+      name: "{{ 'docker-' + item.dir | lower }}"
+      state: started
+      enabled: yes
+    with_items:
+      - "{{ docker.services }}"
+    tags:
+      - user.docker.systemd.start
 
-- name: Create Index service
-  template:
-    src: oneshot.service.j2
-    dest: "{{ (remote_user_systemd, 'docker-photo-index') | path_join }}.service"
-  vars:
-    service: {
-      'name': 'Docker Compose - Photo Index',
-      'depends': 'docker-photoprism',
-      'command': "{{ (docker.remote_dir, 'scripts/index-photos.sh') | path_join }}"
-    }
-  tags:
-    - user.docker.systemd.create.index
+  - name: Create Index service
+    template:
+      src: oneshot.service.j2
+      dest: "{{ (remote_user_systemd, 'docker-photo-index') | path_join }}.service"
+    vars:
+      service: {
+        'name': 'Docker Compose - Photo Index',
+        'depends': 'docker-photoprism',
+        'command': "{{ (docker.remote_dir, 'scripts/index-photos.sh') | path_join }}"
+      }
+    tags:
+      - user.docker.systemd.create.index
 
-- name: Create Photo Index timer
-  template:
-    src: oneshot.timer.j2
-    dest: "{{ (remote_user_systemd, 'docker-photo-index') | path_join }}.timer"
-  vars:
-    timer: {
-      'name': 'Trigger Docker Compose - Photo Index Every two Hours',
-      'schedule': '00/2:30'
-    }
-  tags:
-    - user.docker.systemd.create.timer
+  - name: Create Photo Index timer
+    template:
+      src: oneshot.timer.j2
+      dest: "{{ (remote_user_systemd, 'docker-photo-index') | path_join }}.timer"
+    vars:
+      timer: {
+        'name': 'Trigger Docker Compose - Photo Index Every two Hours',
+        'schedule': '00/2:30'
+      }
+    tags:
+      - user.docker.systemd.create.timer
 
-- name: Start Photo Index timer
-  systemd:
-    scope: user
-    name: docker-photo-index.timer
-    state: started
-    enabled: yes
+  - name: Start Photo Index timer
+    systemd:
+      scope: user
+      name: docker-photo-index.timer
+      state: started
+      enabled: yes
+    tags:
+      - user.docker.systemd.start.timer
   tags:
-    - user.docker.systemd.start.timer
+    - user.docker.systemd

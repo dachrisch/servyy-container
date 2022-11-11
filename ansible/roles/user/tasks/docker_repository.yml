@@ -1,41 +1,44 @@
-# Docker
-- name: Clone container repository
-  git:
-    repo: "{{ docker.repo }}"
-    dest: "{{ docker.remote_dir }}"
-  tags:
-    - user.docker.repo.clone
+- block:
+  # Docker
+  - name: Clone container repository
+    git:
+      repo: "{{ docker.repo }}"
+      dest: "{{ docker.remote_dir }}"
+    tags:
+      - user.docker.repo.clone
 
-- name: Export local key
-  command: git-crypt export-key {{ docker.local_dir }}/../{{ docker.key_file }}
-  args:
-    chdir: "{{ docker.local_dir }}"
-    creates: "{{ docker.local_dir }}/../{{ docker.key_file }}"
-  delegate_to: localhost
-  become_user: "{{ local_user }}"
-  tags:
-    - user.docker.repo.key.export
+  - name: Export local key
+    command: git-crypt export-key {{ docker.local_dir }}/../{{ docker.key_file }}
+    args:
+      chdir: "{{ docker.local_dir }}"
+      creates: "{{ docker.local_dir }}/../{{ docker.key_file }}"
+    delegate_to: localhost
+    become_user: "{{ local_user }}"
+    tags:
+      - user.docker.repo.key.export
 
-- name: Copy repository key to remote
-  copy:
-    src: "{{ docker.local_dir }}/../{{ docker.key_file }}"
-    dest: "{{ docker.remote_dir }}/../{{ docker.key_file }}"
-  tags:
-    - user.docker.repo.key.copy
+  - name: Copy repository key to remote
+    copy:
+      src: "{{ docker.local_dir }}/../{{ docker.key_file }}"
+      dest: "{{ docker.remote_dir }}/../{{ docker.key_file }}"
+    tags:
+      - user.docker.repo.key.copy
 
-- name: Check lock state
-  command: git config --local --get filter.git-crypt.smudge
-  args:
-    chdir: "{{ docker.remote_dir }}"
-  register: lock_state
-  failed_when: lock_state.stderr != ""
-  tags:
-    - user.docker.repo.crypt.check
+  - name: Check lock state
+    command: git config --local --get filter.git-crypt.smudge
+    args:
+      chdir: "{{ docker.remote_dir }}"
+    register: lock_state
+    failed_when: lock_state.stderr != ""
+    tags:
+      - user.docker.repo.crypt.check
 
-- name: Unlock repository
-  command: git-crypt unlock "{{ docker.remote_dir }}/../{{ docker.key_file }}"
-  args:
-    chdir: "{{ docker.remote_dir }}"
-  when: lock_state.rc != 0
+  - name: Unlock repository
+    command: git-crypt unlock "{{ docker.remote_dir }}/../{{ docker.key_file }}"
+    args:
+      chdir: "{{ docker.remote_dir }}"
+    when: lock_state.rc != 0
+    tags:
+      - user.docker.repo.crypt.unlock
   tags:
-    - user.docker.repo.crypt.unlock
+    - user.docker.repo
