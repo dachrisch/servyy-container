@@ -1,12 +1,21 @@
 - import_tasks: repository.yml
   vars:
+    - repository_uri: "{{ shell.repo }}"
+    - remote_dir: "{{ shell.remote_dir }}"
+    - local_dir: "{{ shell.local_dir }}"
+  tags:
+    - user.repo.zpresto
+
+- import_tasks: repository.yml
+  vars:
     - repository_uri: "{{ docker.repo }}"
     - remote_dir: "{{ docker.remote_dir }}"
     - local_dir: "{{ docker.local_dir }}"
   tags:
     - user.repo.docker
-- import_tasks: docker_repository.yml
+
 - import_tasks: docker_repo_env.yml
+
 - import_tasks: docker_repo_restore.yml
   vars:
     backup_base: "{{backup_dir + docker.remote_dir}}"
@@ -14,6 +23,7 @@
     restore_dir:  "{{('git', 'repos') | path_join}}"
   tags:
     - user.docker.restore.git
+
 - import_tasks: docker_repo_restore.yml
   vars:
     backup_base: "{{backup_dir + docker.remote_dir}}"
@@ -21,7 +31,19 @@
     restore_dir:  "{{('photprsim', 'database') | path_join}}"
   tags:
     - user.docker.restore.photoprism
+
 - import_tasks: docker_setup.yml
+  tags:
+    - user.docker.install
+
 - import_tasks: docker_services.yml
+  tags:
+    - user.docker.systemd
+
 - import_tasks: dyndns.yml
+  tags:
+    - user.dyndns
+
 - import_tasks: backup.yml
+  tags:
+    - user.backup
