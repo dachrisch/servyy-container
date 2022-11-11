@@ -51,6 +51,7 @@
       register: remount
       retries: 3
       delay: 2
+      until: remount.rc == 0
     when: storagebox_mount.rc == 32
   when: storagebox_check.changed
   tags:
