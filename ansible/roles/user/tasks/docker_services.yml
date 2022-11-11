@@ -6,6 +6,19 @@
   tags:
     - user.docker.systemd.dir.check
 
+- name: Create docker systemctl services
+  template:
+    src: docker.service.j2
+    dest: "{{ (remote_user_systemd, 'docker-' + item.dir | lower) | path_join }}.service"
+    force: yes
+  register: service_files
+  vars:
+    service: "{{item}}"
+  with_items:
+    - "{{ docker.services }}"
+  tags:
+    - user.docker.systemd.create
+
 - name: Stop docker services
   systemd:
     scope: user
@@ -13,21 +26,11 @@
     state: stopped
   register: service_status
   failed_when: not((service_status.state is defined and service_status.state == 'stopped') or (service_status.msg is defined and 'Could not find the requested service' in service_status.msg))
+  when: service_files.changed
   with_items:
     - "{{ docker.services }}"
   tags:
     - user.docker.systemd.stop
-
-- name: Create docker systemctl services
-  template:
-    src: docker.service.j2
-    dest: "{{ (remote_user_systemd, 'docker-' + item.dir | lower) | path_join }}.service"
-  vars:
-    service: "{{item}}"
-  with_items:
-    - "{{ docker.services }}"
-  tags:
-    - user.docker.systemd.create
 
 - name: Ensure lingering enabled
   command: "loginctl enable-linger {{ create_user }}"

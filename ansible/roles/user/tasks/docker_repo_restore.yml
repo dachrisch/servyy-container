@@ -32,6 +32,16 @@
     group: "{{ owner }}"
     mode: "0755"
   become_user: "{{owner}}"
+  register: restored
   tags:
     - user.docker.restore
   when: backup_files.matched > 0 and (current_files.matched == 0 or newest_backup.mtime > newest_current.mtime)
+
+- name: Ensure file ownership (when not restored)
+  file:
+    path: "{{(restore_base, restore_dir) | path_join }}"
+    owner: "{{ owner }}"
+    group: "{{ owner }}"
+    mode: "0755"
+  become_user: root
+  when: restored.skipped
