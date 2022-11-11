@@ -11,6 +11,7 @@
     chdir: "{{ remote_dir }}"
   register: lock_state
   failed_when: lock_state.stderr != ""
+  changed_when: lock_state.rc != 0
   tags:
     - user.repo.crypt.check
 
