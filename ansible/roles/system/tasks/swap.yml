@@ -1,58 +1,61 @@
-- name: set swap_file variable
-  set_fact:
-    swap_file: /{{ swap_space }}.swap
-  tags:
-    - system.swap.file
+- block:
+  - name: set swap_file variable
+    set_fact:
+      swap_file: /{{ swap_space }}.swap
+    tags:
+      - system.swap.file
 
-- name: check if swap file exists
-  stat:
-    path: "{{ swap_file }}"
-  register: swap_file_check
-  tags:
-    - system.swap.file.check
+  - name: check if swap file exists
+    stat:
+      path: "{{ swap_file }}"
+    register: swap_file_check
+    tags:
+      - system.swap.file.check
 
-- name: create swap file
-  command: fallocate -l {{ swap_space }} {{ swap_file }}
-  when: not swap_file_check.stat.exists
-  tags:
-    - system.swap.create
+  - name: create swap file
+    command: fallocate -l {{ swap_space }} {{ swap_file }}
+    when: not swap_file_check.stat.exists
+    tags:
+      - system.swap.create
 
-- name: Create swap space
-  command: dd if=/dev/zero of=/extraswap bs=1M count=512
-  when: not swap_file_check.stat.exists
-  tags:
-    - system.swap.space.create
+  - name: Create swap space
+    command: dd if=/dev/zero of=/extraswap bs=1M count=512
+    when: not swap_file_check.stat.exists
+    tags:
+      - system.swap.space.create
 
-- name: set permissions on swap file
-  file:
-    path: "{{ swap_file }}"
-    mode: 0600
-  tags:
-    - system.swap.file.permission
+  - name: set permissions on swap file
+    file:
+      path: "{{ swap_file }}"
+      mode: 0600
+    tags:
+      - system.swap.file.permission
 
-- name: format swap file
-  command: mkswap {{ swap_file }}
-  when: not swap_file_check.stat.exists
-  tags:
-    - system.swap.file.format
+  - name: format swap file
+    command: mkswap {{ swap_file }}
+    when: not swap_file_check.stat.exists
+    tags:
+      - system.swap.file.format
 
-- name: add to fstab
-  lineinfile:
-    dest: /etc/fstab
-    regexp: "{{ swap_file }}"
-    line: "{{ swap_file }} none swap sw 0 0"
-  tags:
-    - system.swap.fstab
+  - name: add to fstab
+    lineinfile:
+      dest: /etc/fstab
+      regexp: "{{ swap_file }}"
+      line: "{{ swap_file }} none swap sw 0 0"
+    tags:
+      - system.swap.fstab
 
-- name: turn on swap
-  command: swapon -a
-  when: not swap_file_check.stat.exists
-  tags:
-    - system.swap.on
+  - name: turn on swap
+    command: swapon -a
+    when: not swap_file_check.stat.exists
+    tags:
+      - system.swap.on
 
-- name: set swapiness
-  sysctl:
-    name: vm.swappiness
-    value: "1"
+  - name: set swapiness
+    sysctl:
+      name: vm.swappiness
+      value: "1"
+    tags:
+      - system.swap.swappiness
   tags:
-    - system.swap.swappiness
+    - system.swap
