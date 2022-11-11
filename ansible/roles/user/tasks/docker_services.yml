@@ -50,36 +50,14 @@
   tags:
     - user.docker.systemd.start
 
-- name: Create Index service
-  template:
-    src: oneshot.service.j2
-    dest: "{{ (remote_user_systemd, 'docker-photo-index') | path_join }}.service"
+
+- import_tasks: oneshot.yml
   vars:
     service: {
-      'name': 'Docker Compose - Photo Index',
-      'depends': 'docker-photoprism',
-      'command': "{{ (docker.remote_dir, 'scripts/index-photos.sh') | path_join }}"
+               'name' : docker-photo-index,
+               'description': 'Docker Compose - Photo Index',
+               'schedule': '00/2:30',
+               'command': "{{ (docker.remote_dir, 'scripts', 'index-photos.sh') | path_join }}"
     }
   tags:
-    - user.docker.systemd.create.index
-
-- name: Create Photo Index timer
-  template:
-    src: oneshot.timer.j2
-    dest: "{{ (remote_user_systemd, 'docker-photo-index') | path_join }}.timer"
-  vars:
-    timer: {
-      'name': 'Trigger Docker Compose - Photo Index Every two Hours',
-      'schedule': '00/2:30'
-    }
-  tags:
-    - user.docker.systemd.create.timer
-
-- name: Start Photo Index timer
-  systemd:
-    scope: user
-    name: docker-photo-index.timer
-    state: started
-    enabled: yes
-  tags:
-    - user.docker.systemd.start.timer
+    - user.docker.systemd.service.index

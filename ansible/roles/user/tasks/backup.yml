@@ -25,15 +25,17 @@
   tags:
     - user.backup.script.homes
 
-- name: Create cron job to backup homes
-  cron:
-    name: 'Backup homes every day'
-    minute: '27'
-    hour: '3'
-    day: '*/1'
-    job: "{{(remote_user_home, 'backup_home.sh') | path_join}}"
+
+- import_tasks: oneshot.yml
+  vars:
+    service: {
+               'name' : backup-homes,
+               'description': 'Backup homes every day',
+               'schedule': 'daily',
+               'command': "{{(remote_user_home, 'backup_home.sh') | path_join}}"
+    }
   tags:
-    - user.backup.script.homes.cron
+    - user.docker.systemd.service.index
 
 - name: Create backup for server
   template:
@@ -58,12 +60,13 @@
   tags:
     - user.backup.script.root
 
-- name: Create cron job to backup root
-  cron:
-    name: 'Backup root every day'
-    minute: '6'
-    hour: '3'
-    day: '*/1'
-    job: "{{(remote_user_home, 'backup_root.sh') | path_join}}"
+- import_tasks: oneshot.yml
+  vars:
+    service: {
+               'name' : backup-root,
+               'description': 'Backup Server every day',
+               'schedule': 'daily',
+               'command': "{{(remote_user_home, 'backup_root.sh') | path_join}}"
+    }
   tags:
-    - user.backup.script.root.cron
+    - user.docker.systemd.service.index
