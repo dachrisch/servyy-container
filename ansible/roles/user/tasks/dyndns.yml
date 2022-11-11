@@ -17,6 +17,7 @@
 - name: Create cron job to update server name
   cron:
     name: 'Update server name every 2 hours'
+    minute: '16'
     hour: '*/2'
     job: "{{ (docker.remote_dir, 'duckdns', 'duck.sh') | path_join }}"
   tags:

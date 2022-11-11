@@ -22,6 +22,8 @@
 - name: Create cron job to backup homes
   cron:
     name: 'Backup homes every day'
+    minute: '27'
+    hour: '3'
     day: '*/1'
     job: "{{(remote_user_home, 'backup_home.sh') | path_join}}"
 
@@ -49,5 +51,7 @@
 - name: Create cron job to backup root
   cron:
     name: 'Backup root every day'
+    minute: '6'
+    hour: '3'
     day: '*/1'
     job: "{{(remote_user_home, 'backup_root.sh') | path_join}}"
