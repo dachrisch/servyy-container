@@ -44,4 +44,4 @@
     group: "{{ owner }}"
     mode: "0755"
   become_user: root
-  when: restored.skipped
+  when: restored.skipped is defined
