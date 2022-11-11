@@ -1,60 +1,63 @@
-# Setup shell
-- name: Clone zprezto repository
-  git:
-    repo: "{{ shell.repo }}"
-    dest: "{{ shell.remote_dir }}"
-  tags:
-    - user.zprezto.repo.clone
+- block:
+  # Setup shell
+  - name: Clone zprezto repository
+    git:
+      repo: "{{ shell.repo }}"
+      dest: "{{ shell.remote_dir }}"
+    tags:
+      - user.zprezto.repo.clone
 
-- name: Export local zprezto key
-  command: git-crypt export-key {{ shell.local_dir }}/../{{ shell.key_file }}
-  args:
-    chdir: "{{ shell.local_dir }}"
-    creates: "{{ shell.local_dir }}/../{{ shell.key_file }}"
-  delegate_to: localhost
-  become_user: "{{ local_user }}"
-  tags:
-    - user.zprezto.repo.key.export
+  - name: Export local zprezto key
+    command: git-crypt export-key {{ shell.local_dir }}/../{{ shell.key_file }}
+    args:
+      chdir: "{{ shell.local_dir }}"
+      creates: "{{ shell.local_dir }}/../{{ shell.key_file }}"
+    delegate_to: localhost
+    become_user: "{{ local_user }}"
+    tags:
+      - user.zprezto.repo.key.export
 
-- name: Copy repository key to remote
-  copy:
-    src: "{{ shell.local_dir }}/../{{ shell.key_file }}"
-    dest: "{{ shell.remote_dir }}/../{{ shell.key_file }}"
-  tags:
-    - user.zprezto.repo.key.copy
+  - name: Copy repository key to remote
+    copy:
+      src: "{{ shell.local_dir }}/../{{ shell.key_file }}"
+      dest: "{{ shell.remote_dir }}/../{{ shell.key_file }}"
+    tags:
+      - user.zprezto.repo.key.copy
 
-- name: Check lock state
-  command: git config --local --get filter.git-crypt.smudge
-  args:
-    chdir: "{{ shell.remote_dir }}"
-  register: lock_state
-  failed_when: lock_state.stderr != ""
-  tags:
-    - user.zprezto.repo.crypt.check
+  - name: Check lock state
+    command: git config --local --get filter.git-crypt.smudge
+    args:
+      chdir: "{{ shell.remote_dir }}"
+    register: lock_state
+    failed_when: lock_state.stderr != ""
+    tags:
+      - user.zprezto.repo.crypt.check
 
-- name: Unlock repository if locked
-  command: git-crypt unlock "{{ shell.remote_dir }}/../{{ shell.key_file }}"
-  args:
-    chdir: "{{ shell.remote_dir }}"
-  when: lock_state.rc != 0
-  tags:
-    - user.zprezto.repo.crypt.unlock
+  - name: Unlock repository if locked
+    command: git-crypt unlock "{{ shell.remote_dir }}/../{{ shell.key_file }}"
+    args:
+      chdir: "{{ shell.remote_dir }}"
+    when: lock_state.rc != 0
+    tags:
+      - user.zprezto.repo.crypt.unlock
 
-- name: Find config files
-  find:
-    paths: "/home/{{ create_user }}/.zprezto/runcoms"
-    patterns: "z*"
-    recurse: no
-    file_type: file
-  register: zsh_config_files
-  tags:
-    - user.zprezto.repo.config.find
+  - name: Find config files
+    find:
+      paths: "/home/{{ create_user }}/.zprezto/runcoms"
+      patterns: "z*"
+      recurse: no
+      file_type: file
+    register: zsh_config_files
+    tags:
+      - user.zprezto.repo.config.find
 
-- name: Link config files
-  file:
-    src: "{{ item.path }}"
-    dest: "{{ '.' + item.path | basename }}"
-    state: link
-  with_items: "{{ zsh_config_files.files }}"
+  - name: Link config files
+    file:
+      src: "{{ item.path }}"
+      dest: "{{ '.' + item.path | basename }}"
+      state: link
+    with_items: "{{ zsh_config_files.files }}"
+    tags:
+      - user.zprezto.repo.config.link
   tags:
-    - user.zprezto.repo.config.link
+    - user.zprezto

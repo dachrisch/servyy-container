@@ -1,69 +1,72 @@
-- name: Install rsync
-  apt: name=rsync state=latest
-  become_user: root
-  tags:
-    - user.backup.rsync.install
+- block:
+  - name: Install rsync
+    apt: name=rsync state=latest
+    become_user: root
+    tags:
+      - user.backup.rsync.install
 
-- name: Ensure backup dir exists
-  file:
-    path: "{{(backup_dir) | path_join}}"
-    state: directory
-  tags:
-    - user.backup.dir.ensure
+  - name: Ensure backup dir exists
+    file:
+      path: "{{(backup_dir) | path_join}}"
+      state: directory
+    tags:
+      - user.backup.dir.ensure
 
-- name: Create backup for homes
-  template:
-    src: backup.sh.j2
-    dest: "{{(remote_user_home, 'backup_home.sh') | path_join}}"
-    mode: 0774
-  vars:
-    excludes:
-      - .git
-      - .zprezto
-    backup_dest: "{{(backup_dir, 'home') | path_join}}"
-    backup_source: "{{remote_user_home}}"
-  tags:
-    - user.backup.script.homes
+  - name: Create backup for homes
+    template:
+      src: backup.sh.j2
+      dest: "{{(remote_user_home, 'backup_home.sh') | path_join}}"
+      mode: 0774
+    vars:
+      excludes:
+        - .git
+        - .zprezto
+      backup_dest: "{{(backup_dir, 'home') | path_join}}"
+      backup_source: "{{remote_user_home}}"
+    tags:
+      - user.backup.script.homes
 
-- name: Create cron job to backup homes
-  cron:
-    name: 'Backup homes every day'
-    minute: '27'
-    hour: '3'
-    day: '*/1'
-    job: "{{(remote_user_home, 'backup_home.sh') | path_join}}"
-  tags:
-    - user.backup.script.homes.cron
+  - name: Create cron job to backup homes
+    cron:
+      name: 'Backup homes every day'
+      minute: '27'
+      hour: '3'
+      day: '*/1'
+      job: "{{(remote_user_home, 'backup_home.sh') | path_join}}"
+    tags:
+      - user.backup.script.homes.cron
 
-- name: Create backup for server
-  template:
-    src: backup.sh.j2
-    dest: "{{(remote_user_home, 'backup_root.sh') | path_join}}"
-    mode: 0774
-  vars:
-    excludes:
-      - '*.sock'
-      - 'cache'
-      - 'swap.img'
-      - '*.swap'
-    includes:
-      - '/*'
-      - '/etc/***'
-      - '/var/*'
-      - '/var/spool/*'
-      - '/var/spool/cron/***'
-    with_sudo:
-    backup_dest: "{{(backup_dir, 'root') | path_join}}"
-    backup_source: "/"
-  tags:
-    - user.backup.script.root
+  - name: Create backup for server
+    template:
+      src: backup.sh.j2
+      dest: "{{(remote_user_home, 'backup_root.sh') | path_join}}"
+      mode: 0774
+    vars:
+      excludes:
+        - '*.sock'
+        - 'cache'
+        - 'swap.img'
+        - '*.swap'
+      includes:
+        - '/*'
+        - '/etc/***'
+        - '/var/*'
+        - '/var/spool/*'
+        - '/var/spool/cron/***'
+      with_sudo:
+      backup_dest: "{{(backup_dir, 'root') | path_join}}"
+      backup_source: "/"
+    tags:
+      - user.backup.script.root
 
-- name: Create cron job to backup root
-  cron:
-    name: 'Backup root every day'
-    minute: '6'
-    hour: '3'
-    day: '*/1'
-    job: "{{(remote_user_home, 'backup_root.sh') | path_join}}"
+  - name: Create cron job to backup root
+    cron:
+      name: 'Backup root every day'
+      minute: '6'
+      hour: '3'
+      day: '*/1'
+      job: "{{(remote_user_home, 'backup_root.sh') | path_join}}"
+    tags:
+      - user.backup.script.root.cron
   tags:
-    - user.backup.script.root.cron
+    - user.backup
