@@ -1,0 +1,27 @@
+- name: Create {{service.name}} service
+  template:
+    src: oneshot.service.j2
+    dest: "{{ (remote_user_systemd, service.name) | path_join }}.service"
+  tags:
+    - user.systemd.create.service
+
+- name: Create timer for {{ service.name }}
+  template:
+    src: oneshot.timer.j2
+    dest: "{{ (remote_user_systemd, service.name) | path_join }}.timer"
+  vars:
+    timer: {
+      'description': 'Trigger for {{ service.name }}',
+      'schedule': '{{ service.schedule }}'
+    }
+  tags:
+    - user.systemd.create.timer
+
+- name: Start timer for {{ service. name }}
+  systemd:
+    scope: user
+    name: '{{service.name}}.timer'
+    state: started
+    enabled: yes
+  tags:
+    - user.systemd.start.timer

@@ -8,17 +8,11 @@
   tags:
     - user.dyndns.file.create
 
-- name: Install cron
-  apt: name=cron state=latest
-  become_user: root
-  tags:
-    - user.dyndns.cron.install
-
-- name: Create cron job to update server name
-  cron:
-    name: 'Update server name every 2 hours'
-    minute: '16'
-    hour: '*/2'
-    job: "{{ (docker.remote_dir, 'duckdns', 'duck.sh') | path_join }}"
-  tags:
-    - user.dyndns.cron
+- import_tasks: oneshot.yml
+  vars:
+    service: {
+               'name' : duckdns,
+               'description': 'Dyndns update for duckdns.org',
+               'schedule': '00/2:30',
+               'command': "{{ (docker.remote_dir, 'duckdns', 'duck.sh') | path_join }}"
+    }
