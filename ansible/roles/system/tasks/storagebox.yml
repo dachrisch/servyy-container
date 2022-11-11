@@ -31,14 +31,27 @@
 
 - name: Check if storagebox is already mounted
   command: '/bin/mountpoint -q {{storagebox.mount}}'
-  register: storagebox_mount
-  ignore_errors: yes
-  changed_when: "storagebox_mount.rc != 0"
+  register: storagebox_check
+  failed_when: storagebox_check.stderr != ''
+  changed_when: storagebox_check.rc != 0
   tags:
     - system.storagebox.mount.check
 
-- name: Mount storagebox
-  command: mount "{{ storagebox.mount }}"
-  when: storagebox_mount.changed
+- block:
+  - name: Mount storagebox
+    command: mount "{{ storagebox.mount }}"
+    register: storagebox_mount
+    failed_when: not (storagebox_mount.rc == 0 or storagebox_mount.rc == 32) # success or operation waiting (restart required)
+  - block:
+    - name: Reboot when mount was unsuccessful
+      reboot:
+
+    - name: Mount storagebox (after reboot)
+      command: mount "{{ storagebox.mount }}"
+      register: remount
+      retries: 3
+      delay: 2
+    when: storagebox_mount.rc == 32
+  when: storagebox_check.changed
   tags:
     - system.storagebox.mount
