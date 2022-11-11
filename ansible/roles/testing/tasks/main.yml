@@ -1,0 +1,17 @@
+- name: Dig servers ip
+  set_fact:
+    host_ip: "{{ lookup('dig', ansible_host) }}"
+    host_name: "{{ ansible_host }}"
+
+- name: Update the /etc/hosts file with node name
+  become_user: root
+  delegate_to: localhost
+  lineinfile:
+    path: '/etc/hosts'
+    line: '{{host_ip}}	{{item.dir}}.{{host_name}}'
+    state: present
+    backup: yes
+  with_items:
+    - "{{ docker.services }}"
+  tags:
+    - testing.hosts

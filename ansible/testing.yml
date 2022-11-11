@@ -1,0 +1,10 @@
+- name: Setup host maschine for testing
+  become: true
+  remote_user: "{{create_user}}"
+  hosts: test
+  vars_files:
+    - vars/default.yml
+    - vars/secrets.yml
+  roles: 
+    - testing
+  
