@@ -1,6 +1,7 @@
 - import_tasks: zpresto.yml
 - import_tasks: docker_repository.yml
-- import_tasks: docker_repo_specific.yml
+- import_tasks: docker_repo_env.yml
+- import_tasks: docker_repo_photoprism.yml
 - import_tasks: docker_setup.yml
 - import_tasks: docker_services.yml
 - import_tasks: dyndns.yml
