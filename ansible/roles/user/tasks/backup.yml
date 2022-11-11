@@ -6,7 +6,7 @@
 
 - name: Ensure backup dir exists
   file:
-    path: "{{(storagebox.mount, 'backup', inventory_hostname) | path_join}}"
+    path: "{{(backup_dir) | path_join}}"
     state: directory
   tags:
     - user.backup.dir.ensure
@@ -20,7 +20,7 @@
     excludes:
       - .git
       - .zprezto
-    backup_dest: "{{(storagebox.mount, 'backup', inventory_hostname, 'home') | path_join}}"
+    backup_dest: "{{(backup_dir, 'home') | path_join}}"
     backup_source: "{{remote_user_home}}"
   tags:
     - user.backup.script.homes
@@ -53,7 +53,7 @@
       - '/var/spool/*'
       - '/var/spool/cron/***'
     with_sudo:
-    backup_dest: "{{(storagebox.mount, 'backup', inventory_hostname, 'root') | path_join}}"
+    backup_dest: "{{(backup_dir, 'root') | path_join}}"
     backup_source: "/"
   tags:
     - user.backup.script.root
