@@ -6,7 +6,7 @@ Requires={{ service.depends }}.service
 
 [Service]
 Type=oneshot
-ExecStart=/bin/zsh {{ service.command }}
+ExecStart={{ service.command }}
 
 [Install]
 WantedBy=default.target
