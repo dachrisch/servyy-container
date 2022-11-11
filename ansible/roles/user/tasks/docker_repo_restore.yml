@@ -1,0 +1,35 @@
+- name: Looking for backup files [{{(backup_base, restore_dir) | path_join}}]
+  find:
+    paths: "{{(backup_base, restore_dir) | path_join}}"
+    file_type: any
+    recurse: no
+  register: backup_files
+
+- name: Latest backup file
+  set_fact:
+    newest_backup: "{{ backup_files.files | sort(attribute='mtime',reverse=true) | first }}"
+  when: backup_files.matched > 0
+
+- name: Find current repos files
+  find:
+    paths: "{{ (restore_base, restore_dir) | path_join }}"
+    recurse: no
+  register: current_files
+
+- name: Latest current file
+  set_fact:
+    newest_current: "{{ current_files.files | sort(attribute='mtime',reverse=true) | first }}"
+  when: current_files.matched > 0
+
+- name: Restore git repos from backup
+  copy:
+    remote_src: yes
+    # concatenate strings to prevent striping of first '/'
+    src: "{{(backup_base, restore_dir) | path_join}}"
+    dest: "{{(restore_base, restore_dir) | path_join}}"
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: "0755"
+  tags:
+    - user.docker.restore
+  when: backup_files.matched > 0 and (current_files.matched == 0 or newest_backup.mtime > newest_current.mtime)
