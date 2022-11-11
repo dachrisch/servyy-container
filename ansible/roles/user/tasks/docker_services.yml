@@ -11,9 +11,10 @@
     scope: user
     name: "{{ 'docker-' + item.dir | lower }}"
     state: stopped
+  register: service_status
+  failed_when: not((service_status.state is defined and service_status.state == 'stopped') or (service_status.msg is defined and 'Could not find the requested service' in service_status.msg))
   with_items:
     - "{{ docker.services }}"
-  ignore_errors: yes
   tags:
     - user.docker.systemd.stop
 
