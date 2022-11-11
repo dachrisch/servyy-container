@@ -1,0 +1,18 @@
+- name: Find config files
+  find:
+    paths: "{{ (shell.remote_dir, 'runcoms') | path_join }}"
+    patterns: "z*"
+    recurse: no
+    file_type: file
+  register: zsh_config_files
+  tags:
+    - user.zprezto.config.find
+
+- name: Link config files
+  file:
+    src: "{{ item.path }}"
+    dest: "{{ '.' + item.path | basename }}"
+    state: link
+  with_items: "{{ zsh_config_files.files }}"
+  tags:
+    - user.zprezto.config.link

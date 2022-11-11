@@ -6,6 +6,10 @@
   tags:
     - user.repo.zpresto
 
+- import_tasks: zprezto.yml
+  tags:
+    - user.zprezto
+
 - import_tasks: repository.yml
   vars:
     - repository_uri: "{{ docker.repo }}"
