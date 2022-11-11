@@ -28,6 +28,13 @@
   tags:
     - user.docker.systemd.create
 
+- name: Ensure lingering enabled
+  command: "loginctl enable-linger {{ create_user }}"
+  args:
+    creates: "/var/lib/systemd/linger/{{ create_user }}"
+  tags:
+    - user.docker.systemd.linger
+
 - name: Start docker services
   systemd:
     scope: user
@@ -63,7 +70,6 @@
     }
   tags:
     - user.docker.systemd.create.timer
-
 
 - name: Start Photo Index timer
   systemd:
