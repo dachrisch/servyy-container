@@ -1,34 +1,31 @@
-- block:
-  # User + Key Setup
-  - name: Create a new regular user with sudo privileges
-    user:
-      name: "{{ create_user }}"
-      state: present
-      groups: sudo
-      append: true
-      create_home: true
-      uid: 1000
-      shell: /bin/zsh
-    tags:
-      - system.user.create
-
-  - name: Add user "{{ create_user }}" to sudo
-    lineinfile:
-      path: /etc/sudoers.d/{{ create_user }}
-      line: '{{ create_user }} ALL=(ALL) NOPASSWD: ALL'
-      state: present
-      mode: 0440
-      create: yes
-      validate: 'visudo -cf %s'
-    tags:
-      - system.user.sudo
-
-  - name: Set authorized key for remote user
-    authorized_key:
-      user: "{{ create_user }}"
-      state: present
-      key: "{{ copy_local_key }}"
-    tags:
-      - system.user.auth_key
+# User + Key Setup
+- name: Create a new regular user with sudo privileges
+  user:
+    name: "{{ create_user }}"
+    state: present
+    groups: sudo
+    append: true
+    create_home: true
+    uid: 1000
+    shell: /bin/zsh
   tags:
-    - system.user
+    - system.user.create
+
+- name: Add user "{{ create_user }}" to sudo
+  lineinfile:
+    path: /etc/sudoers.d/{{ create_user }}
+    line: '{{ create_user }} ALL=(ALL) NOPASSWD: ALL'
+    state: present
+    mode: 0440
+    create: yes
+    validate: 'visudo -cf %s'
+  tags:
+    - system.user.sudo
+
+- name: Set authorized key for remote user
+  authorized_key:
+    user: "{{ create_user }}"
+    state: present
+    key: "{{ copy_local_key }}"
+  tags:
+    - system.user.auth_key
