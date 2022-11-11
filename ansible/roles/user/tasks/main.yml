@@ -1,7 +1,13 @@
 - import_tasks: zpresto.yml
 - import_tasks: docker_repository.yml
 - import_tasks: docker_repo_env.yml
-- import_tasks: docker_repo_photoprism.yml
+- import_tasks: docker_repo_restore.yml
+  vars:
+    backup_base: "{{backup_dir + docker.remote_dir}}"
+    restore_base: "{{docker.remote_dir}}"
+    restore_dir:  "{{('git', 'repos') | path_join}}"
+  tags:
+    - user.docker.restore.git
 - import_tasks: docker_setup.yml
 - import_tasks: docker_services.yml
 - import_tasks: dyndns.yml
