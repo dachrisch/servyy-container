@@ -11,13 +11,14 @@
 
   - name: Find current database files
     find:
-      paths: "{{ (docker.remote_dir, 'photoprism') | path_join }}"
+      paths: "{{ (docker.remote_dir, 'photoprism', 'database') | path_join }}"
       recurse: no
     register: current_files
 
   - name: Latest current file
     set_fact:
       newest_current: "{{ current_files.files | sort(attribute='mtime',reverse=true) | first }}"
+    when: current_files.matched > 0
 
   - name: Restore photo database from backup
     copy:
@@ -30,6 +31,6 @@
       mode: "0755"
     tags:
       - user.docker.photo.restore
-    when: newest_backup.mtime > newest_current.mtime
+    when: current_files.matched == 0 or newest_backup.mtime > newest_current.mtime
   tags:
     - user.docker.photo
