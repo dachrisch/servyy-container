@@ -32,7 +32,7 @@
   vars:
     backup_base: "{{backup_dir + docker.remote_dir}}"
     restore_base: "{{docker.remote_dir}}"
-    restore_dir:  "{{('photprsim', 'database') | path_join}}"
+    restore_dir:  "{{('photoprsim', 'database') | path_join}}"
   tags:
     - user.docker.restore.photoprism
 
