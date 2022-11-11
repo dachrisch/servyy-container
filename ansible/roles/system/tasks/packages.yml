@@ -23,6 +23,12 @@
   tags:
     - system.packages.locale
 
+- name: Set timezone to Europe/berlin
+  timezone:
+    name: Europe/Berlin
+  tags:
+    - system.packages.timezone
+
 - name: Reboot to apply changes
   reboot:
     msg: Reboot after system update
