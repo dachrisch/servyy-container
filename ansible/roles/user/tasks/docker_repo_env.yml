@@ -1,0 +1,12 @@
+- name: Create local .env files for docker service
+  template:
+    src: docker.env.j2
+    dest: "{{(docker.remote_dir, item.dir, '.env') | path_join}}"
+  vars:
+    service:
+      host: "{{item.dir}}.{{inventory_hostname}}"
+      name: "{{item.dir}}"
+  with_items:
+    - "{{ docker.services }}"
+  tags:
+    - user.docker.env
