@@ -1,18 +1,8 @@
-- name: Create dyndns update file
-  template:
-    src: duck.sh.j2
-    dest: "{{ (docker.remote_dir, 'duckdns', 'duck.sh') | path_join }}"
-  vars:
-    server_name: "{{inventory_hostname}}"
-    duck_log: "{{ (docker.remote_dir, 'duckdns', 'duck.log') | path_join }}"
-  tags:
-    - user.dyndns.file.create
-
 - import_tasks: oneshot.yml
   vars:
     service: {
                'name' : duckdns,
                'description': 'Dyndns update for duckdns.org',
                'schedule': '00/2:30',
-               'command': "{{ (docker.remote_dir, 'duckdns', 'duck.sh') | path_join }}"
+               'command': 'curl https://www.duckdns.org/update?domains={{inventory_hostname_short}}&token={{duck_token}}&ip='
     }
