@@ -21,12 +21,12 @@
     newest_current: "{{ current_files.files | sort(attribute='mtime',reverse=true) | first }}"
   when: current_files.matched > 0
 
-- name: Restore git repos from backup
+- name: Restore [{{restore_dir}}] from backup
   copy:
     remote_src: yes
-    # concatenate strings to prevent striping of first '/'
     src: "{{(backup_base, restore_dir) | path_join}}"
-    dest: "{{(restore_base, restore_dir) | path_join}}"
+    # use dirname, bcause copy will otherwise nest the dir into the target (copy /path to /path/path)
+    dest: "{{(restore_base, restore_dir) | path_join | dirname}}"
     owner: "{{ create_user }}"
     group: "{{ create_user }}"
     mode: "0755"

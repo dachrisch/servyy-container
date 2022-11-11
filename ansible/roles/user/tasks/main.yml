@@ -22,6 +22,7 @@
 
 - import_tasks: docker_repo_restore.yml
   vars:
+    # concatenate strings to prevent striping of first '/'
     backup_base: "{{backup_dir + docker.remote_dir}}"
     restore_base: "{{docker.remote_dir}}"
     restore_dir:  "{{('git', 'repos') | path_join}}"
@@ -30,9 +31,10 @@
 
 - import_tasks: docker_repo_restore.yml
   vars:
+    # concatenate strings to prevent striping of first '/'
     backup_base: "{{backup_dir + docker.remote_dir}}"
     restore_base: "{{docker.remote_dir}}"
-    restore_dir:  "{{('photoprsim', 'database') | path_join}}"
+    restore_dir:  "{{('photoprism', 'database') | path_join}}"
   tags:
     - user.docker.restore.photoprism
 
