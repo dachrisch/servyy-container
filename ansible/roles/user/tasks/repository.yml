@@ -1,0 +1,56 @@
+- name: Clone [{{ repository_uri }}] to [{{remote_dir}}]
+  git:
+    repo: "{{ repository_uri }}"
+    dest: "{{ remote_dir }}"
+  tags:
+    - user.repo.clone
+
+- name: Check lock state
+  command: git config --local --get filter.git-crypt.smudge
+  args:
+    chdir: "{{ remote_dir }}"
+  register: lock_state
+  failed_when: lock_state.stderr != ""
+  tags:
+    - user.repo.crypt.check
+
+- block:
+  - block:
+    - name: Create temporary keyfile local
+      tempfile:
+        state: file
+        suffix: temp
+      register: local_keyfile
+
+    - name: Export local key
+      command: git-crypt export-key {{local_keyfile.path}}
+      args:
+        chdir: "{{ local_dir }}"
+      delegate_to: localhost
+      become_user: "{{ local_user }}"
+    tags:
+      - user.repo.key.export
+    delegate_to: localhost
+    become_user: "{{ local_user }}"
+
+  - block:
+    - name: Create temporary keyfile remote
+      tempfile:
+        state: file
+        suffix: temp
+      register: remote_keyfile
+
+    - name: Copy repository key to remote
+      copy:
+        src: "{{ local_keyfile.path }}"
+        dest: "{{ remote_keyfile.path }}"
+    tags:
+      - user.repo.key.copy
+
+  - name: Unlock repository
+    command: git-crypt unlock "{{ remote_keyfile.path }}"
+    args:
+      chdir: "{{ remote_dir }}"
+  tags:
+    - user.repo.crypt.unlock
+  when: lock_state.rc != 0
