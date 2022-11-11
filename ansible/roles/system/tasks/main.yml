@@ -1,4 +1,14 @@
 - import_tasks: packages.yml
+  tags:
+    - system.packages
 - import_tasks: user.yml
+  tags:
+    - system.user
+
 - import_tasks: storagebox.yml
+  tags:
+    - system.storagebox
+
 - import_tasks: swap.yml
+  tags:
+    - system.swap
