@@ -1,34 +1,30 @@
-- block:
-  # Docker Setup
-  - name: Install docker compose
-    apt: name=docker-compose state=latest
-    become_user: root
-    tags:
-      - user.docker.install
-
-  - name: adding existing user '{{ create_user }}' to group docker
-    user:
-      name: '{{ create_user }}'
-      groups: docker
-      append: yes
-    become_user: root
-    register: group_added
-    tags:
-      - user.docker.install.add_group
-
-  - name: Reboot to apply changes
-    reboot:
-      msg: Reboot to make docker user available
-    become_user: root
-    when: group_added.changed
-    tags:
-      - user.docker.install.reboot
-
-  - name: Create external network
-    docker_network:
-      name: proxy
-    tags:
-      - user.docker.create.network
+# Docker Setup
+- name: Install docker compose
+  apt: name=docker-compose state=latest
+  become_user: root
   tags:
     - user.docker.install
-    -
+
+- name: adding existing user '{{ create_user }}' to group docker
+  user:
+    name: '{{ create_user }}'
+    groups: docker
+    append: yes
+  become_user: root
+  register: group_added
+  tags:
+    - user.docker.install.add_group
+
+- name: Reboot to apply changes
+  reboot:
+    msg: Reboot to make docker user available
+  become_user: root
+  when: group_added.changed
+  tags:
+    - user.docker.install.reboot
+
+- name: Create external network
+  docker_network:
+    name: proxy
+  tags:
+    - user.docker.create.network
