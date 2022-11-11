@@ -40,23 +40,23 @@
 - block:
   - name: Mount storagebox
     command: mount "{{ storagebox.mount }}"
-    ignore_errors: yes
+    register: mount_check
+    failed_when: not(mount_check.stderr == '' or 'Operation now in progress' in mount_check.stderr)
 
   - name: Check if storagebox mounted
     command: '/bin/mountpoint -q {{storagebox.mount}}'
     register: storagebox_mount
+    failed_when: storagebox_check.stderr != ''
+    changed_when: storagebox_check.rc != 0
 
   - block:
     - name: Reboot when mount was unsuccessful
       reboot:
 
-    - name: Mount storagebox (after reboot)
-      command: mount "{{ storagebox.mount }}"
-      register: remount
-      retries: 3
-      delay: 2
-      until: remount.rc == 0
-    when: storagebox_mount.rc == 1
+    - name: Check if storagebox mounted (after reboot)
+      command: '/bin/mountpoint -q {{storagebox.mount}}'
+
+    when: storagebox_mount.rc == 32
   when: storagebox_check.changed
   tags:
     - system.storagebox.mount
