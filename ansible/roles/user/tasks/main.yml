@@ -26,6 +26,7 @@
     backup_base: "{{backup_dir + docker.remote_dir}}"
     restore_base: "{{docker.remote_dir}}"
     restore_dir:  "{{('git', 'repos') | path_join}}"
+    owner: "root"
   tags:
     - user.docker.restore.git
 
@@ -35,6 +36,7 @@
     backup_base: "{{backup_dir + docker.remote_dir}}"
     restore_base: "{{docker.remote_dir}}"
     restore_dir:  "{{('photoprism', 'database') | path_join}}"
+    owner: "{{create_user}}"
   tags:
     - user.docker.restore.photoprism
 

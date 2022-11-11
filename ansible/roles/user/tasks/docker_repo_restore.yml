@@ -13,6 +13,7 @@
 - name: Find current repos files
   find:
     paths: "{{ (restore_base, restore_dir) | path_join }}"
+    file_type: any
     recurse: no
   register: current_files
 
@@ -27,9 +28,10 @@
     src: "{{(backup_base, restore_dir) | path_join}}"
     # use dirname, bcause copy will otherwise nest the dir into the target (copy /path to /path/path)
     dest: "{{(restore_base, restore_dir) | path_join | dirname}}"
-    owner: "{{ create_user }}"
-    group: "{{ create_user }}"
+    owner: "{{ owner }}"
+    group: "{{ owner }}"
     mode: "0755"
+  become_user: "{{owner}}"
   tags:
     - user.docker.restore
   when: backup_files.matched > 0 and (current_files.matched == 0 or newest_backup.mtime > newest_current.mtime)

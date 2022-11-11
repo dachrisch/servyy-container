@@ -1,5 +1,6 @@
 - name: Setup user specific options
   hosts: all
+  strategy: free
   remote_user: "{{ create_user }}"
   become: true
   become_user: "{{ create_user }}"
