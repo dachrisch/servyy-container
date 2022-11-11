@@ -8,6 +8,8 @@
     create_home: true
     uid: 1000
     shell: /bin/zsh
+  tags:
+    - system.user.create
 
 - name: Add user "{{ create_user }}" to sudo
   lineinfile:
@@ -17,9 +19,13 @@
     mode: 0440
     create: yes
     validate: 'visudo -cf %s'
+  tags:
+    - system.user.sudo
 
 - name: Set authorized key for remote user
   authorized_key:
     user: "{{ create_user }}"
     state: present
     key: "{{ copy_local_key }}"
+  tags:
+    - system.user.auth_key
