@@ -26,7 +26,7 @@
     - user.backup.script.homes
 
 
-- import_tasks: oneshot.yml
+- import_tasks: includes/oneshot.yml
   vars:
     service: {
                'name' : backup-homes,
@@ -60,7 +60,7 @@
   tags:
     - user.backup.script.root
 
-- import_tasks: oneshot.yml
+- import_tasks: includes/oneshot.yml
   vars:
     service: {
                'name' : backup-root,
