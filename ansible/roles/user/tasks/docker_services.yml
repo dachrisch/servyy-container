@@ -51,7 +51,7 @@
     - user.docker.systemd.start
 
 
-- import_tasks: oneshot.yml
+- import_tasks: includes/oneshot.yml
   vars:
     service: {
                'name' : docker-photo-index,

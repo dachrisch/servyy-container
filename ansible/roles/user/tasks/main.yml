@@ -1,4 +1,4 @@
-- import_tasks: repository.yml
+- import_tasks: includes/repository.yml
   vars:
     - repository_uri: "{{ shell.repo }}"
     - remote_dir: "{{ shell.remote_dir }}"
@@ -10,7 +10,7 @@
   tags:
     - user.zprezto
 
-- import_tasks: repository.yml
+- import_tasks: includes/repository.yml
   vars:
     - repository_uri: "{{ docker.repo }}"
     - remote_dir: "{{ docker.remote_dir }}"
@@ -20,7 +20,7 @@
 
 - import_tasks: docker_repo_env.yml
 
-- import_tasks: docker_repo_restore.yml
+- import_tasks: includes/docker_repo_restore.yml
   vars:
     # concatenate strings to prevent striping of first '/'
     backup_base: "{{backup_dir + docker.remote_dir}}"
@@ -30,7 +30,7 @@
   tags:
     - user.docker.restore.git
 
-- import_tasks: docker_repo_restore.yml
+- import_tasks: includes/docker_repo_restore.yml
   vars:
     # concatenate strings to prevent striping of first '/'
     backup_base: "{{backup_dir + docker.remote_dir}}"

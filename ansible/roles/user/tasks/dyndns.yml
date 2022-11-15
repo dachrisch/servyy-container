@@ -1,4 +1,4 @@
-- import_tasks: oneshot.yml
+- import_tasks: includes/oneshot.yml
   vars:
     service: {
                'name' : duckdns,
@@ -6,3 +6,13 @@
                'schedule': '00/2:30',
                'command': 'curl https://www.duckdns.org/update?domains={{inventory_hostname_short}}&token={{duck_token}}&ip='
     }
+
+- name: Run dyndns
+  systemd:
+    scope: user
+    daemon_reload: true
+    name: 'duckdns.service'
+    state: started
+    enabled: yes
+  tags:
+    - user.dyndns.run
