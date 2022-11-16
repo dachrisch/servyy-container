@@ -1,0 +1,13 @@
+#cloud-config
+users:
+  - default
+  - name: ubuntu
+    gecos: Ubuntu
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: users, admin
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDDJYAOhcct2a2oIcR9O+u68xT3j0nNXtMYvfKHg47d9rXHxvn4S85Tqn1IgyMr9Dbz/u8zpYDF5xHlLrdmeosDNUle48K/FDTQ/KZrdlhb5VcqZaFa52sxlMZHA2HqPKLdjfWiBJi9WlaY4C05DdU67hv8OkM9cZA2ralmPdEggZA0V1Wieg+V/Z2fSKBxWgfeijkZASmTd9W2Fw4at5NXgAa8kmloyoGxpEoKuPiLhLVJqCCVAcX93uI4sv7nGOI7x3i13/+88H4tMCJdgDDeIrvHtXYGIkDwPuzlzQL4UD4UxZLFmkJOS4Lq/QiQVekUotDTKoRoQHQm/gwBq0qB christian.daehn@gmail.com
+packages:
+  - avahi-daemon
