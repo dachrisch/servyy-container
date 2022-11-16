@@ -2,7 +2,7 @@
   hosts: all
   strategy: free
   become: true
-  remote_user: root
+  remote_user: "{{ root_user | default('root') }}"
   gather_facts: yes
   vars_files:
     - vars/default.yml
