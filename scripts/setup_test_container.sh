@@ -26,6 +26,7 @@ if ! lxc info $instance > /dev/null 2>&1;then
   echo "creating server [$instance]"
   lxc launch -p $instance ubuntu:22.04 $instance
   lxc config set $instance security.privileged true
+  lxc config set $instance security.nesting true
 elif [[ ! $(lxc info $instance|grep 'Status:') =~ 'RUNNING' ]];then
   echo "starting server [$instance]"
   lxc start $instance
