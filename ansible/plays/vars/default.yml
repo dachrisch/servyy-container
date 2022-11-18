@@ -9,5 +9,6 @@ swap_space: 1GB
 storagebox:
   file: /etc/storagebox.cred
   mount: /mnt/storagebox
+  remote: "//{{storagebox_credentials.host}}/{{storagebox_credentials.share}}"
 
 backup_dir: "{{(storagebox.mount, 'backup', inventory_hostname) | path_join}}"
