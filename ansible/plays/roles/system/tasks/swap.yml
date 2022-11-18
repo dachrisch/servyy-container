@@ -1,6 +1,6 @@
 - name: set swap_file variable
   set_fact:
-    swap_file: /{{ swap_space }}G.swap
+    swap_file: /{{ swap_space }}B.swap
   tags:
     - system.swap.file
     - system.swap.file.check
@@ -21,7 +21,8 @@
     - system.swap.on
     - system.swap.create
 
-- command: 'numfmt --from iec --format "%8.0f" {{ swap_space }}'
+- name: Calculate blocks
+  command: 'numfmt --from iec --format "%8.0f" {{ swap_space }}'
   register: size_int
 
 - set_fact:
