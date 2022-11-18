@@ -6,10 +6,11 @@
     groups: sudo
     append: true
     create_home: true
-    uid: 1000
     shell: /bin/zsh
+  register: created_user
   tags:
     - system.user.create
+    - system.storagebox.mount.fstab
 
 - name: Add user "{{ create_user }}" to sudo
   lineinfile:
