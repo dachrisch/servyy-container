@@ -29,3 +29,9 @@
     - "{{ docker.services }}"
   tags:
     - testing.hosts
+
+- name: Mount on reboot
+  cron:
+    name: "mount box on every reboot"
+    special_time: reboot
+    job: "sudo mount -a"
