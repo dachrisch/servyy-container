@@ -55,3 +55,7 @@
 - import_tasks: backup.yml
   tags:
     - user.backup
+
+- import_tasks: host_ping.yml
+  tags:
+    - user.ping

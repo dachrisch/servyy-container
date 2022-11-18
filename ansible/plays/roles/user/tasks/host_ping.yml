@@ -1,0 +1,10 @@
+- name: Create file to test hosts up
+  template:
+    src: test_host.sh.j2
+    dest: "{{(remote_user_home, 'test_host.sh') | path_join}}"
+    mode: 0770
+    owner: "{{create_user}}"
+  vars:
+    test_urls: "{{docker.services | map(attribute='dir') | product([inventory_hostname]) | map('join', '.')}}"
+  tags:
+    - user.ping.script

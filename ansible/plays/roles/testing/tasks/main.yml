@@ -1,32 +1,4 @@
-- name: Dig servers ip
-  set_fact:
-    host_ip: "{{ lookup('dig', ansible_host) }}"
-    host_name: "{{ inventory_hostname_short }}"
-  tags:
-    - testing.hosts
-
-- name: remove old entries from /etc/hosts
-  become_user: root
-  delegate_to: localhost
-  lineinfile:
-    path: '/etc/hosts'
-    regex: '{{item.dir}}\.{{host_name}}$'
-    state: absent
-  with_items:
-    - "{{ docker.services }}"
-  tags:
-    - testing.hosts
-
-- name: Update the /etc/hosts file with node name
-  become_user: root
-  delegate_to: localhost
-  lineinfile:
-    path: '/etc/hosts'
-    line: '{{host_ip}}	{{item.dir}}.{{host_name}}'
-    state: present
-    backup: yes
-  with_items:
-    - "{{ docker.services }}"
+- import_tasks: resolve.yml
   tags:
     - testing.hosts
 
@@ -35,3 +7,4 @@
     name: "mount box on every reboot"
     special_time: reboot
     job: "sudo mount -a"
+
