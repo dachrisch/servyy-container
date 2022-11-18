@@ -42,6 +42,7 @@
     path: "{{(restore_base, restore_dir) | path_join }}"
     owner: "{{ owner }}"
     group: "{{ owner }}"
-    mode: "0755"
+    mode: 0755
+    state: directory
   become_user: root
   when: restored.skipped is defined
