@@ -23,7 +23,7 @@
   tags:
     - system.packages.locale
 
-- name: Set timezone to Europe/berlin
+- name: Set timezone to Europe/Berlin
   timezone:
     name: Europe/Berlin
   tags:
