@@ -1,7 +1,9 @@
 - name: Dig servers ip
   set_fact:
     host_ip: "{{ lookup('dig', ansible_host) }}"
-    host_name: "{{ ansible_host }}"
+    host_name: "{{ ansible_fqdn }}"
+  tags:
+    - testing.hosts
 
 - name: Update the /etc/hosts file with node name
   become_user: root
