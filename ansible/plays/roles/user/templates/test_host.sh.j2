@@ -1,0 +1,26 @@
+#!/bin/zsh
+
+function get_http_code() {
+  domain=$1
+  url=$2
+
+  if [ -z "$url" ];then url="https://$domain";fi
+
+  echo $( curl -k -s -o /dev/null -w"%{http_code}" --resolve $domain:443:127.0.0.1 $url )
+}
+
+test_domain() {
+  domain=$1
+  echo -n "testing [$domain]..."
+  if [[ $( get_http_code $domain) =~ "2*" ]];then
+    echo "[OK]"
+  elif [[ $( get_http_code $domain) =~ "3*" ]];then
+    echo "UP (with redirect)"
+  else
+    echo "[FAILED]"
+  fi
+}
+
+{% for test_url in test_urls%}
+test_domain {{ test_url }}
+{% endfor %}

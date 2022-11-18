@@ -12,8 +12,10 @@ function get_http_code() {
 test_domain() {
   domain=$1
   echo -n "testing [$domain]..."
-  if [ "200" = $( get_http_code $domain) ];then
+  if [[ $( get_http_code $domain) == '2*' ]];then
     echo "[OK]"
+  elif [[ $( get_http_code $domain) == '3*' ]];then
+    echo "[UP]"
   else
     echo "[FAILED]"
   fi
