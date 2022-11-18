@@ -6,6 +6,9 @@
     service:
       host: "{{item.dir}}.{{inventory_hostname}}"
       name: "{{item.dir}}"
+    user:
+      id: {{ created_user.uid }}
+      group: {{ created_user.group }}
   with_items:
     - "{{ docker.services }}"
   tags:
