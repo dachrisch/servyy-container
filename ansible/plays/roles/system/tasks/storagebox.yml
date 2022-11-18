@@ -55,3 +55,4 @@
     register: storagebox_mount
     failed_when: storagebox_check.stderr != ''
     changed_when: storagebox_check.rc != 0
+  when: storagebox_check.changed
