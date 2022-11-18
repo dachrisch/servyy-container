@@ -3,6 +3,13 @@
     swap_file: /{{ swap_space }}.swap
   tags:
     - system.swap.file
+    - system.swap.file.check
+    - system.swap.file.permission
+    - system.swap.file.format
+    - system.swap.fstab
+    - system.swap.create
+    - system.swap.on
+    - system.swap.swappiness
 
 - name: check if swap file exists
   stat:
@@ -10,18 +17,33 @@
   register: swap_file_check
   tags:
     - system.swap.file.check
+    - system.swap.file.format
+    - system.swap.on
+    - system.swap.create
 
-- name: create swap file
-  command: fallocate -l {{ swap_space }} {{ swap_file }}
+- block:
+  - name: create swap file
+    command: fallocate -l {{ swap_space }} {{ swap_file }}
+    tags:
+      - system.swap.file.create
+
+  - name: get filesize of swap
+    stat:
+      path: "{{ swap_file }}"
+    register: filesize_check
+    when: swap_file_check.changed
+    tags:
+      - system.swap.file.check
+
+  - name: Create swap space
+    command: dd if=/dev/zero of={{ swap_file }} bs=1M count={{filesize_check.stat.size / 8 / 1000000 | int }}
+    when: filesize_check.changed
+    tags:
+      - system.swap.space.create
   when: not swap_file_check.stat.exists
   tags:
     - system.swap.create
 
-- name: Create swap space
-  command: dd if=/dev/zero of=/extraswap bs=1M count=512
-  when: not swap_file_check.stat.exists
-  tags:
-    - system.swap.space.create
 
 - name: set permissions on swap file
   file:
