@@ -1,4 +1,4 @@
-- name: Setup host maschine for testing
+- name: Setup host machine for testing
   become: true
   remote_user: "{{create_user}}"
   hosts: test

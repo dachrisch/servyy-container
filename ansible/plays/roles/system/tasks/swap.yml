@@ -21,29 +21,17 @@
     - system.swap.on
     - system.swap.create
 
-- block:
-  - name: create swap file
-    command: fallocate -l {{ swap_space }} {{ swap_file }}
-    tags:
-      - system.swap.file.create
+- command: 'numfmt --from iec --format "%8.0f" {{ swap_space }}'
+  register: size_int
 
-  - name: get filesize of swap
-    stat:
-      path: "{{ swap_file }}"
-    register: filesize_check
-    when: swap_file_check.changed
-    tags:
-      - system.swap.file.check
+- set_fact:
+    dd_count: "{{ (size_int.stdout | int) / 1000000 }}"
 
-  - name: Create swap space
-    command: dd if=/dev/zero of={{ swap_file }} bs=1M count={{filesize_check.stat.size / 8 / 1000000 | int }}
-    when: filesize_check.changed
-    tags:
-      - system.swap.space.create
-  when: not swap_file_check.stat.exists
+- name: Create swap space
+  command: dd if=/dev/zero of={{ swap_file }} bs=1M count={{dd_count|int}}
   tags:
-    - system.swap.create
-
+    - system.swap.space.create
+  when: not swap_file_check.stat.exists
 
 - name: set permissions on swap file
   file:
