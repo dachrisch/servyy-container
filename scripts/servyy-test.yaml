@@ -1,0 +1,24 @@
+config:
+  user.user-data: |
+    #cloud-config
+    users:
+      - name: ubuntu
+        sudo: ALL=(ALL) NOPASSWD:ALL
+        groups: users, admin
+        ssh_authorized_keys:
+        - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDDJYAOhcct2a2oIcR9O+u68xT3j0nNXtMYvfKHg47d9rXHxvn4S85Tqn1IgyMr9Dbz/u8zpYDF5xHlLrdmeosDNUle48K/FDTQ/KZrdlhb5VcqZaFa52sxlMZHA2HqPKLdjfWiBJi9WlaY4C05DdU67hv8OkM9cZA2ralmPdEggZA0V1Wieg+V/Z2fSKBxWgfeijkZASmTd9W2Fw4at5NXgAa8kmloyoGxpEoKuPiLhLVJqCCVAcX93uI4sv7nGOI7x3i13/+88H4tMCJdgDDeIrvHtXYGIkDwPuzlzQL4UD4UxZLFmkJOS4Lq/QiQVekUotDTKoRoQHQm/gwBq0qB christian.daehn@gmail.com
+
+description: Default LXD profile
+devices:
+  eth0:
+    name: eth0
+    nictype: bridged
+    parent: lxdbr0
+    type: nic
+  root:
+    path: /
+    pool: default
+    type: disk
+name: servyy-test
+used_by:
+- /1.0/instances/servyy-test
