@@ -6,7 +6,7 @@ function get_http_code() {
 
   if [ -z "$url" ];then url="https://$domain";fi
 
-  echo $( curl -k -Is -o /dev/null -w"%{http_code}" --resolve $domain:443:localhost $url )
+  echo $( curl -k -Is -o /dev/null -w"%{http_code}" --resolve $domain:443:127.0.0.1 $url )
 }
 
 test_domain() {
