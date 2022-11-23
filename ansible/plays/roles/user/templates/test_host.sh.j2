@@ -15,7 +15,7 @@ test_domain() {
   if [[ $( get_http_code $domain) =~ "2*" ]];then
     echo "[OK]"
   elif [[ $( get_http_code $domain) =~ "3*" ]];then
-    echo "UP (with redirect)"
+    echo "[UP] (with redirect)"
   else
     echo "[FAILED]"
   fi
