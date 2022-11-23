@@ -13,7 +13,7 @@ if [[ "$1" = '-x' ]];then
 fi
 
 # https://kerneltalks.com/howto/how-to-disable-iptables-firewall-temporarily/
-if [[ $(sudo iptables -L FORWARD | wc -l) -gt 2 ]];then
+if [[ $(sudo iptables -L FORWARD 2>/dev/null | wc -l ) -gt 2 ]];then
   echo 'cleaning iptables'
   sudo iptables-save | tee ".backup/iptables_$(date +%s).backup" > /dev/null
   sudo iptables -F
