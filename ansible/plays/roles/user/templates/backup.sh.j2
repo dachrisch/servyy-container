@@ -4,7 +4,7 @@
 sudo \
 {% endif %}
 rsync \
--rav --safe-links --prune-empty-dirs --delete-after \
+-rav --safe-links --prune-empty-dirs --delete-after --no-links --exclude '*.mount' \
 {%if excludes is defined %}
 {{ ['--exclude '] | product(excludes | map('quote')) | map('join') | join(' ') }} \
 {% endif %}
