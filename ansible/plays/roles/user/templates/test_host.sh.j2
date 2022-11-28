@@ -12,12 +12,17 @@ function get_http_code() {
 test_domain() {
   domain=$1
   echo -n "testing [$domain]..."
-  if [[ $( get_http_code $domain) =~ "2*" ]];then
+  return_code=$(get_http_code $domain)
+  if [[ $(get_http_code $domain) =~ "2.." ]];then
     echo "[OK]"
-  elif [[ $( get_http_code $domain) =~ "3*" ]];then
+  elif [[ $return_code =~ "3.." ]];then
     echo "[UP] (with redirect)"
+  elif [[ $return_code = "401" ]];then
+    echo "[UP] (with authorization)"
+  elif [[ $return_code = "404" ]];then
+    echo "[DOWN]"
   else
-    echo "[FAILED]"
+    echo "[FAILED], $return_code"
   fi
 }
 
