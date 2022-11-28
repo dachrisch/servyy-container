@@ -1,5 +1,13 @@
+# key files fpr git-crypt
 *.key
+# docker environment files
+.env
+# jekyll code generation
 bumbleflies/code
 bumbleflies/site
+# IDE
 .idea
+# script backups (iptables)
 .backup/
+# photorpsim database
+photoprism/database/
