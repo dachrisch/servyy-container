@@ -6,7 +6,7 @@ config :pleroma, :frontend_configurations,
   pleroma_fe: %{
     theme: "pleroma-light",
     redirectRootNoLogin: "/hello",
-    background: '/bumble.social.background.png'
+    background: "/images/bumble.social.background.png"
 }
 
 config :pleroma, :instance,
