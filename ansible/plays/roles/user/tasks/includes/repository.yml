@@ -2,6 +2,7 @@
   git:
     repo: "{{ repository_uri }}"
     dest: "{{ remote_dir }}"
+    force: true
   tags:
     - user.repo.clone
 
