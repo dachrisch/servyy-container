@@ -1,27 +1,64 @@
-- name: Check if social user is created
-  command: "docker-compose exec pleroma /bin/sh -c '/opt/pleroma/bin/pleroma_ctl user list'"
+- name: Setting working dir for social service
+  set_fact:
+    docker_dir_social: "{{ (docker.remote_dir, 'social') | path_join }}"
+  tags:
+    - user.social.base
+
+- name: Check if container ist running
+  docker_container_info:
+    name: pleroma
+  register: result
+  failed_when: not result.exists or result.container['State']['Running'] != true
+  tags:
+    - user.social.container.info
+
+- name: Wait for container to fully start
+  command: "docker-compose exec pleroma /opt/pleroma/bin/pleroma_ctl user list"
   args:
-    chdir: "{{ (docker.remote_dir, 'social') | path_join }}"
+    chdir: "{{ docker_dir_social }}"
+  register: social_start
+  retries: 10
+  delay: 2
+  until: "social_start.rc == 0 or not(social_start.stdout_lines | select('match', '.*nodedown.*') | length == 1)"
+  failed_when: social_start.rc != 0
+  tags:
+    - user.social.container.wait.startup
+
+- name: Check if social user is created
+  command: "docker-compose exec pleroma /opt/pleroma/bin/pleroma_ctl user list"
+  args:
+    chdir: "{{ docker_dir_social }}"
   register: social_user
+  changed_when: social_user.stdout =="" or not((social_user.stdout_lines | first) is search(social.user))
   tags:
     - user.social.user.check
 
 # https://docs-develop.pleroma.social/backend/administration/CLI_tasks/user/
 - name: Create social user
-  command: "docker-compose exec pleroma /bin/sh -c '/opt/pleroma/bin/pleroma_ctl user new {{social.user}} {{social.email}} --admin --password \"{{social.password}}\" -y'"
+  command: "docker-compose exec pleroma /opt/pleroma/bin/pleroma_ctl user new {{social.user}} {{social.email}} --admin --password \"{{social.password}}\" -y"
   args:
-    chdir: "{{ (docker.remote_dir, 'social') | path_join}}"
-  when: social_user.stdout =="" or not((social_user.stdout_lines | first) is search(social.user))
+    chdir: "{{ docker_dir_social }}"
+  when: social_user.changed
   tags:
     - user.social.user.create
 
 - name: Upload file permissions
   become_user: root
   file:
-    path: "{{ (docker.remote_dir, 'social', 'volumes', 'pleroma', 'uploads') | path_join }}"
+    path: "{{ (docker_dir_social, 'volumes', 'pleroma', 'uploads') | path_join }}"
     state: directory
     owner: "100"
     group: "0"
     mode: "0775"
   tags:
     - user.social.upload.dir
+
+- name: adding relay server (only on production)
+  command: "docker-compose exec pleroma /opt/pleroma/bin/pleroma_ctl relay follow {{ item }}"
+  args:
+    chdir: "{{ docker_dir_social }}"
+  with_items:
+    - "{{ social.relays }}"
+  when: "'prod' in groups and inventory_hostname in groups['prod']"
+  tags:
+    - user.social.relays.add
