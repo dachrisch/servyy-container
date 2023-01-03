@@ -1,0 +1,14 @@
+- name: Check if social user is created
+  command: "docker-compose exec pleroma /bin/sh -c '/opt/pleroma/bin/pleroma_ctl user list'"
+  args:
+    chdir: "{{ (docker.remote_dir, 'social') | path_join}}"
+  register: social_user
+  tags:
+    - user.social.user.check
+
+# https://docs-develop.pleroma.social/backend/administration/CLI_tasks/user/
+- name: Create social user
+  command: "docker-compose exec pleroma /bin/sh -c '/opt/pleroma/bin/pleroma_ctl user new {{social.user}} {{social.email}} --admin --password \"{{social.password}}\" -y'"
+  args:
+    chdir: "{{ (docker.remote_dir, 'social') | path_join}}"
+  when: social_user.stdout =="" or not((social_user.stdout_lines | first) is search(social.user))
