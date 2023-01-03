@@ -54,4 +54,4 @@
       chdir: "{{ remote_dir }}"
   tags:
     - user.repo.crypt.unlock
-  when: lock_state.rc != 0
+  when: lock_state.changed
