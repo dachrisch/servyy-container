@@ -47,20 +47,6 @@
   tags:
     - user.social.user.create
 
-- name: "Ensuring dir permissions"
-  become_user: root
-  file:
-    path: "{{ (docker_dir_social, 'volumes', 'pleroma', item) | path_join }}"
-    state: directory
-    owner: "100"
-    group: "0"
-    mode: "0775"
-  with_items:
-    - "uploads"
-    - "static"
-  tags:
-    - user.social.dir.permissions
-
 - name: Check if relays are present
   command: "docker-compose exec pleroma /opt/pleroma/bin/pleroma_ctl relay list"
   args:
