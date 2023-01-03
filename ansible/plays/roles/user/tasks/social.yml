@@ -1,7 +1,7 @@
 - name: Check if social user is created
   command: "docker-compose exec pleroma /bin/sh -c '/opt/pleroma/bin/pleroma_ctl user list'"
   args:
-    chdir: "{{ (docker.remote_dir, 'social') | path_join}}"
+    chdir: "{{ (docker.remote_dir, 'social') | path_join }}"
   register: social_user
   tags:
     - user.social.user.check
@@ -12,3 +12,16 @@
   args:
     chdir: "{{ (docker.remote_dir, 'social') | path_join}}"
   when: social_user.stdout =="" or not((social_user.stdout_lines | first) is search(social.user))
+  tags:
+    - user.social.user.create
+
+- name: Upload file permissions
+  become_user: root
+  file:
+    path: "{{ (docker.remote_dir, 'social', 'volumes', 'pleroma', 'uploads') | path_join }}"
+    state: directory
+    owner: "100"
+    group: "0"
+    mode: "0775"
+  tags:
+    - user.social.upload.dir
