@@ -1,6 +1,11 @@
+- name: Gather social service dir
+  set_fact:
+    dir_social: "{{ (docker.services | selectattr('name', 'equalto', 'Social') | first).dir }}"
+  tags: user.social.base
+
 - name: Setting working dir for social service
   set_fact:
-    docker_dir_social: "{{ (docker.remote_dir, 'social') | path_join }}"
+    docker_dir_social: "{{ (docker.remote_dir, dir_social ) | path_join }}"
   tags:
     - user.social.base
 
@@ -53,12 +58,34 @@
   tags:
     - user.social.upload.dir
 
-- name: adding relay server (only on production)
+- name: Check if relays are present
+  command: "docker-compose exec pleroma /opt/pleroma/bin/pleroma_ctl relay list"
+  args:
+    chdir: "{{ docker_dir_social }}"
+  register: relays_present
+  tags:
+    - user.social.relays.add
+
+- name: Adding relay server (only on production)
   command: "docker-compose exec pleroma /opt/pleroma/bin/pleroma_ctl relay follow {{ item }}"
   args:
     chdir: "{{ docker_dir_social }}"
   with_items:
     - "{{ social.relays }}"
-  when: "'prod' in groups and inventory_hostname in groups['prod']"
+  when: "'prod' in groups and inventory_hostname in groups['prod'] and (relays_present.stdout_lines | select('search', (item | urlsplit('hostname'))) | length == 0)"
   tags:
     - user.social.relays.add
+
+# https://docs-develop.pleroma.social/backend/configuration/howto_database_config/
+- name: Enable config from database (for admin panel)
+  command: "docker-compose exec pleroma /opt/pleroma/bin/pleroma_ctl config migrate_to_db"
+  args:
+    chdir: "{{ docker_dir_social }}"
+  tags:
+    - user.social.config.migrate
+
+- name: Restart social service
+  systemd:
+    scope: user
+    name: "{{ 'docker-' + dir_social | lower }}"
+    state: restarted
