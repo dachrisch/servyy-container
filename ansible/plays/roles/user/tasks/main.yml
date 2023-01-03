@@ -59,3 +59,7 @@
 - import_tasks: host_ping.yml
   tags:
     - user.ping
+
+- import_tasks: social.yml
+  tags:
+    - user.social
