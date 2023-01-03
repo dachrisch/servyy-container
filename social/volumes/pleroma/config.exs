@@ -1,3 +1,3 @@
 import Config
 
-config :pleroma, configurable_from_database: true
+config :shout enabled: false

@@ -76,16 +76,3 @@
   tags:
     - user.social.relays.add
 
-# https://docs-develop.pleroma.social/backend/configuration/howto_database_config/
-- name: Enable config from database (for admin panel)
-  command: "docker-compose exec pleroma /opt/pleroma/bin/pleroma_ctl config migrate_to_db"
-  args:
-    chdir: "{{ docker_dir_social }}"
-  tags:
-    - user.social.config.migrate
-
-- name: Restart social service
-  systemd:
-    scope: user
-    name: "{{ 'docker-' + dir_social | lower }}"
-    state: restarted
