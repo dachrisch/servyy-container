@@ -1,3 +1,3 @@
 #!/bin/zsh
 set -x
-ansible-playbook servyy.yml -i testing --extra-vars=root_user=ubuntu --skip-tags system.swap "$@"
+ansible-playbook servyy.yml -i testing --skip-tags system.swap "$@"
