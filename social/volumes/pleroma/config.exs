@@ -5,7 +5,7 @@ config :shout, enabled: false
 config :pleroma, :frontend_configurations,
   pleroma_fe: %{
     theme: "pleroma-light",
-    redirectRootNoLogin: "/hello",
+    redirectRootNoLogin: "/hive",
     background: "/images/bumble.social.background.png",
     logo: "/static/logo.svg"
 }
