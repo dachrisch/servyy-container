@@ -20,6 +20,7 @@
     excludes:
       - .git
       - .zprezto
+      - pgdata
     backup_dest: "{{(backup_dir, 'home') | path_join}}"
     backup_source: "{{remote_user_home}}"
   tags:
