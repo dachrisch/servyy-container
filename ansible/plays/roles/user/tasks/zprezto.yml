@@ -16,3 +16,11 @@
   with_items: "{{ zsh_config_files.files }}"
   tags:
     - user.zprezto.config.link
+
+- name: Link prompt
+  file:
+    src: "{{ (shell.remote_dir, 'custom', 'p10k.zsh') | path_join }}"
+    dest: '.p10k.zsh'
+    state: link
+  tags:
+    - user.zprezto.prompt
