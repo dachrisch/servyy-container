@@ -1,14 +1,16 @@
 #!/bin/zsh
-
-{%if with_sudo is defined %}
+{% if with_timestamp is defined %}
+echo '{"timestamp":'$(date +%s)', "dateString": "'$(date +%FT%T.%3N)'"}' | jq . | sudo tee "{{backup_source}}/.last_backup"
+{% endif %}
+{% if with_sudo is defined %}
 sudo \
 {% endif %}
 rsync \
 -rav --safe-links --prune-empty-dirs --delete-after --no-links --exclude '*.mount' \
-{%if excludes is defined %}
+{% if excludes is defined %}
 {{ ['--exclude '] | product(excludes | map('quote')) | map('join') | join(' ') }} \
 {% endif %}
-{%if includes is defined %}
+{% if includes is defined %}
 {{ ['--include '] | product(includes | map('quote')) | map('join') | join(' ') }} \
 --exclude '*' \
 {% endif %}
