@@ -23,6 +23,7 @@
       - pgdata
     backup_dest: "{{(backup_dir, 'home') | path_join}}"
     backup_source: "{{remote_user_home}}"
+    with_timestamp:
   tags:
     - user.backup.script.homes
 
@@ -58,6 +59,7 @@
     with_sudo:
     backup_dest: "{{(backup_dir, 'root') | path_join}}"
     backup_source: "/"
+    with_timestamp:
   tags:
     - user.backup.script.root
 
