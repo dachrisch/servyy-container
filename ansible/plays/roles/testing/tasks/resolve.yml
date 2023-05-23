@@ -2,6 +2,10 @@
   set_fact:
     host_ip: "{{ lookup('dig', ansible_host) }}"
     host_name: "{{ inventory_hostname_short }}"
+  tags:
+    - testing.hosts.remove
+    - testing.hosts.create
+    - testing.hosts.create.fqdn
 
 - name: remove old entries from /etc/hosts
   become_user: root
@@ -27,3 +31,16 @@
     - "{{ docker.services }}"
   tags:
     - testing.hosts.create
+    -
+- name: Update the /etc/hosts file with FQDN
+  become_user: root
+  delegate_to: localhost
+  lineinfile:
+    path: '/etc/hosts'
+    line: '{{host_ip}}	{{item.dir}}.{{host_name}}.lxd'
+    state: present
+    backup: yes
+  with_items:
+    - "{{ docker.services }}"
+  tags:
+    - testing.hosts.create.fqdn
