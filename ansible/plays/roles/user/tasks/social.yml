@@ -13,7 +13,7 @@
   docker_container_info:
     name: pleroma
   register: result
-  failed_when: not result.exists or result.container['State']['Running'] != true
+  failed_when: not (result.exists and result.container['State']['Running'])
   tags:
     - user.social.container.info
 
