@@ -3,6 +3,7 @@
     repo: "{{ repository_uri }}"
     dest: "{{ remote_dir }}"
     force: true
+    recursive: yes
   tags:
     - user.repo.clone
 
