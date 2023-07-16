@@ -1,3 +1,6 @@
 [submodule "open_space_app/os_backend"]
 	path = open_space_app/os_backend
 	url = https://github.com/bumbleflies/os_backend.doc.open-space.git
+[submodule "open-space-app/os_backend"]
+	path = open-space-app/os_backend
+	url = https://github.com/bumbleflies/os_backend.doc.open-space.git
