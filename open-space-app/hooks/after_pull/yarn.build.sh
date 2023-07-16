@@ -1,4 +1,4 @@
 #!/bin/bash
 
-pushd /code
+pushd /code || exit
 BUILD_PATH=/build yarn build
