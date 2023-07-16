@@ -2,6 +2,4 @@
 
 pushd /code || exit
 git pull
-apk add yarn
-yarn
-BUILD_PATH=/build yarn build
+git switch build
