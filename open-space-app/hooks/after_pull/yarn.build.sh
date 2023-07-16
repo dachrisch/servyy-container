@@ -1,4 +1,4 @@
 #!/bin/bash
 
 pushd /code
-yarn build
+BUILD_PATH=/build yarn build

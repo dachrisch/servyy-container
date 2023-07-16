@@ -2,4 +2,4 @@
 
 pushd /code
 git pull
-yarn build
+BUILD_PATH=/build yarn build
