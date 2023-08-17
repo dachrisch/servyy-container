@@ -1,6 +1,7 @@
 import Config
 
 config :shout, enabled: false
+config :pleroma, configurable_from_database: false
 
 config :pleroma, :frontend_configurations,
   pleroma_fe: %{
