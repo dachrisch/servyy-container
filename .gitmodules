@@ -1,3 +1,7 @@
 [submodule "open_space_app/os_backend"]
 	path = open_space_app/os_backend
 	url = https://github.com/bumbleflies/os_backend.doc.open-space.git
+[submodule "me/website"]
+	path = me/website
+	url = https://git.servyy.duckdns.org/me
+	branch = dist
