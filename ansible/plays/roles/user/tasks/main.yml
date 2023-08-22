@@ -19,6 +19,16 @@
     - user.repo.docker
 
 - import_tasks: docker_repo_env.yml
+  tags:
+    - user.repo.docker.env
+
+- import_tasks: me.yml
+  vars:
+    hostname: "{{ servyy_git_repo.hostname }}"
+    username: "{{ servyy_git_repo.username }}"
+    password: "{{ servyy_git_repo.password }}"
+  tags:
+    - user.repo.me
 
 - import_tasks: includes/docker_repo_restore.yml
   vars:

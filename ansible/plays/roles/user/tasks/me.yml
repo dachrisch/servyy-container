@@ -1,0 +1,16 @@
+- name: Add credentials for repo [{{ hostname }}]
+  lineinfile:
+    path: "~/.git-credentials"
+    regex: "^https:\/\/[^@]*:[^@]*@{{ hostname }}$"
+    line: "https://{{ username }}:{{password}}@{{ hostname }}"
+    create: true
+
+- name: Check helper store
+  command: "git config --global --get credential.helper"
+  changed_when: git_config.rc == 1 or git_config.stdout != 'store'
+  register: git_config
+  failed_when: git_config.rc > 1
+
+- name: Configure helper store when not exists
+  command: "git config --global credential.helper store"
+  when: git_config.changed
