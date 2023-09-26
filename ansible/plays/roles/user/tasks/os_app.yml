@@ -1,0 +1,8 @@
+- name: Create .env file for {{ os_app.dir }}
+  become_user: root
+  copy:
+    dest: "{{ (docker.remote_dir, os_app.dir, '.env') | path_join }}"
+    content: |
+      OS_SERVER_HOT_RELOAD=1
+      OS_AUTH_DOMAIN={{ os_app.env.os_auth_domain }}
+      OS_AUTH_AUDIENCE={{ os_app.env.os_auth_audience }}
