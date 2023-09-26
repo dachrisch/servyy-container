@@ -30,6 +30,14 @@
   tags:
     - user.repo.me
 
+- import_tasks: os_app.yml
+  vars:
+    hostname: "{{ servyy_git_repo.hostname }}"
+    username: "{{ servyy_git_repo.username }}"
+    password: "{{ servyy_git_repo.password }}"
+  tags:
+    - user.repo.os_app
+
 - import_tasks: includes/docker_repo_restore.yml
   vars:
     # concatenate strings to prevent striping of first '/'
