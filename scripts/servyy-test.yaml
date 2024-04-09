@@ -17,6 +17,6 @@ devices:
     type: nic
   root:
     path: /
-    pool: bumble
+    pool: servyy
     type: disk
 name: servyy-test

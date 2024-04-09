@@ -1,5 +1,4 @@
 #!/bin/zsh
-
 set -e
 instance=servyy-test
 hostname="${instance}.lxd"
@@ -15,6 +14,7 @@ fi
 # https://kerneltalks.com/howto/how-to-disable-iptables-firewall-temporarily/
 if [[ $(sudo iptables -L FORWARD 2>/dev/null | wc -l ) -gt 2 ]];then
   echo 'cleaning iptables'
+  mkdir '.backup'
   sudo iptables-save | tee ".backup/iptables_$(date +%s).backup" > /dev/null
   sudo iptables -F
   sudo iptables -X
@@ -28,6 +28,19 @@ if ! lxc profile get $instance name  > /dev/null 2>&1;then
   lxc profile create $instance
   cat $instance.yaml | lxc profile edit $instance
 fi
+
+storage_pool=$(yq '.devices.root.pool' servyy-test.yaml | tr -d '"')
+if ! lxc storage show "$storage_pool" > /dev/null 2>&1;then
+  echo "creating storage pool [$storage_pool]"
+  lxc storage create "$storage_pool" dir
+fi
+
+bridge_network=$(yq '.devices.eth0.parent' servyy-test.yaml | tr -d '"')
+if ! lxc network show "$bridge_network" > /dev/null 2>&1;then
+  echo "creating network [$bridge_network]"
+  lxc network create "$bridge_network" --type bridged
+fi
+
 
 if ! lxc info $instance > /dev/null 2>&1;then
   echo "creating server [$instance]"
