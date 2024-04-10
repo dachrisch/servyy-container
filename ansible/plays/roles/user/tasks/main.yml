@@ -10,6 +10,14 @@
   tags:
     - user.zprezto
 
+- import_tasks: git_credentials.yml
+  vars:
+    hostname: "{{ servyy_git_repo.hostname }}"
+    username: "{{ servyy_git_repo.username }}"
+    password: "{{ servyy_git_repo.password }}"
+  tags:
+    - user.repo.me
+
 - import_tasks: includes/repository.yml
   vars:
     - repository_uri: "{{ docker.repo }}"
@@ -22,19 +30,7 @@
   tags:
     - user.repo.docker.env
 
-- import_tasks: me.yml
-  vars:
-    hostname: "{{ servyy_git_repo.hostname }}"
-    username: "{{ servyy_git_repo.username }}"
-    password: "{{ servyy_git_repo.password }}"
-  tags:
-    - user.repo.me
-
 - import_tasks: os_app.yml
-  vars:
-    hostname: "{{ servyy_git_repo.hostname }}"
-    username: "{{ servyy_git_repo.username }}"
-    password: "{{ servyy_git_repo.password }}"
   tags:
     - user.repo.os_app
 
