@@ -29,18 +29,17 @@ if ! lxc profile get $instance name  > /dev/null 2>&1;then
   cat $instance.yaml | lxc profile edit $instance
 fi
 
-storage_pool=$(yq '.devices.root.pool' servyy-test.yaml | tr -d '"')
+storage_pool=$(yq '.devices.root.pool' $instance.yaml | tr -d '"')
 if ! lxc storage show "$storage_pool" > /dev/null 2>&1;then
   echo "creating storage pool [$storage_pool]"
   lxc storage create "$storage_pool" dir
 fi
 
-bridge_network=$(yq '.devices.eth0.parent' servyy-test.yaml | tr -d '"')
+bridge_network=$(yq '.devices.eth0.parent' $instance.yaml | tr -d '"')
 if ! lxc network show "$bridge_network" > /dev/null 2>&1;then
   echo "creating network [$bridge_network]"
-  lxc network create "$bridge_network" --type bridged
+  lxc network create "$bridge_network" --type bridge dns.domain='lxd'
 fi
-
 
 if ! lxc info $instance > /dev/null 2>&1;then
   echo "creating server [$instance]"
@@ -56,10 +55,10 @@ elif [[ ! $(lxc info $instance|grep 'Status:') =~ 'RUNNING' ]];then
   lxc start $instance
 fi
 
-# https://linuxcontainers.org/lxd/docs/master/howto/network_bridge_resolved/
+# https://documentation.ubuntu.com/lxd/en/stable-4.0/networks/
 if ! host $hostname > /dev/null 2>&1;then
   echo 'enable local name resolution'
-  sudo resolvectl dns lxdbr0 "$(lxc network get lxdbr0 ipv4.address|cut -d'/' -f1)"
+  sudo resolvectl dns lxdbr0 "$(lxc network get lxdbr0 ipv4.address | cut -d'/' -f1)"
   sudo resolvectl domain lxdbr0 "~$(lxc network get lxdbr0 dns.domain)"
 fi
 
