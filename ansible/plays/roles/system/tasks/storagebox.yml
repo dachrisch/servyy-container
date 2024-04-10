@@ -23,7 +23,7 @@
   - set_fact:
       mount_opts: "credentials={{ storagebox.file }},iocharset=utf8,uid={{created_user.uid}},gid={{created_user.group}}"
   - set_fact:
-      mount_opts: "{{mount_opts}},ip={{lookup('dig', '{{storagebox_credentials.host}}', 'qtype=AAAA')}}"
+      mount_opts: "{{mount_opts}},ip={{lookup('dig', '{{storagebox_credentials.host}}', 'qtype=A')}}"
     when: ('test' in groups) and (inventory_hostname in groups['test'])
 
   - name: Create fstab entry for folder share
