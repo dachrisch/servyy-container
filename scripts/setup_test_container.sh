@@ -38,7 +38,7 @@ fi
 bridge_network=$(yq '.devices.eth0.parent' $instance.yaml | tr -d '"')
 if ! lxc network show "$bridge_network" > /dev/null 2>&1;then
   echo "creating network [$bridge_network]"
-  lxc network create "$bridge_network" --type bridge dns.domain='lxd'
+  lxc network create "$bridge_network" --type bridge dns.domain='lxd' ipv4.nat=true ipv4.routing=true
 fi
 
 if ! lxc info $instance > /dev/null 2>&1;then
