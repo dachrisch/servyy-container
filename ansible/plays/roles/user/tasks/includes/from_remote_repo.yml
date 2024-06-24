@@ -1,0 +1,81 @@
+- name: Check mandatory variables are defined
+  assert:
+    that:
+      - name is defined
+      - key_url is defined
+      - deb_url is defined
+      - packages is defined
+      - repository is defined
+      - recheck is defined
+    quiet: true
+
+- name: Creating keyfile variable {{ name }}.png
+  set_fact:
+    keyfile: /etc/apt/keyrings/{{ name | lower | replace(' ', '_') }}.gpg
+    debfile: "{{ name | lower | replace(' ', '_')}}"
+
+- name: Check keyring for {{ name }}
+  stat:
+    path: "{{ keyfile}}"
+  register: keyring_stat
+
+- block:
+  - name: Create temporary file for key
+    tempfile:
+      state: file
+      suffix: temp
+    register: temp_keyfile
+
+  - name: Downloading [{{ name }}] key from [{{ key_url }}]
+    get_url:
+      url: "{{ key_url }}"
+      dest: "{{ temp_keyfile.path }}"
+      force: true # overwrite tempfile
+
+  - name: Create keyring for [{{ name }}]
+    become_user: root
+    command:
+      cmd: "gpg --no-default-keyring --keyring {{ keyfile }} --import {{ temp_keyfile.path }}"
+      creates: "{{keyfile}}"
+  when: not keyring_stat.stat.exists
+
+- name: Add repository [{{ name }}] to sources list
+  become_user: root
+  apt_repository:
+    repo: "deb [arch=amd64 signed-by={{ keyfile }}] {{ deb_url }} {{ repository }}"
+    state: present
+    filename: "{{ debfile }}"
+  register: added_repo
+
+- name: Ensure no unsigned entry for [{{ name }}]
+  lineinfile:
+    path: "{{ ('/etc', 'apt', 'sources.list.d', debfile) | path_join }}.list"
+    line: "deb [arch=amd64] {{ deb_url }} {{ repository }}"
+    state: absent
+
+- name: Update cache
+  become_user: root
+  apt:
+    update_cache: true
+  when: added_repo.changed
+
+- name: Install [{{ packages }}]
+  become_user: root
+  apt:
+    name: "{{ packages }}"
+    state: latest
+  register: package_installed
+
+- block:
+  - name: Check [{{ name }}] still present
+    apt_repository:
+      repo: "deb [arch=amd64 signed-by={{ keyfile }}] {{ deb_url }} {{ repository }}"
+      state: present
+      filename: "{{ debfile }}"
+
+  - name: Ensure no unsigned entry for [{{ name }}]
+    lineinfile:
+      path: "{{ ('/etc', 'apt', 'sources.list.d', debfile) | path_join }}.list"
+      line: "deb [arch=amd64] {{ deb_url }} {{ repository }}"
+      state: absent
+  when: package_installed.changed and recheck
