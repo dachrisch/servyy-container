@@ -53,11 +53,11 @@
 
 - import_tasks: includes/oneshot.yml
   vars:
-    service: {
-               'name' : docker-photo-index,
-               'description': 'Docker Compose - Photo Index',
-               'schedule': '00/2:30',
-               'command': "{{ (docker.remote_dir, 'scripts', 'index-photos.sh') | path_join }}"
-    }
+    service:
+      name : docker-photo-index
+      description: 'Docker Compose - Photo Index'
+      schedule: '00/2:30'
+      command: "{{ (docker.remote_dir, 'scripts', 'index-photos.sh') | path_join }}"
+
   tags:
     - user.docker.systemd.service.index
