@@ -1,19 +1,25 @@
 - name: Dig servers ip
   set_fact:
     host_ip: "{{ lookup('dig', ansible_host) }}"
+    host_ip_v6: "2a01:4f8:1c1e:d9fb::1"
 
 - name: Create host list for services
-  lineinfile:
+  blockinfile:
     path: "{{ (docker.remote_dir, 'dns', 'volumes', 'etc-pihole', 'custom.list' ) | path_join }}"
-    line: '{{host_ip}}	{{item.dir}}.{{inventory_hostname}}'
+    marker: "# {mark} {{item.dir}}.{{inventory_hostname}} ips -->"
+    block: |
+      {{host_ip}}	{{item.dir}}.{{inventory_hostname}}
+      {{host_ip_v6}}	{{item.dir}}.{{inventory_hostname}}
     state: present
     create: yes
   with_items:
     - "{{ docker.services }}"
 
 - name: Create host list for server
-  lineinfile:
+  blockinfile:
     path: "{{ (docker.remote_dir, 'dns', 'volumes', 'etc-pihole', 'custom.list' ) | path_join }}"
-    line: '{{host_ip}}	{{inventory_hostname}}'
+    block: | 
+      {{host_ip}}	{{inventory_hostname}}
+      {{host_ip_v6}}	{{inventory_hostname}}
     state: present
     create: yes
