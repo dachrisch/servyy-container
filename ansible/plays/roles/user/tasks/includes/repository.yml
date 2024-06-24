@@ -1,6 +1,6 @@
 - name: Attempt to perform HEAD request to git.servyy.duckdns.org
   uri:
-    url: http://git.servyy.duckdns.org
+    url: https://git.servyy.duckdns.org
     method: HEAD
     return_content: no
     status_code: 200
