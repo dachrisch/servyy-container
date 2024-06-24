@@ -24,7 +24,3 @@
     state: link
   tags:
     - user.zprezto.prompt
-
-- import_tasks: atuin.yml
-  tags:
-    - user.zprezto.atuin
