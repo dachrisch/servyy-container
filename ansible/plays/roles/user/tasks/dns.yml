@@ -1,0 +1,12 @@
+- name: Dig servers ip
+  set_fact:
+    host_ip: "{{ lookup('dig', ansible_host) }}"
+
+- name: Create host list
+  lineinfile:
+    path: "{{ (docker.remote_dir, 'duckdns', 'volumes', 'etc-pihole', 'custom.list' ) | path_join }}"
+    line: '{{host_ip}}	{{item.dir}}.{{inventory_hostname_short}}'
+    state: present
+    create: yes
+  with_items:
+    - "{{ docker.services }}"
