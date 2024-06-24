@@ -66,6 +66,10 @@
   tags:
     - user.dyndns
 
+- import_tasks: dns.yml
+  tags:
+    - user.dns
+
 - import_tasks: backup.yml
   tags:
     - user.backup
