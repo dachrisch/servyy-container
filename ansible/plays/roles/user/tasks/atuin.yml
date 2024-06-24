@@ -20,6 +20,7 @@
     - name: Run install script
       shell: "bash {{ temp_install_file.path }}"
 
+    # default install (without cargo) will be in .atuin without linking
     - name: Link executable
       become_user: root
       file:
@@ -58,3 +59,9 @@
     path: "{{ (ansible_user_dir, config_dir) | path_join }}"
     search_string: 'filter_mode_shell_up_key_binding'
     line: 'filter_mode_shell_up_key_binding = "directory"'
+
+- name: Set enter_accept to false
+  lineinfile:
+    path: "{{ (ansible_user_dir, config_dir) | path_join }}"
+    search_string: 'enter_accept'
+    line: 'enter_accept = false'
