@@ -1,9 +1,22 @@
+- name: Attempt to perform HEAD request to git.servyy.duckdns.org
+  uri:
+    url: http://git.servyy.duckdns.org
+    method: HEAD
+    return_content: no
+    status_code: 200
+  register: head_request_result
+  ignore_errors: yes
+
+- name: Set reachability fact based on HEAD request result
+  set_fact:
+    git_servyy_reachable: "{{ 'yes' if head_request_result.status == 200 else 'no' }}"
+
 - name: Clone [{{ repository_uri }}] to [{{remote_dir}}]
   git:
     repo: "{{ repository_uri }}"
     dest: "{{ remote_dir }}"
     force: true
-    recursive: yes
+    recursive: "{{git_servyy_reachable}}"
   tags:
     - user.repo.clone
 

@@ -1,5 +1,8 @@
+- set_fact:
+    atuin_bin: "{{ (ansible_user_dir, '.atuin', 'bin') | path_join }}/atuin"
+
 - name: Check if atuin is installed
-  shell: atuin -V
+  shell: "{{ atuin_bin }} -V"
   register: autin_version
   changed_when: autin_version.rc != 0
   failed_when: autin_version.rc not in (0, 127)
@@ -19,16 +22,15 @@
 
     - name: Run install script
       shell: "bash {{ temp_install_file.path }}"
-
   when: autin_version.changed
 
 - name: Login [{{ atuin.username }}]
-  shell: "atuin login -u {{ atuin.username }} -p {{ atuin.password }} -k '{{ atuin.key }}'"
+  shell: "{{ atuin_bin }} login -u {{ atuin.username }} -p {{ atuin.password }} -k '{{ atuin.key }}'"
   register: login
   changed_when: '"You are already logged in!" not in login.stdout'
 
 - name: Sync
-  shell: "atuin sync"
+  shell: "{{ atuin_bin }} sync"
   when: login.changed
 
 - name: Set atuin filenames

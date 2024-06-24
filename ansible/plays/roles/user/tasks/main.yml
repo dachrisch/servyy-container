@@ -10,6 +10,10 @@
   tags:
     - user.zprezto
 
+- import_tasks: atuin.yml
+  tags:
+    - user.atuin
+
 - import_tasks: git_credentials.yml
   vars:
     hostname: "{{ servyy_git_repo.hostname }}"
@@ -29,10 +33,6 @@
 - import_tasks: docker_repo_env.yml
   tags:
     - user.repo.docker.env
-
-- import_tasks: os_app.yml
-  tags:
-    - user.repo.os_app
 
 - import_tasks: includes/docker_repo_restore.yml
   vars:
