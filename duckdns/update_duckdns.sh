@@ -13,5 +13,13 @@ duck_token=$2
 # Get the IPv6 address
 ipv6=$(curl -s ifconfig.me/ip)
 
-# Update DuckDNS
-curl -s "https://www.duckdns.org/update?domains=${inventory_hostname}&token=${duck_token}&ip=&ipv6=${ipv6}"
+# Update DuckDNS and store the response
+response=$(curl -s "https://www.duckdns.org/update?domains=${inventory_hostname}&token=${duck_token}&ip=&ipv6=${ipv6}")
+
+# Check if the response is "OK"
+if [ "$response" = "OK" ]; then
+  echo "DuckDNS update successful."
+else
+  echo "DuckDNS update failed. Response: $response"
+  exit 1
+fi
