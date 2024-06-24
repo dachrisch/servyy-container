@@ -1,8 +1,8 @@
 - import_tasks: includes/repository.yml
   vars:
-    - repository_uri: "{{ shell.repo }}"
-    - remote_dir: "{{ shell.remote_dir }}"
-    - local_dir: "{{ shell.local_dir }}"
+    repository_uri: "{{ shell.repo }}"
+    remote_dir: "{{ shell.remote_dir }}"
+    local_dir: "{{ shell.local_dir }}"
   tags:
     - user.repo.zpresto
 
@@ -20,9 +20,9 @@
 
 - import_tasks: includes/repository.yml
   vars:
-    - repository_uri: "{{ docker.repo }}"
-    - remote_dir: "{{ docker.remote_dir }}"
-    - local_dir: "{{ docker.local_dir }}"
+    repository_uri: "{{ docker.repo }}"
+    remote_dir: "{{ docker.remote_dir }}"
+    local_dir: "{{ docker.local_dir }}"
   tags:
     - user.repo.docker
 

@@ -10,10 +10,10 @@
     src: oneshot.timer.j2
     dest: "{{ (remote_user_systemd, service.name) | path_join }}.timer"
   vars:
-    timer: {
-      'description': 'Trigger for {{ service.name }}',
-      'schedule': '{{ service.schedule }}'
-    }
+    timer:
+      description: 'Trigger for {{ service.name }}'
+      schedule: '{{ service.schedule }}'
+
   tags:
     - user.systemd.create.timer
 
