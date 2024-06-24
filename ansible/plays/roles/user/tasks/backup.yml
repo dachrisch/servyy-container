@@ -31,7 +31,7 @@
 - import_tasks: includes/oneshot.yml
   vars:
     service:
-      name : backup-homes,
+      name : backup-homes
       description: 'Backup homes every day'
       schedule: 'daily'
       command: "{{(remote_user_home, 'backup_home.sh') | path_join}}"

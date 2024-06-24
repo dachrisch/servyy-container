@@ -1,7 +1,7 @@
 - import_tasks: includes/oneshot.yml
   vars:
     service:
-      name : duckdns,
+      name : duckdns
       description: 'Dyndns update for duckdns.org'
       schedule: '00/2:30'
       command: 'curl https://www.duckdns.org/update?domains={{inventory_hostname_short}}&token={{duck_token}}&ip='
