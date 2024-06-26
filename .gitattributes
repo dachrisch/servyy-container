@@ -3,3 +3,4 @@ docker-compose.yml filter=git-crypt diff=git-crypt
 secrets.yml filter=git-crypt diff=git-crypt
 *.env filter=git-crypt diff=git-crypt
 secret_* filter=git-crypt diff=git-crypt
+*-challanges.* filter=git-crypt diff=git-crypt
