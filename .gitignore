@@ -11,5 +11,5 @@ photoprism/database/
 # git repository
 git/repos
 # logs
-/logs/
-/log/
+logs/
+log/
