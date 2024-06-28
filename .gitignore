@@ -2,9 +2,6 @@
 *.key
 # docker environment files
 .env
-# jekyll code generation
-bumbleflies/code
-bumbleflies/site
 # IDE
 .idea
 # script backups (iptables)
