@@ -54,6 +54,10 @@
   tags:
     - user.docker.restore.photoprism
 
+- import_tasks: bumbleflies.yml
+  tags:
+    - user.docker.bumbleflies
+
 - import_tasks: docker_setup.yml
   tags:
     - user.docker.install
