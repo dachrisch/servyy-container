@@ -13,3 +13,5 @@ git/repos
 # logs
 logs/
 log/
+# dns
+dns/volumes
