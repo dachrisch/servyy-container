@@ -30,3 +30,12 @@
     key: "{{ copy_local_key }}"
   tags:
     - system.user.auth_key
+
+- name: Disallow SSH password authentication
+  template:
+    src: disablePasswordAuth.conf.j2
+    dest: /etc/ssh/sshd_config.d/disablePasswordAuth.conf
+  notify:
+    - Restart SSHD
+  tags:
+    - system.user.no_passwd
