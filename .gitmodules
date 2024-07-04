@@ -4,4 +4,4 @@
 	branch = dist
 [submodule "ansible/plays/roles/ubuntu_pro"]
 	path = ansible/plays/roles/ubuntu_pro
-	url = git@github.com:dachrisch/ansible-role-ubuntu_pro.git
+	url = https://github.com/dachrisch/ansible-role-ubuntu_pro.git
