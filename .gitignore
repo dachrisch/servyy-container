@@ -15,3 +15,5 @@ logs/
 log/
 # dns
 dns/volumes
+# jekyll
+bumbleflies/site
