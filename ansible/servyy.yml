@@ -6,5 +6,6 @@
 #https://linuxize.com/post/how-to-add-user-to-sudoers-in-ubuntu/
 
 - import_playbook: plays/system.yml
+- import_playbook: plays/ubuntu_pro.yml
 - import_playbook: plays/user.yml
 - import_playbook: plays/testing.yml

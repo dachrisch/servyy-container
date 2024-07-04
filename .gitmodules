@@ -2,3 +2,6 @@
 	path = me/website
 	url = https://git.servyy.duckdns.org/me
 	branch = dist
+[submodule "ansible/plays/roles/ubuntu_pro"]
+	path = ansible/plays/roles/ubuntu_pro
+	url = git@github.com:dachrisch/ansible-role-ubuntu_pro.git

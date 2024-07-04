@@ -1,0 +1,13 @@
+- name: Setup Ubuntu Pro
+  hosts: prod
+  strategy: free
+  become: true
+  remote_user: "{{ root_user | default('root') }}"
+  gather_facts: yes
+  vars_files:
+    - vars/default.yml
+    - vars/secrets.yml
+  roles:
+    - ubuntu_pro
+  tags:
+    - system.ubuntu_pro
