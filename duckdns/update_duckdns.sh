@@ -10,16 +10,17 @@ fi
 inventory_hostname=$1
 duck_token=$2
 
-# Get the IPv6 address
-ipv6=$(curl -s ifconfig.me/ip)
+# Get the IP address (could be IPv4 or IPv6)
+ip=$(curl -s ifconfig.me/ip)
 
-# Build the URL based on whether the IPv6 address is empty or not
+# Regular expression to match a valid IPv6 address
+ipv6_regex='^[0-9a-fA-F:]+$'
+
+# Build the URL based on whether the IP address is a valid IPv6 address
 url="https://www.duckdns.org/update?domains=${inventory_hostname}&token=${duck_token}"
 
-if [ -n "$ipv6" ]; then
-  url="${url}&ipv6=${ipv6}"
-else
-  echo "only updating IPv4 (no IPv6 address found)"
+if echo "$ip" | grep -Eq "$ipv6_regex" && echo "$ip" | grep -q ":"; then
+    url="${url}&ipv6=${ip}"
 fi
 
 # Update DuckDNS and store the response
