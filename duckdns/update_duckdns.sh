@@ -20,7 +20,9 @@ ipv6_regex='^[0-9a-fA-F:]+$'
 url="https://www.duckdns.org/update?domains=${inventory_hostname}&token=${duck_token}"
 
 if echo "$ip" | grep -Eq "$ipv6_regex" && echo "$ip" | grep -q ":"; then
-    url="${url}&ipv6=${ip}"
+  url="${url}&ipv6=${ip}"
+else
+  echo "Invalid IPv6 address. Only updating IPv4"
 fi
 
 # Update DuckDNS and store the response
