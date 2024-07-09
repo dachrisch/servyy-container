@@ -1,0 +1,31 @@
+- name: Monitor SSHD
+  file:
+    src: /etc/monit/conf-available/openssh-server
+    dest: /etc/monit/conf-enabled/openssh-server
+    state: link
+
+- name: Setup alert email
+  template:
+    src: monit.alert.j2
+    dest: /etc/monit/conf.d/alert
+    mode: 0640
+
+- name: Setup systems check
+  template:
+    src: monit.system.check.j2
+    dest: /etc/monit/conf.d/system-check
+    mode: 0640
+
+- name: Restart monit
+  service:
+    name: monit
+    state: restarted
+
+- name: Check if any events where postponed (maybe mailserver error)
+  find:
+    paths: '/var/lib/monit/events/'
+  register: filesFound
+
+- fail:
+     msg: 'Some events where postponed'
+  when: filesFound.matched > 0
