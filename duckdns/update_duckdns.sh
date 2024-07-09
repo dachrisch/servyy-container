@@ -13,8 +13,17 @@ duck_token=$2
 # Get the IPv6 address
 ipv6=$(curl -s ifconfig.me/ip)
 
+# Build the URL based on whether the IPv6 address is empty or not
+url="https://www.duckdns.org/update?domains=${inventory_hostname}&token=${duck_token}"
+
+if [ -n "$ipv6" ]; then
+  url="${url}&ipv6=${ipv6}"
+else
+  echo "only updating IPv4 (no IPv6 address found)"
+fi
+
 # Update DuckDNS and store the response
-response=$(curl -s "https://www.duckdns.org/update?domains=${inventory_hostname}&token=${duck_token}&ip=&ipv6=${ipv6}")
+response=$(curl -s "$url")
 
 # Check if the response is "OK"
 if [ "$response" = "OK" ]; then
