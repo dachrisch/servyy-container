@@ -12,3 +12,7 @@
 - import_tasks: swap.yml
   tags:
     - system.swap
+
+- import_tasks: monit.yml
+  tags:
+    - system.monit
