@@ -24,6 +24,8 @@ if [[ $ipv6_router == "::/64" ]]; then
   exit 1
 fi
 
+echo "updating firewall with ipv4=$ipv4, ipv6=$ipv6 and ipv6_router=$ipv6_router"
+
 echo "checking that DNS is resolving"
 if ! nslookup google.com 88.198.151.84 > /dev/null && ! nslookup google.com 2a01:4f8:1c1e:d9fb::1 > /dev/null; then
   echo "Firewall update needed."
@@ -32,7 +34,6 @@ if ! nslookup google.com 88.198.151.84 > /dev/null && ! nslookup google.com 2a01
   echo "Backing up firewall rules to [$backup_dir]"
   python main.py firewall save "$backup_dir"
 
-  echo "updating firewall with ipv4=$ipv4, ipv6=$ipv6 and ipv6_router=$ipv6_router"
   python main.py firewall merge_update "$backup_dir"/dns-filtered-fw_rules.json "Allow DNS from $network" in "('tcp', 'udp')" --port='53' "['$ipv4', '$ipv6', '$ipv6_router']"
 else
   echo "Firewall already up to date."
