@@ -16,6 +16,7 @@
     state: absent
   with_items:
     - "{{ docker.services | product(['', '.lxd']) | list }}"
+    - [[{dir: 'pihole_dns'}, '']]
   tags:
     - testing.hosts.remove
 
@@ -29,5 +30,6 @@
     backup: yes
   with_items:
     - "{{ docker.services | product(['', '.lxd']) | list }}"
+    - [[{dir: 'pihole.dns'}, '']]
   tags:
     - testing.hosts.create
