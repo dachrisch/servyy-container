@@ -1,5 +1,9 @@
 #!/bin/zsh
 
+set -e
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+pushd "$SCRIPT_DIR" || exit
+
 ipv4=$(curl -s https://ipinfo.io/ip)/32
 ipv6=$(curl -s ifconfig.me/ip | cut -d':' -f -4)::/64
 network=$(iwgetid -r)
