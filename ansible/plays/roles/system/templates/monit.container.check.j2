@@ -1,0 +1,4 @@
+{% for service in docker.services %}
+check program "Docker Service {{ service.name }}" with path "/bin/systemctl --user is-active {{ 'docker-' + service.dir | lower }}"
+    if status != 0 then alert
+{% endfor %}
