@@ -12,10 +12,10 @@
   delegate_to: localhost
   lineinfile:
     path: '/etc/hosts'
-    regex: '{{item.dir}}\.{{host_name}}$'
+    regex: '{{item[0].dir}}\.{{host_name}}{{item[1]}}$'
     state: absent
   with_items:
-    - "{{ docker.services }}"
+    - "{{ docker.services | product(['', '.lxd']) | list }}"
   tags:
     - testing.hosts.remove
 
@@ -24,23 +24,10 @@
   delegate_to: localhost
   lineinfile:
     path: '/etc/hosts'
-    line: '{{host_ip}}	{{item.dir}}.{{host_name}}'
+    line: '{{host_ip}}	{{item[0].dir}}.{{host_name}}{{item[1]}}'
     state: present
     backup: yes
   with_items:
-    - "{{ docker.services }}"
+    - "{{ docker.services | product(['', '.lxd']) | list }}"
   tags:
     - testing.hosts.create
-    -
-- name: Update the /etc/hosts file with FQDN
-  become_user: root
-  delegate_to: localhost
-  lineinfile:
-    path: '/etc/hosts'
-    line: '{{host_ip}}	{{item.dir}}.{{host_name}}.lxd'
-    state: present
-    backup: yes
-  with_items:
-    - "{{ docker.services }}"
-  tags:
-    - testing.hosts.create.fqdn
