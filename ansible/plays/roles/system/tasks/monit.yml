@@ -27,6 +27,18 @@
     name: monit
     state: restarted
 
+- name: Run monit status
+  command: monit status
+  register: monit_status
+  ignore_errors: true
+
+- name: Assert monit status is callable
+  assert:
+    that:
+      - monit_status.rc == 0
+    fail_msg: "monit status command failed"
+    success_msg: "monit status command succeeded"
+
 - name: Check if any events where postponed (maybe mailserver error)
   find:
     paths: '/var/lib/monit/events/'
