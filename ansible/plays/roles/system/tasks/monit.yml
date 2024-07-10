@@ -22,6 +22,12 @@
     dest: /etc/monit/conf.d/system-check
     mode: 0640
 
+- name: Setup storagebox check
+  template:
+    src: monit.storagebox.check.j2
+    dest: /etc/monit/conf.d/storagebox-check
+    mode: 0640
+
 - name: Restart monit
   service:
     name: monit
