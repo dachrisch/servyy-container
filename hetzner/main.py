@@ -70,6 +70,11 @@ class HetznerFirewall:
                                  port=port, destination_ips=destination_ips))
         self._update_rules(new_rules)
 
+    def file_update(self, rules_file: str):
+        rules = self._load_rules(rules_file)
+        print(f'loaded {len(rules)} rules from {rules_file}')
+        self._update_rules(rules)
+
     def _update_rules(self, rules):
         print(f'updating {self._firewall.name} with {len(rules)} rules')
 
@@ -87,8 +92,6 @@ class HetznerFirewall:
             json_list = json.load(json_file)
             return list(map(lambda x: SerializableRule.from_dict(x), json_list))
 
-    def file_update(self, rules_file: str):
-        pass
 
 
 class HetznerServer:
