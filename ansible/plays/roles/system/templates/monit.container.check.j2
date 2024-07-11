@@ -1,4 +1,7 @@
 {% for service in docker.services %}
 check program "Docker Service {{ service.name }}" with path "/bin/systemctl --user -M {{ create_user }}@  is-active {{ 'docker-' + service.dir | lower }}"
-    if status != 0 then alert
+    start program "/bin/systemctl --user -M {{ create_user }}@  start {{ 'docker-' + service.dir | lower }}"
+    stop program "/bin/systemctl --user -M {{ create_user }}@  stop {{ 'docker-' + service.dir | lower }}"
+    if status != 0 for 2 cycles then restart
+    if status != 0 for 4 cycles then alert
 {% endfor %}

@@ -13,3 +13,7 @@ check system $HOST
     # multi-core systems can generate 100% per core
     # so total CPU usage can be more than 100%
     if cpu usage > 200% for 4 cycles then alert
+
+check filesystem root with path /
+    if space usage > 70% then exec "yes | {{ (docker.remote_dir, 'scripts', 'cleanup_space.sh' | path_join ) }}"
+    if space usage > 80% for 2 cycles then alert
