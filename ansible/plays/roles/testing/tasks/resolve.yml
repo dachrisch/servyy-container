@@ -16,7 +16,7 @@
     state: absent
   with_items:
     - "{{ docker.services | product(['', '.lxd']) | list }}"
-    - [[{dir: 'pihole_dns'}, '']]
+    - [[{dir: 'pihole.dns'}, '']]
   tags:
     - testing.hosts.remove
 
