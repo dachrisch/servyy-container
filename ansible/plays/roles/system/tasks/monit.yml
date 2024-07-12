@@ -4,6 +4,12 @@
     dest: /etc/monit/conf-enabled/openssh-server
     state: link
 
+- name: Setup logging
+  template:
+    src: monit.log.j2
+    dest: /etc/monit/conf.d/log
+    mode: 0640
+
 - name: Setup http (for status)
   template:
     src: monit.status.j2
