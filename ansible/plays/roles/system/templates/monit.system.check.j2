@@ -15,5 +15,5 @@ check system $HOST
     if cpu usage > 200% for 4 cycles then alert
 
 check filesystem root with path /
-    if space usage > 75% then exec "/bin/yes | {{ (docker.remote_dir, 'scripts', 'cleanup_space.sh' | path_join ) }}"
-    if space usage > 80% for 2 cycles then alert
+    if space usage > 80% then exec "/bin/yes | {{ (docker.remote_dir, 'scripts', 'cleanup_space.sh' | path_join ) }}"
+    if space usage > 85% for 2 cycles then alert
