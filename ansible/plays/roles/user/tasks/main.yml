@@ -85,3 +85,7 @@
 - import_tasks: social.yml
   tags:
     - user.social
+
+- import_tasks: monitor.yml
+  tags:
+    - user.monitor

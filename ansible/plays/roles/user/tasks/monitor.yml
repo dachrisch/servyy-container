@@ -1,0 +1,14 @@
+- name: Gather package facts
+  package_facts:
+    manager: apt
+
+- name: Install middleware monitoring service
+  shell: MW_API_KEY={{ middleware.api_key }} MW_TARGET=https://jadcz.middleware.io:443 bash -c "$(curl -L https://install.middleware.io/scripts/deb-install.sh)"
+  args:
+    creates: /etc/systemd/system/multi-user.target.wants/mw-agent.service
+  when: "'mw-agent' not in ansible_facts.packages"
+
+- name: Ensure monitoring service is started
+  systemd:
+    name: mw-agent
+    state: started
