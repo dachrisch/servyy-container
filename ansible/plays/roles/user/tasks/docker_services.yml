@@ -39,6 +39,11 @@
   tags:
     - user.docker.systemd.linger
 
+- name: Reload sytsemd units
+  command: "systemctl --user daemon-reload"
+  tags:
+    - user.docker.systemd.reload
+
 - name: Start docker services
   systemd:
     scope: user
