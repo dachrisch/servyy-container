@@ -9,6 +9,7 @@
     shell: /bin/zsh
   register: created_user
   tags:
+    - user
     - system.user.create
     - system.storagebox.mount.fstab
 

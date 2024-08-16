@@ -11,7 +11,7 @@
 
 - name: Check if container ist running
   docker_container_info:
-    name: pleroma
+    name: social.pleroma
   register: result
   failed_when: not (result.exists and result.container['State']['Running'])
   tags:
@@ -30,7 +30,7 @@
     - user.social.container.wait.startup
 
 - name: Check if social user is created
-  command: "docker compose exec pleroma /opt/pleroma/bin/pleroma_ctl user list"
+  command: "docker compose exec social.pleroma /opt/pleroma/bin/pleroma_ctl user list"
   args:
     chdir: "{{ docker_dir_social }}"
   register: social_user
@@ -40,7 +40,7 @@
 
 # https://docs-develop.pleroma.social/backend/administration/CLI_tasks/user/
 - name: Create social user
-  command: "docker compose exec pleroma /opt/pleroma/bin/pleroma_ctl user new {{social.user}} {{social.email}} --admin --password \"{{social.password}}\" -y"
+  command: "docker compose exec social.pleroma /opt/pleroma/bin/pleroma_ctl user new {{social.user}} {{social.email}} --admin --password \"{{social.password}}\" -y"
   args:
     chdir: "{{ docker_dir_social }}"
   when: social_user.changed
@@ -48,7 +48,7 @@
     - user.social.user.create
 
 - name: Check if relays are present
-  command: "docker compose exec pleroma /opt/pleroma/bin/pleroma_ctl relay list"
+  command: "docker compose exec social.pleroma /opt/pleroma/bin/pleroma_ctl relay list"
   args:
     chdir: "{{ docker_dir_social }}"
   register: relays_present
@@ -56,7 +56,7 @@
     - user.social.relays.add
 
 - name: Adding relay server (only on production)
-  command: "docker compose exec pleroma /opt/pleroma/bin/pleroma_ctl relay follow {{ item }}"
+  command: "docker compose exec social.pleroma /opt/pleroma/bin/pleroma_ctl relay follow {{ item }}"
   args:
     chdir: "{{ docker_dir_social }}"
   with_items:
