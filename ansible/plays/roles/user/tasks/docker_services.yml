@@ -1,36 +1,12 @@
 # Docker Services
-- name: Ensures {{ remote_user_systemd }} dir exists
-  file:
-    path: "{{ remote_user_systemd }}"
-    state: directory
-  tags:
-    - user.docker.systemd.dir.check
-
-- name: Create docker systemctl services
-  template:
-    src: docker.service.j2
-    dest: "{{ (remote_user_systemd, 'docker-' + item.dir | lower) | path_join }}.service"
-    force: yes
-  register: service_files
-  vars:
-    service: "{{item}}"
+- name: Start docker services
+  community.docker.docker_compose_v2:
+    project_src: "{{ (docker.remote_dir, item.dir ) | path_join }}"
+    state: present
   with_items:
     - "{{ docker.services }}"
   tags:
-    - user.docker.systemd.create
-
-- name: Stop docker services
-  systemd:
-    scope: user
-    name: "{{ 'docker-' + item.dir | lower }}"
-    state: stopped
-  register: service_status
-  failed_when: not((service_status.state is defined and service_status.state == 'stopped') or (service_status.msg is defined and 'Could not find the requested service' in service_status.msg))
-  when: service_files.changed
-  with_items:
-    - "{{ docker.services }}"
-  tags:
-    - user.docker.systemd.stop
+    - user.docker.services.start
 
 - name: Ensure lingering enabled
   command: "loginctl enable-linger {{ create_user }}"
@@ -38,23 +14,6 @@
     creates: "/var/lib/systemd/linger/{{ create_user }}"
   tags:
     - user.docker.systemd.linger
-
-- name: Reload sytsemd units
-  command: "systemctl --user daemon-reload"
-  tags:
-    - user.docker.systemd.reload
-
-- name: Start docker services
-  systemd:
-    scope: user
-    name: "{{ 'docker-' + item.dir | lower }}"
-    state: started
-    enabled: yes
-  with_items:
-    - "{{ docker.services }}"
-  tags:
-    - user.docker.systemd.start
-
 
 - import_tasks: includes/oneshot.yml
   vars:
