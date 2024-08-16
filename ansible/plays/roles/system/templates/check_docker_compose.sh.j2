@@ -1,0 +1,10 @@
+#!/bin/zsh
+
+{% for container_name in container_names %}
+if [ "$(docker container ls -q -f name=^{{dir_name}}.{{container_name}}$)" ]; then
+    echo "Container {{dir_name}}.{{container_name}} is up and running"
+else
+    echo "Container {{dir_name}}.{{container_name}} is not running"
+    exit 3
+fi
+{% endfor %}

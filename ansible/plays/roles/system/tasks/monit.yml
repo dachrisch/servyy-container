@@ -34,11 +34,35 @@
     dest: /etc/monit/conf.d/storagebox-check
     mode: 0640
 
+- name: Create scripts dir
+  file:
+    path: /etc/monit/scripts
+    state: directory
+    owner: root
+    group: root
+
+- name: Create docker container check script
+  template:
+    src: check_docker_compose.sh.j2
+    dest: /etc/monit/scripts/check_docker_compose-{{ item.dir }}.sh
+    mode: 0750
+  vars:
+    container_names: "{{ lookup('file', (docker.local_dir, item.dir, 'docker-compose.yml') | path_join ) | from_yaml | json_query('services.*.container_name') | map('split', '.') | flatten | reject('contains', '${') }}"
+    dir_name: "{{ item.dir }}"
+  with_items:
+    - "{{ docker.services }}"
+  tags:
+    - system.monit.test
+
 - name: Setup container check
   template:
     src: monit.container.check.j2
-    dest: /etc/monit/conf.d/container-check
+    dest: /etc/monit/conf.d/container-check-{{ item.dir }}
     mode: 0640
+  vars:
+    service: "{{ item }}"
+  with_items:
+    - "{{ docker.services }}"
 
 - name: Restart monit
   service:

@@ -1,7 +1,4 @@
-{% for service in docker.services %}
-check program "Docker Service {{ service.name }}" with path "/bin/systemctl --user -M {{ create_user }}@  is-active {{ 'docker-' + service.dir | lower }}"
-    start program "/bin/systemctl --user -M {{ create_user }}@  start {{ 'docker-' + service.dir | lower }}"
-    stop program "/bin/systemctl --user -M {{ create_user }}@  stop {{ 'docker-' + service.dir | lower }}"
+check program "Docker Service {{ service.name }}" with path "/bin/zsh -c /etc/monit/scripts/check_docker_compose-{{ service.dir }}.sh"
     if status != 0 for 2 cycles then restart
     if status != 0 for 4 cycles then alert
-{% endfor %}
+    group docker
