@@ -1,0 +1,27 @@
+providers:
+  docker:
+    endpoint: unix:///var/run/docker.sock"
+    exposedbydefault: true
+    network: proxy
+# Configure entrypoint
+entrypoints:
+  web:
+    address: 80
+  websecure:
+    address: 443
+# SSL configuration
+certificatesresolvers:
+  letsencryptresolver:
+    acme:
+      httpchallenge:
+        entrypoint: web
+      email: christian.daehn+letsencrypt@gmail.com
+      storage: /letsencrypt/acme.json
+# Global HTTP -> HTTPS
+#- "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+#- "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+# Enable dashboard
+api:
+  dashboard: true
+# enable ping endpoint https://doc.traefik.io/traefik/v2.0/operations/ping/
+ping: true
