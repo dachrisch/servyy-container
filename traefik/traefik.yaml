@@ -13,8 +13,8 @@ entrypoints:
 certificatesresolvers:
   letsencryptresolver:
     acme:
-      httpchallenge:
-        entrypoint: web
+      dnsChallenge:
+        provider: duckdns
       email: christian.daehn+letsencrypt@gmail.com
       storage: /letsencrypt/acme.json
 # Global HTTP -> HTTPS
