@@ -28,11 +28,13 @@
     remote_dir: "{{ docker.remote_dir }}"
     local_dir: "{{ docker.local_dir }}"
   tags:
-    - user.repo.docker
+    - user.docker.repo
+    - user.docker
 
 - import_tasks: docker_repo_env.yml
   tags:
     - user.repo.docker.env
+    - user.docker
 
 - import_tasks: includes/docker_repo_restore.yml
   vars:
@@ -43,6 +45,7 @@
     owner: "root"
   tags:
     - user.docker.restore.git
+    - user.docker
 
 - import_tasks: includes/docker_repo_restore.yml
   vars:
@@ -53,18 +56,22 @@
     owner: "{{create_user}}"
   tags:
     - user.docker.restore.photoprism
+    - user.docker
 
 - import_tasks: bumbleflies.yml
   tags:
     - user.docker.bumbleflies
+    - user.docker
 
 - import_tasks: docker_setup.yml
   tags:
     - user.docker.install
+    - user.docker
 
 - import_tasks: docker_services.yml
   tags:
     - user.docker.systemd
+    - user.docker
 
 - import_tasks: dyndns.yml
   tags:
