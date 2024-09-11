@@ -4,7 +4,7 @@
     dest: "{{(docker.remote_dir, item.dir, '.env') | path_join}}"
   vars:
     service:
-      host: "{{item.dir}}-{{inventory_hostname}}"
+      host: "{{item.dir}}.{{inventory_hostname}}"
       name: "{{item.dir}}"
     user:
       id: "{{ created_user.uid }}"
