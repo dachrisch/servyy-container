@@ -1,0 +1,67 @@
+- name: Gather social service dir
+  set_fact:
+    dir_social: "{{ (docker.services | selectattr('name', 'equalto', 'Social') | first).dir }}"
+  tags: user.social.base
+
+- name: Setting working dir for social service
+  set_fact:
+    docker_dir_social: "{{ (docker.remote_dir, dir_social ) | path_join }}"
+  tags:
+    - user.social.base
+
+- name: Check if container ist running
+  docker_container_info:
+    name: social.pleroma
+  register: result
+  failed_when: not (result.exists and result.container['State']['Running'])
+  tags:
+    - user.social.container.info
+
+- name: Wait for container to fully start
+  command: "docker compose exec pleroma /opt/pleroma/bin/pleroma_ctl user list"
+  args:
+    chdir: "{{ docker_dir_social }}"
+  register: social_start
+  retries: 10
+  delay: 2
+  until: "social_start.rc == 0 or not(social_start.stdout_lines | select('match', '.*nodedown.*') | length == 1)"
+  failed_when: social_start.rc != 0
+  tags:
+    - user.social.container.wait.startup
+
+- name: Check if social user is created
+  command: "docker compose exec social.pleroma /opt/pleroma/bin/pleroma_ctl user list"
+  args:
+    chdir: "{{ docker_dir_social }}"
+  register: social_user
+  changed_when: social_user.stdout =="" or not((social_user.stdout_lines | first) is search(social.user))
+  tags:
+    - user.social.user.check
+
+# https://docs-develop.pleroma.social/backend/administration/CLI_tasks/user/
+- name: Create social user
+  command: "docker compose exec social.pleroma /opt/pleroma/bin/pleroma_ctl user new {{social.user}} {{social.email}} --admin --password \"{{social.password}}\" -y"
+  args:
+    chdir: "{{ docker_dir_social }}"
+  when: social_user.changed
+  tags:
+    - user.social.user.create
+
+- name: Check if relays are present
+  command: "docker compose exec social.pleroma /opt/pleroma/bin/pleroma_ctl relay list"
+  args:
+    chdir: "{{ docker_dir_social }}"
+  register: relays_present
+  tags:
+    - user.social.relays.add
+
+- name: Adding relay server (only on production)
+  command: "docker compose exec social.pleroma /opt/pleroma/bin/pleroma_ctl relay follow {{ item }}"
+  args:
+    chdir: "{{ docker_dir_social }}"
+  with_items:
+    - "{{ social.relays }}"
+  when: "'prod' in groups and inventory_hostname in groups['prod'] and (relays_present.stdout_lines | select('search', (item | urlsplit('hostname'))) | length == 0)"
+  tags:
+    - user.social.relays.add
+
