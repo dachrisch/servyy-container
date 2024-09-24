@@ -17,3 +17,7 @@ check system $HOST
 check filesystem root with path /
     if space usage > 80% then alert
     if space usage > 85% for 2 cycles then alert
+
+check filesystem 10g_volume with path /mnt/10g_volume
+    if space usage > 80% then alert
+    if space usage > 85% for 2 cycles then alert
