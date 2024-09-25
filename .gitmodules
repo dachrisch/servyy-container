@@ -1,6 +1,6 @@
 [submodule "me/website"]
 	path = me/website
-	url = https://git.servyy.duckdns.org/me
+	url = https://git.lehel.xyz/me
 	branch = dist
 [submodule "ansible/plays/roles/ubuntu_pro"]
 	path = ansible/plays/roles/ubuntu_pro
