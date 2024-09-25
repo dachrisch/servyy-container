@@ -1,3 +1,4 @@
 prod:
   hosts:
-    servyy.duckdns.org:
+#    servyy.duckdns.org:
+    lehel.xyz:
