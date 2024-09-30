@@ -1,6 +1,6 @@
 #!/bin/zsh
 {% if with_timestamp is defined %}
-echo '{"timestamp":'$(date +%s)', "dateString": "'$(date +%FT%T.%3N)'"}' | jq . | sudo tee "{{backup_source}}/.last_backup"
+echo '{"timestamp":'$(date +%s)', "dateString": "'$(date +%FT%T.%3N)'"}' | jq . | {% if with_sudo is defined %}sudo{% endif %} tee "{{backup_source}}/.last_backup"
 {% endif %}
 {% if with_sudo is defined %}
 sudo \
