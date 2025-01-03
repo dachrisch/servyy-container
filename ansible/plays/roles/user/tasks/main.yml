@@ -65,12 +65,12 @@
 
 - import_tasks: docker_setup.yml
   tags:
-    - user.docker.install
+    - user.docker.setup
     - user.docker
 
 - import_tasks: docker_services.yml
   tags:
-    - user.docker.systemd
+    - user.docker.services
     - user.docker
 
 - import_tasks: dyndns.yml

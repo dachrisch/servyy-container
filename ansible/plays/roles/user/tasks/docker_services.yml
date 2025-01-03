@@ -1,4 +1,16 @@
 # Docker Services
+- name: Create docker script for services
+  template:
+    src: docker_command.sh.j2
+    dest: "{{(remote_user_home, 'forall_docker_services.sh') | path_join}}"
+    mode: 0770
+    owner: "{{create_user}}"
+  vars:
+    services: "{{ docker.services }}"
+    services_root: "{{ docker.remote_dir }}"
+  tags:
+    - user.docker.services.script
+
 - name: Start docker services
   community.docker.docker_compose_v2:
     project_src: "{{ (docker.remote_dir, item.dir ) | path_join }}"
@@ -19,7 +31,7 @@
 - import_tasks: includes/oneshot.yml
   vars:
     service:
-      name : docker-photo-index
+      name: docker-photo-index
       description: 'Docker Compose - Photo Index'
       schedule: '00/2:30'
       command: "{{ (docker.remote_dir, 'scripts', 'index-photos.sh') | path_join }}"

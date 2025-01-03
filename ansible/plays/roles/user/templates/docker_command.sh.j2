@@ -1,0 +1,33 @@
+#!/bin/zsh
+
+manual_mode=false
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -m|--manual)
+      manual_mode=true
+      shift # Remove the option
+      ;;
+    *)
+      # Append any other arguments to docker_command
+      docker_command=$*
+      break
+      ;;
+  esac
+done
+
+if [ -z "${docker_command}" ]; then
+  echo "specify docker command to run"
+  exit 1
+fi
+
+{% for service in services %}
+{% if 'manual' in service %}
+if $manual_mode;then
+{% endif %}
+docker compose --project-directory {{ services_root }}/{{ service.dir }} $docker_command
+{% if 'manual' in service %}
+fi
+{% endif %}
+{% endfor %}
