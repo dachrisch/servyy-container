@@ -62,23 +62,20 @@
     path: "{{ extension_drive.path }}"
   register: mount_point
 
-- name: Fail if mount point does not exist
-  fail:
-    msg: "The mount point {{ extension_drive.path }} does not exist. Please ensure it is mounted before proceeding."
-  when: not mount_point.stat.exists
+- block:
+    - name: Configure docker daemon data root
+      become_user: root
+      json_patch:
+        src: '/etc/docker/daemon.json'
+        create: true
+        pretty: true
+        operations:
+          - op: add
+            path: 'data-root'
+            value: "{{ extension_drive.path }}/docker"
 
-- name: Configure docker daemon data root
-  become_user: root
-  json_patch:
-    src: '/etc/docker/daemon.json'
-    create: true
-    pretty: true
-    operations:
-      - op: add
-        path: 'data-root'
-        value: "{{ extension_drive.path }}/docker"
-
-- name: Restart Docker to apply changes
-  service:
-    name: docker
-    state: restarted
+    - name: Restart Docker to apply changes
+      service:
+        name: docker
+        state: restarted
+  when: mount_point.stat.exists
