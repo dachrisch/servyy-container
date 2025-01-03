@@ -10,14 +10,12 @@ while [[ $# -gt 0 ]]; do
       shift # Remove the option
       ;;
     *)
-      # Append any other arguments to docker_command
-      docker_command=$*
       break
       ;;
   esac
 done
 
-if [ -z "${docker_command}" ]; then
+if [ -z "$*" ]; then
   echo "specify docker command to run"
   exit 1
 fi
@@ -26,7 +24,7 @@ fi
 {% if 'manual' in service %}
 if $manual_mode;then
 {% endif %}
-docker compose --project-directory {{ services_root }}/{{ service.dir }} $docker_command
+docker compose --project-directory {{ services_root }}/{{ service.dir }} $*
 {% if 'manual' in service %}
 fi
 {% endif %}
