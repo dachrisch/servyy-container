@@ -1,0 +1,14 @@
+- name: Setup League Sphere Prod
+  hosts: all
+  strategy: free
+  become: true
+  remote_user: "{{ root_user | default('root') }}"
+  gather_facts: yes
+  vars_files:
+    - vars/secret_leaguesphere.yml
+    - vars/secrets.yml
+    - vars/default.yml
+  roles:
+    - leaguesphere
+    - geerlingguy.security
+    - geerlingguy.ssh-chroot-jail
