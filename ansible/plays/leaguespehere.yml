@@ -9,6 +9,7 @@
     - vars/secrets.yml
     - vars/default.yml
   roles:
-    - leaguesphere
-    - geerlingguy.security
+    - ls_setup
+    #- geerlingguy.security
     - geerlingguy.ssh-chroot-jail
+    - ls_access
