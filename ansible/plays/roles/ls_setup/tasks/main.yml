@@ -1,2 +1,5 @@
 - import_tasks: jail_groups.yaml
 - import_tasks: add_to_docker.yaml
+- name: Combine ssh_chroot_bins for ssh jail
+  set_fact:
+    ssh_chroot_bins: "{{ ssh_chroot_bins + extra_ssh_chroot_bins }}"

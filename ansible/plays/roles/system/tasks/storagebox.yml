@@ -51,8 +51,32 @@
       failed_when: not(mount_check.stderr == '' or 'Operation now in progress' in mount_check.stderr)
 
     - name: Check if storagebox mounted
-      command: '/bin/mountpoint -q {{storagebox.mount}}'
+      command: '/bin/mountpoint -q {{ storagebox.mount }}'
       register: storagebox_mount
-      failed_when: storagebox_check.stderr != ''
-      changed_when: storagebox_check.rc != 0
+      failed_when: storagebox_mount.stderr != ''
+      changed_when: storagebox_mount.rc != 0
+
+  rescue:
+    - name: Restart system if mount fails with "Operation not permitted"
+      ansible.builtin.reboot:
+        reboot_timeout: 600  # Adjust the timeout as needed
+        test_command: whoami  # Command to verify that the system has rebooted
+      when: "'Operation not permitted' in mount_check.stderr or mount_check.rc == 32"
+
+    - name: Wait for system to come back online after reboot
+      ansible.builtin.wait_for:
+        host: "{{ inventory_hostname }}"
+        port: 22
+        state: started
+        delay: 10
+        timeout: 300
+
+    - name: Retry mounting storagebox after reboot
+      command: mount "{{ storagebox.mount }}"
+      register: mount_check_retry
+      failed_when: not(mount_check_retry.stderr == '' or 'Operation now in progress' in mount_check_retry.stderr)
+      retries: 3  # Retry up to 3 times
+      delay: 10  # Delay 10 seconds between retries
+      when: "'Operation not permitted' in mount_check.stderr or mount_check.rc == 32"
+
   when: storagebox_check.changed
