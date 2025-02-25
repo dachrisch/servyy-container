@@ -10,6 +10,7 @@
     - vars/default.yml
   roles:
     - ls_setup
-    #- geerlingguy.security
+    - geerlingguy.security
     - geerlingguy.ssh-chroot-jail
     - ls_access
+    - { role: ls_app, become_user: "{{ ls_user }}" }
