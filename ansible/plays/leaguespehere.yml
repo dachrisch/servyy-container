@@ -5,7 +5,8 @@
   remote_user: "{{ root_user | default('root') }}"
   gather_facts: yes
   vars_files:
-    - vars/secret_leaguesphere.yml
+    - vars/secret_leaguesphere.yaml
+    - vars/ssh_jail.yaml
     - vars/secrets.yml
     - vars/default.yml
   roles:
