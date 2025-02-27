@@ -8,3 +8,4 @@
 - import_playbook: plays/system.yml
 - import_playbook: plays/user.yml
 - import_playbook: plays/testing.yml
+- import_playbook: plays/leaguespehere.yml
