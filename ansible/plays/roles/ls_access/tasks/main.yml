@@ -1,5 +1,5 @@
 - meta: flush_handlers
-- import_tasks: jail_users.yaml
+- import_tasks: jail_ssh.yaml
 - import_tasks: git.yaml
   tags:
     - ls_access.git

@@ -10,8 +10,29 @@
     - vars/secrets.yml
     - vars/default.yml
   roles:
-    - ls_setup
-    - geerlingguy.security
-    - geerlingguy.ssh-chroot-jail
+    - role: ls_setup
+      tags:
+        - ls.setup
+    - role: geerlingguy.security
+      tags:
+        - ssh.security
+    - role: geerlingguy.ssh-chroot-jail
+      tags:
+        - ssh.jail
     - ls_access
-    - { role: ls_app, become_user: "{{ ls_user }}" }
+    - role: ls_app
+      remote_user: "{{ ls.user }}"
+      become_user: "{{ ls.user }}"
+      ansible_ssh_private_key_file: "~/.ssh/{{ ls.ssh_key_filename }}"
+      tags:
+        - ls.app
+        - ls.app.jail
+    - role: ls_app
+      remote_user: "{{ create_user }}"
+      become_user: "{{ create_user }}"
+      deployed_dir: dev/leaguespehere
+      tags:
+        - ls.app
+        - ls.app.current
+  tags:
+    - ls
