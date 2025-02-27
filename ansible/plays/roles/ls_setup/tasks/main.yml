@@ -1,8 +1,16 @@
 - import_tasks: jail_group.yaml
 - import_tasks: add_to_docker.yaml
+- name: Extra ssh_chroot variables for ssh jail
+  debug:
+    msg:
+      extra_ssh_chroot_bins: "{{ extra_ssh_chroot_bins }}"
+      extra_ssh_chroot_jail_dirs: "{{ extra_ssh_chroot_jail_dirs }}"
+      extra_ssh_chroot_copy_extra_items: "{{ extra_ssh_chroot_copy_extra_items }}"
+      ansible_playbook_python: "{{ ansible_playbook_python }}"
 
-- name: Combine ssh_chroot_bins for ssh jail
+- name: Combine ssh_chroot variables for ssh jail
   set_fact:
     ssh_chroot_bins: "{{ ssh_chroot_bins + (extra_ssh_chroot_bins | default([])) }}"
     ssh_chroot_jail_dirs: "{{ ssh_chroot_jail_dirs + (extra_ssh_chroot_jail_dirs | default([])) }}"
     ssh_chroot_copy_extra_items: "{{ ssh_chroot_copy_extra_items + (extra_ssh_chroot_copy_extra_items | default([]))  }}"
+

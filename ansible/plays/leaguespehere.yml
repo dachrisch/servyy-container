@@ -21,16 +21,14 @@
         - ssh.jail
     - ls_access
     - role: ls_app
-      remote_user: "{{ ls.user }}"
-      become_user: "{{ ls.user }}"
-      ansible_ssh_private_key_file: "~/.ssh/{{ ls.ssh_key_filename }}"
+      container_dir: "{{ (ssh_chroot_jail_path, 'home', ls.user, 'container') | path_join }}"
       tags:
         - ls.app
         - ls.app.jail
     - role: ls_app
+      container_dir: "{{ ('~', 'dev', ls.user) | path_join }}"
       remote_user: "{{ create_user }}"
       become_user: "{{ create_user }}"
-      deployed_dir: dev/leaguespehere
       tags:
         - ls.app
         - ls.app.current
