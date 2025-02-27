@@ -1,4 +1,4 @@
-- import_tasks: jail_groups.yaml
+- import_tasks: jail_group.yaml
 - import_tasks: add_to_docker.yaml
 
 - name: Combine ssh_chroot_bins for ssh jail
