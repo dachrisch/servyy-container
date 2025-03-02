@@ -1,7 +1,7 @@
 - name: Check mandatory variables are defined
   assert:
     that:
-      - name is defined
+      - repo_name is defined
       - key_url is defined
       - deb_url is defined
       - packages is defined
@@ -9,12 +9,12 @@
       - recheck is defined
     quiet: true
 
-- name: Creating keyfile variable {{ name }}.png
+- name: Creating keyfile variable {{ repo_name }}.png
   set_fact:
-    keyfile: /etc/apt/keyrings/{{ name | lower | replace(' ', '_') }}.gpg
-    debfile: "{{ name | lower | replace(' ', '_')}}"
+    keyfile: /etc/apt/keyrings/{{ repo_name | lower | replace(' ', '_') }}.gpg
+    debfile: "{{ repo_name | lower | replace(' ', '_')}}"
 
-- name: Check keyring for {{ name }}
+- name: Check keyring for {{ repo_name }}
   stat:
     path: "{{ keyfile }}"
   register: keyring_stat
@@ -26,20 +26,20 @@
         suffix: temp
       register: temp_keyfile
 
-    - name: Downloading [{{ name }}] key from [{{ key_url }}]
+    - name: Downloading [{{ repo_name }}] key from [{{ key_url }}]
       get_url:
         url: "{{ key_url }}"
         dest: "{{ temp_keyfile.path }}"
         force: true # overwrite tempfile
 
-    - name: Create keyring for [{{ name }}]
+    - name: Create keyring for [{{ repo_name }}]
       become_user: root
       command:
         cmd: "gpg --no-default-keyring --keyring {{ keyfile }} --import {{ temp_keyfile.path }}"
         creates: "{{keyfile}}"
   when: not keyring_stat.stat.exists
 
-- name: Add repository [{{ name }}] to sources list
+- name: Add repository [{{ repo_name }}] to sources list
   become_user: root
   apt_repository:
     repo: "deb [arch=amd64 signed-by={{ keyfile }}] {{ deb_url }} {{ repository }}"
@@ -47,7 +47,7 @@
     filename: "{{ debfile }}"
   register: added_repo
 
-- name: Ensure no unsigned entry for [{{ name }}]
+- name: Ensure no unsigned entry for [{{ repo_name }}]
   lineinfile:
     path: "{{ ('/etc', 'apt', 'sources.list.d', debfile) | path_join }}.list"
     line: "deb [arch=amd64] {{ deb_url }} {{ repository }}"
@@ -67,13 +67,13 @@
   register: package_installed
 
 - block:
-    - name: Check [{{ name }}] still present
+    - name: Check [{{ repo_name }}] still present
       apt_repository:
         repo: "deb [arch=amd64 signed-by={{ keyfile }}] {{ deb_url }} {{ repository }}"
         state: present
         filename: "{{ debfile }}"
 
-    - name: Ensure no unsigned entry for [{{ name }}]
+    - name: Ensure no unsigned entry for [{{ repo_name }}]
       lineinfile:
         path: "{{ ('/etc', 'apt', 'sources.list.d', debfile) | path_join }}.list"
         line: "deb [arch=amd64] {{ deb_url }} {{ repository }}"
