@@ -4,18 +4,19 @@ remote_user_home: "{{ ('/home/', create_user) | path_join }}"
 remote_user_systemd: "{{ (remote_user_home, '.config/systemd/user') | path_join }}"
 copy_local_key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
 sys_packages:
-  - monit
-  - jq
+  - monit                       # server monitoring
+  - jq                          # json parsing
   - curl
   - vim
   - git
-  - zsh
-  - cifs-utils
-  - git-crypt
-  - locales
-  - linux-image-generic
-  - btop
-  - binutils
+  - zsh                         # default shell
+  - cifs-utils                  # storagebox
+  - git-crypt                   # encrypt files in git
+  - locales                     # language options
+  - linux-image-generic         # image + extras
+  - btop                        # better top
+  - binutils                    # ar
+
 swap_space: 2G
 
 storagebox:
