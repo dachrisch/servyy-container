@@ -7,5 +7,10 @@
 
 - import_playbook: plays/system.yml
 - import_playbook: plays/user.yml
-- import_playbook: plays/testing.yml
 - import_playbook: plays/leaguespehere.yml
+- import_playbook: plays/testing.yml
+  vars:
+    testing:
+      extra_hosts:
+        - [ { dir: 'pihole.dns' }, '' ]
+        - [ { dir: "{{ app.name }}" }, '.lxd' ]

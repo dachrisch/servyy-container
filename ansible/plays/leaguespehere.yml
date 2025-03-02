@@ -22,6 +22,7 @@
     - ls_access
     - role: ls_app
       container_dir: "{{ (ssh_chroot_jail_path, 'home', ls.user, 'container') | path_join }}"
+      become_user: "{{ ls.user }}"
       tags:
         - ls.app
         - ls.app.jail
