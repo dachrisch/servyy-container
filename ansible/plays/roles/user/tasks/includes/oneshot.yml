@@ -8,6 +8,11 @@
       - service.command is defined
     quiet: true
 
+- name: Create the systemd directory if it does not exist
+  ansible.builtin.file:
+    path: "{{ remote_user_systemd }}"
+    state: directory
+
 - name: Create {{service.name}} service
   template:
     src: oneshot.service.j2
