@@ -73,9 +73,11 @@
           - op: add
             path: 'data-root'
             value: "{{ extension_drive.path }}/docker"
+      register: root_added
 
     - name: Restart Docker to apply changes
       service:
         name: docker
         state: restarted
+      when: group_added.changed
   when: mount_point.stat.exists
