@@ -2,3 +2,5 @@ prod:
   hosts:
 #    servyy.duckdns.org:
     lehel.xyz:
+        duckdns:
+            host: servyy
