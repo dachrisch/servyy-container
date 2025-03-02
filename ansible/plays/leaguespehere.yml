@@ -1,0 +1,37 @@
+- name: Setup League Sphere Prod
+  hosts: all
+  strategy: free
+  become: true
+  remote_user: "{{ root_user | default('root') }}"
+  gather_facts: yes
+  vars_files:
+    - vars/secret_leaguesphere.yaml
+    - vars/ssh_jail.yaml
+    - vars/secrets.yml
+    - vars/default.yml
+  roles:
+    - role: ls_setup
+      tags:
+        - ls.setup
+    - role: geerlingguy.security
+      tags:
+        - ssh.security
+    - role: geerlingguy.ssh-chroot-jail
+      tags:
+        - ssh.jail
+    - ls_access
+    - role: ls_app
+      container_dir: "{{ (ssh_chroot_jail_path, 'home', ls.user, 'container') | path_join }}"
+      become_user: "{{ ls.user }}"
+      tags:
+        - ls.app
+        - ls.app.jail
+    - role: ls_app
+      container_dir: "{{ ('~', 'dev', ls.user) | path_join }}"
+      remote_user: "{{ create_user }}"
+      become_user: "{{ create_user }}"
+      tags:
+        - ls.app
+        - ls.app.current
+  tags:
+    - ls
