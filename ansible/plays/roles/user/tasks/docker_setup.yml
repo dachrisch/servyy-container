@@ -8,7 +8,7 @@
 - name: Include docker remote repo
   include_tasks: includes/from_remote_repo.yml
   vars:
-    name: "docker"
+    repo_name: "docker"
     key_url: "https://download.docker.com/linux/ubuntu/gpg"
     deb_url: "https://download.docker.com/linux/ubuntu"
     repository: "{{ ansible_distribution_release }} stable"
