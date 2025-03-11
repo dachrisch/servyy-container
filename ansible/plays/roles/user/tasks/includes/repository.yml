@@ -1,3 +1,16 @@
+- name: Validate required variables
+  assert:
+    that:
+      - repository_uri is defined and repository_uri | length > 0
+      - remote_dir is defined and remote_dir | length > 0
+    fail_msg: "One or more required variables (repository_uri, remote_dir) are missing or empty."
+  tags:
+    - user.repo.validate
+
+- name: Set default branch if not provided
+  set_fact:
+    branch: "{{ branch | default('master') }}"
+
 - name: Attempt to perform HEAD request to git.lehel.xyz
   uri:
     url: https://git.lehel.xyz
@@ -11,12 +24,13 @@
   set_fact:
     git_servyy_reachable: "{{ 'yes' if head_request_result.status == 200 else 'no' }}"
 
-- name: Clone [{{ repository_uri }}] to [{{remote_dir}}]
+- name: "Clone [{{ repository_uri }}] to [{{remote_dir}}] (branch: {{ branch }})"
   git:
     repo: "{{ repository_uri }}"
     dest: "{{ remote_dir }}"
     force: true
     recursive: "{{git_servyy_reachable}}"
+    version: "{{ branch }}"
   tags:
     - user.repo.clone
 
@@ -31,42 +45,42 @@
     - user.repo.crypt.check
 
 - block:
-  - block:
-    - name: Create temporary keyfile local
-      tempfile:
-        state: file
-        suffix: temp
-      register: local_keyfile
+    - block:
+        - name: Create temporary keyfile local
+          tempfile:
+            state: file
+            suffix: temp
+          register: local_keyfile
 
-    - name: Export local key
-      command: git-crypt export-key {{local_keyfile.path}}
-      args:
-        chdir: "{{ local_dir }}"
+        - name: Export local key
+          command: git-crypt export-key {{local_keyfile.path}}
+          args:
+            chdir: "{{ local_dir }}"
+          delegate_to: localhost
+          become_user: "{{ local_user }}"
+      tags:
+        - user.repo.key.export
       delegate_to: localhost
       become_user: "{{ local_user }}"
-    tags:
-      - user.repo.key.export
-    delegate_to: localhost
-    become_user: "{{ local_user }}"
 
-  - block:
-    - name: Create temporary keyfile remote
-      tempfile:
-        state: file
-        suffix: temp
-      register: remote_keyfile
+    - block:
+        - name: Create temporary keyfile remote
+          tempfile:
+            state: file
+            suffix: temp
+          register: remote_keyfile
 
-    - name: Copy repository key to remote
-      copy:
-        src: "{{ local_keyfile.path }}"
-        dest: "{{ remote_keyfile.path }}"
-    tags:
-      - user.repo.key.copy
+        - name: Copy repository key to remote
+          copy:
+            src: "{{ local_keyfile.path }}"
+            dest: "{{ remote_keyfile.path }}"
+      tags:
+        - user.repo.key.copy
 
-  - name: Unlock repository
-    command: git-crypt unlock "{{ remote_keyfile.path }}"
-    args:
-      chdir: "{{ remote_dir }}"
+    - name: Unlock repository
+      command: git-crypt unlock "{{ remote_keyfile.path }}"
+      args:
+        chdir: "{{ remote_dir }}"
   tags:
     - user.repo.crypt.unlock
   when: lock_state.changed

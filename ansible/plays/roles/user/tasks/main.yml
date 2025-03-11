@@ -27,6 +27,7 @@
     repository_uri: "{{ docker.repo }}"
     remote_dir: "{{ docker.remote_dir }}"
     local_dir: "{{ docker.local_dir }}"
+    branch: "{{ lookup('pipe', 'git -C ' ~ docker.local_dir ~ ' rev-parse --abbrev-ref HEAD') }}"
   tags:
     - user.docker.repo
     - user.docker
