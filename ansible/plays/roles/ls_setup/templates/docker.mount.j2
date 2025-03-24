@@ -1,0 +1,13 @@
+[Unit]
+Description=Bind mount Docker socket into jail
+After=docker.socket
+Requires=docker.socket
+
+[Mount]
+What=/var/run/docker.sock
+Where="{{ ssh_chroot_jail_path }}/var/run/docker.sock"
+Type=none
+Options=bind
+
+[Install]
+WantedBy=multi-user.target
