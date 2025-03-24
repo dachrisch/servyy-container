@@ -7,10 +7,6 @@
   tags:
     - user.repo.validate
 
-- name: Set default branch if not provided
-  set_fact:
-    branch: "{{ branch | default('master') }}"
-
 - name: Attempt to perform HEAD request to git.lehel.xyz
   uri:
     url: https://git.lehel.xyz
@@ -30,7 +26,7 @@
     dest: "{{ remote_dir }}"
     force: true
     recursive: "{{git_servyy_reachable}}"
-    version: "{{ branch }}"
+    version: "{{ branch | default('master') }}"
   tags:
     - user.repo.clone
 
