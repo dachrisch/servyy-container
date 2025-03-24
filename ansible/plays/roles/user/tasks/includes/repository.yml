@@ -11,12 +11,19 @@
   set_fact:
     git_servyy_reachable: "{{ 'yes' if head_request_result.status == 200 else 'no' }}"
 
-- name: Clone [{{ repository_uri }}] to [{{remote_dir}}]
+- name: Get current local branch
+  command: git rev-parse --abbrev-ref HEAD
+  delegate_to: localhost
+  register: git_branch
+  changed_when: false
+
+- name: Clone [{{ repository_uri }}] to [{{ remote_dir }}] on [{{ git_branch.stdout }}]
   git:
     repo: "{{ repository_uri }}"
     dest: "{{ remote_dir }}"
     force: true
-    recursive: "{{git_servyy_reachable}}"
+    recursive: "{{ git_servyy_reachable }}"
+    version: "{{ git_branch.stdout }}"
   tags:
     - user.repo.clone
 
@@ -31,42 +38,42 @@
     - user.repo.crypt.check
 
 - block:
-  - block:
-    - name: Create temporary keyfile local
-      tempfile:
-        state: file
-        suffix: temp
-      register: local_keyfile
+    - block:
+        - name: Create temporary keyfile local
+          tempfile:
+            state: file
+            suffix: temp
+          register: local_keyfile
 
-    - name: Export local key
-      command: git-crypt export-key {{local_keyfile.path}}
-      args:
-        chdir: "{{ local_dir }}"
+        - name: Export local key
+          command: git-crypt export-key {{local_keyfile.path}}
+          args:
+            chdir: "{{ local_dir }}"
+          delegate_to: localhost
+          become_user: "{{ local_user }}"
+      tags:
+        - user.repo.key.export
       delegate_to: localhost
       become_user: "{{ local_user }}"
-    tags:
-      - user.repo.key.export
-    delegate_to: localhost
-    become_user: "{{ local_user }}"
 
-  - block:
-    - name: Create temporary keyfile remote
-      tempfile:
-        state: file
-        suffix: temp
-      register: remote_keyfile
+    - block:
+        - name: Create temporary keyfile remote
+          tempfile:
+            state: file
+            suffix: temp
+          register: remote_keyfile
 
-    - name: Copy repository key to remote
-      copy:
-        src: "{{ local_keyfile.path }}"
-        dest: "{{ remote_keyfile.path }}"
-    tags:
-      - user.repo.key.copy
+        - name: Copy repository key to remote
+          copy:
+            src: "{{ local_keyfile.path }}"
+            dest: "{{ remote_keyfile.path }}"
+      tags:
+        - user.repo.key.copy
 
-  - name: Unlock repository
-    command: git-crypt unlock "{{ remote_keyfile.path }}"
-    args:
-      chdir: "{{ remote_dir }}"
+    - name: Unlock repository
+      command: git-crypt unlock "{{ remote_keyfile.path }}"
+      args:
+        chdir: "{{ remote_dir }}"
   tags:
     - user.repo.crypt.unlock
   when: lock_state.changed
