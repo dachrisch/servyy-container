@@ -1,5 +1,7 @@
 - import_tasks: jail_group.yaml
 - import_tasks: add_to_docker.yaml
+  tags:
+    - ls.setup.docker
 - name: Extra ssh_chroot variables for ssh jail
   debug:
     msg:
