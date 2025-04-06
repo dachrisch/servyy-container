@@ -89,7 +89,3 @@
 - import_tasks: host_ping.yml
   tags:
     - user.ping
-
-- import_tasks: monitor.yml
-  tags:
-    - user.monitor
