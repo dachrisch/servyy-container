@@ -31,11 +31,13 @@
   tags:
     - user.docker.repo
     - user.docker
+  when: with_containers | default(false)
 
 - import_tasks: docker_repo_env.yml
   tags:
     - user.repo.docker.env
     - user.docker
+  when: with_containers | default(false)
 
 - import_tasks: includes/docker_repo_restore.yml
   vars:
@@ -47,6 +49,7 @@
   tags:
     - user.docker.restore.git
     - user.docker
+  when: with_containers | default(false)
 
 - import_tasks: includes/docker_repo_restore.yml
   vars:
@@ -58,29 +61,35 @@
   tags:
     - user.docker.restore.photoprism
     - user.docker
+  when: with_containers | default(false)
 
 - import_tasks: bumbleflies.yml
   tags:
     - user.docker.bumbleflies
     - user.docker
+  when: with_containers | default(false)
 
 - import_tasks: docker_setup.yml
   tags:
     - user.docker.setup
     - user.docker
+  when: (with_docker or with_containers) | default(false)
 
 - import_tasks: docker_services.yml
   tags:
     - user.docker.services
     - user.docker
+  when: with_containers | default(false)
 
 - import_tasks: dyndns.yml
   tags:
     - user.dyndns
+  when: with_containers | default(false)
 
 - import_tasks: dns.yml
   tags:
     - user.dns
+  when: with_containers | default(false)
 
 - import_tasks: backup.yml
   tags:
@@ -89,3 +98,4 @@
 - import_tasks: host_ping.yml
   tags:
     - user.ping
+  when: with_containers | default(false)
