@@ -35,9 +35,8 @@
       description: 'Backup homes every day'
       schedule: 'daily'
       command: "{{(remote_user_home, 'backup_home.sh') | path_join}}"
-
   tags:
-    - user.docker.systemd.service.index
+    - user.backup.systemd.homes
 
 - name: Create backup for server
   template:
@@ -70,6 +69,16 @@
       description: 'Backup Server every day'
       schedule: 'daily'
       command: "{{(remote_user_home, 'backup_root.sh') | path_join}}"
-
   tags:
-    - user.docker.systemd.service.index
+    - user.backup.systemd.root
+
+- import_tasks: includes/oneshot.yml
+  vars:
+    service:
+      name : backup-photos
+      description: 'Backup Photos locally daily'
+      schedule: 'daily'
+      command: "{{(shell.remote_dir, 'custom/bin/sync_photos.sh') | path_join}}"
+  tags:
+    - user.backup.systemd.photos
+  when: backup_photos | default(false)
