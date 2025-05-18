@@ -1,5 +1,5 @@
 - name: Setup League Sphere Prod
-  hosts: prod_hosts
+  hosts: all
   strategy: free
   become: true
   remote_user: "{{ root_user | default('root') }}"
