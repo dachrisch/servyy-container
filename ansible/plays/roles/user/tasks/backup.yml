@@ -21,6 +21,8 @@
       - .git
       - .zprezto
       - pgdata
+      - .cache
+      - go/
     backup_dest: "{{(backup_dir, 'home') | path_join}}"
     backup_source: "{{remote_user_home}}"
     with_timestamp:

@@ -2,6 +2,8 @@
 {% if with_timestamp is defined %}
 echo '{"timestamp":'$(date +%s)', "dateString": "'$(date +%FT%T.%3N)'"}' | jq . | {% if with_sudo is defined %}sudo{% endif %} tee "{{backup_source}}/.last_backup"
 {% endif %}
+source "$HOME/.zprezto/custom/functions/logdy"
+logdy info "backing up [{{backup_source}}]...to [{{backup_dest}}]" source_dir="{{backup_source}}" destination_dir="{{backup_dest}}"
 {% if with_sudo is defined %}
 sudo \
 {% endif %}
