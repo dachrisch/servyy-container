@@ -5,8 +5,6 @@ prod:
         with_containers: true
         has_10g_volume: true
         create_swap: true
-        duckdns:
-            host: servyy
     aqui.fritz.box:
         with_docker: true
         backup_photos: true
