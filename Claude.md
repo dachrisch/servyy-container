@@ -59,7 +59,7 @@
 └────────────────┬────────────────────────────────────────────┘
                  │
         ┌────────▼─────────┐
-        │  DuckDNS Updates │ (servyy.duckdns.org)
+        │   Porkbun DNS    │ (lehel.xyz domain)
         │  Hetzner Firewall│
         └────────┬─────────┘
                  │
@@ -103,7 +103,7 @@ servyy-container/
 │   └── requirements.yml
 ├── bumbleflies/         # Custom application (nginx)
 ├── dns/                 # PiHole DNS + ad blocking
-├── duckdns/            # Dynamic DNS updater
+├── duckdns/            # Legacy: Dynamic DNS (deprecated, use Porkbun DNS)
 ├── energy/             # Energy monitoring
 ├── git/                # Git hosting (nginx)
 ├── hetzner/            # Hetzner Cloud firewall automation
@@ -214,7 +214,7 @@ Inventory Host: lehel.xyz
 
 | Directory | Purpose | Access Method |
 |-----------|---------|---------------|
-| `duckdns/` | Dynamic DNS updater | Systemd timer (no web UI) |
+| `duckdns/` | ~~Dynamic DNS updater~~ (deprecated) | Legacy - domain now via Porkbun |
 | `hetzner/` | Firewall automation | CLI scripts only |
 | `scripts/` | Utility scripts | Shell scripts |
 | `ansible/` | Infrastructure automation | Playbooks |
@@ -227,7 +227,7 @@ User Browser
 https://photoprism.lehel.xyz
     ↓
 [DNS Resolution]
-    ├─ External: DuckDNS → servyy.duckdns.org → Server IP
+    ├─ External: Porkbun DNS → lehel.xyz → Server IP
     └─ Internal: PiHole → 192.168.x.x (local network)
     ↓
 [Server: lehel.xyz]
@@ -240,30 +240,36 @@ https://photoprism.lehel.xyz
 [PhotoPrism Container]
 ```
 
-### Dynamic DNS Integration
+### DNS Management via Porkbun
 
-**Primary Domain:** `lehel.xyz` (production server hostname)
-**Dynamic DNS:** `servyy.duckdns.org` (points to server)
+**Primary Domain:** `lehel.xyz` (owned domain via Porkbun registrar)
+**DNS Provider:** Porkbun DNS
 
-**DuckDNS Configuration:**
-```yaml
-# ansible/production inventory
-lehel.xyz:
-  duckdns:
-    host: servyy  # Creates servyy.duckdns.org
+**DNS Configuration:**
+- **Domain Registrar:** Porkbun
+- **DNS Records:** Managed through Porkbun DNS console
+- **A Record:** `lehel.xyz` → Server IPv4
+- **AAAA Record:** `lehel.xyz` (optional) → Server IPv6
+- **Wildcard:** `*.lehel.xyz` → Server IP (for all service subdomains)
+
+**Service Access:**
+All services are accessible via their subdomain:
+```
+https://photoprism.lehel.xyz
+https://git.lehel.xyz
+https://social.lehel.xyz
+https://monitor.lehel.xyz
+... etc
 ```
 
-**Update Process:**
-1. Systemd timer runs every 2:30 UTC
-2. Script detects current IPv4/IPv6
-3. Updates DuckDNS API: `servyy.duckdns.org` → `{current-ip}`
-4. External users access via: `servyy.duckdns.org`
-5. Traefik still routes by service subdomain internally
-
 **Access Methods:**
-- **External:** `https://servyy.duckdns.org` → Traefik → Services
-- **Direct Service:** `https://photoprism.lehel.xyz` (requires DNS/hosts entry)
-- **Local Network:** Internal IP with service subdomains
+- **External:** `https://{service}.lehel.xyz` → Porkbun DNS → Server → Traefik → Service
+- **Local Network:** Internal IP with service subdomains via PiHole
+
+**Legacy Note:**
+- The `duckdns/` directory contains legacy dynamic DNS scripts
+- No longer used since purchasing `lehel.xyz` domain through Porkbun
+- DNS updates now managed through Porkbun's DNS console
 
 ### Multiple Environments
 
@@ -545,22 +551,12 @@ Tasks:
 ```yaml
 Systemd Timers:
   - Photo indexing (2:30 UTC daily)
-  - DuckDNS updates (2:30 UTC daily)
   - Home backup (daily)
   - Root backup (daily)
   - Photo backup (daily, conditional)
 ```
 
-**Phase 6: Dynamic DNS**
-```yaml
-Tasks:
-  - Detect IPv4 (curl ifconfig.me)
-  - Detect IPv6 (ip -6 addr)
-  - Update DuckDNS API
-  - Fallback logic for IPv6 validation
-```
-
-**Phase 7: DNS Setup**
+**Phase 6: DNS Setup**
 ```yaml
 Tasks:
   - Initialize PiHole configuration
@@ -569,7 +565,7 @@ Tasks:
   - Add custom DNS entries
 ```
 
-**Phase 8: Backup Configuration**
+**Phase 7: Backup Configuration**
 ```yaml
 Backup Targets:
   - Home: /mnt/storagebox/backup/{hostname}/home
@@ -590,8 +586,6 @@ lehel.xyz:
   with_containers: true
   has_10g_volume: true      # Docker data root on extension
   create_swap: true
-  duckdns:
-    host: servyy            # servyy.duckdns.org
 
 aqui.fritz.box:
   with_docker: true
@@ -610,7 +604,6 @@ aqui.fritz.box:
 
 **Secrets (`plays/vars/secrets.yml`):** (encrypted)
 - Storagebox credentials
-- DuckDNS tokens
 - Service passwords
 - API keys
 
@@ -736,18 +729,13 @@ ansible-playbook servyy.yml --tags "system"
 
 ### Dynamic DNS
 
-#### `duckdns/update_duckdns.sh`
+#### `duckdns/update_duckdns.sh` (DEPRECATED)
 ```bash
-# Updates DuckDNS with current IP
+# LEGACY: Previously updated DuckDNS with current IP
+# No longer used since domain purchased through Porkbun
+# DNS now managed via Porkbun DNS console
 #
-# Process:
-#   1. Detect IPv4: curl ifconfig.me
-#   2. Detect IPv6: ip -6 addr show scope global
-#   3. Call DuckDNS API
-#   4. Validate response
-#
-# Scheduled: 2:30 UTC daily
-# Service: servyy.duckdns.org
+# Historical reference only - can be removed
 ```
 
 ---
@@ -856,7 +844,7 @@ check program docker_containers with path /usr/local/bin/check_docker.sh
 ```
 External Network (Internet)
     ↓
-[DuckDNS: servyy.duckdns.org → Server IP]
+[Porkbun DNS: *.lehel.xyz → Server IP]
     ↓
 [Hetzner Cloud Firewall: Allow 443, 80, 22, 53]
     ↓
@@ -1025,8 +1013,8 @@ cd scripts
    └─ Health checks pass
 
 4. Post-Deployment
-   ├─ Update DuckDNS
-   ├─ Update Hetzner firewall
+   ├─ Verify DNS resolution (Porkbun)
+   ├─ Update Hetzner firewall (if needed)
    ├─ Verify all services
    └─ Check monitoring
 ```
@@ -1051,7 +1039,7 @@ cd scripts
 - [ ] Hetzner Storagebox accessible
 - [ ] git-crypt key exported
 - [ ] Ansible inventory updated
-- [ ] DuckDNS token valid
+- [ ] Porkbun DNS configured (A/AAAA records, wildcard)
 - [ ] SSH keys configured
 - [ ] Sufficient disk space
 - [ ] Docker-capable kernel
@@ -1635,12 +1623,12 @@ journalctl -u {service}                  # Systemd logs
 ### Important URLs
 
 ```bash
-# Production
+# Production (via Porkbun DNS)
 https://photoprism.lehel.xyz             # PhotoPrism
 https://git.lehel.xyz                    # Git hosting
 https://social.lehel.xyz                 # Pleroma
 https://grafana.lehel.xyz                # Grafana
-https://servyy.duckdns.org               # Dynamic DNS
+https://lehel.xyz                        # Main domain
 
 # Local Access
 http://localhost:9000                    # Portainer
