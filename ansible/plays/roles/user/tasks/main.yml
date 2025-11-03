@@ -81,11 +81,6 @@
     - user.docker
   when: with_containers | default(false)
 
-- import_tasks: dyndns.yml
-  tags:
-    - user.dyndns
-  when: with_containers | default(false)
-
 - import_tasks: dns.yml
   tags:
     - user.dns
