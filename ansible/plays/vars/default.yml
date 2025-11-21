@@ -16,6 +16,9 @@ sys_packages:
   - linux-image-generic         # image + extras
   - btop                        # better top
   - binutils                    # ar
+  - docker.io                   # docker engine
+  - docker-compose-v2           # docker compose plugin
+  - docker-buildx               # docker buildx plugin
 
 swap_space: 2G
 

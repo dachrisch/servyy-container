@@ -1,24 +1,10 @@
 # Docker Setup
+# Docker packages (docker.io, docker-compose-v2, docker-buildx) are installed
+# via sys_packages in system.yml for simplicity and Ubuntu compatibility
+
 - name: Remove ancient docker compose
   apt: name=docker-compose state=absent
   become_user: root
-  tags:
-    - user.docker.install
-
-- name: Include docker remote repo
-  include_tasks: includes/from_remote_repo.yml
-  vars:
-    repo_name: "docker"
-    key_url: "https://download.docker.com/linux/ubuntu/gpg"
-    deb_url: "https://download.docker.com/linux/ubuntu"
-    repository: "{{ ansible_distribution_release }} stable"
-    packages:
-      - docker-ce
-      - docker-ce-cli
-      - containerd.io
-      - docker-buildx-plugin
-      - docker-compose-plugin
-    recheck: true
   tags:
     - user.docker.install
 
