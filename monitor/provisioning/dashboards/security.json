@@ -134,12 +134,12 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"auth\"} |~ \"(?i)(failed|invalid|error)\"[$__range]))",
+          "expr": "sum(count_over_time({job=\"auth\"} |~ \"Invalid user .* from\"[$__range]))",
           "legendFormat": "Failed",
           "refId": "A"
         }
       ],
-      "title": "Auth Failures",
+      "title": "SSH Brute Force",
       "type": "stat"
     },
     {
@@ -712,15 +712,21 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"auth\"} |~ \"(?i)Accepted\"[5m]))",
+          "expr": "sum(count_over_time({job=\"auth\"} |~ \"Accepted publickey|Accepted password\"[5m]))",
           "legendFormat": "Success",
           "refId": "A"
         },
         {
           "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"auth\"} |~ \"(?i)(Failed|Invalid|error)\"[5m]))",
-          "legendFormat": "Failed",
+          "expr": "sum(count_over_time({job=\"auth\"} |~ \"Invalid user .* from\"[5m]))",
+          "legendFormat": "Brute Force",
           "refId": "B"
+        },
+        {
+          "datasource": { "type": "loki" },
+          "expr": "sum(count_over_time({job=\"auth\"} |~ \"Failed password for\"[5m]))",
+          "legendFormat": "Wrong Password",
+          "refId": "C"
         }
       ],
       "title": "SSH Authentication",
