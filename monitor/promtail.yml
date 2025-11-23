@@ -30,6 +30,18 @@ scrape_configs:
       - action: replace
         replacement: docker
         target_label: 'job'
+    pipeline_stages:
+      # Drop healthcheck logs
+      - drop:
+          expression: '"healthcheck"'
+      - drop:
+          expression: 'HEAD / HTTP'
+      - drop:
+          expression: '/health HTTP'
+      - drop:
+          expression: '/ready HTTP'
+      - drop:
+          expression: '/metrics HTTP'
 
   # System logs
   - job_name: system
