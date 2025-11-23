@@ -792,7 +792,7 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "sum by (ip) (count_over_time({job=\"auth\"} | pattern `<_> <host> sshd[<_>]: Invalid user <user> from <ip> port <_>` | ip != \"\"[$__range]))",
+          "expr": "topk(20, sum by (ip) (count_over_time({job=\"auth\"} |~ \"Invalid user\" | pattern `<_> Invalid user <_> from <ip> port <_>` | ip != \"\"[$__range])))",
           "legendFormat": "{{ip}}",
           "refId": "A"
         }
@@ -833,7 +833,7 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "sum by (user) (count_over_time({job=\"auth\"} | pattern `<_> <host> sshd[<_>]: Invalid user <user> from <ip> port <_>` | user != \"\"[$__range]))",
+          "expr": "topk(20, sum by (user) (count_over_time({job=\"auth\"} |~ \"Invalid user\" | pattern `<_> Invalid user <user> from <_>` | user != \"\"[$__range])))",
           "legendFormat": "{{user}}",
           "refId": "A"
         }
@@ -874,7 +874,7 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "topk(20, sum by (ua) (count_over_time({job=\"docker\"} | pattern `<_> \"<method> <path> <_>\" <status> <_> \"<_>\" \"<ua>\"` | ua != \"\" | ua != \"-\"[$__range])))",
+          "expr": "topk(20, sum by (ua) (count_over_time({job=\"docker\"} | pattern `<_> \"<_>\" \"<ua>\"` | ua != \"\" | ua != \"-\" | ua != \"healthcheck\"[$__range])))",
           "legendFormat": "{{ua}}",
           "refId": "A"
         }
@@ -915,7 +915,7 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "topk(20, sum by (ua) (count_over_time({job=\"docker\"} |~ \"(?i)(curl/|wget/|python|nikto|sqlmap|nmap|masscan|zgrab|nuclei|Go-http|Java/)\" | pattern `<_> \"<method> <path> <_>\" <status> <_> \"<_>\" \"<ua>\"` | ua != \"\" | ua != \"-\"[$__range])))",
+          "expr": "topk(20, sum by (ua) (count_over_time({job=\"docker\"} | pattern `<_> \"<_>\" \"<ua>\"` | ua =~ \"(?i).*(curl|wget|python|nikto|sqlmap|nmap|masscan|zgrab|nuclei|Go-http|Java|scanner|bot).*\" | ua != \"\"[$__range])))",
           "legendFormat": "{{ua}}",
           "refId": "A"
         }
