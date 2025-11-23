@@ -355,6 +355,237 @@
     {
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "id": 104,
+      "panels": [],
+      "title": "Endpoint Usage (from Logs)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 100,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "id": 16,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki" },
+          "expr": "sum by (endpoint) (count_over_time({container=\"leaguesphere.www\"} | pattern `<_> - - <_> \"<method> <endpoint> <_>\" <status> <_>` | endpoint=~\"/gamedays.*\"[5m]))",
+          "legendFormat": "{{endpoint}}",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "loki" },
+          "expr": "sum by (endpoint) (count_over_time({container=\"leaguesphere.www\"} | pattern `<_> - - <_> \"<method> <endpoint> <_>\" <status> <_>` | endpoint=~\"/passcheck.*\"[5m]))",
+          "legendFormat": "{{endpoint}}",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "loki" },
+          "expr": "sum by (endpoint) (count_over_time({container=\"leaguesphere.www\"} | pattern `<_> - - <_> \"<method> <endpoint> <_>\" <status> <_>` | endpoint=~\"/scorecard.*\"[5m]))",
+          "legendFormat": "{{endpoint}}",
+          "refId": "C"
+        },
+        {
+          "datasource": { "type": "loki" },
+          "expr": "sum by (endpoint) (count_over_time({container=\"leaguesphere.www\"} | pattern `<_> - - <_> \"<method> <endpoint> <_>\" <status> <_>` | endpoint=~\"/liveticker.*\"[5m]))",
+          "legendFormat": "{{endpoint}}",
+          "refId": "D"
+        },
+        {
+          "datasource": { "type": "loki" },
+          "expr": "sum by (endpoint) (count_over_time({container=\"leaguesphere.www\"} | pattern `<_> - - <_> \"<method> <endpoint> <_>\" <status> <_>` | endpoint=~\"/officials.*\"[5m]))",
+          "legendFormat": "{{endpoint}}",
+          "refId": "E"
+        },
+        {
+          "datasource": { "type": "loki" },
+          "expr": "sum by (endpoint) (count_over_time({container=\"leaguesphere.www\"} | pattern `<_> - - <_> \"<method> <endpoint> <_>\" <status> <_>` | endpoint=~\"/api.*\"[5m]))",
+          "legendFormat": "{{endpoint}}",
+          "refId": "F"
+        }
+      ],
+      "title": "Requests by Endpoint",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 100,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "id": 17,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki" },
+          "expr": "sum by (app) (count_over_time({container=\"leaguesphere.www\"} | pattern `<_> - - <_> \"<method> /<app>/<_>\" <status> <_>` | app=~\"gamedays|passcheck|scorecard|liveticker|officials|api|league_table|teammanager\"[5m]))",
+          "legendFormat": "{{app}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Requests by Django App",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 100,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "5.." }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": "4.." }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": "3.." }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": "2.." }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
+      "id": 18,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki" },
+          "expr": "sum by (status) (count_over_time({container=\"leaguesphere.www\"} | pattern `<_> - - <_> \"<method> <endpoint> <_>\" <status> <_>` [5m]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Requests by HTTP Status (from Logs)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 100,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 31 },
+      "id": 19,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki" },
+          "expr": "sum by (method) (count_over_time({container=\"leaguesphere.www\"} | pattern `<_> - - <_> \"<method> <endpoint> <_>\" <status> <_>` [5m]))",
+          "legendFormat": "{{method}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Requests by HTTP Method",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 39 },
       "id": 102,
       "panels": [],
       "title": "Application Logs",
@@ -362,7 +593,7 @@
     },
     {
       "datasource": { "type": "loki" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 23 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 40 },
       "id": 9,
       "options": {
         "dedupStrategy": "none",
@@ -414,7 +645,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 31 },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 48 },
       "id": 10,
       "options": {
         "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
@@ -461,7 +692,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 31 },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 48 },
       "id": 11,
       "options": {
         "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
@@ -480,7 +711,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 37 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 54 },
       "id": 103,
       "panels": [],
       "title": "Container Resources",
@@ -516,7 +747,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 38 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 55 },
       "id": 12,
       "options": {
         "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -563,7 +794,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 38 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 55 },
       "id": 13,
       "options": {
         "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -610,7 +841,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 46 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 63 },
       "id": 14,
       "options": {
         "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -635,7 +866,7 @@
     },
     {
       "datasource": { "type": "loki" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 46 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 63 },
       "id": 15,
       "options": {
         "dedupStrategy": "none",
