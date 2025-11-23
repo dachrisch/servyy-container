@@ -3,3 +3,4 @@ test:
     servyy-test.lxd:
         root_user: ubuntu
         with_containers: true
+        with_docker: false
