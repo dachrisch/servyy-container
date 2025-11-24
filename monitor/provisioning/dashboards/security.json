@@ -238,7 +238,7 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"auth\"} |~ \"fail2ban.*Ban\"[$__range]))",
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*Ban\"[$__range]))",
           "legendFormat": "Bans",
           "refId": "A"
         }
@@ -270,7 +270,7 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"auth\"} |~ \"fail2ban.*\\\\[sshd\\\\].*Ban\"[$__range]))",
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[sshd\\\\].*Ban\"[$__range]))",
           "legendFormat": "SSH",
           "refId": "A"
         }
@@ -302,7 +302,7 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"auth\"} |~ \"fail2ban.*\\\\[sshd-invalid-user\\\\].*Ban\"[$__range]))",
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[sshd-invalid-user\\\\].*Ban\"[$__range]))",
           "legendFormat": "Invalid User",
           "refId": "A"
         }
@@ -334,7 +334,7 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"auth\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban\"[$__range]))",
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban\"[$__range]))",
           "legendFormat": "Loki Blocklist",
           "refId": "A"
         }
@@ -366,7 +366,7 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"auth\"} |~ \"fail2ban.*Unban\"[$__range]))",
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*Unban\"[$__range]))",
           "legendFormat": "Unbans",
           "refId": "A"
         }
@@ -417,19 +417,19 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"auth\"} |~ \"fail2ban.*\\\\[sshd\\\\].*Ban\"[5m]))",
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[sshd\\\\].*Ban\"[5m]))",
           "legendFormat": "sshd",
           "refId": "A"
         },
         {
           "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"auth\"} |~ \"fail2ban.*\\\\[sshd-invalid-user\\\\].*Ban\"[5m]))",
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[sshd-invalid-user\\\\].*Ban\"[5m]))",
           "legendFormat": "sshd-invalid-user",
           "refId": "B"
         },
         {
           "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"auth\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban\"[5m]))",
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban\"[5m]))",
           "legendFormat": "loki-blocklist",
           "refId": "C"
         }
@@ -454,7 +454,7 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "{job=\"auth\"} |~ \"fail2ban.*(Ban|Unban)\"",
+          "expr": "{job=\"system\"} |~ \"fail2ban.*(Ban|Unban)\"",
           "refId": "A"
         }
       ],
