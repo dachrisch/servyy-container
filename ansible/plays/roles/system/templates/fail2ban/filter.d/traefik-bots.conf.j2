@@ -1,16 +1,17 @@
 # Traefik bot/scanner filter for fail2ban
 # Blocks known malicious user agents and scanner patterns
 # Managed by Ansible
-# Traefik common log format: <host> - - [date] "method path proto" status size "referer" "user-agent"
+# Traefik JSON log format - extracts ClientHost and User-Agent
 
 [Definition]
 
-# Match known scanner/bot user agents (in the user-agent field at end of line)
-failregex = ^<HOST> - - \[.*\] ".*" \d+ \d+ ".*" ".*(curl|wget|python-requests|python-urllib|nikto|sqlmap|nmap|masscan|zgrab|nuclei|Go-http-client|Java/|dirbuster|gobuster|feroxbuster|ffuf|wfuzz|scanner|exploit).*"$
+# Match known scanner/bot user agents in JSON format
+# JSON format: {"ClientHost":"1.2.3.4",...,"request_User-Agent":"curl/7.x",...}
+failregex = ^.*"ClientHost":"<HOST>".*"request_User-Agent":"[^"]*(curl|wget|python-requests|python-urllib|nikto|sqlmap|nmap|masscan|zgrab|nuclei|Go-http-client|Java/|dirbuster|gobuster|feroxbuster|ffuf|wfuzz|scanner|exploit)[^"]*".*$
 
-# Match vulnerability scanning patterns in URLs
-            ^<HOST> - - \[.*\] "(GET|POST|PUT|DELETE|HEAD) .*(\.php|\.asp|\.aspx|\.env|wp-admin|wp-login|wp-content|phpmyadmin|xmlrpc|/admin|/config|\.git|\.svn|\.bak|\.sql|passwd|shadow|\.DS_Store|\.htaccess|\.htpasswd|cgi-bin|shell|eval-stdin).*".*$
-            ^<HOST> - - \[.*\] "(GET|POST|PUT|DELETE|HEAD) .*(\.\./|%%2e%%2e|%%252e|etc/passwd|etc/shadow|proc/self|/boot\.ini|win\.ini).*".*$
-            ^<HOST> - - \[.*\] "(GET|POST|PUT|DELETE|HEAD) .*(union.*select|<script|javascript:|eval\(|exec\(|base64_decode|system\().*".*$
+# Match vulnerability scanning patterns in URLs (RequestPath field)
+            ^.*"ClientHost":"<HOST>".*"RequestPath":"[^"]*(\.php|\.asp|\.aspx|\.env|wp-admin|wp-login|wp-content|phpmyadmin|xmlrpc|/admin|/config|\.git|\.svn|\.bak|\.sql|passwd|shadow|\.DS_Store|\.htaccess|\.htpasswd|cgi-bin|shell|eval-stdin)[^"]*".*$
+            ^.*"ClientHost":"<HOST>".*"RequestPath":"[^"]*(\.\.\/|%%2e%%2e|%%252e|etc/passwd|etc/shadow|proc/self|boot\.ini|win\.ini)[^"]*".*$
+            ^.*"ClientHost":"<HOST>".*"RequestPath":"[^"]*(union.*select|<script|javascript:|base64_decode)[^"]*".*$
 
 ignoreregex =
