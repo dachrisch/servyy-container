@@ -1,0 +1,85 @@
+# fail2ban jail configuration
+# Managed by Ansible - do not edit manually
+
+[DEFAULT]
+# Ban duration: 1 hour by default
+bantime = 3600
+
+# Time window for counting failures
+findtime = 600
+
+# Number of failures before ban
+maxretry = 5
+
+# Ignore local IPs
+ignoreip = 127.0.0.1/8 ::1 {{ ansible_default_ipv4.address | default('') }}
+
+# Use iptables for banning
+banaction = iptables-multiport
+
+# Email notifications (optional)
+# destemail = admin@{{ inventory_hostname }}
+# sender = fail2ban@{{ inventory_hostname }}
+
+# Action to take when banning
+action = %(action_)s
+
+#
+# SSH Protection
+#
+[sshd]
+enabled = true
+port = ssh
+filter = sshd
+logpath = /var/log/auth.log
+maxretry = 3
+bantime = 86400
+findtime = 3600
+
+# Custom SSH filter for "Invalid user" attempts
+[sshd-invalid-user]
+enabled = true
+port = ssh
+filter = sshd-custom
+logpath = /var/log/auth.log
+maxretry = 2
+bantime = 86400
+findtime = 600
+
+#
+# Traefik/HTTP Protection
+#
+[traefik-access]
+enabled = true
+port = http,https
+filter = traefik-access
+# Traefik logs via Docker - read from Loki or journald
+logpath = /var/log/traefik/access.log
+maxretry = 10
+bantime = 3600
+findtime = 60
+
+# Block known scanner bots and malicious user agents
+[traefik-bots]
+enabled = true
+port = http,https
+filter = traefik-bots
+logpath = /var/log/traefik/access.log
+maxretry = 1
+bantime = 86400
+findtime = 86400
+
+#
+# Loki-sourced blocklist (populated by script)
+#
+[loki-blocklist]
+enabled = true
+port = http,https,ssh
+filter = loki-blocklist
+# This jail uses IPs from Loki queries
+# Managed by /usr/local/bin/blocklist/update-from-loki.sh
+banaction = iptables-allports
+logpath = /var/log/fail2ban-loki.log
+maxretry = 1
+bantime = 86400
+findtime = 86400

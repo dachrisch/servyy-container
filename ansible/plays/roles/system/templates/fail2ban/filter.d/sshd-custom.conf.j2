@@ -1,0 +1,13 @@
+# Custom SSH filter for fail2ban
+# Catches "Invalid user" attempts specifically
+# Managed by Ansible
+
+[Definition]
+
+# Match "Invalid user" log entries from sshd
+failregex = ^.* sshd\[\d+\]: Invalid user .* from <HOST>.*$
+            ^.* sshd\[\d+\]: Failed password for invalid user .* from <HOST>.*$
+            ^.* sshd\[\d+\]: Connection closed by authenticating user .* <HOST>.*$
+            ^.* sshd\[\d+\]: Disconnected from authenticating user .* <HOST>.*$
+
+ignoreregex =

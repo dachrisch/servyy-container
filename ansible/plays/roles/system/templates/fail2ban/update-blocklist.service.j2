@@ -1,0 +1,12 @@
+[Unit]
+Description=Update fail2ban blocklist from Loki metrics
+After=network.target fail2ban.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/blocklist/update-from-loki.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

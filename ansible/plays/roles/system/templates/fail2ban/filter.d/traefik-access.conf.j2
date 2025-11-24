@@ -1,0 +1,16 @@
+# Traefik access log filter for fail2ban
+# Catches excessive 4xx errors and suspicious requests
+# Managed by Ansible
+
+[Definition]
+
+# Match 4xx errors (client errors) - too many may indicate scanning
+failregex = ^<HOST> - - \[.*\] ".*" 4\d\d .*$
+            ^.* <HOST> .* ".*" 401 .*$
+            ^.* <HOST> .* ".*" 403 .*$
+            ^.* <HOST> .* ".*" 404 .*$
+
+# Ignore legitimate 404s for common paths
+ignoreregex = favicon\.ico
+              robots\.txt
+              \.well-known
