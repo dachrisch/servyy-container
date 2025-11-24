@@ -1,0 +1,121 @@
+# Install and configure fail2ban for SSH and HTTP protection
+- name: Install fail2ban
+  apt:
+    name: fail2ban
+    state: latest
+  tags:
+    - system.fail2ban.install
+
+- name: Create fail2ban local configuration
+  template:
+    src: fail2ban/jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart fail2ban
+  tags:
+    - system.fail2ban.config
+
+- name: Create SSH jail filter (customized)
+  template:
+    src: fail2ban/filter.d/sshd-custom.conf.j2
+    dest: /etc/fail2ban/filter.d/sshd-custom.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart fail2ban
+  tags:
+    - system.fail2ban.config
+
+- name: Create Traefik access log filter
+  template:
+    src: fail2ban/filter.d/traefik-access.conf.j2
+    dest: /etc/fail2ban/filter.d/traefik-access.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart fail2ban
+  tags:
+    - system.fail2ban.config
+
+- name: Create Traefik bot/scanner filter
+  template:
+    src: fail2ban/filter.d/traefik-bots.conf.j2
+    dest: /etc/fail2ban/filter.d/traefik-bots.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart fail2ban
+  tags:
+    - system.fail2ban.config
+
+- name: Create custom action to sync with Loki blocklist
+  template:
+    src: fail2ban/action.d/loki-sync.conf.j2
+    dest: /etc/fail2ban/action.d/loki-sync.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart fail2ban
+  tags:
+    - system.fail2ban.config
+
+- name: Ensure fail2ban service is enabled and running
+  systemd:
+    name: fail2ban
+    enabled: yes
+    state: started
+  tags:
+    - system.fail2ban.service
+
+- name: Create directory for blocklist scripts
+  file:
+    path: /usr/local/bin/blocklist
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  tags:
+    - system.fail2ban.scripts
+
+- name: Deploy Loki blocklist update script
+  template:
+    src: fail2ban/update-blocklist-from-loki.sh.j2
+    dest: /usr/local/bin/blocklist/update-from-loki.sh
+    owner: root
+    group: root
+    mode: '0755'
+  tags:
+    - system.fail2ban.scripts
+
+- name: Create systemd service for blocklist updates
+  template:
+    src: fail2ban/update-blocklist.service.j2
+    dest: /etc/systemd/system/update-blocklist.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: reload systemd
+  tags:
+    - system.fail2ban.timer
+
+- name: Create systemd timer for periodic blocklist updates
+  template:
+    src: fail2ban/update-blocklist.timer.j2
+    dest: /etc/systemd/system/update-blocklist.timer
+    owner: root
+    group: root
+    mode: '0644'
+  notify: reload systemd
+  tags:
+    - system.fail2ban.timer
+
+- name: Enable and start blocklist update timer
+  systemd:
+    name: update-blocklist.timer
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  tags:
+    - system.fail2ban.timer

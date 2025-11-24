@@ -1,0 +1,15 @@
+# Custom action to log bans for Loki/Grafana visibility
+# Managed by Ansible
+
+[Definition]
+
+# Log ban events to a file that can be scraped by Promtail
+actionstart =
+actionstop =
+actioncheck =
+
+actionban = echo "$(date '+%%Y-%%m-%%d %%H:%%M:%%S') BAN <ip> jail=<name>" >> /var/log/fail2ban-actions.log
+
+actionunban = echo "$(date '+%%Y-%%m-%%d %%H:%%M:%%S') UNBAN <ip> jail=<name>" >> /var/log/fail2ban-actions.log
+
+[Init]

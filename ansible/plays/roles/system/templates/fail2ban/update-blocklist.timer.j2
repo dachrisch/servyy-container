@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodic update of fail2ban blocklist from Loki
+
+[Timer]
+# Run every hour
+OnCalendar=hourly
+# Add some randomness to prevent thundering herd
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target

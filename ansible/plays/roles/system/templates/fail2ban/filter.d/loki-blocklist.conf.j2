@@ -1,0 +1,11 @@
+# Loki-sourced blocklist filter for fail2ban
+# IPs are added to log file by update-from-loki.sh script
+# Managed by Ansible
+
+[Definition]
+
+# Simple format: just IP addresses, one per line with timestamp
+# Format: YYYY-MM-DD HH:MM:SS IP reason
+failregex = ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} <HOST> .*$
+
+ignoreregex =

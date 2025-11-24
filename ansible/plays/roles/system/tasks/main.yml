@@ -17,3 +17,8 @@
 - import_tasks: monit.yml
   tags:
     - system.monit
+
+- import_tasks: fail2ban.yml
+  tags:
+    - system.fail2ban
+  when: with_fail2ban | default(true)
