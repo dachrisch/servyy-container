@@ -348,12 +348,76 @@
         "defaults": {
           "color": { "mode": "thresholds" },
           "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "blue", "value": 1 }, { "color": "orange", "value": 20 }, { "color": "red", "value": 100 }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 16, "y": 6 },
+      "id": 28,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki" },
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[traefik-bots\\\\].*Ban\"[$__range]))",
+          "legendFormat": "Traefik Bots",
+          "refId": "A"
+        }
+      ],
+      "title": "Traefik Bot Bans",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "blue", "value": 1 }, { "color": "orange", "value": 20 }, { "color": "red", "value": 100 }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 19, "y": 6 },
+      "id": 29,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki" },
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[traefik-access\\\\].*Ban\"[$__range]))",
+          "legendFormat": "Traefik Access",
+          "refId": "A"
+        }
+      ],
+      "title": "Traefik 4xx Bans",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
           "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }] },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 6 },
+      "gridPos": { "h": 4, "w": 2, "x": 22, "y": 6 },
       "id": 25,
       "options": {
         "colorMode": "value",
@@ -371,7 +435,7 @@
           "refId": "A"
         }
       ],
-      "title": "Unbans (Expired)",
+      "title": "Unbans",
       "type": "stat"
     },
     {
@@ -405,7 +469,9 @@
         "overrides": [
           { "matcher": { "id": "byName", "options": "sshd" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
           { "matcher": { "id": "byName", "options": "sshd-invalid-user" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
-          { "matcher": { "id": "byName", "options": "loki-blocklist" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] }
+          { "matcher": { "id": "byName", "options": "loki-blocklist" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "traefik-bots" }, "properties": [{ "id": "color", "value": { "fixedColor": "purple", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "traefik-access" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] }
         ]
       },
       "gridPos": { "h": 6, "w": 12, "x": 0, "y": 10 },
@@ -432,6 +498,18 @@
           "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban\"[5m]))",
           "legendFormat": "loki-blocklist",
           "refId": "C"
+        },
+        {
+          "datasource": { "type": "loki" },
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[traefik-bots\\\\].*Ban\"[5m]))",
+          "legendFormat": "traefik-bots",
+          "refId": "D"
+        },
+        {
+          "datasource": { "type": "loki" },
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[traefik-access\\\\].*Ban\"[5m]))",
+          "legendFormat": "traefik-access",
+          "refId": "E"
         }
       ],
       "title": "Bans Over Time by Jail",
