@@ -802,8 +802,9 @@
       ],
       "title": "Top Attacking IPs (SSH Brute Force)",
       "transformations": [
-        { "id": "reduce", "options": { "reducers": ["sum"] } },
-        { "id": "organize", "options": { "renameByName": { "Field": "IP Address", "Total": "Count" } } },
+        { "id": "labelsToFields", "options": { "mode": "columns" } },
+        { "id": "merge", "options": {} },
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value #A": "Count", "ip": "IP Address" } } },
         { "id": "sortBy", "options": { "fields": {}, "sort": [{ "desc": true, "field": "Count" }] } }
       ],
       "type": "table"
