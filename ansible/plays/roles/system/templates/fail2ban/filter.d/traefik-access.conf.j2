@@ -1,14 +1,13 @@
 # Traefik access log filter for fail2ban
 # Catches excessive 4xx errors and suspicious requests
 # Managed by Ansible
+# Traefik JSON log format
 
 [Definition]
 
 # Match 4xx errors (client errors) - too many may indicate scanning
-failregex = ^<HOST> - - \[.*\] ".*" 4\d\d .*$
-            ^.* <HOST> .* ".*" 401 .*$
-            ^.* <HOST> .* ".*" 403 .*$
-            ^.* <HOST> .* ".*" 404 .*$
+# JSON format: {"ClientHost":"1.2.3.4",...,"DownstreamStatus":404,...}
+failregex = ^.*"ClientHost":"<HOST>".*"DownstreamStatus":4\d\d.*$
 
 # Ignore legitimate 404s for common paths
 ignoreregex = favicon\.ico
