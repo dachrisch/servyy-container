@@ -812,26 +812,28 @@
       "datasource": { "type": "loki" },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
+          "color": { "mode": "thresholds" },
+          "custom": { "align": "auto", "displayMode": "auto", "inspect": false },
           "mappings": [],
-          "unit": "short"
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 50 }] }
         },
-        "overrides": []
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Count" }, "properties": [{ "id": "custom.displayMode", "value": "gradient-gauge" }, { "id": "max", "value": 100 }] }
+        ]
       },
       "gridPos": { "h": 10, "w": 12, "x": 12, "y": 50 },
       "id": 18,
       "options": {
-        "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "values": ["value"] },
-        "pieType": "pie",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "tooltip": { "mode": "single", "sort": "none" }
+        "footer": { "fields": "", "reducer": ["sum"], "show": true },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "Count" }]
       },
       "pluginVersion": "10.0.0",
       "targets": [
         {
           "datasource": { "type": "loki" },
           "editorMode": "code",
-          "expr": "topk(5, sum by (user) (count_over_time({job=\"auth\"} |~ \"Invalid user\" | regexp \"Invalid user (?P<user>[a-zA-Z0-9_-]+) from\"[15m])))",
+          "expr": "topk(10, sum by (user) (count_over_time({job=\"auth\"} |~ \"Invalid user\" | regexp \"Invalid user (?P<user>[a-zA-Z0-9_-]+) from\"[15m])))",
           "instant": true,
           "queryType": "instant",
           "legendFormat": "{{user}}",
@@ -839,7 +841,12 @@
         }
       ],
       "title": "Top Targeted Usernames (SSH)",
-      "type": "piechart"
+      "transformations": [
+        { "id": "reduce", "options": { "reducers": ["sum"] } },
+        { "id": "organize", "options": { "renameByName": { "Field": "Username", "Total": "Count" } } },
+        { "id": "sortBy", "options": { "fields": {}, "sort": [{ "desc": true, "field": "Count" }] } }
+      ],
+      "type": "table"
     },
     {
       "datasource": { "type": "loki" },
