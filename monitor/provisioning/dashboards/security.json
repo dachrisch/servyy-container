@@ -792,9 +792,10 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
+          "editorMode": "code",
           "expr": "topk(5, sum by (ip) (count_over_time({job=\"auth\"} |~ \"Invalid user\" | regexp \"from (?P<ip>[0-9.]+) port\"[15m])))",
           "instant": true,
-          "range": false,
+          "queryType": "instant",
           "legendFormat": "{{ip}}",
           "refId": "A"
         }
@@ -829,9 +830,10 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
+          "editorMode": "code",
           "expr": "topk(5, sum by (user) (count_over_time({job=\"auth\"} |~ \"Invalid user\" | regexp \"Invalid user (?P<user>[a-zA-Z0-9_-]+) from\"[15m])))",
           "instant": true,
-          "range": false,
+          "queryType": "instant",
           "legendFormat": "{{user}}",
           "refId": "A"
         }
