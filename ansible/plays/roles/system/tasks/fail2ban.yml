@@ -50,6 +50,17 @@
   tags:
     - system.fail2ban.config
 
+- name: Create Loki blocklist filter
+  template:
+    src: fail2ban/filter.d/loki-blocklist.conf.j2
+    dest: /etc/fail2ban/filter.d/loki-blocklist.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart fail2ban
+  tags:
+    - system.fail2ban.config
+
 - name: Create custom action to sync with Loki blocklist
   template:
     src: fail2ban/action.d/loki-sync.conf.j2

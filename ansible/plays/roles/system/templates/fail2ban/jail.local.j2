@@ -79,6 +79,8 @@ port = http,https,ssh
 filter = loki-blocklist
 # This jail uses IPs from Loki queries
 # Managed by /usr/local/bin/blocklist/update-from-loki.sh
+# IMPORTANT: Must use polling backend to read from log file instead of journal
+backend = polling
 banaction = iptables-allports
 logpath = /var/log/fail2ban-loki.log
 maxretry = 1

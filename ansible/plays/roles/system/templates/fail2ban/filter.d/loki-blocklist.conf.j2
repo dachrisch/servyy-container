@@ -4,8 +4,9 @@
 
 [Definition]
 
-# Simple format: just IP addresses, one per line with timestamp
-# Format: YYYY-MM-DD HH:MM:SS IP reason
-failregex = ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} <HOST> .*$
+# Log format: YYYY-MM-DD HH:MM:SS IP reason
+# After fail2ban strips the date, there may be leading whitespace
+# Match IP followed by reason (e.g., ssh-brute-force, scanner-bot)
+failregex = ^\s*<HOST>\s+(?:ssh-brute-force|scanner-bot|excessive-errors)\s+attempts=\d+\s*$
 
 ignoreregex =

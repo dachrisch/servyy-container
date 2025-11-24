@@ -1,3 +1,4 @@
+{% raw %}
 #!/bin/bash
 # Dynamic blocklist update script - queries Loki for top offenders
 # Managed by Ansible - do not edit manually
@@ -5,11 +6,18 @@
 set -euo pipefail
 
 # Configuration
-LOKI_URL="http://localhost:3100"
+# Loki is accessible via Traefik at /loki path or directly via Docker network
+# Get the first IP from any network the container is on
+LOKI_DOCKER_IP=$(docker inspect -f '{{(index .NetworkSettings.Networks "proxy").IPAddress}}' monitor.loki 2>/dev/null || echo "")
+if [[ -n "$LOKI_DOCKER_IP" ]]; then
+    LOKI_URL="http://${LOKI_DOCKER_IP}:3100"
+else
+    LOKI_URL="https://monitor.lehel.xyz/loki"
+fi
 LOKI_TENANT_ID="servyy-logs-k8x9m2p4q7"
 BLOCKLIST_LOG="/var/log/fail2ban-loki.log"
-MIN_ATTEMPTS=10  # Minimum attempts to be considered for blocking
-TIME_RANGE="24h" # Look back period
+MIN_ATTEMPTS=10
+TIME_RANGE="24h"
 
 # Ensure log file exists
 touch "$BLOCKLIST_LOG"
@@ -151,3 +159,4 @@ main() {
 }
 
 main "$@"
+{% endraw %}
