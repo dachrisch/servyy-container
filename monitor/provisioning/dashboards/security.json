@@ -833,7 +833,7 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "topk(20, sum by (user) (count_over_time({job=\"auth\"} |~ \"Invalid user\" | regexp \"Invalid user (?P<user>\\\\S+) from\" | user != \"\"[$__range])))",
+          "expr": "topk(20, sum by (user) (count_over_time({job=\"auth\"} |~ \"Invalid user\" | regexp \"Invalid user (?P<user>[a-zA-Z0-9_-]+) from\" | user != \"\"[$__range])))",
           "legendFormat": "{{user}}",
           "refId": "A"
         }
