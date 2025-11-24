@@ -48,13 +48,13 @@ findtime = 600
 
 #
 # Traefik/HTTP Protection
-# NOTE: These are disabled by default as Traefik logs to Docker/Loki, not files
-# To enable, configure Traefik accessLog to write to /var/log/traefik/access.log
+# Traefik writes access logs to /var/log/traefik/access.log in common format
 #
 [traefik-access]
-enabled = false
+enabled = true
 port = http,https
 filter = traefik-access
+backend = polling
 logpath = /var/log/traefik/access.log
 maxretry = 10
 bantime = 3600
@@ -62,9 +62,10 @@ findtime = 60
 
 # Block known scanner bots and malicious user agents
 [traefik-bots]
-enabled = false
+enabled = true
 port = http,https
 filter = traefik-bots
+backend = polling
 logpath = /var/log/traefik/access.log
 maxretry = 1
 bantime = 86400

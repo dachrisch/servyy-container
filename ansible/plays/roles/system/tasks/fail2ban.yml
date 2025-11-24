@@ -130,3 +130,23 @@
     daemon_reload: yes
   tags:
     - system.fail2ban.timer
+
+- name: Create Traefik log directory
+  file:
+    path: /var/log/traefik
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  tags:
+    - system.fail2ban.traefik
+
+- name: Deploy logrotate configuration for Traefik logs
+  template:
+    src: fail2ban/logrotate-traefik.j2
+    dest: /etc/logrotate.d/traefik
+    owner: root
+    group: root
+    mode: '0644'
+  tags:
+    - system.fail2ban.traefik
