@@ -792,8 +792,9 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "topk(10, sum by (ip) (count_over_time({job=\"auth\"} |~ \"Invalid user\" | regexp \"from (?P<ip>[0-9.]+) port\"[1h])))",
+          "expr": "topk(5, sum by (ip) (count_over_time({job=\"auth\"} |~ \"Invalid user\" | regexp \"from (?P<ip>[0-9.]+) port\"[15m])))",
           "instant": true,
+          "range": false,
           "legendFormat": "{{ip}}",
           "refId": "A"
         }
@@ -828,8 +829,9 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "topk(10, sum by (user) (count_over_time({job=\"auth\"} |~ \"Invalid user\" | regexp \"Invalid user (?P<user>[a-zA-Z0-9_-]+) from\"[1h])))",
+          "expr": "topk(5, sum by (user) (count_over_time({job=\"auth\"} |~ \"Invalid user\" | regexp \"Invalid user (?P<user>[a-zA-Z0-9_-]+) from\"[15m])))",
           "instant": true,
+          "range": false,
           "legendFormat": "{{user}}",
           "refId": "A"
         }
