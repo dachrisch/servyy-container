@@ -1,0 +1,18 @@
+# Logrotate configuration for Traefik access logs
+# Used by fail2ban for bot/scanner detection
+# Managed by Ansible
+
+/var/log/traefik/*.log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0644 root root
+    sharedscripts
+    postrotate
+        # Signal fail2ban to reopen log files
+        /usr/bin/fail2ban-client flushlogs 2>/dev/null || true
+    endscript
+}

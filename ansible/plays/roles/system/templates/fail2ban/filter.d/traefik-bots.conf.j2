@@ -1,21 +1,16 @@
 # Traefik bot/scanner filter for fail2ban
 # Blocks known malicious user agents and scanner patterns
 # Managed by Ansible
+# Traefik common log format: <host> - - [date] "method path proto" status size "referer" "user-agent"
 
 [Definition]
 
-# Match known scanner/bot user agents
-failregex = ^<HOST> .* "(curl|wget|python-requests|nikto|sqlmap|nmap|masscan|zgrab|nuclei|Go-http-client|Java/|dirbuster|gobuster|feroxbuster|ffuf|wfuzz).*".*$
-            ^<HOST> .* ".*" .* ".*[Ss]qlmap.*"$
-            ^<HOST> .* ".*" .* ".*[Nn]ikto.*"$
-            ^<HOST> .* ".*" .* ".*[Nn]map.*"$
-            ^<HOST> .* ".*" .* ".*[Mm]asscan.*"$
-            ^<HOST> .* ".*" .* ".*[Zz]grab.*"$
-            ^<HOST> .* ".*" .* ".*[Nn]uclei.*"$
+# Match known scanner/bot user agents (in the user-agent field at end of line)
+failregex = ^<HOST> - - \[.*\] ".*" \d+ \d+ ".*" ".*(curl|wget|python-requests|python-urllib|nikto|sqlmap|nmap|masscan|zgrab|nuclei|Go-http-client|Java/|dirbuster|gobuster|feroxbuster|ffuf|wfuzz|scanner|exploit).*"$
 
 # Match vulnerability scanning patterns in URLs
-            ^<HOST> .* "(GET|POST|PUT|DELETE) .*(\.php|\.asp|\.env|wp-admin|wp-login|phpmyadmin|xmlrpc|/admin|/config|\.git|\.svn|\.bak|\.sql|passwd|shadow).*".*$
-            ^<HOST> .* "(GET|POST|PUT|DELETE) .*(\.\./|%2e%2e|etc/passwd|etc/shadow|proc/self).*".*$
-            ^<HOST> .* "(GET|POST|PUT|DELETE) .*(union.*select|<script|javascript:|eval\(|exec\().*".*$
+            ^<HOST> - - \[.*\] "(GET|POST|PUT|DELETE|HEAD) .*(\.php|\.asp|\.aspx|\.env|wp-admin|wp-login|wp-content|phpmyadmin|xmlrpc|/admin|/config|\.git|\.svn|\.bak|\.sql|passwd|shadow|\.DS_Store|\.htaccess|\.htpasswd|cgi-bin|shell|eval-stdin).*".*$
+            ^<HOST> - - \[.*\] "(GET|POST|PUT|DELETE|HEAD) .*(\.\./|%%2e%%2e|%%252e|etc/passwd|etc/shadow|proc/self|/boot\.ini|win\.ini).*".*$
+            ^<HOST> - - \[.*\] "(GET|POST|PUT|DELETE|HEAD) .*(union.*select|<script|javascript:|eval\(|exec\(|base64_decode|system\().*".*$
 
 ignoreregex =
