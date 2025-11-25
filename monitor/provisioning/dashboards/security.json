@@ -207,8 +207,40 @@
       "type": "stat"
     },
     {
+      "datasource": { "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "orange", "value": 500 }, { "color": "red", "value": 1000 }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 5 },
+      "id": 30,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "sum(increase(traefik_service_requests_total{code=\"429\"}[$__range]))",
+          "legendFormat": "429s",
+          "refId": "A"
+        }
+      ],
+      "title": "Rate Limit 429s",
+      "type": "stat"
+    },
+    {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
       "id": 106,
       "panels": [],
       "title": "Fail2ban Status",
@@ -225,7 +257,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 6 },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 10 },
       "id": 21,
       "options": {
         "colorMode": "value",
@@ -257,7 +289,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 6 },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 10 },
       "id": 22,
       "options": {
         "colorMode": "value",
@@ -289,7 +321,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 6 },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 10 },
       "id": 23,
       "options": {
         "colorMode": "value",
@@ -321,7 +353,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 6 },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 10 },
       "id": 24,
       "options": {
         "colorMode": "value",
@@ -353,7 +385,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 3, "x": 16, "y": 6 },
+      "gridPos": { "h": 4, "w": 3, "x": 16, "y": 10 },
       "id": 28,
       "options": {
         "colorMode": "value",
@@ -385,7 +417,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 3, "x": 19, "y": 6 },
+      "gridPos": { "h": 4, "w": 3, "x": 19, "y": 10 },
       "id": 29,
       "options": {
         "colorMode": "value",
@@ -412,12 +444,44 @@
         "defaults": {
           "color": { "mode": "thresholds" },
           "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "blue", "value": 1 }, { "color": "orange", "value": 10 }, { "color": "red", "value": 50 }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 2, "x": 22, "y": 10 },
+      "id": 31,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki" },
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[traefik-crawler-soft\\\\].*Ban\"[$__range]))",
+          "legendFormat": "Crawler Soft",
+          "refId": "A"
+        }
+      ],
+      "title": "Crawler Soft Bans",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
           "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }] },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 2, "x": 22, "y": 6 },
+      "gridPos": { "h": 4, "w": 3, "x": 0, "y": 14 },
       "id": 25,
       "options": {
         "colorMode": "value",
@@ -471,10 +535,11 @@
           { "matcher": { "id": "byName", "options": "sshd-invalid-user" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
           { "matcher": { "id": "byName", "options": "loki-blocklist" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] },
           { "matcher": { "id": "byName", "options": "traefik-bots" }, "properties": [{ "id": "color", "value": { "fixedColor": "purple", "mode": "fixed" } }] },
-          { "matcher": { "id": "byName", "options": "traefik-access" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] }
+          { "matcher": { "id": "byName", "options": "traefik-access" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "traefik-crawler-soft" }, "properties": [{ "id": "color", "value": { "fixedColor": "cyan", "mode": "fixed" } }] }
         ]
       },
-      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 10 },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 18 },
       "id": 26,
       "options": {
         "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right", "showLegend": true },
@@ -510,6 +575,12 @@
           "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[traefik-access\\\\].*Ban\"[5m]))",
           "legendFormat": "traefik-access",
           "refId": "E"
+        },
+        {
+          "datasource": { "type": "loki" },
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[traefik-crawler-soft\\\\].*Ban\"[5m]))",
+          "legendFormat": "traefik-crawler-soft",
+          "refId": "F"
         }
       ],
       "title": "Bans Over Time by Jail",
@@ -517,7 +588,7 @@
     },
     {
       "datasource": { "type": "loki" },
-      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 10 },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 14 },
       "id": 27,
       "options": {
         "dedupStrategy": "none",
@@ -541,7 +612,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
       "id": 101,
       "panels": [],
       "title": "User Agent Analysis",
@@ -558,7 +629,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 17 },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 25 },
       "id": 7,
       "options": {
         "displayLabels": ["percent"],
@@ -613,7 +684,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 17 },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 25 },
       "id": 8,
       "options": {
         "displayLabels": ["percent"],
@@ -668,7 +739,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 17 },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 25 },
       "id": 9,
       "options": {
         "displayLabels": ["percent"],
@@ -702,7 +773,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 33 },
       "id": 102,
       "panels": [],
       "title": "Suspicious Activity",
@@ -742,7 +813,7 @@
           { "matcher": { "id": "byName", "options": "Path Traversal" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] }
         ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 34 },
       "id": 10,
       "options": {
         "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -801,7 +872,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 34 },
       "id": 11,
       "options": {
         "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -838,7 +909,7 @@
     },
     {
       "datasource": { "type": "loki" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 34 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 42 },
       "id": 12,
       "options": {
         "dedupStrategy": "none",
@@ -862,7 +933,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 42 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 50 },
       "id": 103,
       "panels": [],
       "title": "Bot Traffic",
@@ -901,7 +972,7 @@
           { "matcher": { "id": "byName", "options": "Good Bots" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
         ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 43 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 51 },
       "id": 13,
       "options": {
         "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -954,7 +1025,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 43 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 51 },
       "id": 14,
       "options": {
         "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -997,7 +1068,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 51 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 59 },
       "id": 104,
       "panels": [],
       "title": "Authentication & System",
@@ -1036,7 +1107,7 @@
           { "matcher": { "id": "byName", "options": "Success" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
         ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 52 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 60 },
       "id": 15,
       "options": {
         "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -1067,7 +1138,7 @@
     },
     {
       "datasource": { "type": "loki" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 52 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 60 },
       "id": 16,
       "options": {
         "dedupStrategy": "none",
@@ -1091,7 +1162,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 60 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 68 },
       "id": 105,
       "panels": [],
       "title": "Top Offenders",
@@ -1114,7 +1185,7 @@
           { "matcher": { "id": "byName", "options": "Count" }, "properties": [{ "id": "custom.displayMode", "value": "gradient-gauge" }, { "id": "max", "value": 100 }] }
         ]
       },
-      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 61 },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 69 },
       "id": 17,
       "options": {
         "footer": { "fields": "", "reducer": ["sum"], "show": true },
@@ -1155,7 +1226,7 @@
           { "matcher": { "id": "byName", "options": "Count" }, "properties": [{ "id": "custom.displayMode", "value": "gradient-gauge" }, { "id": "max", "value": 100 }] }
         ]
       },
-      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 61 },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 69 },
       "id": 18,
       "options": {
         "footer": { "fields": "", "reducer": ["sum"], "show": true },
@@ -1200,7 +1271,7 @@
           { "matcher": { "id": "byName", "options": "Count" }, "properties": [{ "id": "custom.displayMode", "value": "gradient-gauge" }, { "id": "max", "value": 1000 }] }
         ]
       },
-      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 71 },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 79 },
       "id": 19,
       "options": {
         "footer": { "fields": "", "reducer": ["sum"], "show": true },
@@ -1241,7 +1312,7 @@
           { "matcher": { "id": "byName", "options": "Count" }, "properties": [{ "id": "custom.displayMode", "value": "gradient-gauge" }, { "id": "max", "value": 100 }] }
         ]
       },
-      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 71 },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 79 },
       "id": 20,
       "options": {
         "footer": { "fields": "", "reducer": ["sum"], "show": true },

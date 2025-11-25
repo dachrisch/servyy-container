@@ -71,6 +71,18 @@ maxretry = 1
 bantime = 86400
 findtime = 86400
 
+# Progressive crawler rate limiting (Tier 1)
+# Soft ban for IPs hitting rate limits repeatedly
+[traefik-crawler-soft]
+enabled = true
+port = http,https
+filter = traefik-crawler-ratelimit
+backend = polling
+logpath = /var/log/traefik/access.log
+maxretry = 20
+bantime = 3600
+findtime = 120
+
 #
 # Loki-sourced blocklist (populated by script)
 #
