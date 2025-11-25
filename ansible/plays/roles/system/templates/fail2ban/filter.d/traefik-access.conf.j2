@@ -9,7 +9,8 @@
 # JSON format: {"ClientHost":"1.2.3.4",...,"DownstreamStatus":404,...}
 failregex = ^.*"ClientHost":"<HOST>".*"DownstreamStatus":4\d\d.*$
 
-# Ignore legitimate 404s for common paths
+# Ignore legitimate 404s for common paths and rate-limited requests (429)
 ignoreregex = favicon\.ico
               robots\.txt
               \.well-known
+              "DownstreamStatus":429

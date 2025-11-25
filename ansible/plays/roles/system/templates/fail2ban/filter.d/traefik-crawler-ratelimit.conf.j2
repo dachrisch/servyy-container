@@ -1,0 +1,13 @@
+# Traefik crawler rate limiting filter for fail2ban
+# Catches excessive 429 (Too Many Requests) responses indicating crawler abuse
+# Managed by Ansible
+# Traefik JSON log format
+
+[Definition]
+
+# Match 429 errors (rate limited requests)
+# JSON format: {"ClientHost":"1.2.3.4",...,"DownstreamStatus":429,...}
+failregex = ^.*"ClientHost":"<HOST>".*"DownstreamStatus":429.*$
+
+# No ignores - all 429s should be tracked
+ignoreregex =
