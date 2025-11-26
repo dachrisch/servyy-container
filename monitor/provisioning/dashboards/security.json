@@ -1282,16 +1282,16 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "topk(20, sum by (ua) (count_over_time({job=\"docker\"} | pattern `<_> \"<_>\" \"<ua>\"` | ua != \"\" | ua != \"-\" | ua != \"healthcheck\" [6h])))",
+          "expr": "topk(20, sum by (ua) (rate({job=\"docker\"} | pattern `<_> \"<_>\" \"<ua>\"` | ua != \"\" | ua != \"-\" | ua != \"healthcheck\" [$__range]) * 60))",
           "legendFormat": "{{ua}}",
           "refId": "A"
         }
       ],
-      "title": "Top User Agents (Last 6h)",
+      "title": "Top User Agents (Req/min)",
       "transformations": [
         { "id": "reduce", "options": { "reducers": ["sum"] } },
-        { "id": "organize", "options": { "renameByName": { "Field": "User Agent", "Total": "Count" } } },
-        { "id": "sortBy", "options": { "fields": {}, "sort": [{ "desc": true, "field": "Count" }] } }
+        { "id": "organize", "options": { "renameByName": { "Field": "User Agent", "Total": "Req/min" } } },
+        { "id": "sortBy", "options": { "fields": {}, "sort": [{ "desc": true, "field": "Req/min" }] } }
       ],
       "type": "table"
     },
@@ -1323,16 +1323,16 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "topk(20, sum by (ua) (count_over_time({job=\"docker\"} | pattern `<_> \"<_>\" \"<ua>\"` | ua =~ \"(?i).*(curl|wget|python|nikto|sqlmap|nmap|masscan|zgrab|nuclei|Go-http|Java|scanner|bot).*\" | ua != \"\"[6h])))",
+          "expr": "topk(20, sum by (ua) (rate({job=\"docker\"} | pattern `<_> \"<_>\" \"<ua>\"` | ua =~ \"(?i).*(curl|wget|python|nikto|sqlmap|nmap|masscan|zgrab|nuclei|Go-http|Java|scanner|bot).*\" | ua != \"\"[$__range]) * 60))",
           "legendFormat": "{{ua}}",
           "refId": "A"
         }
       ],
-      "title": "Top Suspicious User Agents (Last 6h)",
+      "title": "Top Suspicious User Agents (Req/min)",
       "transformations": [
         { "id": "reduce", "options": { "reducers": ["sum"] } },
-        { "id": "organize", "options": { "renameByName": { "Field": "User Agent", "Total": "Count" } } },
-        { "id": "sortBy", "options": { "fields": {}, "sort": [{ "desc": true, "field": "Count" }] } }
+        { "id": "organize", "options": { "renameByName": { "Field": "User Agent", "Total": "Req/min" } } },
+        { "id": "sortBy", "options": { "fields": {}, "sort": [{ "desc": true, "field": "Req/min" }] } }
       ],
       "type": "table"
     }
