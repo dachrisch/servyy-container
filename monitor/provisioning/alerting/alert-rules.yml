@@ -45,7 +45,7 @@ groups:
                 - evaluator:
                     params: [10]
                     type: gt
-        noDataState: NoData
+        noDataState: OK
         execErrState: Error
         for: 5m
         annotations:
@@ -87,7 +87,7 @@ groups:
                 - evaluator:
                     params: [5]
                     type: gt
-        noDataState: NoData
+        noDataState: OK
         execErrState: Error
         for: 5m
         annotations:
@@ -127,7 +127,7 @@ groups:
                 - evaluator:
                     params: [100]
                     type: gt
-        noDataState: NoData
+        noDataState: OK
         execErrState: Error
         for: 10m
         annotations:
@@ -167,7 +167,7 @@ groups:
                 - evaluator:
                     params: [20]
                     type: gt
-        noDataState: NoData
+        noDataState: OK
         execErrState: Error
         for: 10m
         annotations:
@@ -207,7 +207,7 @@ groups:
                 - evaluator:
                     params: [50]
                     type: gt
-        noDataState: NoData
+        noDataState: OK
         execErrState: Error
         for: 15m
         annotations:
@@ -253,7 +253,7 @@ groups:
                 - evaluator:
                     params: [0.5]
                     type: lt
-        noDataState: NoData
+        noDataState: OK
         execErrState: Error
         for: 2m
         annotations:
@@ -293,7 +293,7 @@ groups:
                 - evaluator:
                     params: [15]
                     type: lt
-        noDataState: NoData
+        noDataState: OK
         execErrState: Error
         for: 5m
         annotations:
@@ -333,7 +333,7 @@ groups:
                 - evaluator:
                     params: [1000]
                     type: gt
-        noDataState: NoData
+        noDataState: OK
         execErrState: Error
         for: 10m
         annotations:
