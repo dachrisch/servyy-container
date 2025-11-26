@@ -67,7 +67,7 @@ groups:
               to: 0
             datasourceUid: loki
             model:
-              expr: 'sum(count_over_time({job="system"} |~ "fail2ban.*\\\\[sshd\\\\].*Ban"[5m]))'
+              expr: 'sum(count_over_time({job="system"} |~ "fail2ban.*\\[sshd\\].*Ban"[5m]))'
               queryType: range
               refId: A
           - refId: B
@@ -148,7 +148,7 @@ groups:
               to: 0
             datasourceUid: loki
             model:
-              expr: 'sum(count_over_time({job="system"} |~ "fail2ban.*\\\\[traefik-crawler-soft\\\\].*Ban"[10m]))'
+              expr: 'sum(count_over_time({job="system"} |~ "fail2ban.*\\[traefik-crawler-soft\\].*Ban"[10m]))'
               refId: A
           - refId: B
             datasourceUid: __expr__
@@ -188,7 +188,7 @@ groups:
               to: 0
             datasourceUid: loki
             model:
-              expr: 'sum(count_over_time({job="docker"} |~ "(?i)(sql.*injection|union.*select|<script|javascript:|eval\\\\(|exec\\\\()"[15m]))'
+              expr: 'sum(count_over_time({job="docker"} |~ "(?i)(sql.*injection|union.*select|<script|javascript:|eval\\(|exec\\()"[15m]))'
               refId: A
           - refId: B
             datasourceUid: __expr__
