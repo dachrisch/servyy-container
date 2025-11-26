@@ -1282,12 +1282,12 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "topk(20, sum by (ua) (count_over_time({job=\"docker\"} | pattern `<_> \"<_>\" \"<ua>\"` | ua != \"\" | ua != \"-\" | ua != \"healthcheck\" [$__range])))",
+          "expr": "topk(20, sum by (ua) (count_over_time({job=\"docker\"} | pattern `<_> \"<_>\" \"<ua>\"` | ua != \"\" | ua != \"-\" | ua != \"healthcheck\" [6h])))",
           "legendFormat": "{{ua}}",
           "refId": "A"
         }
       ],
-      "title": "Top User Agents",
+      "title": "Top User Agents (Last 6h)",
       "transformations": [
         { "id": "reduce", "options": { "reducers": ["sum"] } },
         { "id": "organize", "options": { "renameByName": { "Field": "User Agent", "Total": "Count" } } },
@@ -1323,12 +1323,12 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "topk(20, sum by (ua) (count_over_time({job=\"docker\"} | pattern `<_> \"<_>\" \"<ua>\"` | ua =~ \"(?i).*(curl|wget|python|nikto|sqlmap|nmap|masscan|zgrab|nuclei|Go-http|Java|scanner|bot).*\" | ua != \"\"[$__range])))",
+          "expr": "topk(20, sum by (ua) (count_over_time({job=\"docker\"} | pattern `<_> \"<_>\" \"<ua>\"` | ua =~ \"(?i).*(curl|wget|python|nikto|sqlmap|nmap|masscan|zgrab|nuclei|Go-http|Java|scanner|bot).*\" | ua != \"\"[6h])))",
           "legendFormat": "{{ua}}",
           "refId": "A"
         }
       ],
-      "title": "Top Suspicious User Agents",
+      "title": "Top Suspicious User Agents (Last 6h)",
       "transformations": [
         { "id": "reduce", "options": { "reducers": ["sum"] } },
         { "id": "organize", "options": { "renameByName": { "Field": "User Agent", "Total": "Count" } } },
