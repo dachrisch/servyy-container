@@ -50,7 +50,7 @@ groups:
         for: 5m
         annotations:
           summary: 'High rate of 5xx errors detected'
-          description: 'Service experiencing {{ $values.B.Value }} errors/sec - immediate investigation required'
+          description: 'Service experiencing {{ if $values.B }}{{ printf "%.1f" $values.B.Value }} errors/sec{{ else }}high error rate{{ end }} - immediate investigation required'
         labels:
           severity: critical
         isPaused: false
@@ -92,7 +92,7 @@ groups:
         for: 5m
         annotations:
           summary: 'SSH brute force attack detected'
-          description: '{{ $values.B.Value }} SSH ban(s) in last 5 minutes - active brute force attack detected'
+          description: '{{ if $values.B }}{{ printf "%.0f" $values.B.Value }} SSH ban(s) in last 5 minutes{{ else }}SSH bans detected in last 5 minutes{{ end }} - active brute force attack detected'
         labels:
           severity: critical
         isPaused: false
@@ -132,7 +132,7 @@ groups:
         for: 10m
         annotations:
           summary: 'Excessive HTTP 429 rate limiting'
-          description: '{{ $values.B.Value }} rate limit (429) responses/sec for 10 minutes - possible DoS attack'
+          description: '{{ if $values.B }}{{ printf "%.0f" $values.B.Value }} rate limit (429) responses/sec{{ else }}Excessive rate limiting{{ end }} for 10 minutes - possible DoS attack'
         labels:
           severity: high
         isPaused: false
@@ -172,7 +172,7 @@ groups:
         for: 10m
         annotations:
           summary: 'High volume of crawler rate limit bans'
-          description: '{{ $values.B.Value }} crawler IPs banned in 10 minutes - rate limiting active'
+          description: '{{ if $values.B }}{{ printf "%.0f" $values.B.Value }} crawler IPs{{ else }}Multiple crawler IPs{{ end }} banned in 10 minutes - rate limiting active'
         labels:
           severity: high
         isPaused: false
@@ -212,7 +212,7 @@ groups:
         for: 15m
         annotations:
           summary: 'SQL injection or XSS attempts detected'
-          description: '{{ $values.B.Value }} injection attempts in 15 minutes - security probe detected'
+          description: '{{ if $values.B }}{{ printf "%.0f" $values.B.Value }} injection attempts{{ else }}Injection attempts detected{{ end }} in 15 minutes - security probe detected'
         labels:
           severity: high
         isPaused: false
@@ -298,7 +298,7 @@ groups:
         for: 5m
         annotations:
           summary: 'Disk space running low'
-          description: 'Only {{ $values.B.Value }}% disk space remaining on {{ $labels.mountpoint }} - cleanup needed'
+          description: '{{ if $values.B }}Only {{ printf "%.1f" $values.B.Value }}% disk space remaining{{ else }}Low disk space{{ end }} on {{ $labels.mountpoint }} - cleanup needed'
         labels:
           severity: medium
         isPaused: false
@@ -338,7 +338,7 @@ groups:
         for: 10m
         annotations:
           summary: 'Unusual traffic spike detected'
-          description: '{{ $values.B.Value }} requests/sec for 10 minutes - significantly above baseline'
+          description: '{{ if $values.B }}{{ printf "%.0f" $values.B.Value }} requests/sec{{ else }}High traffic volume{{ end }} for 10 minutes - significantly above baseline'
         labels:
           severity: medium
         isPaused: false
