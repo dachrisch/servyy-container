@@ -184,7 +184,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 6 },
       "id": 6,
       "options": {
         "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -248,7 +248,7 @@
           { "matcher": { "id": "byRegexp", "options": "2.." }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
         ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 6 },
       "id": 7,
       "options": {
         "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -284,7 +284,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 15 },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 12 },
       "id": 16,
       "options": {
         "displayLabels": ["percent"],
@@ -315,7 +315,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 15 },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 12 },
       "id": 20,
       "options": {
         "displayLabels": ["percent"],
@@ -365,7 +365,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 12 },
       "id": 17,
       "options": {
         "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -412,7 +412,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 18 },
       "id": 18,
       "options": {
         "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -448,7 +448,7 @@
           { "matcher": { "id": "byName", "options": "Errors" }, "properties": [{ "id": "custom.displayMode", "value": "color-background-solid" }] }
         ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 18 },
       "id": 19,
       "options": {
         "footer": { "fields": "", "reducer": ["sum"], "show": true },
@@ -474,7 +474,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
       "id": 102,
       "panels": [],
       "title": "Application Logs",
@@ -482,7 +482,7 @@
     },
     {
       "datasource": { "type": "loki" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 32 },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 25 },
       "id": 9,
       "options": {
         "dedupStrategy": "none",
@@ -600,7 +600,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 46 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
       "id": 103,
       "panels": [],
       "title": "Container Resources",
@@ -636,7 +636,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 47 },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 32 },
       "id": 12,
       "options": {
         "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -683,7 +683,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 47 },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 32 },
       "id": 13,
       "options": {
         "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -730,7 +730,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 55 },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 38 },
       "id": 14,
       "options": {
         "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -755,7 +755,7 @@
     },
     {
       "datasource": { "type": "loki" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 55 },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 38 },
       "id": 15,
       "options": {
         "dedupStrategy": "none",
