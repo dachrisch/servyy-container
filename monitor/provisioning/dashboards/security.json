@@ -207,40 +207,8 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "orange", "value": 500 }, { "color": "red", "value": 1000 }] },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 5 },
-      "id": 30,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": { "type": "prometheus" },
-          "expr": "sum(increase(traefik_service_requests_total{code=\"429\"}[$__range]))",
-          "legendFormat": "429s",
-          "refId": "A"
-        }
-      ],
-      "title": "Rate Limit 429s",
-      "type": "stat"
-    },
-    {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
       "id": 106,
       "panels": [],
       "title": "Fail2ban Status",
@@ -257,7 +225,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 10 },
+      "gridPos": { "h": 3, "w": 4, "x": 0, "y": 6 },
       "id": 21,
       "options": {
         "colorMode": "value",
@@ -289,7 +257,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 10 },
+      "gridPos": { "h": 3, "w": 4, "x": 4, "y": 6 },
       "id": 22,
       "options": {
         "colorMode": "value",
@@ -321,7 +289,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 10 },
+      "gridPos": { "h": 3, "w": 4, "x": 8, "y": 6 },
       "id": 23,
       "options": {
         "colorMode": "value",
@@ -353,7 +321,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 10 },
+      "gridPos": { "h": 3, "w": 4, "x": 12, "y": 6 },
       "id": 24,
       "options": {
         "colorMode": "value",
@@ -385,7 +353,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 3, "x": 16, "y": 10 },
+      "gridPos": { "h": 3, "w": 3, "x": 16, "y": 6 },
       "id": 28,
       "options": {
         "colorMode": "value",
@@ -417,7 +385,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 3, "x": 19, "y": 10 },
+      "gridPos": { "h": 3, "w": 3, "x": 19, "y": 6 },
       "id": 29,
       "options": {
         "colorMode": "value",
@@ -449,7 +417,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 2, "x": 22, "y": 10 },
+      "gridPos": { "h": 3, "w": 2, "x": 22, "y": 6 },
       "id": 31,
       "options": {
         "colorMode": "value",
@@ -481,7 +449,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 3, "x": 0, "y": 14 },
+      "gridPos": { "h": 3, "w": 3, "x": 0, "y": 9 },
       "id": 25,
       "options": {
         "colorMode": "value",
@@ -539,7 +507,7 @@
           { "matcher": { "id": "byName", "options": "traefik-crawler-soft" }, "properties": [{ "id": "color", "value": { "fixedColor": "cyan", "mode": "fixed" } }] }
         ]
       },
-      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 18 },
+      "gridPos": { "h": 5, "w": 24, "x": 0, "y": 12 },
       "id": 26,
       "options": {
         "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right", "showLegend": true },
@@ -588,7 +556,7 @@
     },
     {
       "datasource": { "type": "loki" },
-      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 14 },
+      "gridPos": { "h": 5, "w": 12, "x": 12, "y": 9 },
       "id": 27,
       "options": {
         "dedupStrategy": "none",
@@ -612,169 +580,8 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
       "id": 101,
-      "panels": [],
-      "title": "User Agent Analysis",
-      "type": "row"
-    },
-    {
-      "datasource": { "type": "loki" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 25 },
-      "id": 7,
-      "options": {
-        "displayLabels": ["percent"],
-        "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"] },
-        "pieType": "donut",
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
-        "tooltip": { "mode": "single", "sort": "none" }
-      },
-      "targets": [
-        {
-          "datasource": { "type": "loki" },
-          "expr": "sum by (browser) (count_over_time({job=\"docker\"} | pattern `<_> \"<_> <_> <_>\" <_> <_> \"<_>\" \"<ua>\"` | browser = \"Chrome\" or browser = \"Firefox\" or browser = \"Safari\" or browser = \"Edge\" | ua =~ \".*Chrome.*\" | browser = \"Chrome\"[$__range])) or sum(count_over_time({job=\"docker\"} | pattern `<_> \"<_> <_> <_>\" <_> <_> \"<_>\" \"<ua>\"` | ua =~ \".*Firefox.*\"[$__range])) or sum(count_over_time({job=\"docker\"} | pattern `<_> \"<_> <_> <_>\" <_> <_> \"<_>\" \"<ua>\"` | ua =~ \".*Safari.*\" | ua !~ \".*Chrome.*\"[$__range]))",
-          "legendFormat": "{{browser}}",
-          "refId": "A"
-        },
-        {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)Mozilla.*Chrome\" | __error__=\"\"[$__range]))",
-          "legendFormat": "Chrome",
-          "refId": "B"
-        },
-        {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)Mozilla.*Firefox\" | __error__=\"\"[$__range]))",
-          "legendFormat": "Firefox",
-          "refId": "C"
-        },
-        {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)Mozilla.*Safari\" |~ \"(?i)Mozilla\" | __error__=\"\" | __line__ !~ \"Chrome\"[$__range]))",
-          "legendFormat": "Safari",
-          "refId": "D"
-        },
-        {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)(curl/|wget/|python|Go-http|Java/)\" | __error__=\"\"[$__range]))",
-          "legendFormat": "Bots/Scripts",
-          "refId": "E"
-        }
-      ],
-      "title": "Traffic by Browser Type",
-      "type": "piechart"
-    },
-    {
-      "datasource": { "type": "loki" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 25 },
-      "id": 8,
-      "options": {
-        "displayLabels": ["percent"],
-        "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"] },
-        "pieType": "donut",
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
-        "tooltip": { "mode": "single", "sort": "none" }
-      },
-      "targets": [
-        {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)(iPhone|iPad|iOS)\" | __error__=\"\"[$__range]))",
-          "legendFormat": "iOS",
-          "refId": "A"
-        },
-        {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)Android\" | __error__=\"\"[$__range]))",
-          "legendFormat": "Android",
-          "refId": "B"
-        },
-        {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)Windows NT\" | __error__=\"\"[$__range]))",
-          "legendFormat": "Windows",
-          "refId": "C"
-        },
-        {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)Macintosh\" | __error__=\"\"[$__range]))",
-          "legendFormat": "macOS",
-          "refId": "D"
-        },
-        {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)Linux\" | __error__=\"\" | __line__ !~ \"(?i)Android\"[$__range]))",
-          "legendFormat": "Linux",
-          "refId": "E"
-        }
-      ],
-      "title": "Traffic by OS",
-      "type": "piechart"
-    },
-    {
-      "datasource": { "type": "loki" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 25 },
-      "id": 9,
-      "options": {
-        "displayLabels": ["percent"],
-        "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"] },
-        "pieType": "donut",
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
-        "tooltip": { "mode": "single", "sort": "none" }
-      },
-      "targets": [
-        {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)Mobile|iPhone|Android\" | __error__=\"\"[$__range]))",
-          "legendFormat": "Mobile",
-          "refId": "A"
-        },
-        {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)Mozilla\" | __error__=\"\" | __line__ !~ \"(?i)Mobile|iPhone|Android\"[$__range]))",
-          "legendFormat": "Desktop",
-          "refId": "B"
-        },
-        {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)(bot|crawler|spider|curl|wget|python|Go-http)\" | __error__=\"\"[$__range]))",
-          "legendFormat": "Bots",
-          "refId": "C"
-        }
-      ],
-      "title": "Traffic by Device Type",
-      "type": "piechart"
-    },
-    {
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 33 },
-      "id": 102,
       "panels": [],
       "title": "Suspicious Activity",
       "type": "row"
@@ -813,7 +620,7 @@
           { "matcher": { "id": "byName", "options": "Path Traversal" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] }
         ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 34 },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 18 },
       "id": 10,
       "options": {
         "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -872,7 +679,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 34 },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 18 },
       "id": 11,
       "options": {
         "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -909,7 +716,7 @@
     },
     {
       "datasource": { "type": "loki" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 42 },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 24 },
       "id": 12,
       "options": {
         "dedupStrategy": "none",
@@ -933,142 +740,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 50 },
-      "id": 103,
-      "panels": [],
-      "title": "Bot Traffic",
-      "type": "row"
-    },
-    {
-      "datasource": { "type": "loki" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "bars",
-            "fillOpacity": 80,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "normal" },
-            "thresholdsStyle": { "mode": "off" }
-          },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
-          "unit": "short"
-        },
-        "overrides": [
-          { "matcher": { "id": "byName", "options": "Malicious" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
-          { "matcher": { "id": "byName", "options": "Good Bots" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
-        ]
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 51 },
-      "id": 13,
-      "options": {
-        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "targets": [
-        {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)(Googlebot|Bingbot|DuckDuckBot|Baiduspider|YandexBot)\"[5m]))",
-          "legendFormat": "Good Bots",
-          "refId": "A"
-        },
-        {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)(nikto|sqlmap|nmap|masscan|zgrab|nuclei|curl/|wget/|python-requests)\"[5m]))",
-          "legendFormat": "Malicious",
-          "refId": "B"
-        }
-      ],
-      "title": "Good vs Malicious Bots",
-      "type": "timeseries"
-    },
-    {
-      "datasource": { "type": "loki" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "bars",
-            "fillOpacity": 80,
-            "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": { "group": "A", "mode": "normal" },
-            "thresholdsStyle": { "mode": "off" }
-          },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 51 },
-      "id": 14,
-      "options": {
-        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
-      },
-      "targets": [
-        {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)curl/\"[5m]))",
-          "legendFormat": "curl",
-          "refId": "A"
-        },
-        {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)wget/\"[5m]))",
-          "legendFormat": "wget",
-          "refId": "B"
-        },
-        {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)python-requests|python-urllib\"[5m]))",
-          "legendFormat": "Python",
-          "refId": "C"
-        },
-        {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)Go-http-client\"[5m]))",
-          "legendFormat": "Go",
-          "refId": "D"
-        },
-        {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)Java/\"[5m]))",
-          "legendFormat": "Java",
-          "refId": "E"
-        }
-      ],
-      "title": "Scripted Access by Tool",
-      "type": "timeseries"
-    },
-    {
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 59 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 },
       "id": 104,
       "panels": [],
       "title": "Authentication & System",
@@ -1107,7 +779,7 @@
           { "matcher": { "id": "byName", "options": "Success" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
         ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 60 },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 31 },
       "id": 15,
       "options": {
         "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
@@ -1138,7 +810,7 @@
     },
     {
       "datasource": { "type": "loki" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 60 },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 31 },
       "id": 16,
       "options": {
         "dedupStrategy": "none",
@@ -1162,7 +834,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 68 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 37 },
       "id": 105,
       "panels": [],
       "title": "Top Offenders",
@@ -1185,7 +857,7 @@
           { "matcher": { "id": "byName", "options": "Count" }, "properties": [{ "id": "custom.displayMode", "value": "gradient-gauge" }, { "id": "max", "value": 100 }] }
         ]
       },
-      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 69 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 38 },
       "id": 17,
       "options": {
         "footer": { "fields": "", "reducer": ["sum"], "show": true },
@@ -1226,7 +898,7 @@
           { "matcher": { "id": "byName", "options": "Count" }, "properties": [{ "id": "custom.displayMode", "value": "gradient-gauge" }, { "id": "max", "value": 100 }] }
         ]
       },
-      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 69 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 38 },
       "id": 18,
       "options": {
         "footer": { "fields": "", "reducer": ["sum"], "show": true },
@@ -1253,104 +925,18 @@
         { "id": "sortBy", "options": { "fields": {}, "sort": [{ "desc": true, "field": "Count" }] } }
       ],
       "type": "table"
-    },
-    {
-      "datasource": { "type": "loki" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "custom": {
-            "align": "auto",
-            "displayMode": "auto",
-            "inspect": false
-          },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 500 }] }
-        },
-        "overrides": [
-          { "matcher": { "id": "byName", "options": "Count" }, "properties": [{ "id": "custom.displayMode", "value": "gradient-gauge" }, { "id": "max", "value": 1000 }] }
-        ]
-      },
-      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 79 },
-      "id": 19,
-      "options": {
-        "footer": { "fields": "", "reducer": ["sum"], "show": true },
-        "showHeader": true,
-        "sortBy": [{ "desc": true, "displayName": "Count" }]
-      },
-      "pluginVersion": "10.0.0",
-      "targets": [
-        {
-          "datasource": { "type": "loki" },
-          "expr": "topk(20, sum by (ua) (count_over_time({job=\"docker\"} | pattern `<_> \"<_>\" \"<ua>\"` | ua != \"\" | ua != \"-\" | ua != \"healthcheck\" [$__range])))",
-          "legendFormat": "{{ua}}",
-          "refId": "A",
-          "queryType": "instant"
-        }
-      ],
-      "title": "Top User Agents",
-      "transformations": [
-        { "id": "labelsToFields", "options": { "mode": "columns" } },
-        { "id": "merge", "options": {} },
-        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value #A": "Requests", "ua": "User Agent" } } },
-        { "id": "sortBy", "options": { "fields": {}, "sort": [{ "desc": true, "field": "Requests" }] } }
-      ],
-      "type": "table"
-    },
-    {
-      "datasource": { "type": "loki" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "custom": {
-            "align": "auto",
-            "displayMode": "auto",
-            "inspect": false
-          },
-          "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 50 }] }
-        },
-        "overrides": [
-          { "matcher": { "id": "byName", "options": "Count" }, "properties": [{ "id": "custom.displayMode", "value": "gradient-gauge" }, { "id": "max", "value": 100 }] }
-        ]
-      },
-      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 79 },
-      "id": 20,
-      "options": {
-        "footer": { "fields": "", "reducer": ["sum"], "show": true },
-        "showHeader": true,
-        "sortBy": [{ "desc": true, "displayName": "Count" }]
-      },
-      "pluginVersion": "10.0.0",
-      "targets": [
-        {
-          "datasource": { "type": "loki" },
-          "expr": "topk(20, sum by (ua) (count_over_time({job=\"docker\"} | pattern `<_> \"<_>\" \"<ua>\"` | ua =~ \"(?i).*(curl|wget|python|nikto|sqlmap|nmap|masscan|zgrab|nuclei|Go-http|Java|scanner|bot).*\" | ua != \"\"[$__range])))",
-          "legendFormat": "{{ua}}",
-          "refId": "A",
-          "queryType": "instant"
-        }
-      ],
-      "title": "Top Suspicious User Agents",
-      "transformations": [
-        { "id": "labelsToFields", "options": { "mode": "columns" } },
-        { "id": "merge", "options": {} },
-        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value #A": "Requests", "ua": "User Agent" } } },
-        { "id": "sortBy", "options": { "fields": {}, "sort": [{ "desc": true, "field": "Requests" }] } }
-      ],
-      "type": "table"
     }
   ],
   "refresh": "30s",
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["security", "user-agents", "attacks", "bots"],
+  "tags": ["security", "attacks", "fail2ban"],
   "templating": { "list": [] },
   "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},
   "timezone": "",
-  "title": "Security & User Agents",
+  "title": "Security",
   "uid": "security-dashboard",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
