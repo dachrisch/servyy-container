@@ -1282,16 +1282,17 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "topk(20, sum by (ua) (rate({job=\"docker\"} | pattern `<_> \"<_>\" \"<ua>\"` | ua != \"\" | ua != \"-\" | ua != \"healthcheck\" [$__range]) * 60))",
+          "expr": "topk(20, sum by (ua) (count_over_time({job=\"docker\"} | pattern `<_> \"<_>\" \"<ua>\"` | ua != \"\" | ua != \"-\" | ua != \"healthcheck\" [$__range])))",
           "legendFormat": "{{ua}}",
-          "refId": "A"
+          "refId": "A",
+          "queryType": "instant"
         }
       ],
-      "title": "Top User Agents (Req/min)",
+      "title": "Top User Agents",
       "transformations": [
-        { "id": "reduce", "options": { "reducers": ["sum"] } },
-        { "id": "organize", "options": { "renameByName": { "Field": "User Agent", "Total": "Req/min" } } },
-        { "id": "sortBy", "options": { "fields": {}, "sort": [{ "desc": true, "field": "Req/min" }] } }
+        { "id": "reduce", "options": { "reducers": ["last"] } },
+        { "id": "organize", "options": { "renameByName": { "Field": "User Agent", "Last": "Requests" } } },
+        { "id": "sortBy", "options": { "fields": {}, "sort": [{ "desc": true, "field": "Requests" }] } }
       ],
       "type": "table"
     },
@@ -1323,16 +1324,17 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "topk(20, sum by (ua) (rate({job=\"docker\"} | pattern `<_> \"<_>\" \"<ua>\"` | ua =~ \"(?i).*(curl|wget|python|nikto|sqlmap|nmap|masscan|zgrab|nuclei|Go-http|Java|scanner|bot).*\" | ua != \"\"[$__range]) * 60))",
+          "expr": "topk(20, sum by (ua) (count_over_time({job=\"docker\"} | pattern `<_> \"<_>\" \"<ua>\"` | ua =~ \"(?i).*(curl|wget|python|nikto|sqlmap|nmap|masscan|zgrab|nuclei|Go-http|Java|scanner|bot).*\" | ua != \"\"[$__range])))",
           "legendFormat": "{{ua}}",
-          "refId": "A"
+          "refId": "A",
+          "queryType": "instant"
         }
       ],
-      "title": "Top Suspicious User Agents (Req/min)",
+      "title": "Top Suspicious User Agents",
       "transformations": [
-        { "id": "reduce", "options": { "reducers": ["sum"] } },
-        { "id": "organize", "options": { "renameByName": { "Field": "User Agent", "Total": "Req/min" } } },
-        { "id": "sortBy", "options": { "fields": {}, "sort": [{ "desc": true, "field": "Req/min" }] } }
+        { "id": "reduce", "options": { "reducers": ["last"] } },
+        { "id": "organize", "options": { "renameByName": { "Field": "User Agent", "Last": "Requests" } } },
+        { "id": "sortBy", "options": { "fields": {}, "sort": [{ "desc": true, "field": "Requests" }] } }
       ],
       "type": "table"
     }
