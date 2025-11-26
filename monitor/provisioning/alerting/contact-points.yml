@@ -26,6 +26,7 @@ contactPoints:
         settings:
           addresses: dachrischx+monitor@gmail.com
           singleEmail: true
+          subject: '[{{ .Status | toUpper }}] {{ .CommonLabels.severity | toUpper }}: {{ .GroupLabels.rulename }}'
         disableResolveMessage: false
 
 # Do not delete any existing contact points

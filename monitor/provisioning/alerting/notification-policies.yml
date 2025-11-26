@@ -18,6 +18,12 @@ policies:
 
     # Routing rules based on severity labels
     routes:
+      # Suppress DatasourceNoData/DatasourceError alerts (handled by noDataState: OK)
+      - receiver: 'null'
+        matchers:
+          - alertname =~ "DatasourceNoData|DatasourceError"
+        continue: false
+
       # CRITICAL alerts - immediate notification with frequent repeats
       - receiver: email-critical
         matchers:
