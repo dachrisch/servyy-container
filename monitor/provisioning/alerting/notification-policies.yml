@@ -1,0 +1,49 @@
+apiVersion: 1
+
+# Notification policies define routing logic for alerts based on severity
+# Alerts are grouped by alertname and severity to reduce notification spam
+
+policies:
+  - orgId: 1
+    # Default receiver for all alerts
+    receiver: email-admin
+    # Group alerts by name and severity to batch similar alerts together
+    group_by: ['alertname', 'severity']
+    # Wait time before sending first notification for a group
+    group_wait: 30s
+    # Wait time before sending additional notifications for new alerts in the group
+    group_interval: 5m
+    # Wait time before resending notifications for ongoing alerts
+    repeat_interval: 4h
+
+    # Routing rules based on severity labels
+    routes:
+      # CRITICAL alerts - immediate notification with frequent repeats
+      - receiver: email-critical
+        matchers:
+          - severity = critical
+        group_wait: 10s
+        group_interval: 1m
+        repeat_interval: 30m
+        continue: false
+
+      # HIGH severity alerts - grouped notifications with moderate repeat
+      - receiver: email-admin
+        matchers:
+          - severity = high
+        group_wait: 1m
+        group_interval: 5m
+        repeat_interval: 2h
+        continue: false
+
+      # MEDIUM severity alerts - less frequent notifications
+      - receiver: email-admin
+        matchers:
+          - severity = medium
+        group_wait: 5m
+        group_interval: 10m
+        repeat_interval: 4h
+        continue: false
+
+# Do not delete existing notification policies
+deletePolicies: []

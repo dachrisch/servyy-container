@@ -1,0 +1,344 @@
+apiVersion: 1
+
+# Alert rules for security and infrastructure monitoring
+# Integrates with fail2ban crawler rate limiting (deployed 2025-11-26)
+
+groups:
+  # Security-focused alert rules
+  - orgId: 1
+    name: security-alerts
+    folder: Security
+    interval: 1m
+    rules:
+      # CRITICAL: Service experiencing high error rate
+      - uid: service_errors_critical
+        title: Service Errors Critical
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(traefik_service_requests_total{code=~"5.."}[5m]))
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [10]
+                    type: gt
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'High rate of 5xx errors detected'
+          description: 'Server errors occurring at {{ $value }} errors/sec - service health issue requiring immediate attention'
+        labels:
+          severity: critical
+        isPaused: false
+
+      # CRITICAL: SSH brute force attack in progress
+      - uid: ssh_brute_force_attack
+        title: SSH Brute Force Attack
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'sum(count_over_time({job="system"} |~ "fail2ban.*\\\\[sshd\\\\].*Ban"[5m]))'
+              queryType: range
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [5]
+                    type: gt
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'SSH brute force attack detected'
+          description: '{{ $value }} IP addresses banned by fail2ban SSH jail in 5 minutes - active SSH attack'
+        labels:
+          severity: critical
+        isPaused: false
+
+      # HIGH: Excessive rate limiting (possible DoS attack)
+      - uid: excessive_rate_limiting
+        title: Excessive Rate Limiting
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(traefik_service_requests_total{code="429"}[5m]))
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [100]
+                    type: gt
+        noDataState: NoData
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: 'Excessive HTTP 429 rate limiting'
+          description: '{{ $value }} 429 responses/sec for 10 minutes - possible DoS attack or aggressive crawler'
+        labels:
+          severity: high
+        isPaused: false
+
+      # HIGH: Crawler soft ban spike (rate limiting working as intended but high volume)
+      - uid: crawler_soft_ban_spike
+        title: Crawler Soft Ban Spike
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'sum(count_over_time({job="system"} |~ "fail2ban.*\\\\[traefik-crawler-soft\\\\].*Ban"[10m]))'
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [20]
+                    type: gt
+        noDataState: NoData
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: 'High volume of crawler rate limit bans'
+          description: '{{ $value }} IPs banned by traefik-crawler-soft jail in 10 minutes - rate limiting working but high attack volume'
+        labels:
+          severity: high
+        isPaused: false
+
+      # HIGH: Security injection attempts detected
+      - uid: injection_attempts
+        title: Security Injection Attempts
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'sum(count_over_time({job="docker"} |~ "(?i)(sql.*injection|union.*select|<script|javascript:|eval\\\\(|exec\\\\()"[15m]))'
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [50]
+                    type: gt
+        noDataState: NoData
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: 'SQL injection or XSS attempts detected'
+          description: '{{ $value }} injection attempts in 15 minutes - possible security probe'
+        labels:
+          severity: high
+        isPaused: false
+
+  # Infrastructure monitoring alert rules
+  - orgId: 1
+    name: infrastructure-alerts
+    folder: Infrastructure
+    interval: 1m
+    rules:
+      # MEDIUM: Container is down
+      - uid: container_down
+        title: Container Down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'up{job="cadvisor"} == 0'
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: lt
+        noDataState: NoData
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: 'Container is down'
+          description: 'Container {{ $labels.name }} is not running for 2 minutes'
+        labels:
+          severity: medium
+        isPaused: false
+
+      # MEDIUM: Disk space running low
+      - uid: high_disk_usage
+        title: High Disk Usage
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: '(node_filesystem_avail_bytes{fstype!~"tmpfs|fuse.lxcfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|fuse.lxcfs"}) * 100 < 15'
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [15]
+                    type: lt
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'Disk space running low'
+          description: 'Only {{ $value }}% disk space remaining on {{ $labels.mountpoint }} - cleanup may be needed'
+        labels:
+          severity: medium
+        isPaused: false
+
+      # MEDIUM: Unusual traffic spike
+      - uid: unusual_traffic_spike
+        title: Unusual Traffic Spike
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'sum(rate(traefik_service_requests_total[5m]))'
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [1000]
+                    type: gt
+        noDataState: NoData
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: 'Unusual traffic spike detected'
+          description: '{{ $value }} requests/sec for 10 minutes - significantly above normal baseline'
+        labels:
+          severity: medium
+        isPaused: false

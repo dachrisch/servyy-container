@@ -1,0 +1,32 @@
+apiVersion: 1
+
+# Contact points define where alert notifications are sent
+# Email SMTP is already configured in docker-compose.yml:
+#   - SMTP host: smtp.gmail.com:587
+#   - From: dachrischx+monitor@gmail.com
+#   - Password: (configured via environment variable)
+
+contactPoints:
+  # Standard email notifications for all alerts
+  - orgId: 1
+    name: email-admin
+    receivers:
+      - uid: email-admin
+        type: email
+        settings:
+          addresses: dachrischx+monitor@gmail.com
+        disableResolveMessage: false
+
+  # Critical alerts with faster repeat interval
+  - orgId: 1
+    name: email-critical
+    receivers:
+      - uid: email-critical
+        type: email
+        settings:
+          addresses: dachrischx+monitor@gmail.com
+          singleEmail: true
+        disableResolveMessage: false
+
+# Do not delete any existing contact points
+deleteContactPoints: []
