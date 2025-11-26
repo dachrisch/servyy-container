@@ -50,7 +50,7 @@ groups:
         for: 5m
         annotations:
           summary: 'High rate of 5xx errors detected'
-          description: 'Server errors occurring at {{ $value }} errors/sec - service health issue requiring immediate attention'
+          description: 'Service experiencing {{ $values.B.Value }} errors/sec - immediate investigation required'
         labels:
           severity: critical
         isPaused: false
@@ -92,7 +92,7 @@ groups:
         for: 5m
         annotations:
           summary: 'SSH brute force attack detected'
-          description: '{{ $value }} IP addresses banned by fail2ban SSH jail in 5 minutes - active SSH attack'
+          description: '{{ $values.B.Value }} SSH ban(s) in last 5 minutes - active brute force attack detected'
         labels:
           severity: critical
         isPaused: false
@@ -132,7 +132,7 @@ groups:
         for: 10m
         annotations:
           summary: 'Excessive HTTP 429 rate limiting'
-          description: '{{ $value }} 429 responses/sec for 10 minutes - possible DoS attack or aggressive crawler'
+          description: '{{ $values.B.Value }} rate limit (429) responses/sec for 10 minutes - possible DoS attack'
         labels:
           severity: high
         isPaused: false
@@ -172,7 +172,7 @@ groups:
         for: 10m
         annotations:
           summary: 'High volume of crawler rate limit bans'
-          description: '{{ $value }} IPs banned by traefik-crawler-soft jail in 10 minutes - rate limiting working but high attack volume'
+          description: '{{ $values.B.Value }} crawler IPs banned in 10 minutes - rate limiting active'
         labels:
           severity: high
         isPaused: false
@@ -212,7 +212,7 @@ groups:
         for: 15m
         annotations:
           summary: 'SQL injection or XSS attempts detected'
-          description: '{{ $value }} injection attempts in 15 minutes - possible security probe'
+          description: '{{ $values.B.Value }} injection attempts in 15 minutes - security probe detected'
         labels:
           severity: high
         isPaused: false
@@ -258,7 +258,7 @@ groups:
         for: 2m
         annotations:
           summary: 'Container is down'
-          description: 'Container {{ $labels.name }} is not running for 2 minutes'
+          description: 'Container {{ $labels.name }} is not responding for 2 minutes'
         labels:
           severity: medium
         isPaused: false
@@ -298,7 +298,7 @@ groups:
         for: 5m
         annotations:
           summary: 'Disk space running low'
-          description: 'Only {{ $value }}% disk space remaining on {{ $labels.mountpoint }} - cleanup may be needed'
+          description: 'Only {{ $values.B.Value }}% disk space remaining on {{ $labels.mountpoint }} - cleanup needed'
         labels:
           severity: medium
         isPaused: false
@@ -338,7 +338,7 @@ groups:
         for: 10m
         annotations:
           summary: 'Unusual traffic spike detected'
-          description: '{{ $value }} requests/sec for 10 minutes - significantly above normal baseline'
+          description: '{{ $values.B.Value }} requests/sec for 10 minutes - significantly above baseline'
         labels:
           severity: medium
         isPaused: false
