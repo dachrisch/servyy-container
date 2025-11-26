@@ -1290,8 +1290,9 @@
       ],
       "title": "Top User Agents",
       "transformations": [
-        { "id": "reduce", "options": { "reducers": ["last"] } },
-        { "id": "organize", "options": { "renameByName": { "Field": "User Agent", "Last": "Requests" } } },
+        { "id": "labelsToFields", "options": { "mode": "columns" } },
+        { "id": "merge", "options": {} },
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value #A": "Requests", "ua": "User Agent" } } },
         { "id": "sortBy", "options": { "fields": {}, "sort": [{ "desc": true, "field": "Requests" }] } }
       ],
       "type": "table"
@@ -1332,8 +1333,9 @@
       ],
       "title": "Top Suspicious User Agents",
       "transformations": [
-        { "id": "reduce", "options": { "reducers": ["last"] } },
-        { "id": "organize", "options": { "renameByName": { "Field": "User Agent", "Last": "Requests" } } },
+        { "id": "labelsToFields", "options": { "mode": "columns" } },
+        { "id": "merge", "options": {} },
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value #A": "Requests", "ua": "User Agent" } } },
         { "id": "sortBy", "options": { "fields": {}, "sort": [{ "desc": true, "field": "Requests" }] } }
       ],
       "type": "table"
