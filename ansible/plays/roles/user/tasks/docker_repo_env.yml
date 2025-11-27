@@ -2,6 +2,7 @@
   template:
     src: docker.env.j2
     dest: "{{(docker.remote_dir, item.dir, '.env') | path_join}}"
+    mode: '0600'
   vars:
     service:
       host: "{{item.dir}}.{{inventory_hostname}}"

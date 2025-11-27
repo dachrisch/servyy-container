@@ -31,6 +31,7 @@
 
 - name: Login [{{ atuin.username }}]
   shell: "atuin login -u {{ atuin.username }} -p {{ atuin.password }} -k '{{ atuin.key }}'"
+  no_log: true
   register: login
   changed_when: '"You are already logged in!" not in login.stderr'
   failed_when: login.rc != 0 and "You are already logged in!" not in login.stderr
