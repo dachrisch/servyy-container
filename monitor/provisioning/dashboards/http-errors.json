@@ -249,7 +249,7 @@
       "title": "Top 10 URLs - 4xx Errors (by Service)",
       "transformations": [
         { "id": "labelsToFields", "options": { "keepLabels": ["RouterName", "RequestPath"], "mode": "columns" } },
-        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value": "Count", "RouterName": "Service", "RequestPath": "Path" } } }
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "value": "Count", "RouterName": "Service", "RequestPath": "Path" } } }
       ],
       "type": "table"
     },
@@ -290,7 +290,7 @@
       "title": "Top 10 URLs - 5xx Errors (by Service)",
       "transformations": [
         { "id": "labelsToFields", "options": { "keepLabels": ["RouterName", "RequestPath"], "mode": "columns" } },
-        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value": "Count", "RouterName": "Service", "RequestPath": "Path" } } }
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "value": "Count", "RouterName": "Service", "RequestPath": "Path" } } }
       ],
       "type": "table"
     },
