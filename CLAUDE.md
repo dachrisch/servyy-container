@@ -1,7 +1,7 @@
 # CLAUDE.md - servyy-container Infrastructure
 
 > Self-hosted microservices platform (15+ Docker services) automated with Ansible
-> **Last Updated:** 2025-11-27
+> **Last Updated:** 2025-11-27 (Added CRITICAL DEPLOYMENT RULES)
 
 ## Quick Commands
 
@@ -19,6 +19,48 @@ cd ansible && ./servyy.sh --tags "docker" --limit lehel.xyz
 ssh lehel.xyz "docker ps"                          # Check running containers
 ssh lehel.xyz "docker logs {container} --tail 50"  # View logs
 ssh lehel.xyz "docker restart {container}"         # Restart service
+```
+
+## CRITICAL DEPLOYMENT RULES
+
+**MANDATORY WORKFLOW - NO EXCEPTIONS:**
+
+1. **NO Direct Server File Transfers**
+   - ❌ **NEVER** use `scp`, `rsync`, or direct file transfers to servers
+   - ❌ **NEVER** ssh into servers to manually edit files when git repo is active
+   - ✅ **ALWAYS** use git workflow: create branch → commit → deploy via Ansible
+   - This is a git-tracked repository - all changes MUST go through version control
+
+2. **Test-First Deployment**
+   - ✅ **ALWAYS** test on `servyy-test.lxd` first using `./servyy-test.sh`
+   - ✅ **ALWAYS** verify services work correctly on test environment
+   - ❌ **NEVER** deploy directly to production without testing
+
+3. **Production Deployment Requires Explicit Approval**
+   - ✅ **ALWAYS** ask user for explicit approval before deploying to `lehel.xyz`
+   - ✅ **ALWAYS** show what will be deployed and ask "Should I deploy to production?"
+   - ❌ **NEVER** assume production deployment is approved
+   - ❌ **NEVER** deploy to production automatically
+
+**Standard Git Workflow:**
+```bash
+# 1. Create feature branch
+git checkout -b claude/feature-name
+
+# 2. Make changes and commit
+git add .
+git commit -m "feat: description"
+
+# 3. Test on test environment
+cd scripts && ./setup_test_container.sh
+cd ../ansible && ./servyy-test.sh
+
+# 4. Verify test deployment works
+ssh servyy-test.lxd "docker ps"
+
+# 5. ASK USER FOR APPROVAL before production deployment
+# Only after explicit user approval:
+cd ansible && ./servyy.sh --limit lehel.xyz
 ```
 
 ## Deployment Workflow
@@ -72,17 +114,20 @@ curl -s -H "X-Scope-OrgID: $TENANT_ID" \
   --data-urlencode "end=$END" | jq
 ```
 
-### Manual Configuration Updates
+### Emergency Manual Updates (AVOID IF POSSIBLE)
 
-When Ansible templates need immediate deployment without full playbook run:
+**⚠️ WARNING:** Manual changes violate git workflow and should only be used in emergencies.
+**ALWAYS** commit manual changes to git afterwards to keep repository in sync.
 
 ```bash
-# Example: Update fail2ban script
-ssh lehel.xyz "sudo sed -i 's/old/new/g' /usr/local/bin/blocklist/update-from-loki.sh"
-ssh lehel.xyz "sudo bash /usr/local/bin/blocklist/update-from-loki.sh"
-
-# Example: Restart Grafana to reload dashboards
+# Emergency example: Restart service only (NO file edits)
 ssh lehel.xyz "docker restart monitor.grafana"
+
+# If emergency file edit is absolutely required:
+# 1. Make the change on server
+# 2. IMMEDIATELY replicate change in git repo
+# 3. Commit to git with explanation
+# 4. Deploy via Ansible to verify git state matches server state
 ```
 
 ## git-crypt (CRITICAL)
@@ -312,4 +357,42 @@ ssh lehel.xyz "sudo bash /usr/local/bin/blocklist/update-from-loki.sh"
 # View Loki logs
 # Navigate to: https://monitor.lehel.xyz → Explore → Loki
 # Query: {job="docker",container="traefik.traefik"} | json
+```
+
+## Cleanup Automation
+
+**Automated disk space management** (deployed via Ansible):
+
+**Journal Logs** (declarative):
+- Config: `/etc/systemd/journald.conf.d/retention.conf`
+- Limit: 500MB max, 4-week retention
+- No manual intervention required
+
+**Docker Cleanup** (weekly):
+- Schedule: Every Sunday at 02:00 CET
+- Mode: Aggressive (`docker system prune -a -f --volumes`)
+- Removes all unused images, containers, volumes
+- Log: `/var/log/docker-cleanup.log`
+- Monitoring: monit alerts if log not updated in 8 days
+
+**Kernel Cleanup** (monthly):
+- Schedule: 1st Sunday of each month at 01:00 CET
+- Removes old kernel packages (preserves current kernel)
+- Script: `/usr/local/bin/kernel-cleanup.sh`
+- Log: `/var/log/kernel-cleanup.log`
+- Monitoring: monit alerts if log not updated in 32 days
+
+**Check cleanup status:**
+```bash
+# View cleanup timers
+ssh lehel.xyz "systemctl list-timers | grep cleanup"
+
+# Check Docker cleanup logs
+ssh lehel.xyz "tail -50 /var/log/docker-cleanup.log"
+
+# Check kernel cleanup logs
+ssh lehel.xyz "tail -50 /var/log/kernel-cleanup.log"
+
+# Verify monit monitoring
+ssh lehel.xyz "sudo monit status | grep cleanup"
 ```

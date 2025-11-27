@@ -1,0 +1,22 @@
+#!/bin/bash
+# Aggressive Docker cleanup - removes all unused images and volumes
+# Deployed by: ansible/plays/roles/user/tasks/docker_cleanup.yml
+
+LOG_FILE="{{ docker_cleanup.log_file }}"
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+
+echo "[$TIMESTAMP] Starting Docker cleanup (aggressive mode)..." | tee -a "$LOG_FILE"
+
+# Pre-cleanup metrics
+echo "[$TIMESTAMP] Before cleanup:" | tee -a "$LOG_FILE"
+docker system df | tee -a "$LOG_FILE"
+
+# Aggressive cleanup: removes ALL unused images (even recent), all unused volumes
+echo "[$TIMESTAMP] Running: docker system prune {{ docker_cleanup.prune_flags }}" | tee -a "$LOG_FILE"
+docker system prune {{ docker_cleanup.prune_flags }} 2>&1 | tee -a "$LOG_FILE"
+
+# Post-cleanup metrics
+echo "[$TIMESTAMP] After cleanup:" | tee -a "$LOG_FILE"
+docker system df | tee -a "$LOG_FILE"
+
+echo "[$TIMESTAMP] Docker cleanup complete" | tee -a "$LOG_FILE"

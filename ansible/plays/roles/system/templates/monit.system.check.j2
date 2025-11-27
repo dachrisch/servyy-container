@@ -23,3 +23,10 @@ check filesystem 10g_volume with path {{ extension_drive.path }}
     if space usage > 80% then alert
     if space usage > 85% for 2 cycles then alert
 {% endif %}
+
+# Cleanup log monitoring
+check file docker_cleanup_log with path /var/log/docker-cleanup.log
+    if timestamp > 8 days then alert
+
+check file kernel_cleanup_log with path /var/log/kernel-cleanup.log
+    if timestamp > 32 days then alert

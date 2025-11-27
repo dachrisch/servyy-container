@@ -31,3 +31,24 @@ backup_dir: "{{(storagebox.mount, 'backup', inventory_hostname) | path_join}}"
 
 extension_drive:
   path: /mnt/10g_volume
+
+# Journal log retention (declarative)
+journald:
+  system_max_use: 500M
+  max_retention_sec: 4week
+  max_file_size: 100M
+
+# Docker cleanup (aggressive, weekly)
+docker_cleanup:
+  enabled: true
+  schedule: 'Sun 02:00'  # After PhotoPrism backup, before home backup
+  log_file: '/var/log/docker-cleanup.log'
+  prune_flags: '-a -f --volumes'  # Aggressive: all unused images + volumes
+
+# Kernel cleanup (monthly)
+kernel_cleanup:
+  enabled: true
+  schedule: 'Sun *-*-1..7 01:00'  # 1st Sunday of month, 01:00 UTC
+  script_path: '/usr/local/bin/kernel-cleanup.sh'
+  log_file: '/var/log/kernel-cleanup.log'
+  description: 'Remove old kernel packages'

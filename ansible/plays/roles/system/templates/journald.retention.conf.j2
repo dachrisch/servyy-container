@@ -1,0 +1,5 @@
+[Journal]
+SystemMaxUse={{ journald.system_max_use | default('500M') }}
+SystemMaxFileSize={{ journald.max_file_size | default('100M') }}
+MaxRetentionSec={{ journald.max_retention_sec | default('4week') }}
+MaxFileSec=1week
