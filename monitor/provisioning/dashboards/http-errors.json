@@ -240,11 +240,11 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "topk(10, sum by (RequestPath) (count_over_time({job=\"docker\",container=\"traefik.traefik\"} | json | DownstreamStatus >= 400 | DownstreamStatus < 500 [$__range])))",
+          "expr": "topk(10, sum by (RouterName, RequestPath) (count_over_time({job=\"docker\",container=\"traefik.traefik\"} | json | DownstreamStatus >= 400 | DownstreamStatus < 500 [$__range])))",
           "refId": "A"
         }
       ],
-      "title": "Top 10 URLs - 4xx Errors",
+      "title": "Top 10 URLs - 4xx Errors (by Service)",
       "type": "table"
     },
     {
@@ -275,11 +275,11 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "topk(10, sum by (RequestPath) (count_over_time({job=\"docker\",container=\"traefik.traefik\"} | json | DownstreamStatus >= 500 [$__range])))",
+          "expr": "topk(10, sum by (RouterName, RequestPath) (count_over_time({job=\"docker\",container=\"traefik.traefik\"} | json | DownstreamStatus >= 500 [$__range])))",
           "refId": "A"
         }
       ],
-      "title": "Top 10 URLs - 5xx Errors",
+      "title": "Top 10 URLs - 5xx Errors (by Service)",
       "type": "table"
     },
     {
