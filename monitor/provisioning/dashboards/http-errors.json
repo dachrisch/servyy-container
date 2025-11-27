@@ -240,7 +240,7 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "topk(10, sum by (RequestPath) (count_over_time({job=\"docker\",container=\"traefik\"} | json | DownstreamStatus >= 400 | DownstreamStatus < 500 [$__range])))",
+          "expr": "topk(10, sum by (RequestPath) (count_over_time({job=\"docker\",container=\"traefik.traefik\"} | json | DownstreamStatus >= 400 | DownstreamStatus < 500 [$__range])))",
           "refId": "A"
         }
       ],
@@ -275,7 +275,7 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "topk(10, sum by (RequestPath) (count_over_time({job=\"docker\",container=\"traefik\"} | json | DownstreamStatus >= 500 [$__range])))",
+          "expr": "topk(10, sum by (RequestPath) (count_over_time({job=\"docker\",container=\"traefik.traefik\"} | json | DownstreamStatus >= 500 [$__range])))",
           "refId": "A"
         }
       ],

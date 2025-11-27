@@ -69,7 +69,7 @@ get_traefik_rate_limit_ips() {
     log "Querying Loki for Traefik rate limit violators..."
 
     # 10+ requests from same IP in 60s window
-    local query='topk(50, sum by (ClientHost) (count_over_time({job="docker",container="traefik"} | json | ClientHost != "" [1m])))'
+    local query='topk(50, sum by (ClientHost) (count_over_time({job="docker",container="traefik.traefik"} | json | ClientHost != "" [1m])))'
 
     curl -s -H "X-Scope-OrgID: $LOKI_TENANT_ID" \
         "$LOKI_URL/loki/api/v1/query" \
@@ -82,7 +82,7 @@ get_traefik_malicious_bot_ips() {
     log "Querying Loki for malicious bot IPs..."
 
     # Known malicious user agents
-    local query='sum by (ClientHost) (count_over_time({job="docker",container="traefik"} | json | request_User-Agent =~ "(?i)(nmap|masscan|zgrab|nikto|sqlmap|metasploit|burp|acunetix|nessus|openvas|w3af|havij|sqlninja)" | ClientHost != "" [24h]))'
+    local query='sum by (ClientHost) (count_over_time({job="docker",container="traefik.traefik"} | json | request_User-Agent =~ "(?i)(nmap|masscan|zgrab|nikto|sqlmap|metasploit|burp|acunetix|nessus|openvas|w3af|havij|sqlninja)" | ClientHost != "" [24h]))'
 
     curl -s -H "X-Scope-OrgID: $LOKI_TENANT_ID" \
         "$LOKI_URL/loki/api/v1/query" \
@@ -95,7 +95,7 @@ get_traefik_crawler_ips() {
     log "Querying Loki for aggressive crawler IPs..."
 
     # 20+ requests in 2-minute window
-    local query='topk(50, sum by (ClientHost) (count_over_time({job="docker",container="traefik"} | json | ClientHost != "" [2m])))'
+    local query='topk(50, sum by (ClientHost) (count_over_time({job="docker",container="traefik.traefik"} | json | ClientHost != "" [2m])))'
 
     curl -s -H "X-Scope-OrgID: $LOKI_TENANT_ID" \
         "$LOKI_URL/loki/api/v1/query" \
