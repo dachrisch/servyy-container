@@ -241,10 +241,16 @@
         {
           "datasource": { "type": "loki" },
           "expr": "topk(10, sum by (RouterName, RequestPath) (count_over_time({job=\"docker\",container=\"traefik.traefik\"} | json | DownstreamStatus >= 400 | DownstreamStatus < 500 [$__range])))",
-          "refId": "A"
+          "refId": "A",
+          "instant": true,
+          "range": false
         }
       ],
       "title": "Top 10 URLs - 4xx Errors (by Service)",
+      "transformations": [
+        { "id": "labelsToFields", "options": { "keepLabels": ["RouterName", "RequestPath"], "mode": "columns" } },
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value": "Count", "RouterName": "Service", "RequestPath": "Path" } } }
+      ],
       "type": "table"
     },
     {
@@ -276,10 +282,16 @@
         {
           "datasource": { "type": "loki" },
           "expr": "topk(10, sum by (RouterName, RequestPath) (count_over_time({job=\"docker\",container=\"traefik.traefik\"} | json | DownstreamStatus >= 500 [$__range])))",
-          "refId": "A"
+          "refId": "A",
+          "instant": true,
+          "range": false
         }
       ],
       "title": "Top 10 URLs - 5xx Errors (by Service)",
+      "transformations": [
+        { "id": "labelsToFields", "options": { "keepLabels": ["RouterName", "RequestPath"], "mode": "columns" } },
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value": "Count", "RouterName": "Service", "RequestPath": "Path" } } }
+      ],
       "type": "table"
     },
     {
