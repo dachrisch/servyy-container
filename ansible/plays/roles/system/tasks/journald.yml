@@ -1,0 +1,25 @@
+---
+- name: Create journald config directory
+  file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    mode: '0755'
+  become: true
+
+- name: Deploy journald retention config
+  template:
+    src: journald.retention.conf.j2
+    dest: /etc/systemd/journald.conf.d/retention.conf
+    mode: '0644'
+  become: true
+  notify: restart journald
+
+- name: Create logrotate config for cleanup logs
+  template:
+    src: "{{ item }}.j2"
+    dest: "/etc/logrotate.d/{{ item }}"
+    mode: '0644'
+  become: true
+  loop:
+    - logrotate-docker-cleanup
+    - logrotate-kernel-cleanup

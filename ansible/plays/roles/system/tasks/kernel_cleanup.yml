@@ -1,0 +1,29 @@
+---
+- name: Deploy kernel cleanup script
+  template:
+    src: kernel-cleanup.sh.j2
+    dest: /usr/local/bin/kernel-cleanup.sh
+    mode: '0755'
+  become: true
+
+- name: Deploy kernel cleanup systemd service
+  template:
+    src: kernel-cleanup.service.j2
+    dest: /etc/systemd/system/kernel-cleanup.service
+    mode: '0644'
+  become: true
+
+- name: Deploy kernel cleanup systemd timer
+  template:
+    src: kernel-cleanup.timer.j2
+    dest: /etc/systemd/system/kernel-cleanup.timer
+    mode: '0644'
+  become: true
+
+- name: Enable and start kernel cleanup timer
+  systemd:
+    name: kernel-cleanup.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true

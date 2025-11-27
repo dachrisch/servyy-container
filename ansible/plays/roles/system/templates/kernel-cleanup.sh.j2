@@ -1,0 +1,29 @@
+#!/bin/bash
+# Remove old kernel modules (preserves current kernel)
+# Deployed by: ansible/plays/roles/system/tasks/kernel_cleanup.yml
+
+LOG_FILE="{{ kernel_cleanup.log_file }}"
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+
+echo "[$TIMESTAMP] Starting kernel cleanup..." | tee -a "$LOG_FILE"
+echo "[$TIMESTAMP] Current kernel: $(uname -r)" | tee -a "$LOG_FILE"
+
+# Get current kernel version (e.g., "6.14.0")
+CURRENT_VERSION=$(uname -r | cut -f1,2 -d"-")
+
+# Find old kernel packages (before current version)
+OLD_EXTRAS=$(dpkg --list | grep -E "linux-modules-extra-[0-9]+" | grep ii | awk '{print $2}' | sort -V | sed -n "/$CURRENT_VERSION/q;p")
+OLD_MODULES=$(dpkg --list | grep -E "linux-modules-[0-9]+" | grep -v extra | grep ii | awk '{print $2}' | sort -V | sed -n "/$CURRENT_VERSION/q;p")
+
+if [ -z "$OLD_MODULES" ] && [ -z "$OLD_EXTRAS" ]; then
+    echo "[$TIMESTAMP] No old kernels to remove" | tee -a "$LOG_FILE"
+    exit 0
+fi
+
+echo "[$TIMESTAMP] Removing packages:" | tee -a "$LOG_FILE"
+echo "$OLD_MODULES $OLD_EXTRAS" | tr ' ' '\n' | tee -a "$LOG_FILE"
+
+apt-get remove -y $OLD_EXTRAS $OLD_MODULES 2>&1 | tee -a "$LOG_FILE"
+apt-get autoremove -y 2>&1 | tee -a "$LOG_FILE"
+
+echo "[$TIMESTAMP] Kernel cleanup complete" | tee -a "$LOG_FILE"

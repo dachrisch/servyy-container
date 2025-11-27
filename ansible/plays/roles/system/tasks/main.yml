@@ -22,3 +22,22 @@
   tags:
     - system.fail2ban
   when: with_fail2ban | default(true)
+
+- import_tasks: journald.yml
+  tags:
+    - system.journald
+    - system.maintenance
+
+- import_tasks: docker_cleanup.yml
+  when: docker_cleanup.enabled | default(true)
+  tags:
+    - system.docker
+    - system.docker.cleanup
+    - system.maintenance
+
+- import_tasks: kernel_cleanup.yml
+  when: kernel_cleanup.enabled | default(true)
+  tags:
+    - system.kernel
+    - system.kernel.cleanup
+    - system.maintenance

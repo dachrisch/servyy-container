@@ -1,0 +1,15 @@
+[Unit]
+Description=Docker system cleanup (aggressive)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User={{ create_user }}
+Group=docker
+ExecStart={{ shell.remote_dir }}/.cleanup-scripts/docker-cleanup.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

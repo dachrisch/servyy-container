@@ -1,0 +1,13 @@
+[Unit]
+Description={{ kernel_cleanup.description | default('Kernel module cleanup') }}
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart={{ kernel_cleanup.script_path }}
+User=root
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
