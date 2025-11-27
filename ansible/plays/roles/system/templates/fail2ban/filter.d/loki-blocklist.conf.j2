@@ -6,7 +6,7 @@
 
 # Log format: YYYY-MM-DD HH:MM:SS IP reason
 # After fail2ban strips the date, there may be leading whitespace
-# Match IP followed by reason (e.g., ssh-brute-force, scanner-bot)
-failregex = ^\s*<HOST>\s+(?:ssh-brute-force|scanner-bot|excessive-errors)\s+attempts=\d+\s*$
+# Match IP followed by reason (e.g., ssh-brute-force, scanner-bot, traefik-*)
+failregex = ^\s*<HOST>\s+(?:ssh-brute-force|scanner-bot|excessive-errors|traefik-rate-limit|traefik-malicious-bot|traefik-aggressive-crawler)\s+attempts=\d+\s*$
 
 ignoreregex =
