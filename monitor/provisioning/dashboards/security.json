@@ -366,7 +366,7 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[traefik-bots\\\\].*Ban\"[$__range]))",
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban.*traefik-malicious-bot\"[$__range]))",
           "legendFormat": "Traefik Bots",
           "refId": "A"
         }
@@ -398,7 +398,7 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[traefik-access\\\\].*Ban\"[$__range]))",
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban.*traefik-rate-limit\"[$__range]))",
           "legendFormat": "Traefik Access",
           "refId": "A"
         }
@@ -430,7 +430,7 @@
       "targets": [
         {
           "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[traefik-crawler-soft\\\\].*Ban\"[$__range]))",
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban.*traefik-aggressive-crawler\"[$__range]))",
           "legendFormat": "Crawler Soft",
           "refId": "A"
         }
@@ -534,19 +534,19 @@
         },
         {
           "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[traefik-bots\\\\].*Ban\"[5m]))",
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban.*traefik-malicious-bot\"[5m]))",
           "legendFormat": "traefik-bots",
           "refId": "D"
         },
         {
           "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[traefik-access\\\\].*Ban\"[5m]))",
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban.*traefik-rate-limit\"[5m]))",
           "legendFormat": "traefik-access",
           "refId": "E"
         },
         {
           "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[traefik-crawler-soft\\\\].*Ban\"[5m]))",
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban.*traefik-aggressive-crawler\"[5m]))",
           "legendFormat": "traefik-crawler-soft",
           "refId": "F"
         }

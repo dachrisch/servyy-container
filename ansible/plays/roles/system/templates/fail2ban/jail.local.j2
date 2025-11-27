@@ -47,44 +47,8 @@ bantime = 86400
 findtime = 600
 
 #
-# Traefik/HTTP Protection
-# Traefik writes access logs to /var/log/traefik/access.log in common format
-#
-[traefik-access]
-enabled = true
-port = http,https
-filter = traefik-access
-backend = polling
-logpath = /var/log/traefik/access.log
-maxretry = 10
-bantime = 3600
-findtime = 60
-
-# Block known scanner bots and malicious user agents
-[traefik-bots]
-enabled = true
-port = http,https
-filter = traefik-bots
-backend = polling
-logpath = /var/log/traefik/access.log
-maxretry = 1
-bantime = 86400
-findtime = 86400
-
-# Progressive crawler rate limiting (Tier 1)
-# Soft ban for IPs hitting rate limits repeatedly
-[traefik-crawler-soft]
-enabled = true
-port = http,https
-filter = traefik-crawler-ratelimit
-backend = polling
-logpath = /var/log/traefik/access.log
-maxretry = 20
-bantime = 3600
-findtime = 120
-
-#
 # Loki-sourced blocklist (populated by script)
+# Traefik protection now handled via Loki queries (see update-from-loki.sh)
 #
 [loki-blocklist]
 enabled = true

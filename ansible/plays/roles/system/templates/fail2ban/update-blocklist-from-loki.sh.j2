@@ -64,6 +64,45 @@ get_error_ips() {
     jq -r '.data.result[] | select(.value[1] | tonumber >= 100) | .metric.ip + " excessive-errors attempts=" + .value[1]' 2>/dev/null || true
 }
 
+# Query for IPs exceeding rate limits (replaces traefik-access jail)
+get_traefik_rate_limit_ips() {
+    log "Querying Loki for Traefik rate limit violators..."
+
+    # 10+ requests from same IP in 60s window
+    local query='topk(50, sum by (ClientHost) (count_over_time({job="docker",container="traefik"} | json | ClientHost != "" [1m])))'
+
+    curl -s -H "X-Scope-OrgID: $LOKI_TENANT_ID" \
+        "$LOKI_URL/loki/api/v1/query" \
+        --data-urlencode "query=$query" 2>/dev/null | \
+    jq -r '.data.result[] | select(.value[1] | tonumber >= 10) | .metric.ClientHost + " traefik-rate-limit attempts=" + .value[1]' 2>/dev/null || true
+}
+
+# Query for malicious bot user agents (replaces traefik-bots jail)
+get_traefik_malicious_bot_ips() {
+    log "Querying Loki for malicious bot IPs..."
+
+    # Known malicious user agents
+    local query='sum by (ClientHost) (count_over_time({job="docker",container="traefik"} | json | request_User-Agent =~ "(?i)(nmap|masscan|zgrab|nikto|sqlmap|metasploit|burp|acunetix|nessus|openvas|w3af|havij|sqlninja)" | ClientHost != "" [24h]))'
+
+    curl -s -H "X-Scope-OrgID: $LOKI_TENANT_ID" \
+        "$LOKI_URL/loki/api/v1/query" \
+        --data-urlencode "query=$query" 2>/dev/null | \
+    jq -r '.data.result[] | select(.value[1] | tonumber >= 1) | .metric.ClientHost + " traefik-malicious-bot attempts=" + .value[1]' 2>/dev/null || true
+}
+
+# Query for aggressive crawlers (replaces traefik-crawler-soft jail)
+get_traefik_crawler_ips() {
+    log "Querying Loki for aggressive crawler IPs..."
+
+    # 20+ requests in 2-minute window
+    local query='topk(50, sum by (ClientHost) (count_over_time({job="docker",container="traefik"} | json | ClientHost != "" [2m])))'
+
+    curl -s -H "X-Scope-OrgID: $LOKI_TENANT_ID" \
+        "$LOKI_URL/loki/api/v1/query" \
+        --data-urlencode "query=$query" 2>/dev/null | \
+    jq -r '.data.result[] | select(.value[1] | tonumber >= 20) | .metric.ClientHost + " traefik-aggressive-crawler attempts=" + .value[1]' 2>/dev/null || true
+}
+
 # Get currently banned IPs to avoid duplicates
 get_banned_ips() {
     fail2ban-client status loki-blocklist 2>/dev/null | grep "Banned IP" | sed 's/.*: //' | tr ' ' '\n' || true
@@ -145,6 +184,48 @@ main() {
         new_ips+=("$ip")
         log "Added $ip ($reason)"
     done < <(get_error_ips)
+
+    # Traefik rate limit violators
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        local ip="${line%% *}"
+        local reason="${line#* }"
+
+        if echo "$banned_ips" | grep -q "^$ip$"; then continue; fi
+        if [[ "$ip" =~ ^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.) ]]; then continue; fi
+
+        echo "$(date '+%Y-%m-%d %H:%M:%S') $ip $reason" >> "$BLOCKLIST_LOG"
+        new_ips+=("$ip")
+        log "Added $ip ($reason)"
+    done < <(get_traefik_rate_limit_ips)
+
+    # Malicious bots
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        local ip="${line%% *}"
+        local reason="${line#* }"
+
+        if echo "$banned_ips" | grep -q "^$ip$"; then continue; fi
+        if [[ "$ip" =~ ^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.) ]]; then continue; fi
+
+        echo "$(date '+%Y-%m-%d %H:%M:%S') $ip $reason" >> "$BLOCKLIST_LOG"
+        new_ips+=("$ip")
+        log "Added $ip ($reason)"
+    done < <(get_traefik_malicious_bot_ips)
+
+    # Aggressive crawlers
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        local ip="${line%% *}"
+        local reason="${line#* }"
+
+        if echo "$banned_ips" | grep -q "^$ip$"; then continue; fi
+        if [[ "$ip" =~ ^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.) ]]; then continue; fi
+
+        echo "$(date '+%Y-%m-%d %H:%M:%S') $ip $reason" >> "$BLOCKLIST_LOG"
+        new_ips+=("$ip")
+        log "Added $ip ($reason)"
+    done < <(get_traefik_crawler_ips)
 
     log "Blocklist update complete. Added ${#new_ips[@]} new IPs."
 
