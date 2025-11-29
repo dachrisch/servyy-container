@@ -22,8 +22,14 @@
 - block:
     - set_fact:
         mount_opts: "credentials={{ storagebox.file }},iocharset=utf8,uid={{created_user.uid}},gid={{created_user.group}}"
+
+    - name: Get storagebox IP (cached)
+      set_fact:
+        storagebox_ip: "{{ lookup('dig', storagebox_credentials.host, 'qtype=A') }}"
+      when: ('test' in groups) and (inventory_hostname in groups['test'])
+
     - set_fact:
-        mount_opts: "{{mount_opts}},ip={{lookup('dig', '{{storagebox_credentials.host}}', 'qtype=A')}}"
+        mount_opts: "{{mount_opts}},ip={{storagebox_ip}}"
       when: ('test' in groups) and (inventory_hostname in groups['test'])
 
     - name: Create fstab entry for folder share
