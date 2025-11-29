@@ -1,8 +1,8 @@
 - name: Check if atuin is installed
   shell: "atuin -V"
   register: autin_version
-  changed_when: autin_version.rc != 0
-  failed_when: autin_version.rc not in (0, 127)
+  failed_when: false
+  changed_when: false
 
 - block:
     - name: Create temporary file for install script
