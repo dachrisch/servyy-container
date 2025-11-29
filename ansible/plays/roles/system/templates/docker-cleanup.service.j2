@@ -7,7 +7,7 @@ Requires=docker.service
 Type=oneshot
 User={{ create_user }}
 Group=docker
-ExecStart={{ shell.remote_dir }}/.cleanup-scripts/docker-cleanup.sh
+ExecStart={{ ansible_user_dir }}/.cleanup-scripts/docker-cleanup.sh
 StandardOutput=journal
 StandardError=journal
 

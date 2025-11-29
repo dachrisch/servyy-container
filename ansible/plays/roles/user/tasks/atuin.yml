@@ -27,14 +27,14 @@
         src: "{{ ansible_user_dir }}/.atuin/bin/atuin"
         dest: "/usr/bin/atuin"
         state: link
-  when: autin_version.changed
+  when: autin_version.rc != 0
 
 - name: Login [{{ atuin.username }}]
   shell: "atuin login -u {{ atuin.username }} -p {{ atuin.password }} -k '{{ atuin.key }}'"
   no_log: true
   register: login
-  changed_when: '"You are already logged in!" not in login.stderr'
-  failed_when: login.rc != 0 and "You are already logged in!" not in login.stderr
+  changed_when: '"already logged in" not in (login.stderr | lower) and "already logged in" not in (login.stdout | lower)'
+  failed_when: login.rc != 0 and ("already logged in" not in (login.stderr | lower) and "already logged in" not in (login.stdout | lower))
 
 - name: Sync
   shell: "atuin sync"
