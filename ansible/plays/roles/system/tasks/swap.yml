@@ -51,7 +51,7 @@
 - name: add to fstab
   lineinfile:
     dest: /etc/fstab
-    regexp: "{{ swap_file }}"
+    regexp: '^\s*{{ swap_file | regex_escape }}\s+none\s+swap\s+'
     line: "{{ swap_file }} none swap sw 0 0"
   tags:
     - system.swap.fstab
