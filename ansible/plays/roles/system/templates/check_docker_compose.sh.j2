@@ -1,10 +1,14 @@
-#!/bin/zsh
+#!/bin/bash
+set -e
 
 {% for container_name in container_names %}
-if [ "$(docker container ls -q -f name=^{{dir_name}}.{{container_name}}$)" ]; then
+if docker container inspect {{dir_name}}.{{container_name}} --format={% raw %}'{{.State.Running}}'{% endraw %} 2>/dev/null | grep -q '^true$'; then
     echo "Container {{dir_name}}.{{container_name}} is up and running"
 else
     echo "Container {{dir_name}}.{{container_name}} is not running"
     exit 3
 fi
 {% endfor %}
+
+# Ensure all child processes are reaped before exit
+wait
