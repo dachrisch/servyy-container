@@ -396,3 +396,4 @@ ssh lehel.xyz "tail -50 /var/log/kernel-cleanup.log"
 # Verify monit monitoring
 ssh lehel.xyz "sudo monit status | grep cleanup"
 ```
+- branch on prod must always be master after rollout...branches are only allowed during deployment
