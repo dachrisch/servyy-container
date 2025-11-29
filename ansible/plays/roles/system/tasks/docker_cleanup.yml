@@ -27,6 +27,7 @@
     src: docker-cleanup.service.j2
     dest: /etc/systemd/system/docker-cleanup.service
     mode: '0644'
+  notify: reload systemd
   become: true
 
 - name: Deploy Docker cleanup systemd timer
@@ -34,6 +35,7 @@
     src: docker-cleanup.timer.j2
     dest: /etc/systemd/system/docker-cleanup.timer
     mode: '0644'
+  notify: reload systemd
   become: true
 
 - name: Enable and start Docker cleanup timer
@@ -41,5 +43,4 @@
     name: docker-cleanup.timer
     enabled: true
     state: started
-    daemon_reload: true
   become: true

@@ -17,3 +17,8 @@
 - name: reload systemd
   systemd:
     daemon_reload: yes
+
+- name: restart monit
+  service:
+    name: monit
+    state: restarted

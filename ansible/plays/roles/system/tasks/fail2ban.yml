@@ -138,7 +138,6 @@
     name: update-blocklist.timer
     enabled: yes
     state: started
-    daemon_reload: yes
   tags:
     - system.fail2ban.timer
 

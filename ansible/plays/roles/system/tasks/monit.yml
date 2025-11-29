@@ -9,30 +9,35 @@
     src: monit.log.j2
     dest: /etc/monit/conf.d/log
     mode: 0640
+  notify: restart monit
 
 - name: Setup http (for status)
   template:
     src: monit.status.j2
     dest: /etc/monit/conf.d/status
     mode: 0640
+  notify: restart monit
 
 - name: Setup alert email
   template:
     src: monit.alert.j2
     dest: /etc/monit/conf.d/alert
     mode: 0640
+  notify: restart monit
 
 - name: Setup systems check
   template:
     src: monit.system.check.j2
     dest: /etc/monit/conf.d/system-check
     mode: 0640
+  notify: restart monit
 
 - name: Setup storagebox check
   template:
     src: monit.storagebox.check.j2
     dest: /etc/monit/conf.d/storagebox-check
     mode: 0640
+  notify: restart monit
 
 - block:
     - name: Create scripts dir
@@ -52,6 +57,7 @@
         dir_name: "{{ item.dir }}"
       with_items:
         - "{{ docker.services }}"
+      notify: restart monit
       tags:
         - system.monit.script
         - system.monit.script.create
@@ -66,6 +72,7 @@
       when: not ('manual' in item)
       with_items:
         - "{{ docker.services }}"
+      notify: restart monit
       tags:
         - system.monit.script
         - system.monit.script.setup
@@ -81,11 +88,6 @@
         - system.monit.script
         - system.monit.script.remove
   when: with_containers | default(false)
-
-- name: Restart monit
-  service:
-    name: monit
-    state: restarted
 
 - name: Run monit status
   command: monit status

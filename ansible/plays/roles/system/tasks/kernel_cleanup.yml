@@ -11,6 +11,7 @@
     src: kernel-cleanup.service.j2
     dest: /etc/systemd/system/kernel-cleanup.service
     mode: '0644'
+  notify: reload systemd
   become: true
 
 - name: Deploy kernel cleanup systemd timer
@@ -18,6 +19,7 @@
     src: kernel-cleanup.timer.j2
     dest: /etc/systemd/system/kernel-cleanup.timer
     mode: '0644'
+  notify: reload systemd
   become: true
 
 - name: Enable and start kernel cleanup timer
@@ -25,5 +27,4 @@
     name: kernel-cleanup.timer
     enabled: true
     state: started
-    daemon_reload: true
   become: true

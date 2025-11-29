@@ -65,5 +65,5 @@
       service:
         name: docker
         state: restarted
-      when: group_added.changed
+      when: root_added.changed
   when: mount_point.stat.exists
