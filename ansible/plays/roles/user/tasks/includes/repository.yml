@@ -77,6 +77,9 @@
       command: git-crypt unlock "{{ remote_keyfile.path }}"
       args:
         chdir: "{{ remote_dir }}"
+      register: unlock_result
+      changed_when: "'already unlocked' not in unlock_result.stdout"
+      failed_when: unlock_result.rc != 0 and 'already unlocked' not in unlock_result.stdout
   tags:
     - user.repo.crypt.unlock
   when: lock_state.changed

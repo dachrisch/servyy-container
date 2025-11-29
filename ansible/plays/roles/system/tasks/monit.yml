@@ -93,6 +93,7 @@
   command: monit status
   register: monit_status
   ignore_errors: true
+  changed_when: false
 
 - name: Assert monit status is callable
   assert:
