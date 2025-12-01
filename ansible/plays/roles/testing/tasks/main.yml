@@ -2,6 +2,10 @@
   tags:
     - testing.hosts
 
+- import_tasks: runc_lxc_fix.yml
+  tags:
+    - testing.runc
+
 - name: Mount on reboot
   cron:
     name: "mount box on every reboot"

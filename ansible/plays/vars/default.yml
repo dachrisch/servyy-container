@@ -45,6 +45,10 @@ docker_cleanup:
   log_file: '/var/log/docker-cleanup.log'
   prune_flags: '-a -f --volumes'  # Aggressive: all unused images + volumes
 
+# runc LXC fix (CVE-2025-52881 workaround)
+# runc 1.3.3 breaks Docker in LXC containers; auto-unhold when this version is available
+runc_safe_version: "1.4.0"
+
 # Kernel cleanup (monthly)
 kernel_cleanup:
   enabled: true

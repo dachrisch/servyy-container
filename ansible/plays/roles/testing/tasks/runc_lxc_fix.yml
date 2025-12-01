@@ -1,0 +1,65 @@
+# CVE-2025-52881 workaround: runc 1.3.3 breaks Docker in LXC containers
+# See: history/2025-12-01_runc-lxc-docker-fix.md
+# Refs:
+#   - https://github.com/opencontainers/runc/issues/4968
+#   - https://github.com/lxc/incus/issues/2623
+
+- name: Check if runc is installed
+  command: dpkg-query -W -f='${Version}' runc
+  register: runc_version_check
+  changed_when: false
+  failed_when: false
+  tags:
+    - testing.runc
+
+- name: Check if runc is held
+  command: apt-mark showhold
+  register: held_packages
+  changed_when: false
+  tags:
+    - testing.runc
+
+- name: Set runc facts
+  set_fact:
+    runc_installed: "{{ runc_version_check.rc == 0 }}"
+    runc_current_version: "{{ runc_version_check.stdout | default('') }}"
+    runc_is_held: "{{ 'runc' in held_packages.stdout }}"
+  tags:
+    - testing.runc
+
+- name: Determine if runc needs fixing (problematic 1.3.x version)
+  set_fact:
+    runc_needs_fix: "{{ runc_installed and runc_current_version is version('1.3', '>=') and runc_current_version is version(runc_safe_version, '<') }}"
+    runc_is_safe: "{{ runc_installed and runc_current_version is version(runc_safe_version, '>=') }}"
+  tags:
+    - testing.runc
+
+- name: Downgrade runc to safe version for LXC
+  apt:
+    name: runc=1.2.5-0ubuntu1
+    state: present
+    allow_downgrade: true
+  when: runc_needs_fix and not runc_is_held
+  register: runc_downgraded
+  tags:
+    - testing.runc
+
+- name: Hold runc package to prevent auto-upgrade
+  command: apt-mark hold runc
+  when: runc_downgraded is changed or (runc_needs_fix and not runc_is_held)
+  changed_when: true
+  tags:
+    - testing.runc
+
+- name: Unhold runc when safe version is available
+  command: apt-mark unhold runc
+  when: runc_is_safe and runc_is_held
+  changed_when: true
+  tags:
+    - testing.runc
+
+- name: Display runc status
+  debug:
+    msg: "runc version: {{ runc_current_version }}, held: {{ runc_is_held }}, needs_fix: {{ runc_needs_fix | default(false) }}, is_safe: {{ runc_is_safe | default(false) }}"
+  tags:
+    - testing.runc
