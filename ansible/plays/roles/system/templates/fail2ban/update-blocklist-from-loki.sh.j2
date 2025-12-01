@@ -80,8 +80,8 @@ get_traefik_rate_limit_ips() {
 get_traefik_malicious_bot_ips() {
     log "Querying Loki for malicious bot IPs..."
 
-    # Known malicious user agents
-    local query='sum by (ClientHost) (count_over_time({job="docker",container="traefik.traefik"} | json | request_User-Agent =~ "(?i)(nmap|masscan|zgrab|nikto|sqlmap|metasploit|burp|acunetix|nessus|openvas|w3af|havij|sqlninja)" | ClientHost=~".+" [24h]))'
+    # Known malicious user agents (note: JSON parsing converts hyphen to underscore)
+    local query='sum by (ClientHost) (count_over_time({job="docker",container="traefik.traefik"} | json | request_User_Agent=~"(?i)(nmap|masscan|zgrab|nikto|sqlmap|metasploit|burp|acunetix|nessus|openvas|w3af|havij|sqlninja)" | ClientHost=~".+" [24h]))'
 
     curl -s -H "X-Scope-OrgID: $LOKI_TENANT_ID" \
         "$LOKI_URL/loki/api/v1/query" \
