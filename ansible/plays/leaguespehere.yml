@@ -1,4 +1,4 @@
-- name: Setup League Sphere Prod
+- name: Setup League Sphere (Production & Staging)
   hosts: all
   strategy: free
   become: true
@@ -10,6 +10,7 @@
     - vars/secrets.yml
     - vars/default.yml
   roles:
+    # Setup (shared, run once)
     - role: ls_setup
       tags:
         - ls.setup
@@ -23,18 +24,44 @@
       tags:
         - ssh.jail
     - ls_access
+
+    # Production deployment (jail)
     - role: ls_app
-      container_dir: "{{ (ssh_chroot_jail_path, 'home', ls.user, 'container') | path_join }}"
+      vars:
+        container_dir: "{{ (ssh_chroot_jail_path, 'home', ls.user, 'container') | path_join }}"
+        ls_vars_file: "secret_main.yaml"
       become_user: "{{ ls.user }}"
       tags:
         - ls.app
+        - ls.app.prod
         - ls.app.jail
+
+    # Production deployment (dev)
     - role: ls_app
-      container_dir: "{{ ('~', 'dev', ls.user) | path_join }}"
+      vars:
+        container_dir: "{{ ('~', 'dev', ls.user) | path_join }}"
+        ls_vars_file: "secret_main.yaml"
       remote_user: "{{ create_user }}"
       become_user: "{{ create_user }}"
       tags:
         - ls.app
+        - ls.app.prod
         - ls.app.current
+
+    # Staging deployment (jail) - ALWAYS RUNS WITH PROD
+    - role: ls_app
+      vars:
+        container_dir: "{{ (ssh_chroot_jail_path, 'home', ls.user, 'container-stage') | path_join }}"
+        ls_vars_file: "secret_stage.yaml"
+      become_user: "{{ ls.user }}"
+      tags:
+        - ls.app
+        - ls.app.stage
+
+    # DB sync role (manual only)
+    - role: ls_db_sync
+      tags:
+        - ls.db.sync
+        - never
   tags:
     - ls
