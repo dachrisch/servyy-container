@@ -1,0 +1,69 @@
+---
+- name: Load production variables
+  include_vars:
+    file: "{{ playbook_dir }}/roles/ls_app/vars/secret_main.yaml"
+    name: prod_app
+
+- name: Load staging variables
+  include_vars:
+    file: "{{ playbook_dir }}/roles/ls_app/vars/secret_stage.yaml"
+    name: stage_app
+
+- name: Export production database
+  shell: |
+    mysqldump -h {{ prod_app.app.db_host }} \
+              -u {{ prod_app.app.db_user }} \
+              -p'{{ prod_app.app.db_password }}' \
+              --single-transaction \
+              --quick \
+              --lock-tables=false \
+              {{ prod_app.app.db_name }} > /tmp/leaguesphere_prod_{{ ansible_date_time.epoch }}.sql
+  delegate_to: localhost
+  run_once: true
+  register: export_result
+  changed_when: true
+
+- name: Set dump file variable
+  set_fact:
+    dump_file: "/tmp/leaguesphere_prod_{{ ansible_date_time.epoch }}.sql"
+
+- name: Copy dump to server
+  copy:
+    src: "{{ dump_file }}"
+    dest: /tmp/leaguesphere_staging_import.sql
+    mode: '0600'
+
+- name: Wait for MySQL container health
+  shell: docker inspect {{ stage_app.app.name }}.mysql --format='{{.State.Health.Status}}'
+  register: mysql_health
+  until: mysql_health.stdout == 'healthy'
+  retries: 30
+  delay: 2
+  changed_when: false
+
+- name: Drop and recreate staging database
+  shell: |
+    docker exec {{ stage_app.app.name }}.mysql \
+      mysql -u root -p'{{ stage_app.app.db_root_password }}' \
+      -e "DROP DATABASE IF EXISTS {{ stage_app.app.db_name }}; CREATE DATABASE {{ stage_app.app.db_name }} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+  changed_when: true
+
+- name: Import database
+  shell: |
+    docker exec -i {{ stage_app.app.name }}.mysql \
+      mysql -u root -p'{{ stage_app.app.db_root_password }}' {{ stage_app.app.db_name }} \
+      < /tmp/leaguesphere_staging_import.sql
+  changed_when: true
+
+- name: Restart staging app
+  shell: docker restart {{ stage_app.app.name }}.app
+  changed_when: true
+
+- name: Cleanup dumps
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/leaguesphere_staging_import.sql
+    - "{{ dump_file }}"
+  delegate_to: "{{ 'localhost' if item == dump_file else inventory_hostname }}"
