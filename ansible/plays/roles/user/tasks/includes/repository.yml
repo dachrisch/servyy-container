@@ -20,7 +20,7 @@
   set_fact:
     git_servyy_reachable: "{{ 'yes' if head_request_result.status == 200 else 'no' }}"
 
-- name: "Clone [{{ repository_uri }}] to [{{remote_dir}}] (branch: {{ branch }})"
+- name: "Clone [ {{ repository_uri }} ] to [ {{remote_dir}} ] (branch: {{ branch }} )"
   git:
     repo: "{{ repository_uri }}"
     dest: "{{ remote_dir }}"
