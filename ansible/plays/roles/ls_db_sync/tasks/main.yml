@@ -9,32 +9,32 @@
     file: "{{ playbook_dir }}/roles/ls_app/vars/secret_stage.yaml"
     name: stage_app
 
-- name: Export production database
+- name: Set dump file variable
+  set_fact:
+    sql_dump_file: "/tmp/leaguesphere_prod_{{ ansible_date_time.epoch }}.sql"
+
+- name: Export DB ignoring all views
   shell: |
+    IGNORE=$(mysql -h {{ prod_app.app.db_host }} \
+                   -u {{ prod_app.app.db_user }} \
+                   -p'{{ prod_app.app.db_password }}' \
+                   -N -e "SELECT CONCAT('--ignore-table={{ prod_app.app.db_name }}.', table_name) FROM information_schema.views WHERE table_schema='{{ prod_app.app.db_name }}'")
     mysqldump -h {{ prod_app.app.db_host }} \
               -u {{ prod_app.app.db_user }} \
               -p'{{ prod_app.app.db_password }}' \
               --single-transaction \
               --quick \
               --lock-tables=false \
-              {{ prod_app.app.db_name }} > /tmp/leaguesphere_prod_{{ ansible_date_time.epoch }}.sql
-  delegate_to: localhost
-  run_once: true
+              $IGNORE \
+              {{ prod_app.app.db_name }} \
+              > "{{ sql_dump_file }}"
+  no_log: false
   register: export_result
-  changed_when: true
-
-- name: Set dump file variable
-  set_fact:
-    dump_file: "/tmp/leaguesphere_prod_{{ ansible_date_time.epoch }}.sql"
-
-- name: Copy dump to server
-  copy:
-    src: "{{ dump_file }}"
-    dest: /tmp/leaguesphere_staging_import.sql
-    mode: '0600'
 
 - name: Wait for MySQL container health
-  shell: docker inspect {{ stage_app.app.name }}.mysql --format='{{.State.Health.Status}}'
+  shell: >
+    docker inspect {{ stage_app.app.name + '.mysql' }}
+    --format='{{ "{{.State.Health.Status}}" }}'
   register: mysql_health
   until: mysql_health.stdout == 'healthy'
   retries: 30
@@ -52,18 +52,13 @@
   shell: |
     docker exec -i {{ stage_app.app.name }}.mysql \
       mysql -u root -p'{{ stage_app.app.db_root_password }}' {{ stage_app.app.db_name }} \
-      < /tmp/leaguesphere_staging_import.sql
+      < "{{ sql_dump_file }}"
   changed_when: true
 
 - name: Restart staging app
   shell: docker restart {{ stage_app.app.name }}.app
-  changed_when: true
 
 - name: Cleanup dumps
   file:
-    path: "{{ item }}"
+    path: "{{ sql_dump_file }}"
     state: absent
-  loop:
-    - /tmp/leaguesphere_staging_import.sql
-    - "{{ dump_file }}"
-  delegate_to: "{{ 'localhost' if item == dump_file else inventory_hostname }}"
