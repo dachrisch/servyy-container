@@ -1,0 +1,64 @@
+---
+- name: Load production variables
+  include_vars:
+    file: "{{ playbook_dir }}/roles/ls_app/vars/secret_main.yaml"
+    name: prod_app
+
+- name: Load staging variables
+  include_vars:
+    file: "{{ playbook_dir }}/roles/ls_app/vars/secret_stage.yaml"
+    name: stage_app
+
+- name: Set dump file variable
+  set_fact:
+    sql_dump_file: "/tmp/leaguesphere_prod_{{ ansible_date_time.epoch }}.sql"
+
+- name: Export DB ignoring all views
+  shell: |
+    IGNORE=$(mysql -h {{ prod_app.app.db_host }} \
+                   -u {{ prod_app.app.db_user }} \
+                   -p'{{ prod_app.app.db_password }}' \
+                   -N -e "SELECT CONCAT('--ignore-table={{ prod_app.app.db_name }}.', table_name) FROM information_schema.views WHERE table_schema='{{ prod_app.app.db_name }}'")
+    mysqldump -h {{ prod_app.app.db_host }} \
+              -u {{ prod_app.app.db_user }} \
+              -p'{{ prod_app.app.db_password }}' \
+              --single-transaction \
+              --quick \
+              --lock-tables=false \
+              $IGNORE \
+              {{ prod_app.app.db_name }} \
+              > "{{ sql_dump_file }}"
+  no_log: false
+  register: export_result
+
+- name: Wait for MySQL container health
+  shell: >
+    docker inspect {{ stage_app.app.name + '.mysql' }}
+    --format='{{ "{{.State.Health.Status}}" }}'
+  register: mysql_health
+  until: mysql_health.stdout == 'healthy'
+  retries: 30
+  delay: 2
+  changed_when: false
+
+- name: Drop and recreate staging database
+  shell: |
+    docker exec {{ stage_app.app.name }}.mysql \
+      mysql -u root -p'{{ stage_app.app.db_root_password }}' \
+      -e "DROP DATABASE IF EXISTS {{ stage_app.app.db_name }}; CREATE DATABASE {{ stage_app.app.db_name }} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+  changed_when: true
+
+- name: Import database
+  shell: |
+    docker exec -i {{ stage_app.app.name }}.mysql \
+      mysql -u root -p'{{ stage_app.app.db_root_password }}' {{ stage_app.app.db_name }} \
+      < "{{ sql_dump_file }}"
+  changed_when: true
+
+- name: Restart staging app
+  shell: docker restart {{ stage_app.app.name }}.app
+
+- name: Cleanup dumps
+  file:
+    path: "{{ sql_dump_file }}"
+    state: absent

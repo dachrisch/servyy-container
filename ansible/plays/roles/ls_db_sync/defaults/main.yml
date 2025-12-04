@@ -1,0 +1,3 @@
+---
+# Defaults for ls_db_sync role
+# No defaults needed - all variables come from secret_main.yaml and secret_stage.yaml
