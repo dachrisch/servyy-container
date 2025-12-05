@@ -90,3 +90,44 @@
   become_user: root
   tags:
     - user.restic.init
+
+# Root user SSH setup for sudo restic operations
+- name: Ensure root .ssh directory exists
+  file:
+    path: /root/.ssh
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+  become: true
+  become_user: root
+  tags:
+    - user.restic.init
+
+- name: Copy Storage Box SSH keys to root
+  copy:
+    src: "{{ remote_user_home }}/.ssh/{{ item }}"
+    dest: "/root/.ssh/{{ item }}"
+    owner: root
+    group: root
+    mode: "{{ '0600' if 'id_storagebox' == item else '0644' }}"
+    remote_src: true
+  loop:
+    - id_storagebox
+    - id_storagebox.pub
+  become: true
+  become_user: root
+  tags:
+    - user.restic.init
+
+- name: Deploy SSH config for Storage Box (root)
+  template:
+    src: ssh_config_storagebox_root.j2
+    dest: /root/.ssh/config
+    owner: root
+    group: root
+    mode: '0600'
+  become: true
+  become_user: root
+  tags:
+    - user.restic.init
