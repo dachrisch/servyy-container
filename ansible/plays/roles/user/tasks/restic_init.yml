@@ -21,13 +21,23 @@
   tags:
     - user.restic.init
 
-- name: Copy Storage Box SSH key to server
+- name: Copy Storage Box SSH private key to server
   copy:
     src: ~/.ssh/id_storagebox
     dest: "{{ remote_user_home }}/.ssh/id_storagebox"
     owner: "{{ create_user }}"
     group: "{{ create_user }}"
     mode: '0600'
+  tags:
+    - user.restic.init
+
+- name: Copy Storage Box SSH public key to server
+  copy:
+    src: ~/.ssh/id_storagebox.pub
+    dest: "{{ remote_user_home }}/.ssh/id_storagebox.pub"
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0644'
   tags:
     - user.restic.init
 
