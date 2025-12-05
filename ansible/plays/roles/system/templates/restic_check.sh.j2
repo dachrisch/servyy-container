@@ -5,6 +5,7 @@ set -euo pipefail
 # Load logdy function
 source "$HOME/.zprezto/custom/functions/logdy"
 
+export LOGDY_ALSO_TO_FILE="{{ restic.logs.check }}"
 LOG_FILE="{{ restic.logs.check }}"
 
 logdy info "Starting restic repository check"
