@@ -1,0 +1,8 @@
+# SSH config for Hetzner Storage Box (restic backups - root)
+Host {{ restic.sftp.host_alias }}
+    HostName {{ restic.sftp.hostname }}
+    User {{ restic.sftp.username }}
+    Port {{ restic.sftp.port }}
+    IdentityFile /root/.ssh/id_storagebox
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
