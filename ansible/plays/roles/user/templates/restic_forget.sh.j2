@@ -1,0 +1,48 @@
+#!/bin/zsh
+# Restic forget/prune - Apply GFS retention
+set -euo pipefail
+
+# Load logdy function
+source "$HOME/.zprezto/custom/functions/logdy"
+
+LOG_FILE="{{ restic.logs.forget }}"
+
+logdy info "Starting restic forget/prune" retention_policy="GFS"
+
+apply_retention() {
+    local repo="$1"
+    local password="$2"
+    local sftp_pass="$3"
+    local tag="$4"
+
+    export RESTIC_REPOSITORY="$repo"
+    export RESTIC_PASSWORD="$password"
+    export SSHPASS="$sftp_pass"
+
+    logdy info "Processing repository" tag="$tag"
+
+    if restic forget \
+        --tag "$tag" \
+        --keep-hourly {{ restic.retention.hourly }} \
+        --keep-daily {{ restic.retention.daily }} \
+        --keep-monthly {{ restic.retention.monthly }} \
+        --prune \
+        --verbose >> "$LOG_FILE" 2>&1; then
+        logdy info "Retention applied successfully" tag="$tag"
+    else
+        logdy error "Failed to apply retention" tag="$tag"
+        return 1
+    fi
+}
+
+FAILED=0
+apply_retention "{{ restic.home.repository }}" "{{ restic.home.password }}" "{{ restic.sftp.password }}" "home" || FAILED=1
+apply_retention "{{ restic.root.repository }}" "{{ restic.root.password }}" "{{ restic.sftp.password }}" "root" || FAILED=1
+
+if [ $FAILED -eq 0 ]; then
+    logdy info "All repositories processed successfully"
+    exit 0
+else
+    logdy error "Some repositories failed retention policy"
+    exit 1
+fi

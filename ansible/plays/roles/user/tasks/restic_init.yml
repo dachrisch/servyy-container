@@ -1,0 +1,39 @@
+---
+- name: Create restic log directory
+  file:
+    path: "{{ restic.log_dir }}"
+    state: directory
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0755'
+  become: true
+  tags:
+    - user.restic.init
+
+- name: Initialize restic repositories
+  shell: |
+    export RESTIC_REPOSITORY="{{ item.repository }}"
+    export RESTIC_PASSWORD="{{ item.password }}"
+    export SSHPASS="{{ restic.sftp.password }}"
+    restic snapshots &>/dev/null || restic init
+  loop:
+    - "{{ restic.home }}"
+    - "{{ restic.root }}"
+  register: restic_init
+  changed_when: "'created restic repository' in restic_init.stdout"
+  tags:
+    - user.restic.init
+
+- name: Create restic log files with correct permissions
+  file:
+    path: "{{ item }}"
+    state: touch
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0644'
+    modification_time: preserve
+    access_time: preserve
+  loop: "{{ restic.logs | dict2items | map(attribute='value') | list }}"
+  become: true
+  tags:
+    - user.restic.init

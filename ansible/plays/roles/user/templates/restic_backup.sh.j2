@@ -1,0 +1,58 @@
+#!/bin/zsh
+# Restic backup script - {{ backup_name }}
+set -euo pipefail
+
+# Load logdy function for structured logging
+source "$HOME/.zprezto/custom/functions/logdy"
+
+export RESTIC_REPOSITORY="{{ repository }}"
+export RESTIC_PASSWORD="{{ password }}"
+LOG_FILE="{{ log_file }}"
+
+# SFTP settings for Hetzner Storage Box
+export RESTIC_SFTP_ARGS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+export SSHPASS="{{ sftp_password }}"
+
+logdy info "Starting restic backup" backup_type="{{ backup_name }}" repository="{{ repository }}"
+
+# Pre-backup: Check repository
+if ! restic snapshots --last &>> "$LOG_FILE"; then
+    logdy error "Repository check failed" backup_type="{{ backup_name }}"
+    exit 1
+fi
+
+# Build backup command
+BACKUP_CMD="restic backup {{ source_path }}"
+
+# Add exclude-caches flag (honors CACHEDIR.TAG files)
+{% if exclude_caches | default(false) %}
+BACKUP_CMD="$BACKUP_CMD --exclude-caches"
+{% endif %}
+
+# Add exclusions
+{% if excludes is defined and excludes | length > 0 %}
+{% for exclude in excludes %}
+BACKUP_CMD="$BACKUP_CMD --exclude '{{ exclude }}'"
+{% endfor %}
+{% endif %}
+
+# Add tag and host
+BACKUP_CMD="$BACKUP_CMD --tag {{ backup_name }} --host {{ inventory_hostname }}"
+
+logdy info "Running backup" command="$BACKUP_CMD"
+
+{% if with_sudo is defined %}
+# Run with sudo for root filesystem
+if sudo bash -c "export RESTIC_REPOSITORY='$RESTIC_REPOSITORY' RESTIC_PASSWORD='$RESTIC_PASSWORD' SSHPASS='$SSHPASS' && $BACKUP_CMD" >> "$LOG_FILE" 2>&1; then
+{% else %}
+# Run as user
+if eval "$BACKUP_CMD" >> "$LOG_FILE" 2>&1; then
+{% endif %}
+    logdy info "Backup completed successfully" backup_type="{{ backup_name }}"
+    restic snapshots --last --tag {{ backup_name }} >> "$LOG_FILE" 2>&1
+    exit 0
+else
+    EXIT_CODE=$?
+    logdy error "Backup failed" backup_type="{{ backup_name }}" exit_code=$EXIT_CODE
+    exit $EXIT_CODE
+fi

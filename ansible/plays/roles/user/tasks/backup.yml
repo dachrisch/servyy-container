@@ -39,6 +39,7 @@
       command: "{{(remote_user_home, 'backup_home.sh') | path_join}}"
   tags:
     - user.backup.systemd.homes
+  when: false  # Disabled - replaced by restic
 
 - name: Create backup for server
   template:
@@ -73,6 +74,7 @@
       command: "{{(remote_user_home, 'backup_root.sh') | path_join}}"
   tags:
     - user.backup.systemd.root
+  when: false  # Disabled - replaced by restic
 
 - import_tasks: includes/oneshot.yml
   vars:

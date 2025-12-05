@@ -41,3 +41,9 @@
     - system.kernel
     - system.kernel.cleanup
     - system.maintenance
+
+- import_tasks: restic_maintenance.yml
+  tags:
+    - system.restic
+    - system.restic.maintenance
+    - system.maintenance

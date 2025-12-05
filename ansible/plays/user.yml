@@ -6,6 +6,7 @@
   become_user: "{{ create_user }}"
   vars_files:
     - vars/default.yml
+    - vars/restic.yml
     - vars/secrets.yml
   roles: 
     - user

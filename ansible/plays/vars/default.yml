@@ -19,6 +19,8 @@ sys_packages:
   - docker.io                   # docker engine
   - docker-compose-v2           # docker compose plugin
   - docker-buildx               # docker buildx plugin
+  - restic                      # backup tool with deduplication
+  - sshpass                     # SFTP authentication for restic
 
 swap_space: 2G
 

@@ -1,0 +1,109 @@
+---
+# Restic backup configuration
+restic:
+  # Home directory backup (hourly)
+  home:
+    enabled: true
+    repository: "sftp:{{ storagebox_credentials.user }}@{{ storagebox_credentials.host }}:/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-home"
+    password: "{{ restic_password_home }}"
+    source_path: "{{ remote_user_home }}"
+    excludes:
+      # Version control
+      - '**/.git'
+      - '**/.git/worktrees'
+      - '.zprezto/.git'
+
+      # Caches (use restic's --exclude-caches for CACHEDIR.TAG)
+      - '.cache'
+      - '**/.cache'
+      - '**/node_modules'
+      - '**/__pycache__'
+      - '**/.pytest_cache'
+      - '**/.mypy_cache'
+      - '**/.tox'
+      - '**/.venv'
+
+      # Build artifacts
+      - '**/target'        # Rust
+      - '**/dist'
+      - '**/build'
+
+      # Large data directories
+      - 'pgdata'
+      - 'go/pkg'           # Go packages cache
+      - 'go/bin'
+
+      # Temporary files
+      - '**/*.tmp'
+      - '**/*.swp'
+      - '**/*~'
+
+  # Root filesystem backup (daily)
+  root:
+    enabled: true
+    repository: "sftp:{{ storagebox_credentials.user }}@{{ storagebox_credentials.host }}:/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-root"
+    password: "{{ restic_password_root }}"
+    source_path: "/"
+    includes:
+      - /etc           # System configuration
+      - /var           # Variable data
+    excludes:
+      # System pseudo-filesystems
+      - /proc
+      - /sys
+      - /dev
+      - /run
+      - /tmp
+      - /mnt
+      - /media
+
+      # Docker (NEVER backup Docker library)
+      - /var/lib/docker
+
+      # Caches
+      - /var/cache
+      - /var/tmp
+
+      # Old logs (keep recent logs only)
+      - '/var/log/*.gz'
+      - '/var/log/*.1'
+      - '/var/log/*.2'
+      - '/var/log/*.3'
+      - '/var/log/*.old'
+
+      # Journal logs (handled by journald retention)
+      - /var/log/journal
+
+      # Sockets and swap
+      - '*.sock'
+      - 'swap.img'
+      - '*.swap'
+
+  # Backup schedules
+  schedules:
+    backup_home: 'hourly'                      # Home: every hour at :00
+    backup_root: 'daily'                       # Root: once per day at 00:00
+    forget_daily: '*-*-* 05:00:00'            # Daily at 05:00 UTC
+    check_weekly: 'Sun 06:00'                 # Weekly integrity check
+
+  # GFS retention policy
+  retention:
+    hourly: 2      # Son: Last 2 hourly backups
+    daily: 2       # Father: Last 2 daily backups
+    monthly: 3     # Grandfather: Last 3 monthly backups
+
+  # SFTP connection settings
+  sftp:
+    password: "{{ storagebox_credentials.password }}"
+    # SSH known hosts will be auto-accepted (StrictHostKeyChecking=no for automation)
+
+  # Log files
+  log_dir: '/var/log/restic'
+  logs:
+    backup_home: '/var/log/restic/backup-home.log'
+    backup_root: '/var/log/restic/backup-root.log'
+    forget: '/var/log/restic/forget.log'
+    check: '/var/log/restic/check.log'
+
+  # Global settings
+  exclude_caches: true  # Use --exclude-caches to skip folders with CACHEDIR.TAG

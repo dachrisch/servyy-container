@@ -1,0 +1,120 @@
+---
+# Deploy system-level restic maintenance (forget/prune, check)
+
+- name: Deploy restic forget/prune script
+  template:
+    src: restic_forget.sh.j2
+    dest: /usr/local/bin/restic-forget.sh
+    mode: '0755'
+  become: true
+  tags:
+    - system.restic.maintenance
+
+- name: Deploy restic check script
+  template:
+    src: restic_check.sh.j2
+    dest: /usr/local/bin/restic-check.sh
+    mode: '0755'
+  become: true
+  tags:
+    - system.restic.maintenance
+
+- name: Create restic-forget systemd service
+  copy:
+    dest: /etc/systemd/system/restic-forget.service
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Restic GFS retention and prune
+      After=network-online.target
+
+      [Service]
+      Type=oneshot
+      User={{ create_user }}
+      ExecStart=/usr/local/bin/restic-forget.sh
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: reload systemd
+  become: true
+  tags:
+    - system.restic.maintenance
+
+- name: Create restic-forget systemd timer
+  copy:
+    dest: /etc/systemd/system/restic-forget.timer
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Daily restic retention and prune
+
+      [Timer]
+      OnCalendar={{ restic.schedules.forget_daily }}
+      RandomizedDelaySec=10m
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+  notify: reload systemd
+  become: true
+  tags:
+    - system.restic.maintenance
+
+- name: Enable and start restic-forget timer
+  systemd:
+    name: restic-forget.timer
+    enabled: true
+    state: started
+  become: true
+  tags:
+    - system.restic.maintenance
+
+- name: Create restic-check systemd service
+  copy:
+    dest: /etc/systemd/system/restic-check.service
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Restic repository integrity check
+      After=network-online.target
+
+      [Service]
+      Type=oneshot
+      User={{ create_user }}
+      ExecStart=/usr/local/bin/restic-check.sh
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: reload systemd
+  become: true
+  tags:
+    - system.restic.maintenance
+
+- name: Create restic-check systemd timer
+  copy:
+    dest: /etc/systemd/system/restic-check.timer
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Weekly restic repository check
+
+      [Timer]
+      OnCalendar=Sun 06:00
+      RandomizedDelaySec=10m
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+  notify: reload systemd
+  become: true
+  tags:
+    - system.restic.maintenance
+
+- name: Enable and start restic-check timer
+  systemd:
+    name: restic-check.timer
+    enabled: true
+    state: started
+  become: true
+  tags:
+    - system.restic.maintenance

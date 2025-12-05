@@ -30,3 +30,16 @@ check file docker_cleanup_log with path /var/log/docker-cleanup.log
 
 check file kernel_cleanup_log with path /var/log/kernel-cleanup.log
     if timestamp > 32 days then alert
+
+# Restic backup log monitoring
+check file restic_backup_home_log with path {{ restic.logs.backup_home }}
+    if timestamp > 2 hours then alert
+
+check file restic_backup_root_log with path {{ restic.logs.backup_root }}
+    if timestamp > 25 hours then alert
+
+check file restic_forget_log with path {{ restic.logs.forget }}
+    if timestamp > 25 hours then alert
+
+check file restic_check_log with path {{ restic.logs.check }}
+    if timestamp > 8 days then alert
