@@ -41,11 +41,20 @@
   tags:
     - user.restic.init
 
+- name: Deploy SSH config for Storage Box
+  template:
+    src: ssh_config_storagebox.j2
+    dest: "{{ remote_user_home }}/.ssh/config"
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0600'
+  tags:
+    - user.restic.init
+
 - name: Initialize restic repositories
   shell: |
     export RESTIC_REPOSITORY="{{ item.repository }}"
     export RESTIC_PASSWORD="{{ item.password }}"
-    export RESTIC_SFTP_COMMAND="sftp -i {{ restic.sftp.ssh_key_path }} -P 23 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
     restic snapshots &>/dev/null || restic init
   loop:
     - "{{ restic.home }}"
