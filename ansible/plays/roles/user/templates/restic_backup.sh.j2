@@ -10,8 +10,8 @@ export RESTIC_PASSWORD="{{ password }}"
 export LOGDY_ALSO_TO_FILE="{{ log_file }}"
 LOG_FILE="{{ log_file }}"
 
-# SFTP settings for Hetzner Storage Box (SSH key authentication)
-export RESTIC_SFTP_COMMAND="sftp -i {{ ssh_key_path }} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+# SFTP settings for Hetzner Storage Box (SSH key authentication, port 23)
+export RESTIC_SFTP_COMMAND="sftp -i {{ ssh_key_path }} -P 23 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
 logdy info "Starting restic backup" backup_type="{{ backup_name }}" repository="{{ repository }}"
 

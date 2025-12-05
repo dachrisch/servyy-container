@@ -35,7 +35,7 @@
   shell: |
     export RESTIC_REPOSITORY="{{ item.repository }}"
     export RESTIC_PASSWORD="{{ item.password }}"
-    export RESTIC_SFTP_COMMAND="sftp -i {{ restic.sftp.ssh_key_path }} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    export RESTIC_SFTP_COMMAND="sftp -i {{ restic.sftp.ssh_key_path }} -P 23 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
     restic snapshots &>/dev/null || restic init
   loop:
     - "{{ restic.home }}"
