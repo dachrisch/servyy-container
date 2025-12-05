@@ -51,6 +51,18 @@
   tags:
     - user.restic.init
 
+- name: Create restic repository directories on Storage Box
+  shell: |
+    sftp {{ restic.sftp.host_alias }} <<'EOF'
+    -mkdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-home
+    -mkdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-root
+    EOF
+  register: sftp_mkdir
+  failed_when: false
+  changed_when: "'File exists' not in sftp_mkdir.stdout"
+  tags:
+    - user.restic.init
+
 - name: Initialize restic repositories
   shell: |
     export RESTIC_REPOSITORY="{{ item.repository }}"
