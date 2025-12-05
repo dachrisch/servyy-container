@@ -4,7 +4,7 @@ restic:
   # Home directory backup (hourly)
   home:
     enabled: true
-    repository: "sftp:storagebox:/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-home"
+    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-home"
     password: "{{ restic_password_home }}"
     source_path: "{{ remote_user_home }}"
     excludes:
@@ -41,7 +41,7 @@ restic:
   # Root filesystem backup (daily)
   root:
     enabled: true
-    repository: "sftp:storagebox:/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-root"
+    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-root"
     password: "{{ restic_password_root }}"
     source_path: "/"
     includes:
