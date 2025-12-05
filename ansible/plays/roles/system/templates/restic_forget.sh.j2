@@ -8,21 +8,18 @@ source "$HOME/.zprezto/custom/functions/logdy"
 export LOGDY_ALSO_TO_FILE="{{ restic.logs.forget }}"
 LOG_FILE="{{ restic.logs.forget }}"
 
-# SFTP settings for Hetzner Storage Box
-export SSHPASS="{{ restic.sftp.password }}"
-export RESTIC_SFTP_COMMAND="sshpass -e sftp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+# SFTP settings for Hetzner Storage Box (SSH key authentication)
+export RESTIC_SFTP_COMMAND="sftp -i {{ restic.sftp.ssh_key_path }} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
 logdy info "Starting restic forget/prune" retention_policy="GFS"
 
 apply_retention() {
     local repo="$1"
     local password="$2"
-    local sftp_pass="$3"
-    local tag="$4"
+    local tag="$3"
 
     export RESTIC_REPOSITORY="$repo"
     export RESTIC_PASSWORD="$password"
-    export SSHPASS="$sftp_pass"
 
     logdy info "Processing repository" tag="$tag"
 
@@ -41,8 +38,8 @@ apply_retention() {
 }
 
 FAILED=0
-apply_retention "{{ restic.home.repository }}" "{{ restic.home.password }}" "{{ restic.sftp.password }}" "home" || FAILED=1
-apply_retention "{{ restic.root.repository }}" "{{ restic.root.password }}" "{{ restic.sftp.password }}" "root" || FAILED=1
+apply_retention "{{ restic.home.repository }}" "{{ restic.home.password }}" "home" || FAILED=1
+apply_retention "{{ restic.root.repository }}" "{{ restic.root.password }}" "root" || FAILED=1
 
 if [ $FAILED -eq 0 ]; then
     logdy info "All repositories processed successfully"

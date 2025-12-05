@@ -10,9 +10,8 @@ export RESTIC_PASSWORD="{{ password }}"
 export LOGDY_ALSO_TO_FILE="{{ log_file }}"
 LOG_FILE="{{ log_file }}"
 
-# SFTP settings for Hetzner Storage Box
-export SSHPASS="{{ sftp_password }}"
-export RESTIC_SFTP_COMMAND="sshpass -e sftp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+# SFTP settings for Hetzner Storage Box (SSH key authentication)
+export RESTIC_SFTP_COMMAND="sftp -i {{ ssh_key_path }} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
 logdy info "Starting restic backup" backup_type="{{ backup_name }}" repository="{{ repository }}"
 
@@ -26,7 +25,7 @@ fi
 BACKUP_CMD="restic backup {{ source_path }}"
 
 # Add exclude-caches flag (honors CACHEDIR.TAG files)
-{% if exclude_caches | default(false) %}
+{% if exclude_caches | default(true) %}
 BACKUP_CMD="$BACKUP_CMD --exclude-caches"
 {% endif %}
 
@@ -44,7 +43,7 @@ logdy info "Running backup" command="$BACKUP_CMD"
 
 {% if with_sudo is defined %}
 # Run with sudo for root filesystem
-if sudo bash -c "export RESTIC_REPOSITORY='$RESTIC_REPOSITORY' RESTIC_PASSWORD='$RESTIC_PASSWORD' SSHPASS='$SSHPASS' RESTIC_SFTP_COMMAND='$RESTIC_SFTP_COMMAND' && $BACKUP_CMD" >> "$LOG_FILE" 2>&1; then
+if sudo bash -c "export RESTIC_REPOSITORY='$RESTIC_REPOSITORY' RESTIC_PASSWORD='$RESTIC_PASSWORD' RESTIC_SFTP_COMMAND='$RESTIC_SFTP_COMMAND' && $BACKUP_CMD" >> "$LOG_FILE" 2>&1; then
 {% else %}
 # Run as user
 if eval "$BACKUP_CMD" >> "$LOG_FILE" 2>&1; then

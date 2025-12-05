@@ -94,8 +94,9 @@ restic:
 
   # SFTP connection settings
   sftp:
-    password: "{{ storagebox_credentials.password }}"
-    # SSH known hosts will be auto-accepted (StrictHostKeyChecking=no for automation)
+    ssh_key_path: "{{ remote_user_home }}/.ssh/id_storagebox"
+    # SSH key authentication (no password needed)
+    # Host key verification disabled for automation (StrictHostKeyChecking=no)
 
   # Log files
   log_dir: '/var/log/restic'
