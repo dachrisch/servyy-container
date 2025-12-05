@@ -8,6 +8,10 @@ source "$HOME/.zprezto/custom/functions/logdy"
 export LOGDY_ALSO_TO_FILE="{{ restic.logs.forget }}"
 LOG_FILE="{{ restic.logs.forget }}"
 
+# SFTP settings for Hetzner Storage Box
+export SSHPASS="{{ restic.sftp.password }}"
+export RESTIC_SFTP_COMMAND="sshpass -e sftp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
 logdy info "Starting restic forget/prune" retention_policy="GFS"
 
 apply_retention() {
