@@ -1,0 +1,67 @@
+---
+# Deploy restic backup scripts and timers
+- name: Create backup scripts directory
+  file:
+    path: "{{ remote_user_home }}/.backup-scripts"
+    state: directory
+    mode: '0755'
+  tags:
+    - user.restic.backup
+
+# Home backup
+- name: Deploy restic backup script for home
+  template:
+    src: restic_backup.sh.j2
+    dest: "{{ remote_user_home }}/.backup-scripts/restic-backup-home.sh"
+    mode: '0750'
+  vars:
+    backup_name: "home"
+    repository: "{{ restic.home.repository }}"
+    password: "{{ restic.home.password }}"
+    sftp_password: "{{ restic.sftp.password }}"
+    source_path: "{{ restic.home.source_path }}"
+    excludes: "{{ restic.home.excludes }}"
+    exclude_caches: "{{ restic.exclude_caches }}"
+    log_file: "{{ restic.logs.backup_home }}"
+  tags:
+    - user.restic.backup
+
+- import_tasks: includes/oneshot.yml
+  vars:
+    service:
+      name: restic-backup-home
+      description: 'Restic backup - home directory'
+      schedule: '{{ restic.schedules.backup_home }}'
+      command: "{{ remote_user_home }}/.backup-scripts/restic-backup-home.sh"
+  tags:
+    - user.restic.backup
+
+# Root backup
+- name: Deploy restic backup script for root
+  template:
+    src: restic_backup.sh.j2
+    dest: "{{ remote_user_home }}/.backup-scripts/restic-backup-root.sh"
+    mode: '0750'
+  vars:
+    backup_name: "root"
+    repository: "{{ restic.root.repository }}"
+    password: "{{ restic.root.password }}"
+    sftp_password: "{{ restic.sftp.password }}"
+    source_path: "{{ restic.root.source_path }}"
+    includes: "{{ restic.root.includes }}"
+    excludes: "{{ restic.root.excludes }}"
+    exclude_caches: "{{ restic.exclude_caches }}"
+    log_file: "{{ restic.logs.backup_root }}"
+    with_sudo: true
+  tags:
+    - user.restic.backup
+
+- import_tasks: includes/oneshot.yml
+  vars:
+    service:
+      name: restic-backup-root
+      description: 'Restic backup - root filesystem'
+      schedule: '{{ restic.schedules.backup_root }}'
+      command: "{{ remote_user_home }}/.backup-scripts/restic-backup-root.sh"
+  tags:
+    - user.restic.backup

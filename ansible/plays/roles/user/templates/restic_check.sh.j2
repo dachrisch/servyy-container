@@ -1,0 +1,42 @@
+#!/bin/zsh
+# Restic repository integrity check
+set -euo pipefail
+
+# Load logdy function
+source "$HOME/.zprezto/custom/functions/logdy"
+
+LOG_FILE="{{ restic.logs.check }}"
+
+logdy info "Starting restic repository check"
+
+check_repo() {
+    local repo="$1"
+    local password="$2"
+    local sftp_pass="$3"
+    local name="$4"
+
+    export RESTIC_REPOSITORY="$repo"
+    export RESTIC_PASSWORD="$password"
+    export SSHPASS="$sftp_pass"
+
+    logdy info "Checking repository" tag="$name"
+
+    if restic check --read-data-subset=5% >> "$LOG_FILE" 2>&1; then
+        logdy info "Repository check passed" tag="$name"
+    else
+        logdy error "Repository check failed" tag="$name"
+        return 1
+    fi
+}
+
+FAILED=0
+check_repo "{{ restic.home.repository }}" "{{ restic.home.password }}" "{{ restic.sftp.password }}" "home" || FAILED=1
+check_repo "{{ restic.root.repository }}" "{{ restic.root.password }}" "{{ restic.sftp.password }}" "root" || FAILED=1
+
+if [ $FAILED -eq 0 ]; then
+    logdy info "All repository checks passed"
+    exit 0
+else
+    logdy error "Some repository checks failed"
+    exit 1
+fi
