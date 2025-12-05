@@ -7,6 +7,7 @@
     group: "{{ create_user }}"
     mode: '0755'
   become: true
+  become_user: root
   tags:
     - user.restic.init
 
@@ -35,5 +36,6 @@
     access_time: preserve
   loop: "{{ restic.logs | dict2items | map(attribute='value') | list }}"
   become: true
+  become_user: root
   tags:
     - user.restic.init
