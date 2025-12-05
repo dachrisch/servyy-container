@@ -5,6 +5,7 @@ set -euo pipefail
 # Load logdy function
 source "$HOME/.zprezto/custom/functions/logdy"
 
+export LOGDY_ALSO_TO_FILE="{{ restic.logs.forget }}"
 LOG_FILE="{{ restic.logs.forget }}"
 
 logdy info "Starting restic forget/prune" retention_policy="GFS"
