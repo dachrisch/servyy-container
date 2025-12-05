@@ -40,7 +40,8 @@ logdy info "Running backup" command="$BACKUP_CMD"
 
 {% if with_sudo is defined %}
 # Run with sudo for root filesystem
-if sudo bash -c "export RESTIC_REPOSITORY='$RESTIC_REPOSITORY' RESTIC_PASSWORD='$RESTIC_PASSWORD' && $BACKUP_CMD" >> "$LOG_FILE" 2>&1; then
+# Set HOME to user's home for SSH config access
+if sudo bash -c "export HOME='{{ remote_user_home }}' RESTIC_REPOSITORY='$RESTIC_REPOSITORY' RESTIC_PASSWORD='$RESTIC_PASSWORD' && $BACKUP_CMD" >> "$LOG_FILE" 2>&1; then
 {% else %}
 # Run as user
 if eval "$BACKUP_CMD" >> "$LOG_FILE" 2>&1; then
