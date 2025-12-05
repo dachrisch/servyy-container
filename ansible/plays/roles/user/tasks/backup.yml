@@ -33,7 +33,7 @@
 - import_tasks: includes/oneshot.yml
   vars:
     service:
-      name : backup-homes
+      name: backup-homes
       description: 'Backup homes every day'
       schedule: 'daily'
       command: "{{(remote_user_home, 'backup_home.sh') | path_join}}"
@@ -67,7 +67,7 @@
 - import_tasks: includes/oneshot.yml
   vars:
     service:
-      name : backup-root
+      name: backup-root
       description: 'Backup Server every day'
       schedule: 'daily'
       command: "{{(remote_user_home, 'backup_root.sh') | path_join}}"
@@ -77,7 +77,7 @@
 - import_tasks: includes/oneshot.yml
   vars:
     service:
-      name : backup-photos
+      name: backup-photos
       description: 'Backup Photos locally daily'
       schedule: 'daily'
       command: "{{(shell.remote_dir, 'custom/bin/sync_photos.sh') | path_join}}"

@@ -3,6 +3,9 @@
     repository_uri: "{{ shell.repo }}"
     remote_dir: "{{ shell.remote_dir }}"
     local_dir: "{{ shell.local_dir }}"
+    check_git_servyy_reachable: false    # zpresto is from GitHub, not git.lehel.xyz
+    clone_submodules: true                # Clone submodules during initial clone
+    update_submodules: true               # Update submodules on every deployment
   tags:
     - user.repo.zpresto
 
@@ -28,6 +31,9 @@
     remote_dir: "{{ docker.remote_dir }}"
     local_dir: "{{ docker.local_dir }}"
     branch: "{{ lookup('pipe', 'git -C ' ~ docker.local_dir ~ ' rev-parse --abbrev-ref HEAD') }}"
+    check_git_servyy_reachable: true     # Check git.lehel.xyz (me/ submodule is there)
+    clone_submodules: true                # Clone submodules if reachable
+    update_submodules: true               # Update submodules on every deployment
   tags:
     - user.docker.repo
     - user.docker

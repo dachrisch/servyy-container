@@ -15,20 +15,38 @@
     status_code: 200
   register: head_request_result
   ignore_errors: yes
+  when: check_git_servyy_reachable | default(false)
 
 - name: Set reachability fact based on HEAD request result
   set_fact:
     git_servyy_reachable: "{{ 'yes' if head_request_result.status == 200 else 'no' }}"
+  when: check_git_servyy_reachable | default(false)
+
+- name: Set reachability fact to true when check is skipped
+  set_fact:
+    git_servyy_reachable: "yes"
+  when: not (check_git_servyy_reachable | default(false))
 
 - name: "Clone [ {{ repository_uri }} ] to [ {{remote_dir}} ] (branch: {{ branch }} )"
   git:
     repo: "{{ repository_uri }}"
     dest: "{{ remote_dir }}"
     force: true
-    recursive: "{{git_servyy_reachable}}"
+    recursive: "{{ clone_submodules | default(git_servyy_reachable) }}"
     version: "{{ branch | default('master') }}"
   tags:
     - user.repo.clone
+
+- name: "Initialize submodules for [ {{remote_dir}} ]"
+  shell: |
+    git submodule update --init --recursive
+  args:
+    chdir: "{{ remote_dir }}"
+  when: update_submodules | default(false)
+  register: submodule_init
+  failed_when: false
+  tags:
+    - user.repo.submodules
 
 - name: Check lock state
   command: git config --local --get filter.git-crypt.smudge
