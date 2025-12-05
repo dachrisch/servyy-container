@@ -109,11 +109,7 @@
   tags:
     - user.backup
 
-- import_tasks: restic_init.yml
-  tags:
-    - user.restic
-
-- import_tasks: restic_backup.yml
+- import_tasks: restic.yml
   tags:
     - user.restic
 
