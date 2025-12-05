@@ -8,9 +8,6 @@ source "$HOME/.zprezto/custom/functions/logdy"
 export LOGDY_ALSO_TO_FILE="{{ restic.logs.check }}"
 LOG_FILE="{{ restic.logs.check }}"
 
-# SFTP settings for Hetzner Storage Box (SSH key authentication, port 23)
-export RESTIC_SFTP_COMMAND="sftp -i {{ restic.sftp.ssh_key_path }} -P 23 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-
 logdy info "Starting restic repository check"
 
 check_repo() {

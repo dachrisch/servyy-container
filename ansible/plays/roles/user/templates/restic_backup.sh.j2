@@ -10,9 +10,6 @@ export RESTIC_PASSWORD="{{ password }}"
 export LOGDY_ALSO_TO_FILE="{{ log_file }}"
 LOG_FILE="{{ log_file }}"
 
-# SFTP settings for Hetzner Storage Box (SSH key authentication, port 23)
-export RESTIC_SFTP_COMMAND="sftp -i {{ ssh_key_path }} -P 23 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-
 logdy info "Starting restic backup" backup_type="{{ backup_name }}" repository="{{ repository }}"
 
 # Pre-backup: Check repository
@@ -43,7 +40,7 @@ logdy info "Running backup" command="$BACKUP_CMD"
 
 {% if with_sudo is defined %}
 # Run with sudo for root filesystem
-if sudo bash -c "export RESTIC_REPOSITORY='$RESTIC_REPOSITORY' RESTIC_PASSWORD='$RESTIC_PASSWORD' RESTIC_SFTP_COMMAND='$RESTIC_SFTP_COMMAND' && $BACKUP_CMD" >> "$LOG_FILE" 2>&1; then
+if sudo bash -c "export RESTIC_REPOSITORY='$RESTIC_REPOSITORY' RESTIC_PASSWORD='$RESTIC_PASSWORD' && $BACKUP_CMD" >> "$LOG_FILE" 2>&1; then
 {% else %}
 # Run as user
 if eval "$BACKUP_CMD" >> "$LOG_FILE" 2>&1; then

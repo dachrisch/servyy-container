@@ -4,7 +4,7 @@ restic:
   # Home directory backup (hourly)
   home:
     enabled: true
-    repository: "sftp:{{ storagebox_credentials.user }}@{{ storagebox_credentials.host }}:/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-home"
+    repository: "sftp:storagebox:/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-home"
     password: "{{ restic_password_home }}"
     source_path: "{{ remote_user_home }}"
     excludes:
@@ -41,7 +41,7 @@ restic:
   # Root filesystem backup (daily)
   root:
     enabled: true
-    repository: "sftp:{{ storagebox_credentials.user }}@{{ storagebox_credentials.host }}:/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-root"
+    repository: "sftp:storagebox:/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-root"
     password: "{{ restic_password_root }}"
     source_path: "/"
     includes:
@@ -92,10 +92,14 @@ restic:
     daily: 2       # Father: Last 2 daily backups
     monthly: 3     # Grandfather: Last 3 monthly backups
 
-  # SFTP connection settings
+  # SFTP connection settings via SSH config
   sftp:
     ssh_key_path: "{{ remote_user_home }}/.ssh/id_storagebox"
-    # SSH key authentication (no password needed)
+    host_alias: "storagebox"  # SSH config host alias
+    hostname: "{{ storagebox_credentials.host }}"
+    username: "{{ storagebox_credentials.user }}"
+    port: 23  # Hetzner Storage Box uses port 23
+    # SSH key authentication configured via ~/.ssh/config
     # Host key verification disabled for automation (StrictHostKeyChecking=no)
 
   # Log files
