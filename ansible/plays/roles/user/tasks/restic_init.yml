@@ -11,11 +11,31 @@
   tags:
     - user.restic.init
 
+- name: Ensure .ssh directory exists
+  file:
+    path: "{{ remote_user_home }}/.ssh"
+    state: directory
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0700'
+  tags:
+    - user.restic.init
+
+- name: Copy Storage Box SSH key to server
+  copy:
+    src: ~/.ssh/id_storagebox
+    dest: "{{ remote_user_home }}/.ssh/id_storagebox"
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0600'
+  tags:
+    - user.restic.init
+
 - name: Initialize restic repositories
   shell: |
     export RESTIC_REPOSITORY="{{ item.repository }}"
     export RESTIC_PASSWORD="{{ item.password }}"
-    export SSHPASS="{{ restic.sftp.password }}"
+    export RESTIC_SFTP_COMMAND="sftp -i {{ restic.sftp.ssh_key_path }} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
     restic snapshots &>/dev/null || restic init
   loop:
     - "{{ restic.home }}"
