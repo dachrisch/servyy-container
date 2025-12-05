@@ -64,6 +64,18 @@
     - user.docker
   when: with_containers | default(false)
 
+- import_tasks: includes/docker_repo_restore.yml
+  vars:
+    # concatenate strings to prevent striping of first '/'
+    backup_base: "{{backup_dir + docker.remote_dir}}"
+    restore_base: "{{docker.remote_dir}}"
+    restore_dir:  "{{('pass', 'vw-data') | path_join}}"
+    owner: "root"
+  tags:
+    - user.docker.restore.pass
+    - user.docker
+  when: with_containers | default(false)
+
 - import_tasks: bumbleflies.yml
   tags:
     - user.docker.bumbleflies
