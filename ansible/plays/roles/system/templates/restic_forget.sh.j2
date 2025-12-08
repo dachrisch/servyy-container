@@ -11,14 +11,18 @@ LOG_FILE="{{ restic.logs.forget }}"
 logdy info "Starting restic forget/prune" retention_policy="GFS"
 
 apply_retention() {
-    local repo="$1"
-    local password="$2"
-    local tag="$3"
+    local env_file="$1"
+    local tag="$2"
 
-    export RESTIC_REPOSITORY="$repo"
-    export RESTIC_PASSWORD="$password"
+    # Load environment from config file
+    if [ ! -f "$env_file" ]; then
+        logdy error "Environment file not found" path="$env_file"
+        return 1
+    fi
 
-    logdy info "Processing repository" tag="$tag"
+    source "$env_file"
+
+    logdy info "Processing repository" tag="$tag" repository="$RESTIC_REPOSITORY"
 
     if restic forget \
         --tag "$tag" \
@@ -35,8 +39,8 @@ apply_retention() {
 }
 
 FAILED=0
-apply_retention "{{ restic.home.repository }}" "{{ restic.home.password }}" "home" || FAILED=1
-apply_retention "{{ restic.root.repository }}" "{{ restic.root.password }}" "root" || FAILED=1
+apply_retention "/etc/restic/env.home" "home" || FAILED=1
+apply_retention "/etc/restic/env.root" "root" || FAILED=1
 
 if [ $FAILED -eq 0 ]; then
     logdy info "All repositories processed successfully"

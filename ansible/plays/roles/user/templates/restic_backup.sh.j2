@@ -5,12 +5,18 @@ set -euo pipefail
 # Load logdy function for structured logging
 source "$HOME/.zprezto/custom/functions/logdy"
 
-export RESTIC_REPOSITORY="{{ repository }}"
-export RESTIC_PASSWORD="{{ password }}"
+# Load restic environment from config file
+if [ -f "/etc/restic/env.{{ backup_name }}" ]; then
+    source "/etc/restic/env.{{ backup_name }}"
+else
+    logdy error "Restic environment file not found" path="/etc/restic/env.{{ backup_name }}"
+    exit 1
+fi
+
 export LOGDY_ALSO_TO_FILE="{{ log_file }}"
 LOG_FILE="{{ log_file }}"
 
-logdy info "Starting restic backup" backup_type="{{ backup_name }}" repository="{{ repository }}"
+logdy info "Starting restic backup" backup_type="{{ backup_name }}" repository="$RESTIC_REPOSITORY"
 
 # Pre-backup: Check repository
 if ! restic snapshots --last &>> "$LOG_FILE"; then
@@ -40,8 +46,8 @@ logdy info "Running backup" command="$BACKUP_CMD"
 
 {% if with_sudo is defined %}
 # Run with sudo for root filesystem
-# Root uses its own SSH config at /root/.ssh/config
-if sudo bash -c "export RESTIC_REPOSITORY='$RESTIC_REPOSITORY' RESTIC_PASSWORD='$RESTIC_PASSWORD' && $BACKUP_CMD" >> "$LOG_FILE" 2>&1; then
+# Root reads from its own environment file
+if sudo bash -c "source /etc/restic/env.{{ backup_name }} && $BACKUP_CMD" >> "$LOG_FILE" 2>&1; then
 {% else %}
 # Run as user
 if eval "$BACKUP_CMD" >> "$LOG_FILE" 2>&1; then
