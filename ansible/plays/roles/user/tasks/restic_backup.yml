@@ -16,9 +16,6 @@
     mode: '0750'
   vars:
     backup_name: "home"
-    repository: "{{ restic.home.repository }}"
-    password: "{{ restic.home.password }}"
-    ssh_key_path: "{{ restic.sftp.ssh_key_path }}"
     source_path: "{{ restic.home.source_path }}"
     excludes: "{{ restic.home.excludes }}"
     exclude_caches: "{{ restic.exclude_caches }}"
@@ -44,9 +41,6 @@
     mode: '0750'
   vars:
     backup_name: "root"
-    repository: "{{ restic.root.repository }}"
-    password: "{{ restic.root.password }}"
-    ssh_key_path: "{{ restic.sftp.ssh_key_path }}"
     source_path: "{{ restic.root.source_path }}"
     includes: "{{ restic.root.includes }}"
     excludes: "{{ restic.root.excludes }}"
