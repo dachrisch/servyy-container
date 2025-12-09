@@ -1,0 +1,73 @@
+---
+# Mount extension drive for Docker data storage
+- name: Create extension drive mount point
+  file:
+    path: "{{ extension_drive.path }}"
+    state: directory
+    mode: "0755"
+  tags:
+    - system.extension_drive.mount.directory
+
+- name: Check if device exists
+  stat:
+    path: "{{ extension_drive.device }}"
+  register: device_check
+  tags:
+    - system.extension_drive.mount.check
+
+- name: Fail if device does not exist
+  fail:
+    msg: "Extension drive device {{ extension_drive.device }} not found"
+  when: not device_check.stat.exists
+  tags:
+    - system.extension_drive.mount.check
+
+- name: Check if device is already formatted
+  shell: "blkid {{ extension_drive.device }}"
+  register: blkid_check
+  failed_when: false
+  changed_when: false
+  tags:
+    - system.extension_drive.format.check
+
+- name: Format device if not already formatted
+  filesystem:
+    dev: "{{ extension_drive.device }}"
+    fstype: "{{ extension_drive.fstype }}"
+  when: blkid_check.rc != 0
+  tags:
+    - system.extension_drive.format
+
+- name: Add extension drive to /etc/fstab
+  mount:
+    path: "{{ extension_drive.path }}"
+    src: "{{ extension_drive.device }}"
+    fstype: "{{ extension_drive.fstype }}"
+    opts: "{{ extension_drive.opts }}"
+    state: present
+  tags:
+    - system.extension_drive.mount.fstab
+
+- name: Check if extension drive is already mounted
+  command: '/bin/mountpoint -q {{ extension_drive.path }}'
+  register: mount_check
+  failed_when: mount_check.stderr != ''
+  changed_when: mount_check.rc != 0
+  tags:
+    - system.extension_drive.mount.check
+
+- block:
+    - name: Mount extension drive
+      command: mount "{{ extension_drive.path }}"
+      register: mount_result
+      failed_when: mount_result.rc != 0 and mount_result.stderr != ''
+
+    - name: Verify extension drive mounted
+      command: '/bin/mountpoint -q {{ extension_drive.path }}'
+      register: verify_mount
+      failed_when: verify_mount.stderr != '' or verify_mount.rc != 0
+      changed_when: false
+
+  when: mount_check.changed
+  tags:
+    - system.extension_drive.mount.execute
