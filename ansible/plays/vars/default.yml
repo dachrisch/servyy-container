@@ -33,6 +33,9 @@ backup_dir: "{{(storagebox.mount, 'backup', inventory_hostname) | path_join}}"
 
 extension_drive:
   path: /mnt/10g_volume
+  device: /dev/disk/by-id/scsi-0HC_Volume_101343964
+  fstype: ext4
+  opts: discard,defaults
 
 # Journal log retention (declarative)
 journald:

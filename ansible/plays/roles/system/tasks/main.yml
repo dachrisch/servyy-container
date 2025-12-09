@@ -5,6 +5,11 @@
   tags:
     - system.user
 
+- import_tasks: extension_drive.yml
+  tags:
+    - system.extension_drive
+  when: has_10g_volume | default(false)
+
 - import_tasks: storagebox.yml
   tags:
     - system.storagebox
