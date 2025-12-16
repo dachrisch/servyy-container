@@ -1,0 +1,86 @@
+# mkcert Local CA for servyy-test.lxd
+
+## Overview
+
+This test environment uses mkcert to provide trusted HTTPS certificates without Let's Encrypt.
+
+**Certificate Authority Location:** `{{ mkcert.cert_dir }}/rootCA.pem`
+
+## Installing CA on Client Machines
+
+**Note:** The CA is automatically installed on the Ansible control machine during deployment.
+
+For additional developer machines, you can either:
+1. Run Ansible with the local tag: `ansible-playbook plays/servyy.yml -i testing --limit servyy-test.lxd --tags testing.mkcert.local`
+2. Manually export and install following the instructions below
+
+### Export CA Certificate (Manual Method)
+
+```bash
+scp servyy-test.lxd:{{ mkcert.cert_dir }}/rootCA.pem ~/Downloads/servyy-test-ca.pem
+```
+
+### Install on macOS (Manual Method)
+
+```bash
+sudo security add-trusted-cert -d -r trustRoot \
+  -k /Library/Keychains/System.keychain \
+  ~/Downloads/servyy-test-ca.pem
+```
+
+### Install on Linux (Manual Method)
+
+```bash
+sudo cp ~/Downloads/servyy-test-ca.pem \
+  /usr/local/share/ca-certificates/servyy-test-ca.crt
+sudo update-ca-certificates
+```
+
+### Install on Windows (Manual Method)
+
+1. Double-click `servyy-test-ca.pem`
+2. Click "Install Certificate"
+3. Select "Local Machine"
+4. Place in "Trusted Root Certification Authorities"
+
+### Install in Firefox (Manual Method)
+
+1. Settings → Privacy & Security → Certificates → View Certificates
+2. Authorities tab → Import
+3. Select `servyy-test-ca.pem`
+4. Trust for websites
+
+## Certificate Renewal
+
+Certificates are valid for 10 years. To renew:
+
+```bash
+cd /home/cda/dev/infrastructure/container/ansible
+ansible-playbook plays/servyy.yml -i testing --limit servyy-test.lxd \
+  --tags testing.mkcert.certificates
+```
+
+## Troubleshooting
+
+### Certificates not trusted
+
+- Verify CA is installed in system trust store
+- Check browser-specific trust stores (Firefox)
+- Restart browser after CA installation
+
+### Traefik not using mkcert certificates
+
+- Check `/home/cda/dev/infrastructure/container/traefik/certificates.yml` exists
+- Verify Traefik docker-compose.yml has volume mounts
+- Check Traefik logs: `docker logs traefik.traefik`
+
+## Security
+
+**IMPORTANT:** The CA private key at `{{ mkcert.cert_dir }}/rootCA-key.pem` must be protected.
+Anyone with this key can create trusted certificates for your CA.
+
+**Permissions:**
+- rootCA.pem: 0644 (world-readable)
+- rootCA-key.pem: 0600 (root only)
+
+Generated: {{ ansible_date_time.iso8601 }}

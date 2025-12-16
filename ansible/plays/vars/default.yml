@@ -61,3 +61,13 @@ kernel_cleanup:
   script_path: '/usr/local/bin/kernel-cleanup.sh'
   log_file: '/var/log/kernel-cleanup.log'
   description: 'Remove old kernel packages'
+
+# mkcert - Local CA for test environments
+mkcert:
+  cert_dir: /etc/ssl/mkcert
+  domains:
+    - "servyy-test.lxd"
+    - "*.servyy-test.lxd"
+    - "localhost"
+    - "127.0.0.1"
+    - "::1"
