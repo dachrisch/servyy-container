@@ -6,6 +6,10 @@
   tags:
     - testing.runc
 
+- import_tasks: mkcert.yml
+  tags:
+    - testing.mkcert
+
 - name: Mount on reboot
   cron:
     name: "mount box on every reboot"
