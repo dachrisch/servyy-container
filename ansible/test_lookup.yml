@@ -1,0 +1,42 @@
+---
+# Test Vaultwarden lookup plugin with actual seeded secrets
+
+- hosts: servyy-test.lxd
+  gather_facts: no
+  connection: local
+  vars_files:
+    - plays/vars/bootstrap_secrets.yml
+    - plays/vars/default.yml
+  tasks:
+    - name: Test lookup plugin - fetch storagebox credentials password
+      debug:
+        msg: "Storage Box password retrieved: {{ lookup('vaultwarden', 'infrastructure/test/storagebox/credentials', field='password') }}"
+      no_log: false
+      tags:
+        - test_lookup
+
+    - name: Test lookup plugin - fetch storagebox credentials username
+      debug:
+        msg: "Storage Box username retrieved: {{ lookup('vaultwarden', 'infrastructure/test/storagebox/credentials', field='username') }}"
+      tags:
+        - test_lookup
+
+    - name: Test lookup plugin - fetch restic root password
+      debug:
+        msg: "Restic root password retrieved: {{ lookup('vaultwarden', 'infrastructure/test/restic/root_password', field='password') }}"
+      no_log: false
+      tags:
+        - test_lookup
+
+    - name: Test lookup plugin - fetch git credentials
+      debug:
+        msg: "Git password retrieved: {{ lookup('vaultwarden', 'services/test/git/credentials', field='password') }}"
+      no_log: false
+      tags:
+        - test_lookup
+
+    - name: All lookups successful
+      debug:
+        msg: "✅ All Vaultwarden lookups successful!"
+      tags:
+        - test_lookup
