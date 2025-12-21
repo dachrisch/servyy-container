@@ -1,11 +1,21 @@
 # Mount storgabox
+- name: Fetch Storage Box credentials from Vaultwarden
+  set_fact:
+    storagebox_user: "{{ lookup('vaultwarden', 'infrastructure/test/storagebox/credentials', field='username') }}"
+    storagebox_password: "{{ lookup('vaultwarden', 'infrastructure/test/storagebox/credentials', field='password') }}"
+    storagebox_host: "{{ lookup('vaultwarden', 'infrastructure/test/storagebox/credentials', field='host') }}"
+  no_log: true
+  tags:
+    - system.storagebox
+
 - name: Create credential file (used for fstab entry)
   copy:
     content: |
-      username={{ storagebox_credentials.user }}
-      password={{ storagebox_credentials.password }}
+      username={{ storagebox_user }}
+      password={{ storagebox_password }}
     dest: "{{ storagebox.file }}"
     mode: 0600
+  no_log: true
   tags:
     - system.storagebox.credentials
 
@@ -25,7 +35,7 @@
 
     - name: Get storagebox IP (cached)
       set_fact:
-        storagebox_ip: "{{ lookup('dig', storagebox_credentials.host, 'qtype=A') }}"
+        storagebox_ip: "{{ lookup('dig', storagebox_host, 'qtype=A') }}"
       when: ('test' in groups) and (inventory_hostname in groups['test'])
 
     - set_fact:
