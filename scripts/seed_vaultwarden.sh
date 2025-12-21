@@ -18,7 +18,31 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANSIBLE_DIR="$(cd "$SCRIPT_DIR/../ansible" 2>/dev/null && pwd || echo "$SCRIPT_DIR")"
 SECRETS_FILE="${SECRETS_FILE:-$ANSIBLE_DIR/plays/vars/secrets.yml}"
 VW_SECRETS_FILE="${VW_SECRETS_FILE:-$ANSIBLE_DIR/plays/vars/secret_vaultwarden.yaml}"
-MKCERT_CA="${MKCERT_CA:-/etc/ssl/mkcert/rootCA.pem}"
+
+# Multi-location mkcert CA detection (matches lookup plugin logic)
+# 1. Check if MKCERT_CA environment variable is already set
+MKCERT_CA="${MKCERT_CA:-}"
+
+# 2. Check for local CA (control machine) - fetched by mkcert.yml
+if [[ -z "$MKCERT_CA" ]] || ! [[ -f "$MKCERT_CA" ]]; then
+    if [[ -f "/tmp/servyy-test-ca.pem" ]]; then
+        MKCERT_CA="/tmp/servyy-test-ca.pem"
+    fi
+fi
+
+# 3. Fall back to server path (when running on server)
+if [[ -z "$MKCERT_CA" ]] || ! [[ -f "$MKCERT_CA" ]]; then
+    MKCERT_CA="/etc/ssl/mkcert/rootCA.pem"
+fi
+
+# 4. Validate CA file exists before using it
+if [[ -f "$MKCERT_CA" ]]; then
+    # CA file found, will use for SSL verification
+    :  # No-op, MKCERT_CA is already set
+else
+    # No CA file found - this is normal for production (uses system Let's Encrypt CA)
+    MKCERT_CA=""
+fi
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -65,7 +89,12 @@ fi
 log_info "Vaultwarden server: $VW_SERVER_URL"
 
 # Set up environment for bw CLI
-export NODE_EXTRA_CA_CERTS="$MKCERT_CA"
+if [[ -n "$MKCERT_CA" ]]; then
+    export NODE_EXTRA_CA_CERTS="$MKCERT_CA"
+    log_info "Using mkcert CA: $MKCERT_CA"
+else
+    log_info "No mkcert CA needed (using system CA for production)"
+fi
 export BW_CLIENTID="$VW_CLIENT_ID"
 export BW_CLIENTSECRET="$VW_CLIENT_SECRET"
 export BW_PASSWORD="$VW_MASTER_PASSWORD"
