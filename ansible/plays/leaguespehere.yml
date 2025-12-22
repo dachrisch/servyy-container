@@ -14,16 +14,19 @@
     - role: ls_setup
       tags:
         - ls.setup
+
     - role: geerlingguy.security
       vars:
         security_ssh_permit_root_login: "yes"
         security_fail2ban_enabled: false
       tags:
         - ssh.security
+
     - role: geerlingguy.ssh-chroot-jail
       tags:
         - ssh.jail
-    - ls_access
+
+    - role: ls_access
 
     # Production deployment (jail)
     - role: ls_app
