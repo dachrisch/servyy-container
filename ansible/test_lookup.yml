@@ -70,6 +70,20 @@
       tags:
         - test_lookup
 
+    - name: Test lookup plugin - fetch monit SMTP username
+      debug:
+        msg: "Monit SMTP username retrieved: {{ lookup('vaultwarden', 'infrastructure/test/monit/smtp', field='username') }}"
+      no_log: false
+      tags:
+        - test_lookup
+
+    - name: Test lookup plugin - fetch monit SMTP password
+      debug:
+        msg: "Monit SMTP password retrieved: {{ lookup('vaultwarden', 'infrastructure/test/monit/smtp', field='password') }}"
+      no_log: false
+      tags:
+        - test_lookup
+
     - name: All lookups successful
       debug:
         msg: "✅ All Vaultwarden lookups successful!"
