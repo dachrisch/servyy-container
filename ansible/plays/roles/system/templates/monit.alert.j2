@@ -1,9 +1,9 @@
 ## Mail Benachrichtigungen
 
 set alert {{ monit.email }}
-set mailserver   
+set mailserver
   {{ monit.smtp.host }}
   port {{ monit.smtp.port }}
-  username {{ monit.smtp.account }}
-  password {{ monit.smtp.password }}
+  username {{ monit_smtp_account }}
+  password {{ monit_smtp_password }}
   using TLS

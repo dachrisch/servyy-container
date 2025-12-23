@@ -335,15 +335,154 @@ if [[ "$GIT_USERNAME" != "null" ]] && [[ -n "$GIT_USERNAME" ]]; then
         "ansible_var:servyy_git_repo.password"
 fi
 
+# Monit SMTP credentials
+MONIT_SMTP_ACCOUNT=$(yq -r '.monit.smtp.account' "$SECRETS_FILE" 2>/dev/null || echo "")
+MONIT_SMTP_PASSWORD=$(yq -r '.monit.smtp.password' "$SECRETS_FILE" 2>/dev/null || echo "")
+MONIT_SMTP_HOST=$(yq -r '.monit.smtp.host' "$SECRETS_FILE" 2>/dev/null || echo "")
+MONIT_SMTP_PORT=$(yq -r '.monit.smtp.port' "$SECRETS_FILE" 2>/dev/null || echo "")
+if [[ "$MONIT_SMTP_ACCOUNT" != "null" ]] && [[ -n "$MONIT_SMTP_ACCOUNT" ]]; then
+    create_or_update_item \
+        "${ITEM_PREFIX}/infrastructure/${ENVIRONMENT}/monit/smtp" \
+        "1" \
+        "$MONIT_SMTP_ACCOUNT" \
+        "$MONIT_SMTP_PASSWORD" \
+        "" \
+        "smtp_host:$MONIT_SMTP_HOST" \
+        "smtp_port:$MONIT_SMTP_PORT" \
+        "ansible_var:monit.smtp.password"
+fi
+
 log_info ""
 log_info "=== Application Secrets ==="
 
-# LeagueSphere secrets (if they exist)
-LS_SECRET_FILE="$ANSIBLE_DIR/plays/vars/secret_leaguesphere.yaml"
-if [[ -f "$LS_SECRET_FILE" ]]; then
-    log_info "Found LeagueSphere secrets file: $LS_SECRET_FILE"
-    log_warn "LeagueSphere secret migration should be implemented based on actual file structure"
-    log_warn "Check the file and add migration code in this script"
+# LeagueSphere Production secrets
+LS_PROD_SECRET_FILE="$ANSIBLE_DIR/plays/roles/ls_app/vars/secret_main.yaml"
+if [[ -f "$LS_PROD_SECRET_FILE" ]]; then
+    log_info "Migrating LeagueSphere Production secrets from: $LS_PROD_SECRET_FILE"
+
+    # Database credentials
+    LS_PROD_DB_HOST=$(yq -r '.app.db_host' "$LS_PROD_SECRET_FILE" 2>/dev/null || echo "")
+    LS_PROD_DB_NAME=$(yq -r '.app.db_name' "$LS_PROD_SECRET_FILE" 2>/dev/null || echo "")
+    LS_PROD_DB_USER=$(yq -r '.app.db_user' "$LS_PROD_SECRET_FILE" 2>/dev/null || echo "")
+    LS_PROD_DB_PASSWORD=$(yq -r '.app.db_password' "$LS_PROD_SECRET_FILE" 2>/dev/null || echo "")
+
+    if [[ "$LS_PROD_DB_USER" != "null" ]] && [[ -n "$LS_PROD_DB_USER" ]]; then
+        create_or_update_item \
+            "${ITEM_PREFIX}/apps/${ENVIRONMENT}/leaguesphere/prod/db_credentials" \
+            "1" \
+            "$LS_PROD_DB_USER" \
+            "$LS_PROD_DB_PASSWORD" \
+            "" \
+            "db_host:$LS_PROD_DB_HOST" \
+            "db_name:$LS_PROD_DB_NAME" \
+            "ansible_var:app.db_password"
+    fi
+
+    # Django secret key
+    LS_PROD_SECRET_KEY=$(yq -r '.app.secret_key' "$LS_PROD_SECRET_FILE" 2>/dev/null || echo "")
+    if [[ "$LS_PROD_SECRET_KEY" != "null" ]] && [[ -n "$LS_PROD_SECRET_KEY" ]]; then
+        create_or_update_item \
+            "${ITEM_PREFIX}/apps/${ENVIRONMENT}/leaguesphere/prod/django_secret" \
+            "2" \
+            "" \
+            "" \
+            "$LS_PROD_SECRET_KEY" \
+            "ansible_var:app.secret_key"
+    fi
+
+    # Moodle API token
+    LS_PROD_MOODLE_URL=$(yq -r '.app.moodle_url' "$LS_PROD_SECRET_FILE" 2>/dev/null || echo "")
+    LS_PROD_MOODLE_TOKEN=$(yq -r '.app.moodle_wstoken' "$LS_PROD_SECRET_FILE" 2>/dev/null || echo "")
+    if [[ "$LS_PROD_MOODLE_TOKEN" != "null" ]] && [[ -n "$LS_PROD_MOODLE_TOKEN" ]]; then
+        create_or_update_item \
+            "${ITEM_PREFIX}/apps/${ENVIRONMENT}/leaguesphere/prod/moodle_api" \
+            "1" \
+            "api_token" \
+            "$LS_PROD_MOODLE_TOKEN" \
+            "" \
+            "moodle_url:$LS_PROD_MOODLE_URL" \
+            "ansible_var:app.moodle_wstoken"
+    fi
+
+    # Approval endpoint token
+    LS_PROD_APPROVAL_ENDPOINT=$(yq -r '.app.approval_endpoint' "$LS_PROD_SECRET_FILE" 2>/dev/null || echo "")
+    LS_PROD_APPROVAL_TOKEN=$(yq -r '.app.approval_token' "$LS_PROD_SECRET_FILE" 2>/dev/null || echo "")
+    if [[ "$LS_PROD_APPROVAL_TOKEN" != "null" ]] && [[ -n "$LS_PROD_APPROVAL_TOKEN" ]]; then
+        create_or_update_item \
+            "${ITEM_PREFIX}/apps/${ENVIRONMENT}/leaguesphere/prod/approval_api" \
+            "1" \
+            "api_token" \
+            "$LS_PROD_APPROVAL_TOKEN" \
+            "" \
+            "approval_endpoint:$LS_PROD_APPROVAL_ENDPOINT" \
+            "ansible_var:app.approval_token"
+    fi
+fi
+
+# LeagueSphere Staging secrets
+LS_STAGE_SECRET_FILE="$ANSIBLE_DIR/plays/roles/ls_app/vars/secret_stage.yaml"
+if [[ -f "$LS_STAGE_SECRET_FILE" ]]; then
+    log_info "Migrating LeagueSphere Staging secrets from: $LS_STAGE_SECRET_FILE"
+
+    # Database credentials
+    LS_STAGE_DB_HOST=$(yq -r '.app.db_host' "$LS_STAGE_SECRET_FILE" 2>/dev/null || echo "")
+    LS_STAGE_DB_NAME=$(yq -r '.app.db_name' "$LS_STAGE_SECRET_FILE" 2>/dev/null || echo "")
+    LS_STAGE_DB_USER=$(yq -r '.app.db_user' "$LS_STAGE_SECRET_FILE" 2>/dev/null || echo "")
+    LS_STAGE_DB_PASSWORD=$(yq -r '.app.db_password' "$LS_STAGE_SECRET_FILE" 2>/dev/null || echo "")
+    LS_STAGE_DB_ROOT_PASSWORD=$(yq -r '.app.db_root_password' "$LS_STAGE_SECRET_FILE" 2>/dev/null || echo "")
+
+    if [[ "$LS_STAGE_DB_USER" != "null" ]] && [[ -n "$LS_STAGE_DB_USER" ]]; then
+        create_or_update_item \
+            "${ITEM_PREFIX}/apps/${ENVIRONMENT}/leaguesphere/stage/db_credentials" \
+            "1" \
+            "$LS_STAGE_DB_USER" \
+            "$LS_STAGE_DB_PASSWORD" \
+            "" \
+            "db_host:$LS_STAGE_DB_HOST" \
+            "db_name:$LS_STAGE_DB_NAME" \
+            "db_root_password:$LS_STAGE_DB_ROOT_PASSWORD" \
+            "ansible_var:app.db_password"
+    fi
+
+    # Django secret key
+    LS_STAGE_SECRET_KEY=$(yq -r '.app.secret_key' "$LS_STAGE_SECRET_FILE" 2>/dev/null || echo "")
+    if [[ "$LS_STAGE_SECRET_KEY" != "null" ]] && [[ -n "$LS_STAGE_SECRET_KEY" ]]; then
+        create_or_update_item \
+            "${ITEM_PREFIX}/apps/${ENVIRONMENT}/leaguesphere/stage/django_secret" \
+            "2" \
+            "" \
+            "" \
+            "$LS_STAGE_SECRET_KEY" \
+            "ansible_var:app.secret_key"
+    fi
+
+    # Moodle API token
+    LS_STAGE_MOODLE_URL=$(yq -r '.app.moodle_url' "$LS_STAGE_SECRET_FILE" 2>/dev/null || echo "")
+    LS_STAGE_MOODLE_TOKEN=$(yq -r '.app.moodle_wstoken' "$LS_STAGE_SECRET_FILE" 2>/dev/null || echo "")
+    if [[ "$LS_STAGE_MOODLE_TOKEN" != "null" ]] && [[ -n "$LS_STAGE_MOODLE_TOKEN" ]]; then
+        create_or_update_item \
+            "${ITEM_PREFIX}/apps/${ENVIRONMENT}/leaguesphere/stage/moodle_api" \
+            "1" \
+            "api_token" \
+            "$LS_STAGE_MOODLE_TOKEN" \
+            "" \
+            "moodle_url:$LS_STAGE_MOODLE_URL" \
+            "ansible_var:app.moodle_wstoken"
+    fi
+
+    # Approval endpoint token
+    LS_STAGE_APPROVAL_ENDPOINT=$(yq -r '.app.approval_endpoint' "$LS_STAGE_SECRET_FILE" 2>/dev/null || echo "")
+    LS_STAGE_APPROVAL_TOKEN=$(yq -r '.app.approval_token' "$LS_STAGE_SECRET_FILE" 2>/dev/null || echo "")
+    if [[ "$LS_STAGE_APPROVAL_TOKEN" != "null" ]] && [[ -n "$LS_STAGE_APPROVAL_TOKEN" ]]; then
+        create_or_update_item \
+            "${ITEM_PREFIX}/apps/${ENVIRONMENT}/leaguesphere/stage/approval_api" \
+            "1" \
+            "api_token" \
+            "$LS_STAGE_APPROVAL_TOKEN" \
+            "" \
+            "approval_endpoint:$LS_STAGE_APPROVAL_ENDPOINT" \
+            "ansible_var:app.approval_token"
+    fi
 fi
 
 # TODO: Add more service secrets as needed
