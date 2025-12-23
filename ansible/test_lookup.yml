@@ -35,6 +35,41 @@
       tags:
         - test_lookup
 
+    - name: Test lookup plugin - fetch social credentials username
+      debug:
+        msg: "Social username retrieved: {{ lookup('vaultwarden', 'services/test/social/credentials', field='username') }}"
+      no_log: false
+      tags:
+        - test_lookup
+
+    - name: Test lookup plugin - fetch social credentials password
+      debug:
+        msg: "Social password retrieved: {{ lookup('vaultwarden', 'services/test/social/credentials', field='password') }}"
+      no_log: false
+      tags:
+        - test_lookup
+
+    - name: Test lookup plugin - fetch atuin credentials username
+      debug:
+        msg: "Atuin username retrieved: {{ lookup('vaultwarden', 'infrastructure/test/atuin/credentials', field='username') }}"
+      no_log: false
+      tags:
+        - test_lookup
+
+    - name: Test lookup plugin - fetch atuin credentials password
+      debug:
+        msg: "Atuin password retrieved: {{ lookup('vaultwarden', 'infrastructure/test/atuin/credentials', field='password') }}"
+      no_log: false
+      tags:
+        - test_lookup
+
+    - name: Test lookup plugin - fetch atuin encryption_key
+      debug:
+        msg: "Atuin encryption key retrieved: {{ lookup('vaultwarden', 'infrastructure/test/atuin/credentials', field='encryption_key') }}"
+      no_log: false
+      tags:
+        - test_lookup
+
     - name: All lookups successful
       debug:
         msg: "✅ All Vaultwarden lookups successful!"
