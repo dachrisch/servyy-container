@@ -5,9 +5,18 @@
   remote_user: "{{ root_user | default('root') }}"
   gather_facts: yes
   vars_files:
+    - vars/bootstrap_secrets.yml
     - vars/default.yml
     - vars/restic.yml
     - vars/secrets.yml
+  pre_tasks:
+    - name: Fetch Ubuntu Pro token from Vaultwarden
+      set_fact:
+        ubuntu_pro_token: "{{ lookup('vaultwarden', 'infrastructure/test/ubuntu_pro/token', field='password') }}"
+      no_log: true
+      when: ubuntu_pro_token is not defined
+      tags:
+        - ubuntu_pro
   roles:
     - system
     - role: sebthebert.ubuntu_pro
