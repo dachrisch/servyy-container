@@ -1,3 +1,12 @@
+- name: Fetch social credentials from Vaultwarden
+  set_fact:
+    social_username: "{{ lookup('vaultwarden', 'services/test/social/credentials', field='username') }}"
+    social_password: "{{ lookup('vaultwarden', 'services/test/social/credentials', field='password') }}"
+  no_log: true
+  tags:
+    - user.social
+    - user.social.base
+
 - name: Gather social service dir
   set_fact:
     dir_social: "{{ (docker.services | selectattr('name', 'equalto', 'Social') | first).dir }}"
@@ -33,18 +42,18 @@
   command: "docker compose exec social.pleroma /opt/pleroma/bin/pleroma_ctl user list"
   args:
     chdir: "{{ docker_dir_social }}"
-  register: social_user
-  changed_when: social_user.stdout =="" or not((social_user.stdout_lines | first) is search(social.user))
+  register: social_user_check
+  changed_when: social_user_check.stdout =="" or not((social_user_check.stdout_lines | first) is search(social_username))
   tags:
     - user.social.user.check
 
 # https://docs-develop.pleroma.social/backend/administration/CLI_tasks/user/
 - name: Create social user
-  command: "docker compose exec social.pleroma /opt/pleroma/bin/pleroma_ctl user new {{social.user}} {{social.email}} --admin --password \"{{social.password}}\" -y"
+  command: "docker compose exec social.pleroma /opt/pleroma/bin/pleroma_ctl user new {{ social_username }} {{ social.email }} --admin --password \"{{ social_password }}\" -y"
   no_log: true
   args:
     chdir: "{{ docker_dir_social }}"
-  when: social_user.changed
+  when: social_user_check.changed
   tags:
     - user.social.user.create
 

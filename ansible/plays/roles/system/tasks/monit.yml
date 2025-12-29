@@ -1,3 +1,11 @@
+- name: Fetch monit SMTP credentials from Vaultwarden
+  set_fact:
+    monit_smtp_account: "{{ lookup('vaultwarden', 'infrastructure/test/monit/smtp', field='username') }}"
+    monit_smtp_password: "{{ lookup('vaultwarden', 'infrastructure/test/monit/smtp', field='password') }}"
+  no_log: true
+  tags:
+    - system.monit
+
 - name: Monitor SSHD
   file:
     src: /etc/monit/conf-available/openssh-server
@@ -24,6 +32,7 @@
     dest: /etc/monit/conf.d/alert
     mode: 0640
   notify: restart monit
+  no_log: true
 
 - name: Setup systems check
   template:
