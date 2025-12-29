@@ -1,3 +1,4 @@
 # Restic repository passwords (generated and persisted by Ansible)
 plays/vars/.restic_password_home
 plays/vars/.restic_password_root
+__pycache__/
