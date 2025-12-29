@@ -44,14 +44,14 @@
 - name: Drop and recreate staging database
   shell: |
     docker exec {{ stage_app.app.name }}.mysql \
-      mysql -u root -p'{{ stage_app.app.db_root_password }}' \
+      mariadb -u root -p'{{ stage_app.app.db_root_password }}' \
       -e "DROP DATABASE IF EXISTS {{ stage_app.app.db_name }}; CREATE DATABASE {{ stage_app.app.db_name }} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
   changed_when: true
 
 - name: Import database
   shell: |
     docker exec -i {{ stage_app.app.name }}.mysql \
-      mysql -u root -p'{{ stage_app.app.db_root_password }}' {{ stage_app.app.db_name }} \
+      mariadb -u root -p'{{ stage_app.app.db_root_password }}' {{ stage_app.app.db_name }} \
       < "{{ sql_dump_file }}"
   changed_when: true
 
