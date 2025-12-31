@@ -1,15 +1,5 @@
 ---
 # Restic backup configuration tasks
-
-# Fetch restic_password_root from Vaultwarden (restic_password_home stays in bootstrap)
-- name: Fetch restic root password from Vaultwarden
-  set_fact:
-    restic_password_root: "{{ lookup('vaultwarden', 'infrastructure/test/restic/root_password', field='password') }}"
-  no_log: true
-  tags:
-    - user.restic.init
-    - user.restic.backup
-
 - import_tasks: restic_init.yml
   tags:
     - user.restic.init

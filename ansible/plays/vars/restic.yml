@@ -1,8 +1,5 @@
 ---
 # Restic backup configuration
-#
-# CRITICAL: restic_password_home stays in bootstrap_secrets.yml (circular dependency)
-# Vaultwarden data is backed up by HOME backup, so HOME password cannot be in Vaultwarden
 restic:
   # Home directory backup (hourly)
   home:

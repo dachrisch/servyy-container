@@ -1,7 +1,7 @@
 ---
 - name: restart traefik
   community.docker.docker_compose_v2:
-    project_src: "{{ (docker.remote_dir, 'traefik') | path_join }}"
+    project_src: /home/cda/servyy-container/traefik
     state: present
     recreate: always
   listen: restart traefik

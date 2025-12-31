@@ -1,6 +1,5 @@
 git/htpasswd filter=git-crypt diff=git-crypt
 docker-compose.yml filter=git-crypt diff=git-crypt
-ansible/plays/vars/bootstrap_secrets.yml filter=git-crypt diff=git-crypt
 *.yaml filter=git-crypt diff=git-crypt
 secrets.* filter=git-crypt diff=git-crypt
 secret_* filter=git-crypt diff=git-crypt
