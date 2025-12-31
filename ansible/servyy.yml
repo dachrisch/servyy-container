@@ -13,4 +13,5 @@
     testing:
       extra_hosts:
         - [ { dir: 'pihole.dns' }, '' ]
-        - [ { dir: "{{ app.name | default('') }}" }, '.lxd' ]
+        - [ { dir: 'leaguesphere' }, '.lxd' ]
+        - [ { dir: 'stage.leaguesphere' }, '.lxd' ]
