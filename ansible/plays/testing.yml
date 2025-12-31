@@ -5,8 +5,7 @@
   vars_files:
     - vars/default.yml
     - vars/secrets.yml
-    - vars/secret_vaultwarden.yaml
-  roles:
+  roles: 
     - testing
   tags:
     - testing

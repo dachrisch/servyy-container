@@ -1,6 +1,7 @@
 [Unit]
 Description=Bind mount Docker socket into jail
-After=docker.service
+After=docker.socket
+Requires=docker.socket
 
 [Mount]
 What=/var/run/docker.sock

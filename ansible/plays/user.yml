@@ -5,11 +5,10 @@
   become: true
   become_user: "{{ create_user }}"
   vars_files:
-    - vars/bootstrap_secrets.yml
     - vars/default.yml
     - vars/restic.yml
     - vars/secrets.yml
-  roles:
+  roles: 
     - user
   tags:
     - user

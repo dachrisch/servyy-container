@@ -10,14 +10,6 @@
   tags:
     - testing.mkcert
 
-- import_tasks: vaultwarden_test.yml
-  tags:
-    - testing.vaultwarden
-
-- import_tasks: vaultwarden_org_api_test.yml
-  tags:
-    - testing.vaultwarden.org_api
-
 - name: Mount on reboot
   cron:
     name: "mount box on every reboot"

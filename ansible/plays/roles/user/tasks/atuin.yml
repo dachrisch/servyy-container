@@ -1,12 +1,3 @@
-- name: Fetch Atuin credentials from Vaultwarden
-  set_fact:
-    atuin_username: "{{ lookup('vaultwarden', 'infrastructure/test/atuin/credentials', field='username') }}"
-    atuin_password: "{{ lookup('vaultwarden', 'infrastructure/test/atuin/credentials', field='password') }}"
-    atuin_encryption_key: "{{ lookup('vaultwarden', 'infrastructure/test/atuin/credentials', field='encryption_key') }}"
-  no_log: true
-  tags:
-    - user.atuin
-
 - name: Check if atuin is installed
   shell: "atuin -V"
   register: autin_version
@@ -38,8 +29,8 @@
         state: link
   when: autin_version.rc != 0
 
-- name: Login [{{ atuin_username }}]
-  shell: "atuin login -u {{ atuin_username }} -p {{ atuin_password }} -k '{{ atuin_encryption_key }}'"
+- name: Login [{{ atuin.username }}]
+  shell: "atuin login -u {{ atuin.username }} -p {{ atuin.password }} -k '{{ atuin.key }}'"
   no_log: true
   register: login
   changed_when: '"already logged in" not in (login.stderr | lower) and "already logged in" not in (login.stdout | lower)'

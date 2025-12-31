@@ -17,4 +17,3 @@ log/
 dns/volumes
 # jekyll
 bumbleflies/site
-__pycache__/
