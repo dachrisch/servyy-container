@@ -67,6 +67,8 @@
       become_user: "{{ create_user }}"
       tags:
         - ls.app.env
+        - ls.app.env.docker
+        - ls.app.env.ls
 
     # DB sync role (manual only)
     - role: ls_db_sync
