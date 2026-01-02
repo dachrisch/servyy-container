@@ -58,6 +58,16 @@
         - ls.app
         - ls.app.stage
 
+    # Staging env files (dev)
+    - role: ls_app
+      vars:
+        container_dir: "{{ ('~', 'dev', ls.user) | path_join }}"
+        ls_vars_file: "secret_stage.yaml"
+      remote_user: "{{ create_user }}"
+      become_user: "{{ create_user }}"
+      tags:
+        - ls.app.env
+
     # DB sync role (manual only)
     - role: ls_db_sync
       tags:
