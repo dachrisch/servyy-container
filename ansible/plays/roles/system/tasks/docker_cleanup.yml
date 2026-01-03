@@ -1,15 +1,21 @@
 ---
 - name: Create cleanup scripts directory
   file:
-    path: "{{ ansible_user_dir }}/.cleanup-scripts"
+    path: "/home/{{ create_user }}/.cleanup-scripts"
     state: directory
     mode: '0755'
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+  become: true
 
 - name: Deploy Docker cleanup script
   template:
     src: docker-cleanup.sh.j2
-    dest: "{{ ansible_user_dir }}/.cleanup-scripts/docker-cleanup.sh"
+    dest: "/home/{{ create_user }}/.cleanup-scripts/docker-cleanup.sh"
     mode: '0755'
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+  become: true
 
 - name: Create Docker cleanup log file with correct permissions
   file:
