@@ -105,6 +105,13 @@ jobs:
           # Create placeholder encrypted files for syntax check
           mkdir -p ansible/plays/vars
 
+          # Remove encrypted files first to ensure clean slate
+          rm -f ansible/plays/vars/secrets.yml
+          rm -f ansible/plays/vars/secret_leaguesphere.yaml
+          rm -f ansible/plays/vars/ssh_jail.yaml
+          rm -f ansible/plays/roles/user/defaults/main.yaml
+          rm -f ansible/plays/roles/testing/defaults/main.yaml
+
           # Mock secrets.yml
           cat > ansible/plays/vars/secrets.yml <<'EOF'
           ---
