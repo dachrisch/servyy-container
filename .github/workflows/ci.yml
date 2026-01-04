@@ -160,7 +160,7 @@ jobs:
 
           # Mock encrypted ls_* role files (LeagueSphere deployment)
           # These roles are git-crypt encrypted - remove and recreate with stubs
-          for role in ls_setup ls_app_dev ls_app_stage ls_app_prod; do
+          for role in ls_setup ls_app_dev ls_app_stage ls_app_prod ls_access ls_db_sync ls_app; do
             # Remove encrypted role directory completely
             rm -rf ansible/plays/roles/$role
 
