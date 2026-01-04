@@ -8,6 +8,7 @@
     has_10g_volume: false
     create_swap: false
     with_fail2ban: false
+    copy_local_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... testkey"
     sys_packages:
       - jq
       - curl
