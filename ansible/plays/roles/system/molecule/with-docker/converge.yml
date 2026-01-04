@@ -4,6 +4,7 @@
   become: true
   vars:
     create_user: testuser
+    copy_local_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... testkey"
     has_10g_volume: false
     create_swap: false
     with_fail2ban: false

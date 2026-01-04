@@ -4,6 +4,7 @@
   become: true
   vars:
     create_user: testuser
+    copy_local_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... testkey"
     sys_packages:
       - jq
       - curl
