@@ -74,6 +74,7 @@
   notify: restart traefik
   tags:
     - testing.mkcert.traefik
+    - molecule-notest
 
 - name: Add mkcert volume mount to Traefik docker-compose.yml
   blockinfile:
@@ -85,6 +86,7 @@
   notify: restart traefik
   tags:
     - testing.mkcert.traefik
+    - molecule-notest
 
 - name: Deploy mkcert README
   template:
@@ -93,6 +95,7 @@
     mode: '0644'
   tags:
     - testing.mkcert.documentation
+    - molecule-notest
 
 - name: Fetch CA certificate to local machine
   fetch:
@@ -101,6 +104,7 @@
     flat: yes
   tags:
     - testing.mkcert.local
+    - molecule-notest
 
 - name: Install CA certificate on local machine (macOS)
   shell: |
@@ -113,6 +117,7 @@
   ignore_errors: yes
   tags:
     - testing.mkcert.local
+    - molecule-notest
 
 - name: Install CA certificate on local machine (Linux)
   shell: |
@@ -125,3 +130,4 @@
   ignore_errors: yes
   tags:
     - testing.mkcert.local
+    - molecule-notest

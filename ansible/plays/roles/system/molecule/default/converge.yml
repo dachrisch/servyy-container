@@ -14,6 +14,7 @@
       - vim
       - git
       - monit
+      - tzdata
     docker_cleanup:
       enabled: false
     kernel_cleanup:
