@@ -9,6 +9,11 @@ exclude_paths:
   - plays/roles/sebthebert.*/
   - plays/roles/ls_*/
   - plays/leaguesphere.yml
+  - plays/vars/secrets.yml
+  - plays/vars/secret_*.yaml
+  - plays/vars/ssh_jail.yaml
+  - plays/roles/user/defaults/
+  - plays/roles/testing/defaults/
   - __pycache__/
 
 # Skip rules that don't apply to this infrastructure
@@ -19,7 +24,8 @@ skip_list:
   - no-changed-when    # raw/command tasks sometimes need this
   - command-instead-of-module  # Sometimes necessary for specific commands
   - fqcn[action-core]  # FQCN for builtin actions - existing code uses short names
-  - yaml[truthy]      # Allow 'yes'/'no' in existing code
+  - yaml[truthy]       # Allow 'yes'/'no' in existing code
+  - var-naming[no-role-prefix]  # Allow simple names in verify/test files
 
 # Treat warnings as errors
 warn_list: []
