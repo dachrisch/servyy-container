@@ -22,5 +22,7 @@ ignore: |
   __pycache__/
   ansible/plays/vars/secrets.yml
   ansible/plays/vars/secret_*.yaml
+  ansible/plays/vars/secret_*.yml
   ansible/plays/roles/geerlingguy.*/
   ansible/plays/roles/sebthebert.*/
+  ansible/plays/roles/ls_*/

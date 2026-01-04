@@ -5,7 +5,7 @@
   vars_files:
     - vars/default.yml
     - vars/secrets.yml
-  roles: 
+  roles:
     - testing
   tags:
     - testing

@@ -3,13 +3,13 @@ set -euo pipefail
 
 echo "=== git-crypt Validation ==="
 
-# Check git-crypt is initialized
+# Note: .git-crypt directory won't exist in CI (freshly cloned repo)
+# This is expected and correct - we validate via .gitattributes instead
 if [ ! -d ".git-crypt" ]; then
-    echo "ERROR: .git-crypt directory not found - repository not initialized with git-crypt"
-    exit 1
+    echo "ℹ .git-crypt directory not found (expected in CI - repo not unlocked)"
+else
+    echo "✓ git-crypt initialized"
 fi
-
-echo "✓ git-crypt initialized"
 
 # Verify .gitattributes exists and has required patterns
 if [ ! -f ".gitattributes" ]; then
