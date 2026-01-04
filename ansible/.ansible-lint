@@ -1,12 +1,14 @@
 ---
 profile: production  # Use production profile for stricter checks
 
-# Exclude external roles and generated files
+# Exclude external roles, encrypted roles, and generated files
 exclude_paths:
   - .backup/
   - .cache/
   - plays/roles/geerlingguy.*/
   - plays/roles/sebthebert.*/
+  - plays/roles/ls_*/
+  - plays/leaguesphere.yml
   - __pycache__/
 
 # Skip rules that don't apply to this infrastructure

@@ -5,8 +5,9 @@ exclude =
     __pycache__,
     .backup,
     .cache,
-    ansible/plays/roles/geerlingguy.*,
-    ansible/plays/roles/sebthebert.*
+    plays/roles/geerlingguy.*,
+    plays/roles/sebthebert.*,
+    plays/roles/ls_*
 ignore =
     E501,  # Line too long (handled by max-line-length)
     W503   # Line break before binary operator (black style)
