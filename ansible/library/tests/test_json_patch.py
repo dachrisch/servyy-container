@@ -163,7 +163,7 @@ class TestJSONPatcher(unittest.TestCase):
                                   "op": "remove",
                                   "path": "/bar/0"
                               }
-        )
+                              )
         modified, tested = patcher.patch()
         self.assertTrue(modified)
         self.assertEqual(patcher.obj["foo"]["three"], 3)

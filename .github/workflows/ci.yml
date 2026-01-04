@@ -137,6 +137,21 @@ jobs:
           EOF
           fi
 
+          # Mock encrypted role defaults
+          cat > ansible/plays/roles/user/defaults/main.yaml <<'EOF'
+          ---
+          # Mock defaults for CI testing
+          docker:
+            services: []
+          EOF
+
+          cat > ansible/plays/roles/testing/defaults/main.yaml <<'EOF'
+          ---
+          # Mock defaults for CI testing
+          testing:
+            extra_hosts: []
+          EOF
+
       - name: Syntax check ${{ matrix.playbook }}
         run: |
           cd ansible
