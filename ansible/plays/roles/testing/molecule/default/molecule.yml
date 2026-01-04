@@ -26,8 +26,8 @@ provisioner:
         create_user: ubuntu
         testing:
           extra_hosts:
-            - [{ dir: 'pihole.dns' }, '']
-            - [{ dir: 'test' }, '.lxd']
+            - [{dir: 'pihole.dns'}, '']
+            - [{dir: 'test'}, '.lxd']
         mkcert:
           cert_dir: /etc/ssl/mkcert
           domains:

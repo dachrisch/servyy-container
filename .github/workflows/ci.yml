@@ -62,7 +62,12 @@ jobs:
       - name: Flake8
         run: |
           cd ansible
-          flake8 library/ plugins/ --max-line-length=120
+          # Only lint directories that exist
+          if [ -d "plugins" ]; then
+            flake8 library/ plugins/ --max-line-length=120
+          else
+            flake8 library/ --max-line-length=120
+          fi
 
       - name: Pylint
         run: |

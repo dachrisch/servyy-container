@@ -19,7 +19,7 @@
 - name: Create host list for server
   blockinfile:
     path: "{{ (docker.remote_dir, 'dns', 'volumes', 'etc-pihole', 'custom.list' ) | path_join }}"
-    block: | 
+    block: |
       {{host_ip}}	{{inventory_hostname}}
       {{host_ip_v6}}	{{inventory_hostname}}
     state: present
