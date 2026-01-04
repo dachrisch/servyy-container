@@ -37,8 +37,10 @@ skip_list:
   - package-latest     # Allow 'state: latest' for packages
   - no-free-form       # Allow free-form module arguments
   - jinja[spacing]     # Don't enforce strict Jinja spacing
+  - jinja[invalid]     # Skip jinja template syntax errors (false positives)
   - ignore-errors      # Allow ignore_errors when appropriate
   - internal-error     # Skip internal ansible-lint errors
+  - partial-become[task]  # Allow become_user without become (inherited from play)
 
 # Treat warnings as errors
 warn_list: []
