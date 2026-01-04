@@ -57,6 +57,7 @@
   changed_when: lock_state.rc != 0
   tags:
     - user.repo.crypt.check
+    - molecule-notest
 
 - block:
     - block:
@@ -100,4 +101,5 @@
       failed_when: unlock_result.rc != 0 and 'already unlocked' not in unlock_result.stdout
   tags:
     - user.repo.crypt.unlock
+    - molecule-notest
   when: lock_state.changed
