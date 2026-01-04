@@ -55,6 +55,7 @@
   register: lock_state
   failed_when: lock_state.stderr != ""
   changed_when: lock_state.rc != 0
+  when: lookup('env', 'MOLECULE_SCENARIO_NAME') == ''  # Skip in Molecule tests
   tags:
     - user.repo.crypt.check
     - molecule-notest
@@ -102,4 +103,4 @@
   tags:
     - user.repo.crypt.unlock
     - molecule-notest
-  when: lock_state.changed
+  when: lock_state is defined and lock_state.changed
