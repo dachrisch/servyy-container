@@ -158,6 +158,23 @@ jobs:
             extra_hosts: []
           EOF
 
+          # Mock encrypted ls_* role files (LeagueSphere deployment)
+          # These roles are git-crypt encrypted - create minimal stubs for syntax checking
+          for role in ls_setup ls_app_dev ls_app_stage ls_app_prod; do
+            mkdir -p ansible/plays/roles/$role/{tasks,defaults}
+            cat > ansible/plays/roles/$role/tasks/main.yml <<'EOFR'
+          ---
+          # Mock task file for CI testing
+          - name: Mock task for $role
+            debug:
+              msg: "This is a mock role for CI testing"
+          EOFR
+            cat > ansible/plays/roles/$role/defaults/main.yml <<'EOFR'
+          ---
+          # Mock defaults for CI testing
+          EOFR
+          done
+
       - name: Syntax check ${{ matrix.playbook }}
         run: |
           cd ansible
