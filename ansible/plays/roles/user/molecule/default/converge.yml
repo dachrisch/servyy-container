@@ -5,6 +5,7 @@
   become_user: testuser
   vars:
     create_user: testuser
+    local_user: runner
     with_docker: false
     with_containers: false
     check_git_servyy_reachable: false

@@ -4,9 +4,16 @@
   become: true
   vars:
     # Override vars that require real infrastructure
+    create_user: testuser
     has_10g_volume: false
     create_swap: false
     with_fail2ban: false
+    sys_packages:
+      - jq
+      - curl
+      - vim
+      - git
+      - monit
     docker_cleanup:
       enabled: false
     kernel_cleanup:

@@ -4,6 +4,8 @@
   become: true
   vars:
     create_user: ubuntu
+    docker:
+      services: []
     testing:
       extra_hosts:
         - [{dir: 'pihole.dns'}, '']

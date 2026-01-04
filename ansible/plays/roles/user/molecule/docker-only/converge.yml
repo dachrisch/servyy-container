@@ -8,6 +8,11 @@
     with_docker: true
     with_containers: true
     check_git_servyy_reachable: false
+    extension_drive:
+      path: /mnt/mock_volume
+      device: /dev/null
+      fstype: ext4
+      opts: discard,defaults
   tasks:
     # Test Docker setup tasks only
     - name: Import docker_setup tasks
