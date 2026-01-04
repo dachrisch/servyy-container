@@ -18,6 +18,8 @@ skip_list:
   - risky-file-permissions  # We explicitly set permissions
   - no-changed-when    # raw/command tasks sometimes need this
   - command-instead-of-module  # Sometimes necessary for specific commands
+  - fqcn[action-core]  # FQCN for builtin actions - existing code uses short names
+  - yaml[truthy]      # Allow 'yes'/'no' in existing code
 
 # Treat warnings as errors
 warn_list: []
