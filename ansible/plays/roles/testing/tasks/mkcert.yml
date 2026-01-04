@@ -72,6 +72,7 @@
     create: no
     insertafter: EOF
   notify: restart traefik
+  when: lookup('env', 'MOLECULE_SCENARIO_NAME') == ''  # Skip in Molecule tests
   tags:
     - testing.mkcert.traefik
     - molecule-notest
@@ -84,6 +85,7 @@
     block: "      # mkcert certificate directory (test environment only)\n      - /etc/ssl/mkcert:/etc/ssl/mkcert:ro"
     create: no
   notify: restart traefik
+  when: lookup('env', 'MOLECULE_SCENARIO_NAME') == ''  # Skip in Molecule tests
   tags:
     - testing.mkcert.traefik
     - molecule-notest
@@ -93,6 +95,7 @@
     src: mkcert/README-mkcert.md.j2
     dest: /home/cda/servyy-container/traefik/README-mkcert.md
     mode: '0644'
+  when: lookup('env', 'MOLECULE_SCENARIO_NAME') == ''  # Skip in Molecule tests
   tags:
     - testing.mkcert.documentation
     - molecule-notest
