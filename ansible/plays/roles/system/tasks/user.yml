@@ -43,3 +43,4 @@
     - Restart SSHD
   tags:
     - system.user.no_passwd
+    - molecule-notest
