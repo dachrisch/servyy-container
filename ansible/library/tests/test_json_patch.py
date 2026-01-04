@@ -149,20 +149,20 @@ class TestJSONPatcher(unittest.TestCase):
     def test_multiple_operations(self):
         """Test multiple operations in sequence."""
         patcher = JSONPatcher(self.sample_json,
-            {
-                "op": "add",
-                "path": "/foo/three",
-                "value": 3
-            },
-            {
-                "op": "replace",
-                "path": "/enabled",
-                "value": False
-            },
-            {
-                "op": "remove",
-                "path": "/bar/0"
-            }
+                              {
+                                  "op": "add",
+                                  "path": "/foo/three",
+                                  "value": 3
+                              },
+                              {
+                                  "op": "replace",
+                                  "path": "/enabled",
+                                  "value": False
+                              },
+                              {
+                                  "op": "remove",
+                                  "path": "/bar/0"
+                              }
         )
         modified, tested = patcher.patch()
         self.assertTrue(modified)

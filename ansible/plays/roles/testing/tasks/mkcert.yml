@@ -50,10 +50,10 @@
     owner: root
     group: root
   loop:
-    - { path: "{{ mkcert.cert_dir }}/servyy-test.crt", mode: '0644' }
-    - { path: "{{ mkcert.cert_dir }}/servyy-test.key", mode: '0600' }
-    - { path: "{{ mkcert.cert_dir }}/rootCA.pem", mode: '0644' }
-    - { path: "{{ mkcert.cert_dir }}/rootCA-key.pem", mode: '0600' }
+    - {path: "{{ mkcert.cert_dir }}/servyy-test.crt", mode: '0644'}
+    - {path: "{{ mkcert.cert_dir }}/servyy-test.key", mode: '0600'}
+    - {path: "{{ mkcert.cert_dir }}/rootCA.pem", mode: '0644'}
+    - {path: "{{ mkcert.cert_dir }}/rootCA-key.pem", mode: '0600'}
   tags:
     - testing.mkcert.permissions
 

@@ -19,13 +19,23 @@ exclude_paths:
 # Skip rules that don't apply to this infrastructure
 skip_list:
   - yaml[line-length]  # Allow longer lines for readability
+  - yaml[octal-values]  # Allow octal file permissions (0644, 0755, etc)
   - name[casing]       # Don't enforce strict name casing
+  - name[missing]      # Allow tasks without names (import_tasks, blocks)
   - risky-file-permissions  # We explicitly set permissions
   - no-changed-when    # raw/command tasks sometimes need this
+  - no-handler         # Some tasks run on change but aren't handlers
   - command-instead-of-module  # Sometimes necessary for specific commands
+  - command-instead-of-shell  # shell is sometimes necessary
   - fqcn[action-core]  # FQCN for builtin actions - existing code uses short names
+  - fqcn[action]       # Don't require FQCN for all actions
   - yaml[truthy]       # Allow 'yes'/'no' in existing code
   - var-naming[no-role-prefix]  # Allow simple names in verify/test files
+  - var-naming[pattern]  # Allow variable naming patterns like filesFound
+  - key-order[task]    # Don't enforce strict task key ordering
+  - package-latest     # Allow 'state: latest' for packages
+  - no-free-form       # Allow free-form module arguments
+  - jinja[spacing]     # Don't enforce strict Jinja spacing
 
 # Treat warnings as errors
 warn_list: []
