@@ -1,0 +1,19 @@
+---
+- name: Converge (User Docker-Only)
+  hosts: all
+  become: true
+  become_user: testuser
+  vars:
+    create_user: testuser
+    with_docker: true
+    with_containers: true
+    check_git_servyy_reachable: false
+  tasks:
+    # Test Docker setup tasks only
+    - name: Import docker_setup tasks
+      import_tasks: ../../tasks/docker_setup.yml
+      tags: [user.docker.setup]
+      when: (with_docker or with_containers) | default(false)
+
+    # Skip: repository cloning (requires git.lehel.xyz), docker_services (requires compose files),
+    # dns tasks, backup, restic, host_ping

@@ -1,0 +1,54 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../../../../requirements.yml
+driver:
+  name: docker
+platforms:
+  - name: instance
+    image: geerlingguy/docker-ubuntu2204-ansible:latest
+    command: ""
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    cgroupns_mode: host
+    privileged: true
+    pre_build_image: true
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      action_warnings: true
+      allow_world_readable_tmpfiles: true
+  inventory:
+    host_vars:
+      instance:
+        create_user: testuser
+        with_fail2ban: false  # Skip fail2ban in CI (requires real logs)
+        has_10g_volume: false
+        create_swap: false
+        docker_cleanup:
+          enabled: false
+        kernel_cleanup:
+          enabled: false
+        storagebox_credentials:
+          host: "mock.example.com"
+          share: "backup"
+          user: "mockuser"
+          pass: "mockpass"
+  env:
+    ANSIBLE_FORCE_COLOR: "1"
+verifier:
+  name: ansible
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - verify
+    - cleanup
+    - destroy

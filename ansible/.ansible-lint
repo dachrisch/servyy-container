@@ -1,0 +1,27 @@
+---
+profile: production  # Use production profile for stricter checks
+
+# Exclude external roles and generated files
+exclude_paths:
+  - .backup/
+  - .cache/
+  - plays/roles/geerlingguy.*/
+  - plays/roles/sebthebert.*/
+  - __pycache__/
+
+# Skip rules that don't apply to this infrastructure
+skip_list:
+  - yaml[line-length]  # Allow longer lines for readability
+  - name[casing]       # Don't enforce strict name casing
+  - risky-file-permissions  # We explicitly set permissions
+  - no-changed-when    # raw/command tasks sometimes need this
+  - command-instead-of-module  # Sometimes necessary for specific commands
+
+# Treat warnings as errors
+warn_list: []
+
+# Enable offline mode (don't fetch Galaxy roles during linting)
+offline: true
+
+# Set verbosity
+verbosity: 1

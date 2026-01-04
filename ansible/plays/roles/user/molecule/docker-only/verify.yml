@@ -1,0 +1,15 @@
+---
+- name: Verify (User Docker-Only)
+  hosts: all
+  become: true
+  tasks:
+    - name: Check if proxy network exists
+      command: docker network ls --filter name=proxy --format "{{{{.Name}}}}"
+      register: proxy_network
+      changed_when: false
+
+    - name: Verify proxy network was created
+      assert:
+        that:
+          - "'proxy' in proxy_network.stdout"
+        fail_msg: "Docker proxy network not found"

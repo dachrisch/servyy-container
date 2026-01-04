@@ -1,0 +1,231 @@
+---
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+
+jobs:
+  # Fast-fail checks (run in parallel)
+  lint-yaml:
+    name: Lint YAML
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: YAML Lint
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          config_file: .yamllint.yml
+          file_or_dir: ansible/
+
+  lint-ansible:
+    name: Ansible Lint
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          cd ansible
+          pip install ansible-lint ansible>=2.11 dnspython jmespath
+
+      - name: Run ansible-lint
+        run: |
+          cd ansible
+          ansible-lint --force-color --show-relpath
+
+  lint-python:
+    name: Lint Python (Custom Modules)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install linting tools
+        run: pip install flake8 pylint
+
+      - name: Flake8
+        run: |
+          cd ansible
+          flake8 library/ plugins/ --max-line-length=120
+
+      - name: Pylint
+        run: |
+          cd ansible
+          pylint library/json_patch.py --disable=C0103,R0912,R0915
+
+  syntax-check:
+    name: Ansible Syntax Check
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        playbook:
+          - servyy.yml
+          - plays/system.yml
+          - plays/user.yml
+          - plays/leaguesphere.yml
+          - plays/testing.yml
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Ansible
+        run: |
+          pip install ansible>=2.11 dnspython jmespath
+          ansible-galaxy install -r ansible/requirements.yml
+
+      - name: Create mock encrypted files
+        run: |
+          # Create placeholder encrypted files for syntax check
+          mkdir -p ansible/plays/vars
+
+          # Mock secrets.yml
+          cat > ansible/plays/vars/secrets.yml <<'EOF'
+          ---
+          storagebox_credentials:
+            host: "mock.example.com"
+            share: "backup"
+            user: "mockuser"
+            pass: "mockpass"
+          servyy_git_repo:
+            hostname: "git.example.com"
+            username: "mockuser"
+            password: "mockpass"
+          create_user: testuser
+          EOF
+
+          # Mock secret_leaguesphere.yaml
+          cat > ansible/plays/vars/secret_leaguesphere.yaml <<'EOF'
+          ---
+          ls:
+            user: lsuser
+          ssh_chroot_jail_path: /test/jail
+          ssh_chroot_jail_group_name: testgroup
+          EOF
+
+          # Mock ssh_jail.yaml (already exists, but ensure it's readable)
+          if [ ! -f "ansible/plays/vars/ssh_jail.yaml" ]; then
+            cat > ansible/plays/vars/ssh_jail.yaml <<'EOF'
+          ---
+          ssh_chroot_jail_users: []
+          extra_ssh_chroot_jail_dirs: []
+          EOF
+          fi
+
+      - name: Syntax check ${{ matrix.playbook }}
+        run: |
+          cd ansible
+          ansible-playbook ${{ matrix.playbook }} --syntax-check -i testing
+
+  git-crypt-validation:
+    name: Validate git-crypt Encryption
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install git-crypt
+        run: sudo apt-get update && sudo apt-get install -y git-crypt
+
+      - name: Run validation script
+        run: .github/scripts/validate-git-crypt.sh
+
+  test-custom-modules:
+    name: Test Custom Modules
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        run: pip install ansible>=2.11
+
+      - name: Run unit tests
+        run: |
+          cd ansible/library
+          python -m unittest discover -s tests -p "test_*.py" -v
+
+  # Integration tests (run after lint passes)
+  molecule-test:
+    name: Molecule Test (${{ matrix.role }}/${{ matrix.scenario }})
+    needs: [lint-yaml, lint-ansible, syntax-check]
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # System role scenarios
+          - role: system
+            scenario: default
+          - role: system
+            scenario: minimal
+          - role: system
+            scenario: with-docker
+          # User role scenarios
+          - role: user
+            scenario: default
+          - role: user
+            scenario: docker-only
+          # Testing role scenarios
+          - role: testing
+            scenario: default
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-molecule-${{ hashFiles('ansible/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-molecule-
+            ${{ runner.os }}-pip-
+
+      - name: Cache Ansible Galaxy roles
+        uses: actions/cache@v4
+        with:
+          path: ~/.ansible/roles
+          key: ${{ runner.os }}-galaxy-${{ hashFiles('ansible/requirements.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-galaxy-
+
+      - name: Install dependencies
+        run: |
+          pip install molecule molecule-plugins[docker] ansible>=2.11 dnspython jmespath docker
+          ansible-galaxy install -r ansible/requirements.yml
+
+      - name: Run Molecule test
+        run: |
+          cd ansible/plays/roles/${{ matrix.role }}
+          molecule test --scenario-name ${{ matrix.scenario }}
+        env:
+          PY_COLORS: '1'
+          ANSIBLE_FORCE_COLOR: '1'

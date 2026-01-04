@@ -1,0 +1,37 @@
+---
+- name: Converge (With Docker)
+  hosts: all
+  become: true
+  vars:
+    has_10g_volume: false
+    create_swap: false
+    with_fail2ban: false
+    docker_cleanup:
+      enabled: true
+      schedule: 'Sun 02:00'
+      log_file: '/var/log/docker-cleanup.log'
+      prune_flags: '-a -f --volumes'
+    kernel_cleanup:
+      enabled: true
+      schedule: 'Sun *-*-1..7 01:00'
+      script_path: '/usr/local/bin/kernel-cleanup.sh'
+      log_file: '/var/log/kernel-cleanup.log'
+      description: 'Remove old kernel packages'
+  tasks:
+    - name: Import user tasks
+      import_tasks: ../../tasks/user.yml
+      tags: [system.user]
+
+    - name: Import journald tasks
+      import_tasks: ../../tasks/journald.yml
+      tags: [system.journald]
+
+    - name: Import docker_cleanup tasks
+      import_tasks: ../../tasks/docker_cleanup.yml
+      when: docker_cleanup.enabled | default(true)
+      tags: [system.docker, system.docker.cleanup]
+
+    - name: Import kernel_cleanup tasks
+      import_tasks: ../../tasks/kernel_cleanup.yml
+      when: kernel_cleanup.enabled | default(true)
+      tags: [system.kernel, system.kernel.cleanup]

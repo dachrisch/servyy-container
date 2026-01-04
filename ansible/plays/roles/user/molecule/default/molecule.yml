@@ -1,0 +1,49 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../../../../requirements.yml
+driver:
+  name: docker
+platforms:
+  - name: instance-user
+    image: geerlingguy/docker-ubuntu2204-ansible:latest
+    command: ""
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    cgroupns_mode: host
+    privileged: true
+    pre_build_image: true
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      action_warnings: true
+      allow_world_readable_tmpfiles: true
+  inventory:
+    host_vars:
+      instance-user:
+        create_user: testuser
+        with_docker: false
+        with_containers: false
+        check_git_servyy_reachable: false
+        shell:
+          repo: "https://github.com/sorin-ionescu/prezto.git"
+          remote_dir: "/home/testuser/.zprezto"
+          local_dir: "/tmp/zprezto"
+  env:
+    ANSIBLE_FORCE_COLOR: "1"
+verifier:
+  name: ansible
+scenario:
+  test_sequence:
+    - dependency
+    - cleanup
+    - destroy
+    - syntax
+    - create
+    - prepare
+    - converge
+    - verify
+    - cleanup
+    - destroy

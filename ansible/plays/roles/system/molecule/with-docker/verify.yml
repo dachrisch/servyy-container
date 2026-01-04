@@ -1,0 +1,62 @@
+---
+- name: Verify (With Docker)
+  hosts: all
+  become: true
+  tasks:
+    - name: Verify testuser exists
+      command: id testuser
+      register: user_result
+      changed_when: false
+      failed_when: user_result.rc != 0
+
+    - name: Check journald retention config exists
+      stat:
+        path: /etc/systemd/journald.conf.d/retention.conf
+      register: journald_conf
+
+    - name: Verify journald config was created
+      assert:
+        that:
+          - journald_conf.stat.exists
+
+    - name: Check docker-cleanup script exists
+      stat:
+        path: /usr/local/bin/docker-cleanup.sh
+      register: docker_cleanup_script
+
+    - name: Verify docker-cleanup script was created
+      assert:
+        that:
+          - docker_cleanup_script.stat.exists
+          - docker_cleanup_script.stat.executable
+
+    - name: Check docker-cleanup timer exists
+      stat:
+        path: /etc/systemd/system/docker-cleanup.timer
+      register: docker_cleanup_timer
+
+    - name: Verify docker-cleanup timer was created
+      assert:
+        that:
+          - docker_cleanup_timer.stat.exists
+
+    - name: Check kernel-cleanup script exists
+      stat:
+        path: /usr/local/bin/kernel-cleanup.sh
+      register: kernel_cleanup_script
+
+    - name: Verify kernel-cleanup script was created
+      assert:
+        that:
+          - kernel_cleanup_script.stat.exists
+          - kernel_cleanup_script.stat.executable
+
+    - name: Check kernel-cleanup timer exists
+      stat:
+        path: /etc/systemd/system/kernel-cleanup.timer
+      register: kernel_cleanup_timer
+
+    - name: Verify kernel-cleanup timer was created
+      assert:
+        that:
+          - kernel_cleanup_timer.stat.exists
