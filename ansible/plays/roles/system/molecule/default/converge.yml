@@ -1,0 +1,35 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    # Override vars that require real infrastructure
+    has_10g_volume: false
+    create_swap: false
+    with_fail2ban: false
+    docker_cleanup:
+      enabled: false
+    kernel_cleanup:
+      enabled: false
+    storagebox_credentials:
+      host: "mock.example.com"
+      share: "backup"
+      user: "mockuser"
+      pass: "mockpass"
+  tasks:
+    # Import only testable tasks from the system role
+    - name: Import packages tasks
+      import_tasks: ../../tasks/packages.yml
+      tags: [system.packages]
+
+    - name: Import user tasks
+      import_tasks: ../../tasks/user.yml
+      tags: [system.user]
+
+    - name: Import journald tasks
+      import_tasks: ../../tasks/journald.yml
+      tags: [system.journald]
+
+    # Skip: fail2ban (needs real logs), storagebox (needs mount),
+    # extension_drive (needs real device), swap (disabled),
+    # docker_cleanup (disabled), kernel_cleanup (disabled)

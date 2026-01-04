@@ -1,0 +1,32 @@
+---
+- name: Converge (Testing)
+  hosts: all
+  become: true
+  vars:
+    create_user: ubuntu
+    testing:
+      extra_hosts:
+        - [{ dir: 'pihole.dns' }, '']
+        - [{ dir: 'test' }, '.lxd']
+    mkcert:
+      cert_dir: /etc/ssl/mkcert
+      domains:
+        - "servyy-test.lxd"
+        - "*.servyy-test.lxd"
+        - "localhost"
+    runc_safe_version: "1.4.0"
+  tasks:
+    # Test resolve tasks (adds hosts entries)
+    - name: Import resolve tasks
+      import_tasks: ../../tasks/resolve.yml
+      tags: [testing.hosts]
+
+    # Test runc LXC fix
+    - name: Import runc_lxc_fix tasks
+      import_tasks: ../../tasks/runc_lxc_fix.yml
+      tags: [testing.runc]
+
+    # Test mkcert installation
+    - name: Import mkcert tasks
+      import_tasks: ../../tasks/mkcert.yml
+      tags: [testing.mkcert]
