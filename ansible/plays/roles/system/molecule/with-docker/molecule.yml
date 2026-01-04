@@ -21,7 +21,7 @@ provisioner:
     defaults:
       action_warnings: true
       allow_world_readable_tmpfiles: true
-      library: ../../../../../library
+      library: ../../../library
   inventory:
     host_vars:
       instance-docker:
