@@ -3,6 +3,7 @@
   hosts: all
   become: true
   vars:
+    create_user: testuser
     has_10g_volume: false
     create_swap: false
     with_fail2ban: false
