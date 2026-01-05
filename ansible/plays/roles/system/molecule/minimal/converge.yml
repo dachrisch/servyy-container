@@ -4,15 +4,20 @@
   become: true
   vars:
     create_user: testuser
-    copy_local_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... testkey"
+    copy_local_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAQC... testkey"
     sys_packages:
       - jq
       - curl
       - vim
-  roles:
-    - role: ../../
-      tasks_from: user
+  tasks:
+    - name: Run user tasks
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../../"
+        tasks_from: user
       tags: [system.user]
-    - role: ../../
-      tasks_from: journald
+
+    - name: Run journald tasks
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../../"
+        tasks_from: journald
       tags: [system.journald]
