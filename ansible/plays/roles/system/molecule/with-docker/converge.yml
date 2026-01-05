@@ -20,32 +20,28 @@
       log_file: '/var/log/kernel-cleanup.log'
       description: 'Remove old kernel packages'
   tasks:
-    - name: Run user tasks
+    - name: Run user tasks  # noqa: role-name[path]
       ansible.builtin.include_role:
         name: "{{ playbook_dir }}/../../"
         tasks_from: user
       tags: [system.user]
-      # noqa: role-name[path]
 
-    - name: Run journald tasks
+    - name: Run journald tasks  # noqa: role-name[path]
       ansible.builtin.include_role:
         name: "{{ playbook_dir }}/../../"
         tasks_from: journald
       tags: [system.journald]
-      # noqa: role-name[path]
 
-    - name: Run docker_cleanup tasks
+    - name: Run docker_cleanup tasks  # noqa: role-name[path]
       ansible.builtin.include_role:
         name: "{{ playbook_dir }}/../../"
         tasks_from: docker_cleanup
       when: docker_cleanup.enabled | default(true)
       tags: [system.docker, system.docker.cleanup]
-      # noqa: role-name[path]
 
-    - name: Run kernel_cleanup tasks
+    - name: Run kernel_cleanup tasks  # noqa: role-name[path]
       ansible.builtin.include_role:
         name: "{{ playbook_dir }}/../../"
         tasks_from: kernel_cleanup
       when: kernel_cleanup.enabled | default(true)
       tags: [system.kernel, system.kernel.cleanup]
-      # noqa: role-name[path]
