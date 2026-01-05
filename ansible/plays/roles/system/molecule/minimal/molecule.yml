@@ -21,6 +21,7 @@ provisioner:
       action_warnings: true
       allow_world_readable_tmpfiles: true
       library: ../../../../../library
+      roles_path: ../../../
   inventory:
     host_vars:
       instance-minimal:
