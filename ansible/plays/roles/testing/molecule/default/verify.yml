@@ -26,9 +26,9 @@
       changed_when: false
       failed_when: mkcert_check.rc != 0
 
-    - name: Verify mkcert binary exists
+    - name: Verify mkcert binary exists at discovered path
       stat:
-        path: /usr/local/bin/mkcert
+        path: "{{ mkcert_check.stdout }}"
       register: mkcert_bin
 
     - name: Assert mkcert is installed
@@ -36,7 +36,7 @@
         that:
           - mkcert_bin.stat.exists
           - mkcert_bin.stat.executable
-        fail_msg: "mkcert not properly installed"
+        fail_msg: "mkcert not properly installed at {{ mkcert_check.stdout }}"
 
     - name: Check if mkcert cert directory exists
       stat:
