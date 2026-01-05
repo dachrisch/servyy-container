@@ -27,7 +27,7 @@
     git_servyy_reachable: "yes"
   when: not (check_git_servyy_reachable | default(false))
 
-- name: "Clone [ {{ repository_uri }} ] to [ {{remote_dir}} ] (branch: {{ branch }} )"
+- name: "Clone [ {{ repository_uri }} ] to [ {{remote_dir}} ] (branch: {{ branch | default('master') }} )"
   git:
     repo: "{{ repository_uri }}"
     dest: "{{ remote_dir }}"
