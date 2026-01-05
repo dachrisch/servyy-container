@@ -10,16 +10,14 @@
       - curl
       - vim
   tasks:
-    - name: Run user tasks
+    - name: Run user tasks  # noqa: role-name[path]
       ansible.builtin.include_role:
         name: "{{ playbook_dir }}/../../"
         tasks_from: user
       tags: [system.user]
-      # noqa: role-name[path]
 
-    - name: Run journald tasks
+    - name: Run journald tasks  # noqa: role-name[path]
       ansible.builtin.include_role:
         name: "{{ playbook_dir }}/../../"
         tasks_from: journald
       tags: [system.journald]
-      # noqa: role-name[path]
