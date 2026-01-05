@@ -50,3 +50,4 @@
     enabled: true
     state: started
   become: true
+  when: ansible_virtualization_type | default('') != 'docker'
