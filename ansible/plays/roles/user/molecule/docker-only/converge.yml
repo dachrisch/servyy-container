@@ -13,11 +13,13 @@
       device: /dev/null
       fstype: ext4
       opts: discard,defaults
-  roles:
-    - role: ../../
-      tasks_from: docker_setup
-      tags: [user.docker.setup]
+  tasks:
+    - name: Run docker_setup tasks
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../../"
+        tasks_from: docker_setup
       when: (with_docker or with_containers) | default(false)
+      tags: [user.docker.setup]
 
     # Skip: repository cloning (requires git.lehel.xyz), docker_services (requires compose files),
     # dns tasks, backup, restic, host_ping
