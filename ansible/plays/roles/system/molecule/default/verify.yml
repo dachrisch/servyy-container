@@ -47,11 +47,8 @@
           - "'MaxRetentionSec=4week' in journald_content.content | b64decode"
         fail_msg: "journald config does not contain expected settings"
 
-    - name: Verify timezone is set to Europe/Berlin
-      command: timedatectl show --property=Timezone --value
-      register: timezone
-      changed_when: false
-      failed_when: timezone.stdout != 'Europe/Berlin'
+    # Note: Timezone task is tagged 'molecule-notest' and skipped in Docker,
+    # so we don't verify it here.
 
     - name: Verify locale exists
       command: locale -a
