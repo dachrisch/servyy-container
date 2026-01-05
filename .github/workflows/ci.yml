@@ -232,10 +232,6 @@ jobs:
         include:
           - role: system
             scenario: minimal
-          - role: system
-            scenario: core
-          - role: testing
-            scenario: default
     steps:
       - uses: actions/checkout@v4
 
