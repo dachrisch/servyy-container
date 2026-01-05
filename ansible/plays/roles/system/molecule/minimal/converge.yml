@@ -9,16 +9,10 @@
       - jq
       - curl
       - vim
-  tasks:
-    # Use include_role to maintain role context for template lookups
-    - name: Run system role tasks (user)
-      include_role:
-        name: system
-        tasks_from: user
+  roles:
+    - role: ../../
+      tasks_from: user
       tags: [system.user]
-
-    - name: Run system role tasks (journald)
-      include_role:
-        name: system
-        tasks_from: journald
+    - role: ../../
+      tasks_from: journald
       tags: [system.journald]
