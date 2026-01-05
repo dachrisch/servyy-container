@@ -33,6 +33,12 @@
         port: 587
         account: "testuser"
         password: "testpass"
+    restic:
+      logs:
+        backup_home: "/var/log/restic-backup-home.log"
+        backup_root: "/var/log/restic-backup-root.log"
+        forget: "/var/log/restic-forget.log"
+        check: "/var/log/restic-check.log"
   tasks:
     # Core system configuration tasks (no Docker dependencies)
 

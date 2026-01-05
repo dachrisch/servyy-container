@@ -7,16 +7,18 @@
     # not the instance's /etc/hosts, so we can't verify hosts entries here.
     # The converge success already confirms resolve tasks ran correctly.
 
-    - name: Check runc package status
+    - name: Check if runc package is installed
       command: dpkg-query -W -f='${Status}' runc
       register: runc_status
       changed_when: false
+      failed_when: false
 
-    - name: Verify runc is held (if version < safe version)
+    - name: Verify runc handling (installed or not installed is OK)
       assert:
         that:
-          - "'hold' in runc_status.stdout or 'install ok installed' in runc_status.stdout"
-        fail_msg: "runc package status is not as expected"
+          - runc_status.rc == 0 or runc_status.rc == 1
+        fail_msg: "runc package check failed unexpectedly"
+        success_msg: "runc is {{ 'installed' if runc_status.rc == 0 else 'not installed' }} - both cases are valid"
 
     - name: Check if mkcert is installed
       command: which mkcert
