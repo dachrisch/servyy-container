@@ -221,3 +221,112 @@ jobs:
         run: |
           cd ansible/library
           python -m unittest discover -s tests -p "test_*.py" -v
+
+  molecule-test:
+    name: Molecule Test (system/minimal)
+    needs: [lint-yaml, lint-ansible, lint-python, syntax-check]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Molecule and dependencies
+        run: |
+          pip install molecule molecule-plugins[docker] ansible>=2.11 dnspython jmespath docker
+          ansible-galaxy install -r ansible/requirements.yml
+
+      - name: Create mock encrypted files
+        run: |
+          # Create placeholder encrypted files for testing
+          mkdir -p ansible/plays/vars
+
+          # Remove encrypted files first to ensure clean slate
+          rm -f ansible/plays/vars/secrets.yml
+          rm -f ansible/plays/vars/secret_leaguesphere.yaml
+          rm -f ansible/plays/vars/ssh_jail.yaml
+          rm -f ansible/plays/roles/user/defaults/main.yaml
+          rm -f ansible/plays/roles/testing/defaults/main.yaml
+
+          # Mock secrets.yml
+          cat > ansible/plays/vars/secrets.yml <<'EOF'
+          ---
+          storagebox_credentials:
+            host: "mock.example.com"
+            share: "backup"
+            user: "mockuser"
+            pass: "mockpass"
+          servyy_git_repo:
+            hostname: "git.example.com"
+            username: "mockuser"
+            password: "mockpass"
+          create_user: testuser
+          EOF
+
+          # Mock secret_leaguesphere.yaml
+          cat > ansible/plays/vars/secret_leaguesphere.yaml <<'EOF'
+          ---
+          ls:
+            user: lsuser
+          ssh_chroot_jail_path: /test/jail
+          ssh_chroot_jail_group_name: testgroup
+          EOF
+
+          # Mock ssh_jail.yaml
+          cat > ansible/plays/vars/ssh_jail.yaml <<'EOF'
+          ---
+          ssh_chroot_jail_users: []
+          extra_ssh_chroot_jail_dirs: []
+          EOF
+
+          # Mock encrypted role defaults
+          cat > ansible/plays/roles/user/defaults/main.yaml <<'EOF'
+          ---
+          # Mock defaults for CI testing
+          docker:
+            services: []
+          EOF
+
+          cat > ansible/plays/roles/testing/defaults/main.yaml <<'EOF'
+          ---
+          # Mock defaults for CI testing
+          testing:
+            extra_hosts: []
+          EOF
+
+          # Mock encrypted ls_* role files
+          for role in ls_setup ls_app_dev ls_app_stage ls_app_prod ls_access ls_db_sync ls_app; do
+            rm -rf ansible/plays/roles/$role
+            mkdir -p ansible/plays/roles/$role/{tasks,defaults,handlers,templates}
+
+            cat > ansible/plays/roles/$role/tasks/main.yml <<'EOFR'
+          ---
+          # Mock task file for CI testing
+          - name: Mock task for $role
+            debug:
+              msg: "This is a mock role for CI testing"
+          EOFR
+
+            cat > ansible/plays/roles/$role/defaults/main.yml <<'EOFR'
+          ---
+          # Mock defaults for CI testing
+          EOFR
+
+            cat > ansible/plays/roles/$role/handlers/main.yml <<'EOFR'
+          ---
+          # Mock handlers for CI testing
+          EOFR
+          done
+
+      - name: Run Molecule test
+        run: |
+          cd ansible/plays/roles/system
+          molecule test --scenario-name minimal
+        env:
+          PY_COLORS: '1'
+          ANSIBLE_FORCE_COLOR: '1'
+          ANSIBLE_LIBRARY: ${{ github.workspace }}/ansible/library
