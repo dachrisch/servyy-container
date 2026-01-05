@@ -1,3 +1,6 @@
+collections:
+  - name: community.crypto
+
 roles:
   - name: geerlingguy.security
   - name: geerlingguy.ssh-chroot-jail
