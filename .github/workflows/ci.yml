@@ -232,6 +232,12 @@ jobs:
         include:
           - role: system
             scenario: minimal
+          - role: system
+            scenario: core
+          - role: system
+            scenario: with-docker
+          - role: system
+            scenario: default
     steps:
       - uses: actions/checkout@v4
 
@@ -271,6 +277,21 @@ jobs:
             username: "mockuser"
             password: "mockpass"
           create_user: testuser
+          monit:
+            email: "test@example.com"
+            smtp:
+              host: "smtp.example.com"
+              port: 587
+              account: "testuser"
+              password: "testpass"
+          restic:
+            logs:
+              backup_home: "/var/log/restic-backup-home.log"
+              backup_root: "/var/log/restic-backup-root.log"
+              forget: "/var/log/restic-forget.log"
+              check: "/var/log/restic-check.log"
+          storagebox:
+            mount: "/mnt/storagebox"
           EOF
 
           # Mock secret_leaguesphere.yaml
