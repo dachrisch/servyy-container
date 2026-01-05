@@ -21,7 +21,7 @@
 
     - name: Check docker-cleanup script exists
       stat:
-        path: /usr/local/bin/docker-cleanup.sh
+        path: /home/testuser/.cleanup-scripts/docker-cleanup.sh
       register: docker_cleanup_script
 
     - name: Verify docker-cleanup script was created
