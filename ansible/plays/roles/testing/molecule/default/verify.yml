@@ -3,11 +3,9 @@
   hosts: all
   become: true
   tasks:
-    - name: Check /etc/hosts contains test entries
-      command: grep "test.lxd" /etc/hosts
-      register: hosts_check
-      changed_when: false
-      failed_when: hosts_check.rc != 0
+    # Note: resolve tasks modify Ansible controller's /etc/hosts (delegate_to: localhost),
+    # not the instance's /etc/hosts, so we can't verify hosts entries here.
+    # The converge success already confirms resolve tasks ran correctly.
 
     - name: Check runc package status
       command: dpkg-query -W -f='${Status}' runc

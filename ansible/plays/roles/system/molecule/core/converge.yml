@@ -26,6 +26,13 @@
       share: "backup"
       user: "mockuser"
       pass: "mockpass"
+    monit:
+      email: "test@example.com"
+      smtp:
+        host: "smtp.example.com"
+        port: 587
+        account: "testuser"
+        password: "testpass"
   tasks:
     # Core system configuration tasks (no Docker dependencies)
 
