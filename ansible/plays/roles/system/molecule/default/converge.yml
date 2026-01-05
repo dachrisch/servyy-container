@@ -26,17 +26,23 @@
       user: "mockuser"
       pass: "mockpass"
   tasks:
-    # Import only testable tasks from the system role
-    - name: Import packages tasks
-      import_tasks: ../../tasks/packages.yml
+    # Use include_role to maintain proper template resolution
+    - name: Run packages tasks  # noqa: role-name[path]
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../../"
+        tasks_from: packages
       tags: [system.packages]
 
-    - name: Import user tasks
-      import_tasks: ../../tasks/user.yml
+    - name: Run user tasks  # noqa: role-name[path]
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../../"
+        tasks_from: user
       tags: [system.user]
 
-    - name: Import journald tasks
-      import_tasks: ../../tasks/journald.yml
+    - name: Run journald tasks  # noqa: role-name[path]
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../../"
+        tasks_from: journald
       tags: [system.journald]
 
     # Skip: fail2ban (needs real logs), storagebox (needs mount),
