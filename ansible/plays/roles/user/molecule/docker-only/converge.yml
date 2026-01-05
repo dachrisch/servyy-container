@@ -20,6 +20,7 @@
         tasks_from: docker_setup
       when: (with_docker or with_containers) | default(false)
       tags: [user.docker.setup]
+      # noqa: role-name[path]
 
     # Skip: repository cloning (requires git.lehel.xyz), docker_services (requires compose files),
     # dns tasks, backup, restic, host_ping
