@@ -39,6 +39,8 @@
         backup_root: "/var/log/restic-backup-root.log"
         forget: "/var/log/restic-forget.log"
         check: "/var/log/restic-check.log"
+    storagebox:
+      mount: "/mnt/storagebox"
   tasks:
     # Core system configuration tasks (no Docker dependencies)
 
