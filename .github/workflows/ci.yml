@@ -223,9 +223,19 @@ jobs:
           python -m unittest discover -s tests -p "test_*.py" -v
 
   molecule-test:
-    name: Molecule Test (system/minimal)
+    name: Molecule Test (${{ matrix.role }}/${{ matrix.scenario }})
     needs: [lint-yaml, lint-ansible, lint-python, syntax-check]
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - role: system
+            scenario: minimal
+          - role: system
+            scenario: core
+          - role: testing
+            scenario: default
     steps:
       - uses: actions/checkout@v4
 
@@ -322,10 +332,10 @@ jobs:
           EOFR
           done
 
-      - name: Run Molecule test
+      - name: Run Molecule test (${{ matrix.role }}/${{ matrix.scenario }})
         run: |
-          cd ansible/plays/roles/system
-          molecule test --scenario-name minimal
+          cd ansible/plays/roles/${{ matrix.role }}
+          molecule test --scenario-name ${{ matrix.scenario }}
         env:
           PY_COLORS: '1'
           ANSIBLE_FORCE_COLOR: '1'
