@@ -101,12 +101,16 @@
       - monit_status.rc == 0
     fail_msg: "monit status command failed"
     success_msg: "monit status command succeeded"
+  when: ansible_virtualization_type | default('') != 'docker'
 
 - name: Check if any events where postponed (maybe mailserver error)
   find:
     paths: '/var/lib/monit/events/'
   register: filesFound
+  when: ansible_virtualization_type | default('') != 'docker'
 
 - fail:
     msg: 'Some events where postponed'
-  when: filesFound.matched > 0
+  when:
+    - ansible_virtualization_type | default('') != 'docker'
+    - filesFound.matched > 0
