@@ -10,11 +10,15 @@
       - curl
       - vim
   tasks:
-    # Only test basic user creation and journald config
-    - name: Import user tasks
-      import_tasks: ../../tasks/user.yml
+    # Use include_role to maintain role context for template lookups
+    - name: Run system role tasks (user)
+      include_role:
+        name: system
+        tasks_from: user
       tags: [system.user]
 
-    - name: Import journald tasks
-      import_tasks: ../../tasks/journald.yml
+    - name: Run system role tasks (journald)
+      include_role:
+        name: system
+        tasks_from: journald
       tags: [system.journald]

@@ -14,9 +14,11 @@
       fstype: ext4
       opts: discard,defaults
   tasks:
-    # Test Docker setup tasks only
-    - name: Import docker_setup tasks
-      import_tasks: ../../tasks/docker_setup.yml
+    # Test Docker setup tasks only - use include_role to maintain role context
+    - name: Run user role tasks (docker_setup)
+      include_role:
+        name: user
+        tasks_from: docker_setup
       tags: [user.docker.setup]
       when: (with_docker or with_containers) | default(false)
 
