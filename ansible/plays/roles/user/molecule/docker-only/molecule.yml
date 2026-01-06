@@ -36,6 +36,7 @@ provisioner:
           local_dir: "/tmp/container"
   env:
     ANSIBLE_FORCE_COLOR: "1"
+    ANSIBLE_LIBRARY: "../../../../../library"
 verifier:
   name: ansible
 scenario:
