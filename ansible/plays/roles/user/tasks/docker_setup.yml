@@ -8,6 +8,15 @@
   tags:
     - user.docker.install
 
+- name: Check if docker group exists
+  getent:
+    database: group
+    key: docker
+  register: docker_group_check
+  failed_when: false
+  tags:
+    - user.docker.install.add_group
+
 - name: adding existing user '{{ create_user }}' to group docker
   user:
     name: '{{ create_user }}'
@@ -15,6 +24,7 @@
     append: yes
   become_user: root
   register: group_added
+  when: docker_group_check.ansible_facts.getent_group.docker is defined
   tags:
     - user.docker.install.add_group
 
