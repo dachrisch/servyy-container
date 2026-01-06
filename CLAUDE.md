@@ -1,7 +1,7 @@
 # CLAUDE.md - servyy-container Infrastructure
 
 > Self-hosted microservices platform (15+ Docker services) automated with Ansible
-> **Last Updated:** 2025-11-27 (Added CRITICAL DEPLOYMENT RULES)
+> **Last Updated:** 2026-01-06 (Added Molecule Testing Requirements)
 
 ## Quick Commands
 
@@ -129,6 +129,67 @@ ssh lehel.xyz "docker restart monitor.grafana"
 # 3. Commit to git with explanation
 # 4. Deploy via Ansible to verify git state matches server state
 ```
+
+## Molecule Testing (REQUIRED FOR NEW FEATURES)
+
+**Before implementing new Ansible features, you MUST add Molecule tests.**
+
+### Why Test-First Matters
+
+1. **Validation**: Proves your changes work before production deployment
+2. **CI Integration**: All tests run automatically on every push
+3. **Regression Prevention**: Ensures existing functionality isn't broken
+4. **Documentation**: Tests show how roles are meant to be used
+
+### Standard Workflow for New Features
+
+```
+1. PLAN: Design the feature and required test coverage
+2. TEST: Create/update Molecule scenario on servyy-test
+3. IMPLEMENT: Write code until test passes
+4. INTEGRATE: Add scenario to CI matrix
+5. DOCUMENT: Update history/YYYY-MM-DD_*.md
+```
+
+**Current Coverage**: 7 scenarios across system/testing/user roles
+**Test Environment**: servyy-test.lxd (validates before CI)
+**CI Platform**: GitHub Actions (runs all scenarios in parallel)
+
+### Key Testing Principles
+
+**1. Test on servyy-test BEFORE CI**
+- Real LXD environment with Docker
+- Catches issues CI won't (permissions, networking, etc.)
+- Faster iteration than waiting for CI
+
+**2. Handle Docker Container Limitations**
+- Some tasks can't work in containers (systemd timers, hardware access)
+- Use conditional execution: `when: ansible_virtualization_type != 'docker'`
+- Tag untestable tasks: `molecule-notest`
+- Mock infrastructure dependencies (storagebox, restic, etc.)
+
+**3. Use include_role Pattern**
+- Templates need proper resolution
+- Pattern: `include_role` with `playbook_dir` variable
+- Never use `import_tasks` for tasks using templates
+
+**4. Verify What Was Actually Configured**
+- Don't test skipped tasks
+- Check file existence and content
+- Validate service states where possible
+
+### Examples
+
+**See existing scenarios**:
+- `ansible/plays/roles/system/molecule/` - System configuration
+- `ansible/plays/roles/testing/molecule/` - Development utilities
+- `ansible/plays/roles/user/molecule/` - User environment setup
+
+**Reference documentation**:
+- `history/2026-01-05_molecule-testing-validation.md` - Complete validation report
+- `.github/workflows/ci.yml` - CI matrix configuration
+
+**Testing is not optional** - if you modify a role, update or add tests. The CI will reject PRs without test coverage.
 
 ## git-crypt (CRITICAL)
 
