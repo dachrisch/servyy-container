@@ -15,7 +15,7 @@ jobs:
     name: Lint YAML
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: YAML Lint
         uses: ibiqlik/action-yamllint@v3
@@ -27,7 +27,7 @@ jobs:
     name: Ansible Lint
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -49,7 +49,7 @@ jobs:
     name: Lint Python (Custom Modules)
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -87,7 +87,7 @@ jobs:
           - plays/leaguesphere.yml
           - plays/testing.yml
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -195,7 +195,7 @@ jobs:
     name: Validate git-crypt Encryption
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install git-crypt
         run: sudo apt-get update && sudo apt-get install -y git-crypt
@@ -207,7 +207,7 @@ jobs:
     name: Test Custom Modules
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -245,7 +245,7 @@ jobs:
           - role: user
             scenario: docker-only
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
         uses: actions/setup-python@v5
