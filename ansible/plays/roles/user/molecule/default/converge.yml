@@ -1,0 +1,34 @@
+---
+- name: Converge (User Default)
+  hosts: all
+  become: true
+  become_user: testuser
+  vars:
+    create_user: testuser
+    local_user: runner
+    with_docker: false
+    with_containers: false
+    check_git_servyy_reachable: false
+    shell:
+      repo: "https://github.com/sorin-ionescu/prezto.git"
+      remote_dir: "/home/testuser/.zprezto"
+      local_dir: "/tmp/zprezto"
+  tasks:
+    # Test basic shell setup tasks only
+    - name: Import repository tasks for zprezto
+      import_tasks: ../../tasks/includes/repository.yml
+      vars:
+        repository_uri: "{{ shell.repo }}"
+        remote_dir: "{{ shell.remote_dir }}"
+        local_dir: "{{ shell.local_dir }}"
+        clone_submodules: true
+        update_submodules: true
+      tags: [user.repo.zpresto]
+
+    - name: Import zprezto tasks
+      import_tasks: ../../tasks/zprezto.yml
+      tags: [user.zprezto]
+
+    # Skip: atuin (requires network), git_credentials (requires secrets),
+    # docker tasks (with_containers=false), backup (requires storagebox),
+    # restic (requires secrets), host_ping (with_containers=false)

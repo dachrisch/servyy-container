@@ -1,0 +1,22 @@
+---
+- name: Verify (User Docker-Only)
+  hosts: all
+  become: true
+  tasks:
+    # Note: Docker network creation and daemon configuration are skipped
+    # in molecule tests (tagged molecule-notest) as they require actual
+    # Docker installation and access. This verify just confirms the role
+    # executed without errors.
+
+    - name: Verify docker-compose package was removed
+      command: dpkg-query -W -f='${Status}' docker-compose
+      register: docker_compose_check
+      changed_when: false
+      failed_when: false
+
+    - name: Check result
+      assert:
+        that:
+          - docker_compose_check.rc != 0
+        fail_msg: "docker-compose package should not be installed"
+        success_msg: "docker-compose correctly not installed"

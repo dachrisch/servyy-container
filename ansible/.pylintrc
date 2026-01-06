@@ -1,0 +1,13 @@
+[MASTER]
+ignore=.git,__pycache__,.backup,.cache
+ignore-patterns=geerlingguy.*,sebthebert.*
+
+[MESSAGES CONTROL]
+disable=
+    C0103,  # Invalid name (snake_case vs camelCase)
+    R0912,  # Too many branches
+    R0915,  # Too many statements
+    C0301,  # Line too long
+
+[FORMAT]
+max-line-length=120

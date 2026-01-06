@@ -8,7 +8,7 @@
     - vars/default.yml
     - vars/restic.yml
     - vars/secrets.yml
-  roles: 
+  roles:
     - user
   tags:
     - user

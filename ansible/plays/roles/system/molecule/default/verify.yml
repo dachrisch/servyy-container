@@ -1,0 +1,57 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Check that required packages are installed
+      package:
+        name: "{{ item }}"
+        state: present
+      check_mode: yes
+      register: pkg_check
+      failed_when: pkg_check.changed
+      loop:
+        - jq
+        - curl
+        - vim
+        - git
+        - monit
+
+    - name: Verify testuser exists
+      user:
+        name: testuser
+      check_mode: yes
+      register: user_check
+      failed_when: user_check.changed
+
+    - name: Check journald retention config exists
+      stat:
+        path: /etc/systemd/journald.conf.d/retention.conf
+      register: journald_conf
+
+    - name: Verify journald config was created
+      assert:
+        that:
+          - journald_conf.stat.exists
+        fail_msg: "journald retention config not found"
+
+    - name: Check journald config content
+      slurp:
+        path: /etc/systemd/journald.conf.d/retention.conf
+      register: journald_content
+
+    - name: Verify journald settings
+      assert:
+        that:
+          - "'SystemMaxUse=500M' in journald_content.content | b64decode"
+          - "'MaxRetentionSec=4week' in journald_content.content | b64decode"
+        fail_msg: "journald config does not contain expected settings"
+
+    # Note: Timezone task is tagged 'molecule-notest' and skipped in Docker,
+    # so we don't verify it here.
+
+    - name: Verify locale exists
+      command: locale -a
+      register: locales
+      changed_when: false
+      failed_when: "'de_DE.utf8' not in locales.stdout"

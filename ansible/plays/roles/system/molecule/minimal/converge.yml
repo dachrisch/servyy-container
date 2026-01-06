@@ -1,0 +1,23 @@
+---
+- name: Converge (Minimal)
+  hosts: all
+  become: true
+  vars:
+    create_user: testuser
+    copy_local_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAQC... testkey"
+    sys_packages:
+      - jq
+      - curl
+      - vim
+  tasks:
+    - name: Run user tasks  # noqa: role-name[path]
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../../"
+        tasks_from: user
+      tags: [system.user]
+
+    - name: Run journald tasks  # noqa: role-name[path]
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../../"
+        tasks_from: journald
+      tags: [system.journald]

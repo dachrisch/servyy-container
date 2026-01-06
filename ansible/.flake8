@@ -1,0 +1,14 @@
+[flake8]
+max-line-length = 120
+exclude =
+    .git,
+    __pycache__,
+    .backup,
+    .cache,
+    plays/roles/geerlingguy.*,
+    plays/roles/sebthebert.*,
+    plays/roles/ls_*
+ignore = E501,W503,E402
+per-file-ignores =
+    library/json_patch.py:E402
+    library/tests/test_json_patch.py:E402

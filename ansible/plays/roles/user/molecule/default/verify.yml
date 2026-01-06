@@ -1,0 +1,28 @@
+---
+- name: Verify (User Default)
+  hosts: all
+  become: true
+  become_user: testuser
+  tasks:
+    - name: Check zprezto directory exists
+      stat:
+        path: /home/testuser/.zprezto
+      register: zprezto_dir
+
+    - name: Verify zprezto was cloned
+      assert:
+        that:
+          - zprezto_dir.stat.exists
+          - zprezto_dir.stat.isdir
+        fail_msg: "zprezto directory not found"
+
+    - name: Check zprestorc symlink exists
+      stat:
+        path: /home/testuser/.zpreztorc
+      register: zpreztorc_link
+
+    - name: Verify zpreztorc symlink was created
+      assert:
+        that:
+          - zpreztorc_link.stat.exists
+        fail_msg: "zpreztorc symlink not created"

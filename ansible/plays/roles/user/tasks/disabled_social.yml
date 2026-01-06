@@ -65,4 +65,3 @@
   when: "'prod' in groups and inventory_hostname in groups['prod'] and (relays_present.stdout_lines | select('search', (item | urlsplit('hostname'))) | length == 0)"
   tags:
     - user.social.relays.add
-

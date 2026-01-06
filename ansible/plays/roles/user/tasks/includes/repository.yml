@@ -27,7 +27,7 @@
     git_servyy_reachable: "yes"
   when: not (check_git_servyy_reachable | default(false))
 
-- name: "Clone [ {{ repository_uri }} ] to [ {{remote_dir}} ] (branch: {{ branch }} )"
+- name: "Clone [ {{ repository_uri }} ] to [ {{remote_dir}} ] (branch: {{ branch | default('master') }} )"
   git:
     repo: "{{ repository_uri }}"
     dest: "{{ remote_dir }}"
@@ -55,8 +55,10 @@
   register: lock_state
   failed_when: lock_state.stderr != ""
   changed_when: lock_state.rc != 0
+  when: lookup('env', 'MOLECULE_SCENARIO_NAME') == ''  # Skip in Molecule tests
   tags:
     - user.repo.crypt.check
+    - molecule-notest
 
 - block:
     - block:
@@ -100,4 +102,5 @@
       failed_when: unlock_result.rc != 0 and 'already unlocked' not in unlock_result.stdout
   tags:
     - user.repo.crypt.unlock
-  when: lock_state.changed
+    - molecule-notest
+  when: lock_state is defined and lock_state.changed
