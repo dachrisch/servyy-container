@@ -238,6 +238,12 @@ jobs:
             scenario: with-docker
           - role: system
             scenario: default
+          - role: testing
+            scenario: default
+          - role: user
+            scenario: default
+          - role: user
+            scenario: docker-only
     steps:
       - uses: actions/checkout@v4
 
