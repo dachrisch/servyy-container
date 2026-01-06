@@ -41,6 +41,7 @@
     name: proxy
   tags:
     - user.docker.create.network
+    - molecule-notest  # Requires Docker daemon access
 
 # https://stackoverflow.com/questions/43689271/wheres-dockers-daemon-json-missing
 - name: Configure docker daemon logging
@@ -52,6 +53,8 @@
       - op: add
         path: 'log-driver'
         value: 'local'
+  tags:
+    - molecule-notest  # Requires Docker to be installed
 
 - name: Check if mount point "{{ extension_drive.path }}" exists
   stat:
@@ -77,3 +80,5 @@
         state: restarted
       when: root_added.changed
   when: mount_point.stat.exists
+  tags:
+    - molecule-notest  # Requires Docker to be installed and mount point
