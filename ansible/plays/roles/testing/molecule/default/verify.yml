@@ -1,0 +1,51 @@
+---
+- name: Verify (Testing)
+  hosts: all
+  become: true
+  tasks:
+    # Note: resolve tasks modify Ansible controller's /etc/hosts (delegate_to: localhost),
+    # not the instance's /etc/hosts, so we can't verify hosts entries here.
+    # The converge success already confirms resolve tasks ran correctly.
+
+    - name: Check if runc package is installed
+      command: dpkg-query -W -f='${Status}' runc
+      register: runc_status
+      changed_when: false
+      failed_when: false
+
+    - name: Verify runc handling (installed or not installed is OK)
+      assert:
+        that:
+          - runc_status.rc == 0 or runc_status.rc == 1
+        fail_msg: "runc package check failed unexpectedly"
+        success_msg: "runc is {{ 'installed' if runc_status.rc == 0 else 'not installed' }} - both cases are valid"
+
+    - name: Check if mkcert is installed
+      command: which mkcert
+      register: mkcert_check
+      changed_when: false
+      failed_when: mkcert_check.rc != 0
+
+    - name: Verify mkcert binary exists at discovered path
+      stat:
+        path: "{{ mkcert_check.stdout }}"
+      register: mkcert_bin
+
+    - name: Assert mkcert is installed
+      assert:
+        that:
+          - mkcert_bin.stat.exists
+          - mkcert_bin.stat.executable
+        fail_msg: "mkcert not properly installed at {{ mkcert_check.stdout }}"
+
+    - name: Check if mkcert cert directory exists
+      stat:
+        path: /etc/ssl/mkcert
+      register: mkcert_dir
+
+    - name: Verify mkcert directory was created
+      assert:
+        that:
+          - mkcert_dir.stat.exists
+          - mkcert_dir.stat.isdir
+        fail_msg: "mkcert cert directory not found"

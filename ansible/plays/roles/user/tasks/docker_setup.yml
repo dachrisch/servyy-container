@@ -8,6 +8,15 @@
   tags:
     - user.docker.install
 
+- name: Check if docker group exists
+  getent:
+    database: group
+    key: docker
+  register: docker_group_check
+  failed_when: false
+  tags:
+    - user.docker.install.add_group
+
 - name: adding existing user '{{ create_user }}' to group docker
   user:
     name: '{{ create_user }}'
@@ -15,6 +24,7 @@
     append: yes
   become_user: root
   register: group_added
+  when: docker_group_check.ansible_facts.getent_group.docker is defined
   tags:
     - user.docker.install.add_group
 
@@ -31,6 +41,7 @@
     name: proxy
   tags:
     - user.docker.create.network
+    - molecule-notest  # Requires Docker daemon access
 
 # https://stackoverflow.com/questions/43689271/wheres-dockers-daemon-json-missing
 - name: Configure docker daemon logging
@@ -42,6 +53,8 @@
       - op: add
         path: 'log-driver'
         value: 'local'
+  tags:
+    - molecule-notest  # Requires Docker to be installed
 
 - name: Check if mount point "{{ extension_drive.path }}" exists
   stat:
@@ -67,3 +80,5 @@
         state: restarted
       when: root_added.changed
   when: mount_point.stat.exists
+  tags:
+    - molecule-notest  # Requires Docker to be installed and mount point

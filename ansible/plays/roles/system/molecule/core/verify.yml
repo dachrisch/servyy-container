@@ -1,0 +1,67 @@
+---
+- name: Verify (Core)
+  hosts: all
+  become: true
+  tasks:
+    # Verify packages task results
+    - name: Check required packages are installed
+      command: dpkg -l {{ item }}
+      register: pkg_check
+      changed_when: false
+      failed_when: pkg_check.rc != 0
+      loop:
+        - jq
+        - curl
+        - vim
+        - git
+        - monit
+
+    # Verify user task results
+    - name: Verify testuser exists
+      command: id testuser
+      register: user_result
+      changed_when: false
+      failed_when: user_result.rc != 0
+
+    - name: Check testuser has sudo privileges
+      stat:
+        path: /etc/sudoers.d/testuser
+      register: sudo_file
+
+    - name: Verify sudo file exists
+      assert:
+        that:
+          - sudo_file.stat.exists
+        fail_msg: "sudoers file for testuser not found"
+
+    # Verify journald task results
+    - name: Check journald retention config exists
+      stat:
+        path: /etc/systemd/journald.conf.d/retention.conf
+      register: journald_conf
+
+    - name: Verify journald config was created
+      assert:
+        that:
+          - journald_conf.stat.exists
+        fail_msg: "journald retention config not found"
+
+    # Verify monit task results
+    - name: Check monit is running
+      command: monit status
+      register: monit_status
+      changed_when: false
+      # Note: May fail in Docker if systemd not fully running
+      failed_when: false
+
+    - name: Check monit config directory
+      stat:
+        path: /etc/monit/conf.d
+      register: monit_conf_dir
+
+    - name: Verify monit config directory exists
+      assert:
+        that:
+          - monit_conf_dir.stat.exists
+          - monit_conf_dir.stat.isdir
+        fail_msg: "monit config directory not found"

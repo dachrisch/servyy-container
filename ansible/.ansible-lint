@@ -1,0 +1,52 @@
+---
+profile: production  # Use production profile for stricter checks
+
+# Exclude external roles, encrypted roles, and generated files
+exclude_paths:
+  - .backup/
+  - .cache/
+  - plays/roles/geerlingguy.*/
+  - plays/roles/sebthebert.*/
+  - plays/roles/ls_*/
+  - plays/leaguesphere.yml
+  - plays/vars/secrets.yml
+  - plays/vars/secret_*.yaml
+  - plays/vars/ssh_jail.yaml
+  - plays/roles/user/defaults/
+  - plays/roles/testing/defaults/
+  - __pycache__/
+
+# Skip rules that don't apply to this infrastructure
+skip_list:
+  - yaml[line-length]  # Allow longer lines for readability
+  - yaml[octal-values]  # Allow octal file permissions (0644, 0755, etc)
+  - name[casing]       # Don't enforce strict name casing
+  - name[missing]      # Allow tasks without names (import_tasks, blocks)
+  - name[template]     # Allow Jinja templates anywhere in task names
+  - risky-file-permissions  # We explicitly set permissions
+  - no-changed-when    # raw/command tasks sometimes need this
+  - no-handler         # Some tasks run on change but aren't handlers
+  - command-instead-of-module  # Sometimes necessary for specific commands
+  - command-instead-of-shell  # shell is sometimes necessary
+  - fqcn[action-core]  # FQCN for builtin actions - existing code uses short names
+  - fqcn[action]       # Don't require FQCN for all actions
+  - yaml[truthy]       # Allow 'yes'/'no' in existing code
+  - var-naming[no-role-prefix]  # Allow simple names in verify/test files
+  - var-naming[pattern]  # Allow variable naming patterns like filesFound
+  - key-order[task]    # Don't enforce strict task key ordering
+  - package-latest     # Allow 'state: latest' for packages
+  - no-free-form       # Allow free-form module arguments
+  - jinja[spacing]     # Don't enforce strict Jinja spacing
+  - jinja[invalid]     # Skip jinja template syntax errors (false positives)
+  - ignore-errors      # Allow ignore_errors when appropriate
+  - internal-error     # Skip internal ansible-lint errors
+  - partial-become[task]  # Allow become_user without become (inherited from play)
+
+# Treat warnings as errors
+warn_list: []
+
+# Enable offline mode (don't fetch Galaxy roles during linting)
+offline: true
+
+# Set verbosity
+verbosity: 1

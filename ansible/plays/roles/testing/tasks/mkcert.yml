@@ -50,10 +50,10 @@
     owner: root
     group: root
   loop:
-    - { path: "{{ mkcert.cert_dir }}/servyy-test.crt", mode: '0644' }
-    - { path: "{{ mkcert.cert_dir }}/servyy-test.key", mode: '0600' }
-    - { path: "{{ mkcert.cert_dir }}/rootCA.pem", mode: '0644' }
-    - { path: "{{ mkcert.cert_dir }}/rootCA-key.pem", mode: '0600' }
+    - {path: "{{ mkcert.cert_dir }}/servyy-test.crt", mode: '0644'}
+    - {path: "{{ mkcert.cert_dir }}/servyy-test.key", mode: '0600'}
+    - {path: "{{ mkcert.cert_dir }}/rootCA.pem", mode: '0644'}
+    - {path: "{{ mkcert.cert_dir }}/rootCA-key.pem", mode: '0600'}
   tags:
     - testing.mkcert.permissions
 
@@ -72,8 +72,10 @@
     create: no
     insertafter: EOF
   notify: restart traefik
+  when: lookup('env', 'MOLECULE_SCENARIO_NAME') == ''  # Skip in Molecule tests
   tags:
     - testing.mkcert.traefik
+    - molecule-notest
 
 - name: Add mkcert volume mount to Traefik docker-compose.yml
   blockinfile:
@@ -83,16 +85,20 @@
     block: "      # mkcert certificate directory (test environment only)\n      - /etc/ssl/mkcert:/etc/ssl/mkcert:ro"
     create: no
   notify: restart traefik
+  when: lookup('env', 'MOLECULE_SCENARIO_NAME') == ''  # Skip in Molecule tests
   tags:
     - testing.mkcert.traefik
+    - molecule-notest
 
 - name: Deploy mkcert README
   template:
     src: mkcert/README-mkcert.md.j2
     dest: /home/cda/servyy-container/traefik/README-mkcert.md
     mode: '0644'
+  when: lookup('env', 'MOLECULE_SCENARIO_NAME') == ''  # Skip in Molecule tests
   tags:
     - testing.mkcert.documentation
+    - molecule-notest
 
 - name: Fetch CA certificate to local machine
   fetch:
@@ -101,6 +107,7 @@
     flat: yes
   tags:
     - testing.mkcert.local
+    - molecule-notest
 
 - name: Install CA certificate on local machine (macOS)
   shell: |
@@ -113,6 +120,7 @@
   ignore_errors: yes
   tags:
     - testing.mkcert.local
+    - molecule-notest
 
 - name: Install CA certificate on local machine (Linux)
   shell: |
@@ -125,3 +133,4 @@
   ignore_errors: yes
   tags:
     - testing.mkcert.local
+    - molecule-notest

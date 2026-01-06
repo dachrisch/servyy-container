@@ -31,6 +31,7 @@
     user: "{{ create_user }}"
     state: present
     key: "{{ copy_local_key }}"
+  when: copy_local_key is defined
   tags:
     - system.user.auth_key
 
@@ -42,3 +43,4 @@
     - Restart SSHD
   tags:
     - system.user.no_passwd
+    - molecule-notest

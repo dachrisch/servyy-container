@@ -1,0 +1,50 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    # Override vars that require real infrastructure
+    create_user: testuser
+    has_10g_volume: false
+    create_swap: false
+    with_fail2ban: false
+    copy_local_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... testkey"
+    sys_packages:
+      - jq
+      - curl
+      - vim
+      - git
+      - monit
+      - tzdata
+    docker_cleanup:
+      enabled: false
+    kernel_cleanup:
+      enabled: false
+    storagebox_credentials:
+      host: "mock.example.com"
+      share: "backup"
+      user: "mockuser"
+      pass: "mockpass"
+  tasks:
+    # Use include_role to maintain proper template resolution
+    - name: Run packages tasks  # noqa: role-name[path]
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../../"
+        tasks_from: packages
+      tags: [system.packages]
+
+    - name: Run user tasks  # noqa: role-name[path]
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../../"
+        tasks_from: user
+      tags: [system.user]
+
+    - name: Run journald tasks  # noqa: role-name[path]
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../../"
+        tasks_from: journald
+      tags: [system.journald]
+
+    # Skip: fail2ban (needs real logs), storagebox (needs mount),
+    # extension_drive (needs real device), swap (disabled),
+    # docker_cleanup (disabled), kernel_cleanup (disabled)

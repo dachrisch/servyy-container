@@ -15,4 +15,3 @@
     name: "mount box on every reboot"
     special_time: reboot
     job: "sudo mount -a"
-

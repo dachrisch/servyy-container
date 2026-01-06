@@ -1,0 +1,21 @@
+---
+- name: Verify (Minimal)
+  hosts: all
+  become: true
+  tasks:
+    - name: Verify testuser exists
+      command: id testuser
+      register: user_result
+      changed_when: false
+      failed_when: user_result.rc != 0
+
+    - name: Check journald retention config exists
+      stat:
+        path: /etc/systemd/journald.conf.d/retention.conf
+      register: journald_conf
+
+    - name: Verify journald config was created
+      assert:
+        that:
+          - journald_conf.stat.exists
+        fail_msg: "journald retention config not found"

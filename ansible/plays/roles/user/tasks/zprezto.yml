@@ -11,16 +11,24 @@
 - name: Link config files
   file:
     src: "{{ item.path }}"
-    dest: "{{ '.' + item.path | basename }}"
+    dest: "~/{{ '.' + item.path | basename }}"
     state: link
   with_items: "{{ zsh_config_files.files }}"
   tags:
     - user.zprezto.config.link
 
+- name: Check if custom prompt file exists
+  stat:
+    path: "{{ (shell.remote_dir, 'custom', 'p10k.zsh') | path_join }}"
+  register: p10k_file
+  tags:
+    - user.zprezto.prompt
+
 - name: Link prompt
   file:
     src: "{{ (shell.remote_dir, 'custom', 'p10k.zsh') | path_join }}"
-    dest: '.p10k.zsh'
+    dest: '~/.p10k.zsh'
     state: link
+  when: p10k_file.stat.exists
   tags:
     - user.zprezto.prompt

@@ -1,0 +1,25 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Install Python for Ansible
+      raw: |
+        apt-get update
+        apt-get install -y python3 python3-apt python3-requests python3-docker sudo systemd git zsh
+      changed_when: false
+
+    - name: Create test user
+      user:
+        name: testuser
+        uid: 1001
+        groups: sudo
+        append: yes
+        shell: /bin/bash
+        create_home: yes
+
+    - name: Allow testuser to use sudo without password
+      lineinfile:
+        path: /etc/sudoers
+        line: 'testuser ALL=(ALL) NOPASSWD:ALL'
+        validate: 'visudo -cf %s'

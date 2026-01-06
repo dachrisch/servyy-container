@@ -1,0 +1,365 @@
+---
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+
+jobs:
+  # Fast-fail checks (run in parallel)
+  lint-yaml:
+    name: Lint YAML
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: YAML Lint
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          config_file: .yamllint.yml
+          file_or_dir: ansible/
+
+  lint-ansible:
+    name: Ansible Lint
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          cd ansible
+          pip install ansible-lint ansible>=2.11 dnspython jmespath
+
+      - name: Run ansible-lint
+        run: |
+          cd ansible
+          ansible-lint --force-color --show-relpath
+
+  lint-python:
+    name: Lint Python (Custom Modules)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install linting tools
+        run: pip install flake8 pylint
+
+      - name: Flake8
+        run: |
+          cd ansible
+          # Only lint directories that exist
+          if [ -d "plugins" ]; then
+            flake8 library/ plugins/ --max-line-length=120
+          else
+            flake8 library/ --max-line-length=120
+          fi
+
+      - name: Pylint
+        run: |
+          cd ansible
+          # Disable pylint warnings for existing code patterns
+          pylint library/json_patch.py --disable=C0103,R0912,R0915,C0209,W0613,R1705,W0707,R1720,R1710,W0612,R0911,C0116,R1735 --fail-under=6.0
+
+  syntax-check:
+    name: Ansible Syntax Check
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        playbook:
+          - servyy.yml
+          - plays/system.yml
+          - plays/user.yml
+          - plays/leaguesphere.yml
+          - plays/testing.yml
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Ansible
+        run: |
+          pip install ansible>=2.11 dnspython jmespath
+          ansible-galaxy install -r ansible/requirements.yml
+
+      - name: Create mock encrypted files
+        run: |
+          # Create placeholder encrypted files for syntax check
+          mkdir -p ansible/plays/vars
+
+          # Remove encrypted files first to ensure clean slate
+          rm -f ansible/plays/vars/secrets.yml
+          rm -f ansible/plays/vars/secret_leaguesphere.yaml
+          rm -f ansible/plays/vars/ssh_jail.yaml
+          rm -f ansible/plays/roles/user/defaults/main.yaml
+          rm -f ansible/plays/roles/testing/defaults/main.yaml
+
+          # Mock secrets.yml
+          cat > ansible/plays/vars/secrets.yml <<'EOF'
+          ---
+          storagebox_credentials:
+            host: "mock.example.com"
+            share: "backup"
+            user: "mockuser"
+            pass: "mockpass"
+          servyy_git_repo:
+            hostname: "git.example.com"
+            username: "mockuser"
+            password: "mockpass"
+          create_user: testuser
+          EOF
+
+          # Mock secret_leaguesphere.yaml
+          cat > ansible/plays/vars/secret_leaguesphere.yaml <<'EOF'
+          ---
+          ls:
+            user: lsuser
+          ssh_chroot_jail_path: /test/jail
+          ssh_chroot_jail_group_name: testgroup
+          EOF
+
+          # Mock ssh_jail.yaml (overwrite encrypted file)
+          cat > ansible/plays/vars/ssh_jail.yaml <<'EOF'
+          ---
+          ssh_chroot_jail_users: []
+          extra_ssh_chroot_jail_dirs: []
+          EOF
+
+          # Mock encrypted role defaults
+          cat > ansible/plays/roles/user/defaults/main.yaml <<'EOF'
+          ---
+          # Mock defaults for CI testing
+          docker:
+            services: []
+          EOF
+
+          cat > ansible/plays/roles/testing/defaults/main.yaml <<'EOF'
+          ---
+          # Mock defaults for CI testing
+          testing:
+            extra_hosts: []
+          EOF
+
+          # Mock encrypted ls_* role files (LeagueSphere deployment)
+          # These roles are git-crypt encrypted - remove and recreate with stubs
+          for role in ls_setup ls_app_dev ls_app_stage ls_app_prod ls_access ls_db_sync ls_app; do
+            # Remove encrypted role directory completely
+            rm -rf ansible/plays/roles/$role
+
+            # Recreate with minimal stub structure
+            mkdir -p ansible/plays/roles/$role/{tasks,defaults,handlers,templates}
+
+            cat > ansible/plays/roles/$role/tasks/main.yml <<'EOFR'
+          ---
+          # Mock task file for CI testing
+          - name: Mock task for $role
+            debug:
+              msg: "This is a mock role for CI testing"
+          EOFR
+
+            cat > ansible/plays/roles/$role/defaults/main.yml <<'EOFR'
+          ---
+          # Mock defaults for CI testing
+          EOFR
+
+            cat > ansible/plays/roles/$role/handlers/main.yml <<'EOFR'
+          ---
+          # Mock handlers for CI testing
+          EOFR
+          done
+
+      - name: Syntax check ${{ matrix.playbook }}
+        run: |
+          cd ansible
+          ansible-playbook ${{ matrix.playbook }} --syntax-check -i testing
+
+  git-crypt-validation:
+    name: Validate git-crypt Encryption
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install git-crypt
+        run: sudo apt-get update && sudo apt-get install -y git-crypt
+
+      - name: Run validation script
+        run: .github/scripts/validate-git-crypt.sh
+
+  test-custom-modules:
+    name: Test Custom Modules
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        run: pip install ansible>=2.11
+
+      - name: Run unit tests
+        run: |
+          cd ansible/library
+          python -m unittest discover -s tests -p "test_*.py" -v
+
+  molecule-test:
+    name: Molecule Test (${{ matrix.role }}/${{ matrix.scenario }})
+    needs: [lint-yaml, lint-ansible, lint-python, syntax-check]
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - role: system
+            scenario: minimal
+          - role: system
+            scenario: core
+          - role: system
+            scenario: with-docker
+          - role: system
+            scenario: default
+          - role: testing
+            scenario: default
+          - role: user
+            scenario: default
+          - role: user
+            scenario: docker-only
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Molecule and dependencies
+        run: |
+          pip install molecule molecule-plugins[docker] ansible>=2.11 dnspython jmespath docker
+          ansible-galaxy install -r ansible/requirements.yml
+
+      - name: Create mock encrypted files
+        run: |
+          # Create placeholder encrypted files for testing
+          mkdir -p ansible/plays/vars
+
+          # Remove encrypted files first to ensure clean slate
+          rm -f ansible/plays/vars/secrets.yml
+          rm -f ansible/plays/vars/secret_leaguesphere.yaml
+          rm -f ansible/plays/vars/ssh_jail.yaml
+          rm -f ansible/plays/roles/user/defaults/main.yaml
+          rm -f ansible/plays/roles/testing/defaults/main.yaml
+
+          # Mock secrets.yml
+          cat > ansible/plays/vars/secrets.yml <<'EOF'
+          ---
+          storagebox_credentials:
+            host: "mock.example.com"
+            share: "backup"
+            user: "mockuser"
+            pass: "mockpass"
+          servyy_git_repo:
+            hostname: "git.example.com"
+            username: "mockuser"
+            password: "mockpass"
+          create_user: testuser
+          monit:
+            email: "test@example.com"
+            smtp:
+              host: "smtp.example.com"
+              port: 587
+              account: "testuser"
+              password: "testpass"
+          restic:
+            logs:
+              backup_home: "/var/log/restic-backup-home.log"
+              backup_root: "/var/log/restic-backup-root.log"
+              forget: "/var/log/restic-forget.log"
+              check: "/var/log/restic-check.log"
+          storagebox:
+            mount: "/mnt/storagebox"
+          EOF
+
+          # Mock secret_leaguesphere.yaml
+          cat > ansible/plays/vars/secret_leaguesphere.yaml <<'EOF'
+          ---
+          ls:
+            user: lsuser
+          ssh_chroot_jail_path: /test/jail
+          ssh_chroot_jail_group_name: testgroup
+          EOF
+
+          # Mock ssh_jail.yaml
+          cat > ansible/plays/vars/ssh_jail.yaml <<'EOF'
+          ---
+          ssh_chroot_jail_users: []
+          extra_ssh_chroot_jail_dirs: []
+          EOF
+
+          # Mock encrypted role defaults
+          cat > ansible/plays/roles/user/defaults/main.yaml <<'EOF'
+          ---
+          # Mock defaults for CI testing
+          docker:
+            services: []
+          EOF
+
+          cat > ansible/plays/roles/testing/defaults/main.yaml <<'EOF'
+          ---
+          # Mock defaults for CI testing
+          testing:
+            extra_hosts: []
+          EOF
+
+          # Mock encrypted ls_* role files
+          for role in ls_setup ls_app_dev ls_app_stage ls_app_prod ls_access ls_db_sync ls_app; do
+            rm -rf ansible/plays/roles/$role
+            mkdir -p ansible/plays/roles/$role/{tasks,defaults,handlers,templates}
+
+            cat > ansible/plays/roles/$role/tasks/main.yml <<'EOFR'
+          ---
+          # Mock task file for CI testing
+          - name: Mock task for $role
+            debug:
+              msg: "This is a mock role for CI testing"
+          EOFR
+
+            cat > ansible/plays/roles/$role/defaults/main.yml <<'EOFR'
+          ---
+          # Mock defaults for CI testing
+          EOFR
+
+            cat > ansible/plays/roles/$role/handlers/main.yml <<'EOFR'
+          ---
+          # Mock handlers for CI testing
+          EOFR
+          done
+
+      - name: Run Molecule test (${{ matrix.role }}/${{ matrix.scenario }})
+        run: |
+          cd ansible/plays/roles/${{ matrix.role }}
+          molecule test --scenario-name ${{ matrix.scenario }}
+        env:
+          PY_COLORS: '1'
+          ANSIBLE_FORCE_COLOR: '1'
+          ANSIBLE_LIBRARY: ${{ github.workspace }}/ansible/library
