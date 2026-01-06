@@ -35,7 +35,7 @@
 # https://stackoverflow.com/questions/43689271/wheres-dockers-daemon-json-missing
 - name: Configure docker daemon logging
   become_user: root
-  community.general.json_patch:
+  json_patch:
     src: '/etc/docker/daemon.json'
     create: true
     operations:
