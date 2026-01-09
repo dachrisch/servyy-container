@@ -32,7 +32,9 @@
   reboot:
     msg: Reboot to make docker user available
   become_user: root
-  when: group_added.changed
+  when:
+    - group_added.changed
+    - ansible_virtualization_type | default('') != 'docker'
   tags:
     - user.docker.install.reboot
 

@@ -34,6 +34,8 @@
 - name: Reboot to apply changes
   reboot:
     msg: Reboot after system update
-  when: upgrade.changed
+  when:
+    - upgrade.changed
+    - ansible_virtualization_type | default('') != 'docker'
   tags:
     - system.packages.reboot
