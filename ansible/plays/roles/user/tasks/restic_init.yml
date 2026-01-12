@@ -144,7 +144,11 @@
   shell: |
     export RESTIC_REPOSITORY="{{ item.repository }}"
     export RESTIC_PASSWORD="{{ item.password }}"
-    restic snapshots &>/dev/null || restic init
+    if restic snapshots >/dev/null 2>&1; then
+      echo "repository already initialized"
+    else
+      restic init
+    fi
   loop:
     - "{{ restic.home }}"
     - "{{ restic.root }}"
