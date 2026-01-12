@@ -1,0 +1,29 @@
+check process sshd matching /usr/sbin/sshd
+   group system
+   group sshd
+   start program = "/usr/sbin/service ssh start"
+   stop  program = "/usr/sbin/service ssh stop"
+   if failed host localhost port 22 with proto ssh then restart
+   if 5 restarts with 5 cycles then timeout
+   depend on sshd_bin
+   depend on sftp_bin
+   depend on sshd_rc
+   depend on sshd_rsa_key
+
+ check file sshd_bin with path /usr/sbin/sshd
+   group sshd
+
+ check file sftp_bin with path /usr/lib/openssh/sftp-server
+   group sshd
+
+ check file sshd_rsa_key with path /etc/ssh/ssh_host_rsa_key
+   group sshd
+
+ check file sshd_ecdsa_key with path /etc/ssh/ssh_host_ecdsa_key
+   group sshd
+
+ check file sshd_ed25519_key with path /etc/ssh/ssh_host_ed25519_key
+   group sshd
+
+ check file sshd_rc with path /etc/ssh/sshd_config
+   group sshd

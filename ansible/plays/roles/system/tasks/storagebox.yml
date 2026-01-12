@@ -8,6 +8,7 @@
     mode: 0600
   tags:
     - system.storagebox.credentials
+  when: not (skip_storagebox | default(false))
 
 - name: Check mountpoint exist
   file:
@@ -18,6 +19,7 @@
     mode: "0755"
   tags:
     - system.storagebox.mount.exist
+  when: not (skip_storagebox | default(false))
 
 - block:
     - set_fact:
@@ -41,6 +43,7 @@
         path: '{{ storagebox.mount }}'
   tags:
     - system.storagebox.mount.fstab
+  when: not (skip_storagebox | default(false))
 
 - name: Check if storagebox is already mounted
   command: '/bin/mountpoint -q {{storagebox.mount}}'
@@ -49,6 +52,7 @@
   changed_when: storagebox_check.rc != 0
   tags:
     - system.storagebox.mount.check
+  when: not (skip_storagebox | default(false))
 
 - block:
     - name: Mount storagebox
@@ -85,4 +89,6 @@
       delay: 10  # Delay 10 seconds between retries
       when: "'Operation not permitted' in mount_check.stderr or mount_check.rc == 32"
 
-  when: storagebox_check.changed
+  when: 
+    - not (skip_storagebox | default(false))
+    - storagebox_check.changed

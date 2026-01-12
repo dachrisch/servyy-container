@@ -15,8 +15,8 @@ check system $HOST
     if cpu usage > 200% for 4 cycles then alert
 
 check filesystem root with path /
-    if space usage > 80% then alert
-    if space usage > 85% for 2 cycles then alert
+    if space usage > 90% then alert
+    if space usage > 95% for 2 cycles then alert
 
 {% if has_10g_volume | default(false) %}
 check filesystem 10g_volume with path {{ extension_drive.path }}
