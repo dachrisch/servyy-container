@@ -26,8 +26,9 @@ fi
 if ! lxc profile get $instance name  > /dev/null 2>&1;then
   echo "creating server profile [$instance]"
   lxc profile create $instance
-  cat $instance.yaml | lxc profile edit $instance
 fi
+echo "updating server profile [$instance]"
+cat $instance.yaml | lxc profile edit $instance
 
 storage_pool=$(yq '.devices.root.pool' $instance.yaml | tr -d '"')
 if ! lxc storage show "$storage_pool" > /dev/null 2>&1;then

@@ -4,3 +4,4 @@ test:
         root_user: ubuntu
         with_containers: true
         with_docker: false
+        skip_storagebox: true

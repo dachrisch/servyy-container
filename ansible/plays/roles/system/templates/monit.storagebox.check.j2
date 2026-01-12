@@ -1,4 +1,4 @@
-check program storagebox-mounted with path "/bin/df -t cifs {{ storagebox.mount }}"
+check program storagebox-mounted with path "/bin/mountpoint -q {{ storagebox.mount }}"
     if status != 0 then alert
 
 check filesystem storagebox with path {{ storagebox.mount }}

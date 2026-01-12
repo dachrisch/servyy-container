@@ -1,8 +1,15 @@
 - name: Monitor SSHD
+  template:
+    src: monit.sshd.check.j2
+    dest: /etc/monit/conf.d/sshd
+    mode: 0640
+  notify: restart monit
+
+- name: Remove old SSHD link
   file:
-    src: /etc/monit/conf-available/openssh-server
-    dest: /etc/monit/conf-enabled/openssh-server
-    state: link
+    path: /etc/monit/conf-enabled/openssh-server
+    state: absent
+  notify: restart monit
 
 - name: Setup logging
   template:
