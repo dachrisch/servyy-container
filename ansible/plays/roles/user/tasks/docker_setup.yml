@@ -80,7 +80,7 @@
       service:
         name: docker
         state: restarted
-      when: root_added.changed
+      when: root_added.changed | default(false)
   when: mount_point.stat.exists
   tags:
     - molecule-notest  # Requires Docker to be installed and mount point
