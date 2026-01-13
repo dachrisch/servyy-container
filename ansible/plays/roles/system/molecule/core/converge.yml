@@ -67,6 +67,6 @@
         name: "{{ playbook_dir }}/../../"
         tasks_from: monit
       tags: [system.monit]
-    # - docker_cleanup: Disabled with docker_cleanup.enabled=false
-    # - kernel_cleanup: Disabled with kernel_cleanup.enabled=false
-    # - restic_maintenance: Requires restic repository setup
+      # - docker_cleanup: Disabled with docker_cleanup.enabled=false
+      # - kernel_cleanup: Disabled with kernel_cleanup.enabled=false
+      # - restic_maintenance: Requires restic repository setup

@@ -20,4 +20,3 @@
         tasks_from: docker_setup
       when: (with_docker or with_containers) | default(false)
       tags: [user.docker.setup]
-
