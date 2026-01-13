@@ -1,13 +1,13 @@
 #!/bin/bash
 set -e
 
-{% for container_name in container_names %}
+{% for service_name in container_names %}
 # Use command substitution instead of pipe to avoid zombie processes
-container_state=$(docker container inspect {{dir_name}}.{{container_name}} --format={% raw %}'{{.State.Running}}'{% endraw %} 2>/dev/null || echo "false")
+container_state=$(docker container inspect {{dir_name}}.{{service_name}} --format={% raw %}'{{.State.Running}}'{% endraw %} 2>/dev/null || echo "false")
 if [[ "$container_state" == "true" ]]; then
-    echo "Container {{dir_name}}.{{container_name}} is up and running"
+    echo "Container {{dir_name}}.{{service_name}} is up and running"
 else
-    echo "Container {{dir_name}}.{{container_name}} is not running"
+    echo "Container {{dir_name}}.{{service_name}} is not running"
     exit 3
 fi
 {% endfor %}

@@ -57,10 +57,10 @@
     - name: Create docker container check script
       template:
         src: check_docker_compose.sh.j2
-        dest: /etc/monit/scripts/check_docker_compose-{{ item.dir }}.sh
+        dest: /etc/monit/conf.d/container-check-{{ item.dir }}
         mode: 0750
       vars:
-        container_names: "{{ lookup('file', (docker.local_dir, item.dir, 'docker-compose.yml') | path_join ) | from_yaml | json_query('services.*.container_name') | map('split', '.') | flatten | reject('contains', '${') }}"
+        container_names: "{{ lookup('file', (docker.local_dir, item.dir, 'docker-compose.yml') | path_join ) | from_yaml | dot_get('services') | dict2items | map(attribute='key') | list }}"
         dir_name: "{{ item.dir }}"
       with_items:
         - "{{ docker.services }}"
