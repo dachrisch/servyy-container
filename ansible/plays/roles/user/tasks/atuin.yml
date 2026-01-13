@@ -24,7 +24,7 @@
     - name: Link executable
       become_user: root
       file:
-        src: "{{ ansible_user_dir }}/.atuin/bin/atuin"
+        src: "{{ ansible_facts['user_dir'] }}/.atuin/bin/atuin"
         dest: "/usr/bin/atuin"
         state: link
   when: autin_version.rc != 0
@@ -46,24 +46,24 @@
 
 - name: Set auto-sync
   lineinfile:
-    path: "{{ (ansible_user_dir, config_dir) | path_join }}"
+    path: "{{ (ansible_facts['user_dir'], config_dir) | path_join }}"
     search_string: 'auto_sync'
     line: 'auto_sync = true'
 
 - name: Set update-check
   lineinfile:
-    path: "{{ (ansible_user_dir, config_dir) | path_join }}"
+    path: "{{ (ansible_facts['user_dir'], config_dir) | path_join }}"
     search_string: 'update_check'
     line: 'update_check = true'
 
 - name: Set filter mode for shell up-key binding
   lineinfile:
-    path: "{{ (ansible_user_dir, config_dir) | path_join }}"
+    path: "{{ (ansible_facts['user_dir'], config_dir) | path_join }}"
     search_string: 'filter_mode_shell_up_key_binding'
     line: 'filter_mode_shell_up_key_binding = "directory"'
 
 - name: Set enter_accept to false
   lineinfile:
-    path: "{{ (ansible_user_dir, config_dir) | path_join }}"
+    path: "{{ (ansible_facts['user_dir'], config_dir) | path_join }}"
     search_string: 'enter_accept'
     line: 'enter_accept = false'

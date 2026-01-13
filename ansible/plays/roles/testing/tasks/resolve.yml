@@ -1,7 +1,7 @@
 - name: Dig servers ip
   set_fact:
     host_ip: "{{ lookup('dig', ansible_host) }}"
-    host_name: "{{ inventory_hostname_short }}"
+    host_name: "{{ ansible_facts['hostname'] }}"
   tags:
     - testing.hosts.remove
     - testing.hosts.create
