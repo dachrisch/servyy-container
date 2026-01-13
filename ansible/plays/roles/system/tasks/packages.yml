@@ -36,6 +36,6 @@
     msg: Reboot after system update
   when:
     - upgrade.changed
-    - ansible_virtualization_type | default('') != 'docker'
+    - ansible_facts['virtualization_type'] | default('') != 'docker'
   tags:
     - system.packages.reboot

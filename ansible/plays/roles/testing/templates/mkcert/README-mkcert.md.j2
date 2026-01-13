@@ -83,4 +83,4 @@ Anyone with this key can create trusted certificates for your CA.
 - rootCA.pem: 0644 (world-readable)
 - rootCA-key.pem: 0600 (root only)
 
-Generated: {{ ansible_date_time.iso8601 }}
+Generated: {{ ansible_facts['date_time']['iso8601'] }}

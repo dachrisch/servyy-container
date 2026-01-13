@@ -34,7 +34,7 @@
   become_user: root
   when:
     - group_added.changed
-    - ansible_virtualization_type | default('') != 'docker'
+    - ansible_facts['virtualization_type'] | default('') != 'docker'
   tags:
     - user.docker.install.reboot
 

@@ -11,7 +11,7 @@
 
 - name: Set dump file variable
   set_fact:
-    sql_dump_file: "/tmp/leaguesphere_prod_{{ ansible_date_time.epoch }}.sql"
+    sql_dump_file: "/tmp/leaguesphere_prod_{{ ansible_facts['date_time']['epoch'] }}.sql"
 
 - name: Export DB ignoring all views
   shell: |

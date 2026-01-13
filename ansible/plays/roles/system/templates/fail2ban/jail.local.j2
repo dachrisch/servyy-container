@@ -12,7 +12,7 @@ findtime = 600
 maxretry = 5
 
 # Ignore local IPs
-ignoreip = 127.0.0.1/8 ::1 {{ ansible_default_ipv4.address | default('') }}
+ignoreip = 127.0.0.1/8 ::1 {{ ansible_facts['default_ipv4']['address'] | default('') }}
 
 # Use iptables for banning
 banaction = iptables-multiport
