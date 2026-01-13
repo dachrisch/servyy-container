@@ -1,0 +1,282 @@
++./servyy-test.sh:3> ansible-playbook servyy.yml -i testing --skip-tags system.swap,ubuntu_pro --tags ls.setup,user.docker
+
+PLAY [Setup core system] *******************************************************
+[WARNING]: Host 'servyy-test.lxd' is using the discovered Python interpreter at '/usr/bin/python3.13', but future installation of another Python interpreter could cause a different interpreter to be discovered. See https://docs.ansible.com/ansible-core/2.20/reference_appendices/interpreter_discovery.html for more information.
+
+TASK [Gathering Facts] *********************************************************
+ok: [servyy-test.lxd]
+
+TASK [system : Create a new regular user with sudo privileges] *****************
+ok: [servyy-test.lxd]
+
+PLAY [Setup user specific options] *********************************************
+
+TASK [Validating arguments against arg spec None] ******************************
+ok: [servyy-test.lxd]
+
+TASK [user : Validate required variables] **************************************
+ok: [servyy-test.lxd] => {
+    "changed": false,
+    "msg": "All assertions passed"
+}
+
+TASK [user : Attempt to perform HEAD request to git.lehel.xyz] *****************
+ok: [servyy-test.lxd]
+
+TASK [user : Set reachability fact based on HEAD request result] ***************
+ok: [servyy-test.lxd]
+
+TASK [user : Set reachability fact to true when check is skipped] **************
+skipping: [servyy-test.lxd]
+
+TASK [user : Clone [ https://github.com/dachrisch/servyy-container.git ] to [ /home/cda/servyy-container ] (branch: master )] ***
+ok: [servyy-test.lxd]
+
+TASK [user : Initialize submodules for [ /home/cda/servyy-container ]] *********
+changed: [servyy-test.lxd]
+
+TASK [user : Check lock state] *************************************************
+ok: [servyy-test.lxd]
+
+TASK [user : Create temporary keyfile local] ***********************************
+skipping: [servyy-test.lxd]
+
+TASK [user : Export local key] *************************************************
+skipping: [servyy-test.lxd]
+
+TASK [user : Create temporary keyfile remote] **********************************
+skipping: [servyy-test.lxd]
+
+TASK [user : Copy repository key to remote] ************************************
+skipping: [servyy-test.lxd]
+
+TASK [user : Unlock repository] ************************************************
+skipping: [servyy-test.lxd]
+
+TASK [user : Create local .env files for docker service] ***********************
+ok: [servyy-test.lxd] => (item={'name': 'Traefik', 'dir': 'traefik'})
+ok: [servyy-test.lxd] => (item={'name': 'Achim Höfer', 'dir': 'achim-hoefer', 'depends': 'traefik'})
+ok: [servyy-test.lxd] => (item={'name': 'Git', 'dir': 'git', 'depends': 'traefik'})
+ok: [servyy-test.lxd] => (item={'name': 'Photoprism', 'dir': 'photoprism', 'depends': 'traefik'})
+ok: [servyy-test.lxd] => (item={'name': 'Bumbleflies', 'dir': 'bumbleflies', 'depends': 'traefik'})
+ok: [servyy-test.lxd] => (item={'name': 'Portainer', 'dir': 'portainer', 'depends': 'traefik'})
+ok: [servyy-test.lxd] => (item={'name': 'PiHole', 'dir': 'dns', 'depends': 'traefik', 'manual': {}})
+ok: [servyy-test.lxd] => (item={'name': 'Personal Website', 'dir': 'me', 'depends': 'traefik'})
+ok: [servyy-test.lxd] => (item={'name': 'Job Management', 'dir': 'jobs', 'depends': 'traefik', 'manual': {}})
+ok: [servyy-test.lxd] => (item={'name': 'Passbolt', 'dir': 'pass', 'depends': 'traefik'})
+ok: [servyy-test.lxd] => (item={'name': 'Monitor', 'dir': 'monitor', 'depends': 'traefik'})
+ok: [servyy-test.lxd] => (item={'name': 'Energy', 'dir': 'energy', 'depends': 'traefik'})
+
+TASK [user : Looking for backup files [/mnt/storagebox/backup/servyy-test.lxd/home/cda/servyy-container/git/repos]] ***
+ok: [servyy-test.lxd]
+
+TASK [user : Latest backup file] ***********************************************
+ok: [servyy-test.lxd]
+
+TASK [user : Find current repos files] *****************************************
+ok: [servyy-test.lxd]
+
+TASK [user : Latest current file] **********************************************
+ok: [servyy-test.lxd]
+
+TASK [user : Restore [git/repos] from backup] **********************************
+skipping: [servyy-test.lxd]
+
+TASK [user : Ensure file ownership (when not restored)] ************************
+ok: [servyy-test.lxd]
+
+TASK [user : Looking for backup files [/mnt/storagebox/backup/servyy-test.lxd/home/cda/servyy-container/photoprism/database]] ***
+ok: [servyy-test.lxd]
+
+TASK [user : Latest backup file] ***********************************************
+ok: [servyy-test.lxd]
+
+TASK [user : Find current repos files] *****************************************
+ok: [servyy-test.lxd]
+
+TASK [user : Latest current file] **********************************************
+ok: [servyy-test.lxd]
+
+TASK [user : Restore [photoprism/database] from backup] ************************
+skipping: [servyy-test.lxd]
+
+TASK [user : Ensure file ownership (when not restored)] ************************
+ok: [servyy-test.lxd]
+[WARNING]: Skipped '/mnt/storagebox/backup/servyy-test.lxd/home/cda/servyy-container/pass/vw-data' path due to this access issue: '/mnt/storagebox/backup/servyy-test.lxd/home/cda/servyy-container/pass/vw-data' is not a directory
+
+TASK [user : Looking for backup files [/mnt/storagebox/backup/servyy-test.lxd/home/cda/servyy-container/pass/vw-data]] ***
+ok: [servyy-test.lxd]
+
+TASK [user : Latest backup file] ***********************************************
+skipping: [servyy-test.lxd]
+
+TASK [user : Find current repos files] *****************************************
+ok: [servyy-test.lxd]
+
+TASK [user : Latest current file] **********************************************
+ok: [servyy-test.lxd]
+
+TASK [user : Restore [pass/vw-data] from backup] *******************************
+skipping: [servyy-test.lxd]
+
+TASK [user : Ensure file ownership (when not restored)] ************************
+ok: [servyy-test.lxd]
+
+TASK [user : Gather bumbleflies service dir] ***********************************
+ok: [servyy-test.lxd]
+
+TASK [user : Setting working dir for bumbleflies service] **********************
+ok: [servyy-test.lxd]
+
+TASK [user : Configure safe directory for /home/cda/servyy-container/bumbleflies/site] ***
+ok: [servyy-test.lxd]
+
+TASK [user : Remove ancient docker compose] ************************************
+ok: [servyy-test.lxd]
+
+TASK [user : Check if docker group exists] *************************************
+ok: [servyy-test.lxd]
+
+TASK [user : adding existing user 'cda' to group docker] ***********************
+ok: [servyy-test.lxd]
+
+TASK [user : Reboot to apply changes] ******************************************
+skipping: [servyy-test.lxd]
+
+TASK [user : Create external network] ******************************************
+ok: [servyy-test.lxd]
+
+TASK [user : Configure docker daemon logging] **********************************
+ok: [servyy-test.lxd]
+
+TASK [user : Check if mount point "/mnt/10g_volume" exists] ********************
+ok: [servyy-test.lxd]
+
+TASK [user : Configure docker daemon data root] ********************************
+skipping: [servyy-test.lxd]
+
+TASK [user : Restart Docker to apply changes] **********************************
+skipping: [servyy-test.lxd]
+
+TASK [user : Create docker script for services] ********************************
+ok: [servyy-test.lxd]
+
+TASK [user : Start docker services] ********************************************
+ok: [servyy-test.lxd] => (item={'name': 'Traefik', 'dir': 'traefik'})
+ok: [servyy-test.lxd] => (item={'name': 'Achim Höfer', 'dir': 'achim-hoefer', 'depends': 'traefik'})
+ok: [servyy-test.lxd] => (item={'name': 'Git', 'dir': 'git', 'depends': 'traefik'})
+ok: [servyy-test.lxd] => (item={'name': 'Photoprism', 'dir': 'photoprism', 'depends': 'traefik'})
+ok: [servyy-test.lxd] => (item={'name': 'Bumbleflies', 'dir': 'bumbleflies', 'depends': 'traefik'})
+ok: [servyy-test.lxd] => (item={'name': 'Portainer', 'dir': 'portainer', 'depends': 'traefik'})
+skipping: [servyy-test.lxd] => (item={'name': 'PiHole', 'dir': 'dns', 'depends': 'traefik', 'manual': {}}) 
+ok: [servyy-test.lxd] => (item={'name': 'Personal Website', 'dir': 'me', 'depends': 'traefik'})
+skipping: [servyy-test.lxd] => (item={'name': 'Job Management', 'dir': 'jobs', 'depends': 'traefik', 'manual': {}}) 
+ok: [servyy-test.lxd] => (item={'name': 'Passbolt', 'dir': 'pass', 'depends': 'traefik'})
+ok: [servyy-test.lxd] => (item={'name': 'Monitor', 'dir': 'monitor', 'depends': 'traefik'})
+ok: [servyy-test.lxd] => (item={'name': 'Energy', 'dir': 'energy', 'depends': 'traefik'})
+
+TASK [user : Ensure lingering enabled] *****************************************
+ok: [servyy-test.lxd]
+
+TASK [user : Check mandatory variables are defined] ****************************
+ok: [servyy-test.lxd]
+
+TASK [user : Create the systemd directory if it does not exist] ****************
+ok: [servyy-test.lxd]
+
+TASK [user : Create docker-photo-index service] ********************************
+ok: [servyy-test.lxd]
+
+TASK [user : Create timer for docker-photo-index] ******************************
+ok: [servyy-test.lxd]
+
+TASK [user : Start timer for docker-photo-index] *******************************
+ok: [servyy-test.lxd]
+
+PLAY [Setup League Sphere (Production & Staging)] ******************************
+
+TASK [Validating arguments against arg spec None] ******************************
+ok: [servyy-test.lxd]
+
+TASK [ls_setup : Create ls group [leaguesphere]] *******************************
+ok: [servyy-test.lxd]
+
+TASK [ls_setup : Add [cda] to [leaguesphere]] **********************************
+ok: [servyy-test.lxd]
+
+TASK [ls_setup : Get [cda]s groups] ********************************************
+ok: [servyy-test.lxd]
+
+TASK [ls_setup : Filter out jail group] ****************************************
+ok: [servyy-test.lxd]
+
+TASK [ls_setup : Apply updated groups] *****************************************
+ok: [servyy-test.lxd]
+
+TASK [ls_setup : Adding ls user 'leaguesphere' to group docker] ****************
+ok: [servyy-test.lxd]
+
+TASK [ls_setup : Ensure /var/run exists] ***************************************
+ok: [servyy-test.lxd]
+
+TASK [ls_setup : Ensure docker socket exists in jail] **************************
+ok: [servyy-test.lxd]
+
+TASK [ls_setup : Copy systemd mount unit template] *****************************
+ok: [servyy-test.lxd]
+
+TASK [ls_setup : Reload systemd if mount unit changed] *************************
+skipping: [servyy-test.lxd]
+
+TASK [ls_setup : Ensure Docker socket mount is enabled and started] ************
+ok: [servyy-test.lxd]
+
+TASK [ls_setup : Extra ssh_chroot variables for ssh jail] **********************
+ok: [servyy-test.lxd] => {
+    "msg": {
+        "ansible_playbook_python": "/home/cda/.pyenv/versions/3.14.0/envs/servy-ansible/bin/python",
+        "extra_ssh_chroot_bins": [
+            "/usr/bin/docker",
+            "/usr/bin/wget",
+            "/usr/bin/ar",
+            "/usr/bin/tar",
+            "/usr/bin/curl",
+            "/usr/lib/x86_64-linux-gnu/libcurl-gnutls.so.4"
+        ],
+        "extra_ssh_chroot_copy_extra_items": [
+            "/etc/resolv.conf",
+            "/etc/ssl/certs/",
+            "/usr/libexec/docker/"
+        ],
+        "extra_ssh_chroot_jail_dirs": [
+            "/usr/lib/x86_64-linux-gnu",
+            "/etc/ssl",
+            "/usr/libexec/docker",
+            "/tmp/"
+        ]
+    }
+}
+
+TASK [ls_setup : Combine ssh_chroot variables for ssh jail] ********************
+ok: [servyy-test.lxd]
+
+TASK [ls_app : Load ls_app variables] ******************************************
+ok: [servyy-test.lxd]
+
+TASK [ls_app : Load ls_app variables] ******************************************
+ok: [servyy-test.lxd]
+
+TASK [ls_app : Load ls_app variables] ******************************************
+ok: [servyy-test.lxd]
+
+TASK [ls_app : Load ls_app variables] ******************************************
+ok: [servyy-test.lxd]
+
+PLAY [Setup host machine for testing] ******************************************
+
+TASK [Validating arguments against arg spec None] ******************************
+ok: [servyy-test.lxd]
+
+PLAY RECAP *********************************************************************
+servyy-test.lxd            : ok=59   changed=1    unreachable=0    failed=0    skipped=14   rescued=0    ignored=0   
+
