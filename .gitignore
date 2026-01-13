@@ -17,3 +17,4 @@ log/
 dns/volumes
 # jekyll
 bumbleflies/site
+*.log
