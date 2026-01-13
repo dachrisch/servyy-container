@@ -61,7 +61,7 @@
 - name: Check if mount point "{{ extension_drive.path }}" exists
   stat:
     path: "{{ extension_drive.path }}"
-  register: mount_point
+  register: root_added
 
 - block:
     - name: Configure docker daemon data root
@@ -74,13 +74,13 @@
           - op: add
             path: 'data-root'
             value: "{{ extension_drive.path }}/docker"
-      register: root_added
+      register: root_added_config
 
     - name: Restart Docker to apply changes
       service:
         name: docker
         state: restarted
-      when: (root_added.changed | default(false))
-  when: mount_point.stat.exists
+      when: (root_added_config.changed | default(false))
+  when: root_added.stat.exists
   tags:
     - molecule-notest  # Requires Docker to be installed and mount point
