@@ -67,12 +67,6 @@
         name: "{{ playbook_dir }}/../../"
         tasks_from: monit
       tags: [system.monit]
-
-    # Skipped tasks (commented for documentation):
-    # - fail2ban: Requires real log files (/var/log/auth.log, etc.)
-    # - storagebox: Requires CIFS mount (would fail in Docker)
-    # - extension_drive: Requires real block device
-    # - swap: Disabled with create_swap=false
     # - docker_cleanup: Disabled with docker_cleanup.enabled=false
     # - kernel_cleanup: Disabled with kernel_cleanup.enabled=false
     # - restic_maintenance: Requires restic repository setup

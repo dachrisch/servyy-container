@@ -24,7 +24,9 @@
   register: social_start
   retries: 10
   delay: 2
-  until: "social_start.rc == 0 or not(social_start.stdout_lines | select('match', '.*nodedown.*') | length == 1)"
+  until: >-
+    social_start.rc == 0 or not(social_start.stdout_lines
+    | select('match', '.*nodedown.*') | length == 1)
   failed_when: social_start.rc != 0
   tags:
     - user.social.container.wait.startup
@@ -62,6 +64,9 @@
     chdir: "{{ docker_dir_social }}"
   with_items:
     - "{{ social.relays }}"
-  when: "'prod' in groups and inventory_hostname in groups['prod'] and (relays_present.stdout_lines | select('search', (item | urlsplit('hostname'))) | length == 0)"
+  when:
+    - "'prod' in groups"
+    - "inventory_hostname in groups['prod']"
+    - "(relays_present.stdout_lines | select('search', (item | urlsplit('hostname'))) | length == 0)"
   tags:
     - user.social.relays.add

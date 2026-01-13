@@ -21,5 +21,3 @@
       when: (with_docker or with_containers) | default(false)
       tags: [user.docker.setup]
 
-    # Skip: repository cloning (requires git.lehel.xyz), docker_services (requires compose files),
-    # dns tasks, backup, restic, host_ping

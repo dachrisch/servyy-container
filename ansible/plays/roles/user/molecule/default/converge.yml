@@ -28,7 +28,3 @@
     - name: Import zprezto tasks
       import_tasks: ../../tasks/zprezto.yml
       tags: [user.zprezto]
-
-    # Skip: atuin (requires network), git_credentials (requires secrets),
-    # docker tasks (with_containers=false), backup (requires storagebox),
-    # restic (requires secrets), host_ping (with_containers=false)

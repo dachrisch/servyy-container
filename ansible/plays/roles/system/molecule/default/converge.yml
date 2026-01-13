@@ -44,7 +44,3 @@
         name: "{{ playbook_dir }}/../../"
         tasks_from: journald
       tags: [system.journald]
-
-    # Skip: fail2ban (needs real logs), storagebox (needs mount),
-    # extension_drive (needs real device), swap (disabled),
-    # docker_cleanup (disabled), kernel_cleanup (disabled)

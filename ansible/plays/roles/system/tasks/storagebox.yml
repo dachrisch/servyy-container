@@ -89,6 +89,6 @@
       delay: 10  # Delay 10 seconds between retries
       when: "'Operation not permitted' in mount_check.stderr or mount_check.rc == 32"
 
-  when: 
+  when:
     - not (skip_storagebox | default(false))
     - storagebox_check.changed
