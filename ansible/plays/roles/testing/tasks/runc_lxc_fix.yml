@@ -60,6 +60,8 @@
 
 - name: Display runc status
   debug:
-    msg: "runc version: {{ runc_current_version }}, held: {{ runc_is_held }}, needs_fix: {{ runc_needs_fix | default(false) }}, is_safe: {{ runc_is_safe | default(false) }}"
+    msg: >-
+      runc version: {{ runc_current_version }}, held: {{ runc_is_held }},
+      needs_fix: {{ runc_needs_fix | default(false) }}, is_safe: {{ runc_is_safe | default(false) }}
   tags:
     - testing.runc
