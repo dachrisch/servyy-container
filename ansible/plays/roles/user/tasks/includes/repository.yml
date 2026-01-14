@@ -44,6 +44,7 @@
     chdir: "{{ remote_dir }}"
   when: update_submodules | default(false)
   register: submodule_init
+  changed_when: "'Submodule path' in submodule_init.stdout or 'Submodule registered' in submodule_init.stdout"
   failed_when: false
   tags:
     - user.repo.submodules
