@@ -30,6 +30,7 @@
       vars:
         container_dir: "{{ (ssh_chroot_jail_path, 'home', ls.user, 'container') | path_join }}"
         ls_vars_file: "secret_main.yaml"
+        deploy_containers: true
       become_user: "{{ ls.user }}"
       tags:
         - ls.app
@@ -41,6 +42,7 @@
       vars:
         container_dir: "{{ ('~', 'dev', ls.user) | path_join }}"
         ls_vars_file: "secret_main.yaml"
+        deploy_containers: true
       remote_user: "{{ create_user }}"
       become_user: "{{ create_user }}"
       tags:
@@ -53,6 +55,7 @@
       vars:
         container_dir: "{{ (ssh_chroot_jail_path, 'home', ls.user, 'container-stage') | path_join }}"
         ls_vars_file: "secret_stage.yaml"
+        deploy_containers: true
       become_user: "{{ ls.user }}"
       tags:
         - ls.app
@@ -63,6 +66,7 @@
       vars:
         container_dir: "{{ ('~', 'dev', ls.user) | path_join }}"
         ls_vars_file: "secret_stage.yaml"
+        deploy_containers: false
       remote_user: "{{ create_user }}"
       become_user: "{{ create_user }}"
       tags:
