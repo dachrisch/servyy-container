@@ -24,6 +24,8 @@
     owner: "{{ create_user }}"
     group: "{{ create_user }}"
     mode: '0644'
+    modification_time: preserve
+    access_time: preserve
   become: true
 
 - name: Deploy Docker cleanup systemd service
