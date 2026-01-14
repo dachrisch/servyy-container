@@ -42,7 +42,7 @@
       vars:
         container_dir: "{{ ('~', 'dev', ls.user) | path_join }}"
         ls_vars_file: "secret_main.yaml"
-        deploy_containers: true
+        deploy_containers: false
       remote_user: "{{ create_user }}"
       become_user: "{{ create_user }}"
       tags:
