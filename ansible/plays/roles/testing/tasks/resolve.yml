@@ -7,12 +7,12 @@
     - testing.hosts.create
     - testing.hosts.create.fqdn
 
-- name: remove old entries from /etc/hosts
+- name: remove old entries from /etc/hosts (wrong IP)
   become_user: root
   delegate_to: localhost
   lineinfile:
     path: '/etc/hosts'
-    regex: '{{item[0].dir}}\.{{host_name}}{{item[1]}}$'
+    regexp: '^(?!{{host_ip}}\s).*{{item[0].dir}}\.{{host_name}}{{item[1]}}$'
     state: absent
   with_items:
     - "{{ docker.services | product(['', '.lxd']) | list }}"
@@ -25,6 +25,7 @@
   delegate_to: localhost
   lineinfile:
     path: '/etc/hosts'
+    regexp: '^{{host_ip}}\s+{{item[0].dir}}\.{{host_name}}{{item[1]}}$'
     line: '{{host_ip}}	{{item[0].dir}}.{{host_name}}{{item[1]}}'
     state: present
     backup: yes

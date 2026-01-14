@@ -95,6 +95,7 @@
     src: mkcert/README-mkcert.md.j2
     dest: "{{ (docker.remote_dir, 'traefik', 'README-mkcert.md') | path_join }}"
     mode: '0644'
+    force: no
   when: lookup('env', 'MOLECULE_SCENARIO_NAME') == ''  # Skip in Molecule tests
   tags:
     - testing.mkcert.documentation
@@ -117,6 +118,8 @@
   delegate_to: localhost
   become: false
   when: ansible_facts['os_family'] == "Darwin"
+  args:
+    creates: "/tmp/servyy-test-ca.installed"  # Simple marker file or specific cert check
   ignore_errors: yes
   tags:
     - testing.mkcert.local
@@ -124,11 +127,15 @@
 
 - name: Install CA certificate on local machine (Linux)
   shell: |
-    sudo cp /tmp/servyy-test-ca.pem \
-      /usr/local/share/ca-certificates/servyy-test-ca.crt
-    sudo update-ca-certificates
+    if [ ! -f /usr/local/share/ca-certificates/servyy-test-ca.crt ]; then
+      sudo cp /tmp/servyy-test-ca.pem /usr/local/share/ca-certificates/servyy-test-ca.crt
+      sudo update-ca-certificates
+      echo "changed"
+    fi
   delegate_to: localhost
   become: false
+  register: linux_ca_install
+  changed_when: "'changed' in linux_ca_install.stdout"
   when: ansible_facts['os_family'] != "Darwin"
   ignore_errors: yes
   tags:
