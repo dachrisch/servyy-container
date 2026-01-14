@@ -43,6 +43,7 @@
       repository: "{{ restic.root.repository }}"
       password: "{{ restic.root.password }}"
       env_name: "root"
+  register: restic_env_files
   become: true
   become_user: root
   tags:
@@ -144,16 +145,20 @@
   shell: |
     export RESTIC_REPOSITORY="{{ item.repository }}"
     export RESTIC_PASSWORD="{{ item.password }}"
-    if restic snapshots >/dev/null 2>&1; then
-      echo "repository already initialized"
-    else
+    if ! restic snapshots >/dev/null 2>&1; then
       restic init
+    else
+      echo "repository already initialized"
     fi
   loop:
     - "{{ restic.home }}"
     - "{{ restic.root }}"
   register: restic_init
+  when: restic_env_files.changed or sftp_mkdir.changed
   changed_when: "'created restic repository' in restic_init.stdout"
+  failed_when: 
+    - restic_init.rc != 0
+    - "'config file already exists' not in restic_init.stderr"
   tags:
     - user.restic.init
 
