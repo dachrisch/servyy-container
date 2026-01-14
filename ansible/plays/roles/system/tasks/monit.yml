@@ -57,7 +57,7 @@
     - name: Create docker container check script
       template:
         src: check_docker_compose.sh.j2
-        dest: /etc/monit/conf.d/container-check-{{ item.dir }}
+        dest: /etc/monit/scripts/check_docker_compose-{{ item.dir }}.sh
         mode: 0750
       vars:
         container_names: >-
@@ -86,9 +86,20 @@
         - system.monit.script
         - system.monit.script.setup
 
-    - name: Remove container check for manual jobs
+    - name: Remove container check config for manual jobs
       file:
-        path: /etc/monit/conf.d/container-check-{{ item.dir }}
+        path: "/etc/monit/conf.d/container-check-{{ item.dir }}"
+        state: absent
+      when: ('manual' in item)
+      with_items:
+        - "{{ docker.services }}"
+      tags:
+        - system.monit.script
+        - system.monit.script.remove
+
+    - name: Remove container check script for manual jobs
+      file:
+        path: "/etc/monit/scripts/check_docker_compose-{{ item.dir }}.sh"
         state: absent
       when: ('manual' in item)
       with_items:
