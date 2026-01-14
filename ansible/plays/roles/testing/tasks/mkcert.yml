@@ -59,7 +59,7 @@
 
 - name: Append mkcert certificate configuration to Traefik dynamic.yaml
   blockinfile:
-    path: /home/cda/servyy-container/traefik/dynamic.yaml
+    path: "{{ (docker.remote_dir, 'traefik', 'dynamic.yaml') | path_join }}"
     marker: "# {mark} ANSIBLE MANAGED BLOCK - mkcert certificates"
     block: |
       # mkcert certificates for servyy-test.lxd (test environment only)
@@ -79,7 +79,7 @@
 
 - name: Add mkcert volume mount to Traefik docker-compose.yml
   blockinfile:
-    path: /home/cda/servyy-container/traefik/docker-compose.yml
+    path: "{{ (docker.remote_dir, 'traefik', 'docker-compose.yml') | path_join }}"
     marker: "      # {mark} ANSIBLE MANAGED BLOCK - mkcert volumes"
     insertafter: "^\\s+volumes:"
     block: "      # mkcert certificate directory (test environment only)\n      - /etc/ssl/mkcert:/etc/ssl/mkcert:ro"
@@ -93,7 +93,7 @@
 - name: Deploy mkcert README
   template:
     src: mkcert/README-mkcert.md.j2
-    dest: /home/cda/servyy-container/traefik/README-mkcert.md
+    dest: "{{ (docker.remote_dir, 'traefik', 'README-mkcert.md') | path_join }}"
     mode: '0644'
   when: lookup('env', 'MOLECULE_SCENARIO_NAME') == ''  # Skip in Molecule tests
   tags:
