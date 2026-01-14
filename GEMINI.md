@@ -65,15 +65,24 @@ ssh lehel.xyz "sudo fail2ban-client status"
 
 ## Development Conventions
 
-### Git Workflow
-- **Branching:** Use `claude/feature-name` for development. `master` is reserved for production-ready state.
+### Documentation & History
+- **Change Tracking:** **ALL** changes must be documented in the `history/` directory using the `YYYY-MM-DD_description.md` format.
+- **Git Workflow:** Use `claude/feature-name` for development. `master` is reserved for production-ready state.
 - **Commits:** Follow conventional commits: `<type>: <description>` (e.g., `feat: add new service`, `fix: update prometheus config`).
 - **Secret Management:** Secrets are stored in `ansible/plays/vars/secrets.yml` and other `*.yaml`/`*.env` files. Ensure `git-crypt` is unlocked before editing.
 
 ### Deployment Rules
-1. **Never** manually edit files on the server. Always use the Git -> Ansible workflow.
-2. **Always** test changes on the LXD test environment before production.
-3. **Always** request explicit user approval before running `servyy.sh` against production (`lehel.xyz`).
+1.  **Never** manually edit files on the server or use direct file transfers (`scp`, `rsync`). **ALWAYS** use the Git -> Ansible workflow.
+2.  **Testing First:** **ALWAYS** perform extensive testing on the `servyy-test.lxd` environment before considering a production rollout.
+3.  **User Approval:** **NEVER** deploy to production (`lehel.xyz`) without explicit user approval.
+4.  **Ansible Execution:**
+    *   Use **tags** to trigger specific tasks for minor/targeted changes.
+    *   Deploy the **whole script** (full playbook) for complex changes to ensure system consistency.
+5.  **Production Safety:** When deploying to production:
+    *   Create a **Docker snapshot/backup** before applying changes.
+    *   Validate the change immediately after deployment to ensure success.
+    *   Create another snapshot/backup after successful validation.
+6.  **Error Handling:** **NEVER** attempt to recover from an error or mistake autonomously. If a deployment fails or something goes wrong, **ALWAYS** involve the user immediately.
 
 ### Testing (Molecule)
 New Ansible features or role modifications **must** include Molecule tests.
