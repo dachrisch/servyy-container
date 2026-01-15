@@ -18,7 +18,9 @@
     IGNORE=$(mysql -h {{ prod_app.app.db_host }} \
                    -u {{ prod_app.app.db_user }} \
                    -p'{{ prod_app.app.db_password }}' \
-                   -N -e "SELECT CONCAT('--ignore-table={{ prod_app.app.db_name }}.', table_name) FROM information_schema.views WHERE table_schema='{{ prod_app.app.db_name }}'")
+                   -N -e "SELECT CONCAT('--ignore-table={{ prod_app.app.db_name }}.', table_name)
+                          FROM information_schema.views
+                          WHERE table_schema='{{ prod_app.app.db_name }}'")
     mysqldump -h {{ prod_app.app.db_host }} \
               -u {{ prod_app.app.db_user }} \
               -p'{{ prod_app.app.db_password }}' \
