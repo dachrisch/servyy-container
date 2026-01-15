@@ -14,7 +14,7 @@
 ## Security & Data Protection
 - **Intrusion Prevention:** fail2ban (Integrated with Loki for log-based banning)
 - **Secret Management:** git-crypt (Transparent file encryption within the Git repository)
-- **Backups (Primary):** Restic (Encrypted, deduplicated backups stored on Hetzner Storagebox)
+- **Backups & Recovery (Primary):** Restic (Encrypted backups and automated restoration via restic_restore.yml)
 - **Backups (Legacy/Secondary):** rsync (Used for specific data transfers and legacy backup paths)
 - **Firewall:** Hetzner Cloud Firewall & local iptables/nftables management via Ansible
 
