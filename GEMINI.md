@@ -80,6 +80,7 @@ ssh lehel.xyz "sudo fail2ban-client status"
     *   Deploy the **whole script** (full playbook) for complex changes to ensure system consistency.
     *   **No manual fixes:** Never attempt to fix an error with an Ansible deployment by applying changes directly. **ALWAYS** update the corresponding Ansible task in the repository and redeploy.
 5.  **Production Safety:** When deploying to production:
+    *   **Server Dependency:** **ALWAYS** limit execution to the relevant server(s) using `--limit` (e.g., `./servyy.sh --limit lehel.xyz`) to avoid impacting unrelated infrastructure.
     *   Create a **Docker snapshot/backup** before applying changes.
     *   Validate the change immediately after deployment to ensure success.
     *   Create another snapshot/backup after successful validation.
