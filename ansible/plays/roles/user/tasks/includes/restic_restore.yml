@@ -1,0 +1,48 @@
+---
+- name: Check if restore target exists [{{ restore_path }}]
+  stat:
+    path: "{{ restore_path }}"
+  register: target_stat
+
+- name: Check if target directory is empty
+  find:
+    paths: "{{ restore_path }}"
+    recurse: no
+  register: target_files
+  when: target_stat.stat.exists and target_stat.stat.isdir
+
+- name: Restore [{{ restore_path }}] from restic ({{ backup_name }})
+  shell: |
+    set -e
+    if [ -f "/etc/restic/env.{{ backup_name }}" ]; then
+        source "/etc/restic/env.{{ backup_name }}"
+        restic restore latest --target / --include "{{ restore_path }}"
+    else
+        echo "Restic environment file /etc/restic/env.{{ backup_name }} not found" >&2
+        exit 1
+    fi
+  args:
+    executable: /bin/bash
+  become: true
+  become_user: root
+  register: restic_restored
+  when: >
+    (not target_stat.stat.exists) or
+    (target_stat.stat.isdir and (target_files.matched | default(0)) == 0) or
+    (force_restore | default(false))
+  changed_when: "'restored' in restic_restored.stdout or restic_restored.rc == 0"
+  tags:
+    - user.restic.restore
+
+- name: Ensure permissions on [{{ restore_path }}]
+  file:
+    path: "{{ restore_path }}"
+    owner: "{{ owner | default(create_user) }}"
+    group: "{{ group | default(owner) | default(create_user) }}"
+    state: directory
+    recurse: yes
+  become: true
+  become_user: root
+  when: restic_restored.changed or (ensure_permissions | default(true))
+  tags:
+    - user.restic.restore.permissions
