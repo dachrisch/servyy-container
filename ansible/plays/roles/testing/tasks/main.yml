@@ -10,6 +10,11 @@
   tags:
     - testing.mkcert
 
+- import_tasks: restic_check_recent.yml
+  tags:
+    - testing.restic.check_recent
+    - never
+
 - name: Mount on reboot
   cron:
     name: "mount box on every reboot"
