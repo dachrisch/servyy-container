@@ -10,10 +10,10 @@
 - [x] Task: Conductor - User Manual Verification 'Implementation' (Protocol in workflow.md) [checkpoint: Phase 1 Complete]
 
 ## Phase 2: Verification
-- [ ] Task: Verify on `servyy-test.lxd`
-    - [ ] Run `ansible-playbook ... --tags testing.restic.check_recent`
-    - [ ] Confirm both repositories are checked and successful
-- [ ] Task: Conductor - User Manual Verification 'Verification' (Protocol in workflow.md)
+- [x] Task: Verify on `servyy-test.lxd`
+    - [x] Run `ansible-playbook ... --tags testing.restic.check_recent`
+    - [x] Confirm both repositories are checked and successful
+- [x] Task: Conductor - User Manual Verification 'Verification' (Protocol in workflow.md) [checkpoint: Phase 2 Complete]
 
 ## Phase 3: Finalization
 - [ ] Task: Final Document and Merge
