@@ -78,11 +78,19 @@ ssh lehel.xyz "sudo fail2ban-client status"
 4.  **Ansible Execution:**
     *   Use **tags** to trigger specific tasks for minor/targeted changes.
     *   Deploy the **whole script** (full playbook) for complex changes to ensure system consistency.
+    *   **No manual fixes:** Never attempt to fix an error with an Ansible deployment by applying changes directly. **ALWAYS** update the corresponding Ansible task in the repository and redeploy.
 5.  **Production Safety:** When deploying to production:
     *   Create a **Docker snapshot/backup** before applying changes.
     *   Validate the change immediately after deployment to ensure success.
     *   Create another snapshot/backup after successful validation.
-6.  **Error Handling:** **NEVER** attempt to recover from an error or mistake autonomously. If a deployment fails or something goes wrong, **ALWAYS** involve the user immediately.
+6.  **Error Handling (CRITICAL):**
+    *   **NEVER debug or fix anything directly on production.**
+    *   If an error occurs on production, **ALWAYS** inform the user immediately.
+    *   **Standard Recovery Procedure:**
+        1.  Recreate the error on the **test environment** (`servyy-test.lxd`).
+        2.  Develop and confirm the fix on the test environment.
+        3.  Only after successful verification on test, deploy the fix to production via the Git -> Ansible workflow.
+    *   **NEVER** attempt to recover from an error or mistake autonomously without following this procedure.
 
 ### Testing (Molecule)
 New Ansible features or role modifications **must** include Molecule tests.

@@ -129,6 +129,19 @@
   tags:
     - user.restic.init
 
+- name: Add Storage Box to known_hosts
+  shell: |
+    if ! ssh-keygen -F "[{{ restic.sftp.hostname }}]:{{ restic.sftp.port }}" -f {{ remote_user_home }}/.ssh/known_hosts >/dev/null 2>&1; then
+      ssh-keyscan -p {{ restic.sftp.port }} {{ restic.sftp.hostname }} >> {{ remote_user_home }}/.ssh/known_hosts
+    fi
+  args:
+    executable: /bin/bash
+  register: ssh_keyscan
+  changed_when: "'added' in ssh_keyscan.stdout or ssh_keyscan.rc == 0"
+  failed_when: false
+  tags:
+    - user.restic.init
+
 - name: Create restic repository directories on Storage Box
   shell: |
     sftp {{ restic.sftp.host_alias }} <<'EOF' 2>&1
@@ -213,6 +226,21 @@
     owner: root
     group: root
     mode: '0600'
+  become: true
+  become_user: root
+  tags:
+    - user.restic.init
+
+- name: Add Storage Box to known_hosts (root)
+  shell: |
+    if ! ssh-keygen -F "[{{ restic.sftp.hostname }}]:{{ restic.sftp.port }}" -f /root/.ssh/known_hosts >/dev/null 2>&1; then
+      ssh-keyscan -p {{ restic.sftp.port }} {{ restic.sftp.hostname }} >> /root/.ssh/known_hosts
+    fi
+  args:
+    executable: /bin/bash
+  register: ssh_keyscan_root
+  changed_when: "'added' in ssh_keyscan_root.stdout or ssh_keyscan_root.rc == 0"
+  failed_when: false
   become: true
   become_user: root
   tags:
