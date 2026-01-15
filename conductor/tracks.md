@@ -9,4 +9,3 @@
 ---
 
 - [x] **Track: refactor restic check task to use loop with home and root**
-*Link: [./tracks/restic-check-loop_20260115/](./tracks/restic-check-loop_20260115/)*
