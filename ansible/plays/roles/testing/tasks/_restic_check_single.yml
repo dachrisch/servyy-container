@@ -1,0 +1,19 @@
+---
+- name: Get latest {{ item }} snapshots
+  shell: |
+    source /etc/restic/env.{{ item }}
+    restic snapshots --latest 1 --json
+  args:
+    executable: /bin/bash
+  register: restic_snapshots
+  become: true
+  changed_when: false
+
+- name: Verify {{ item }} snapshot age
+  assert:
+    that:
+      - (restic_snapshots.stdout | from_json | length) > 0
+      - ((ansible_facts['date_time']['iso8601'][:19] | to_datetime('%Y-%m-%dT%H:%M:%S')) - 
+         ((restic_snapshots.stdout | from_json | first).time[:19] | to_datetime('%Y-%m-%dT%H:%M:%S'))).total_seconds() < 86400
+    fail_msg: "No recent restic snapshot found for {{ item | upper }} repository within the last 24 hours!"
+    success_msg: "Found recent restic snapshot for {{ item | upper }} repository."

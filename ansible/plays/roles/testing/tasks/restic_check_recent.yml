@@ -1,43 +1,9 @@
 ---
 - name: Check recent restic snapshots (< 24h)
-  block:
-    - name: Get latest home snapshots
-      shell: |
-        source /etc/restic/env.home
-        restic snapshots --latest 1 --json
-      args:
-        executable: /bin/bash
-      register: restic_snapshots_home
-      become: true
-      changed_when: false
-
-    - name: Verify home snapshot age
-      assert:
-        that:
-          - (restic_snapshots_home.stdout | from_json | length) > 0
-          - ((ansible_facts['date_time']['iso8601'][:19] | to_datetime('%Y-%m-%dT%H:%M:%S')) - 
-             ((restic_snapshots_home.stdout | from_json | first).time[:19] | to_datetime('%Y-%m-%dT%H:%M:%S'))).total_seconds() < 86400
-        fail_msg: "No recent restic snapshot found for HOME repository within the last 24 hours!"
-        success_msg: "Found recent restic snapshot for HOME repository."
-
-    - name: Get latest root snapshots
-      shell: |
-        source /etc/restic/env.root
-        restic snapshots --latest 1 --json
-      args:
-        executable: /bin/bash
-      register: restic_snapshots_root
-      become: true
-      changed_when: false
-
-    - name: Verify root snapshot age
-      assert:
-        that:
-          - (restic_snapshots_root.stdout | from_json | length) > 0
-          - ((ansible_facts['date_time']['iso8601'][:19] | to_datetime('%Y-%m-%dT%H:%M:%S')) - 
-             ((restic_snapshots_root.stdout | from_json | first).time[:19] | to_datetime('%Y-%m-%dT%H:%M:%S'))).total_seconds() < 86400
-        fail_msg: "No recent restic snapshot found for ROOT repository within the last 24 hours!"
-        success_msg: "Found recent restic snapshot for ROOT repository."
+  include_tasks: _restic_check_single.yml
+  loop:
+    - home
+    - root
   tags:
     - testing.restic.check_recent
     - never
