@@ -42,7 +42,9 @@
 
 # https://docs-develop.pleroma.social/backend/administration/CLI_tasks/user/
 - name: Create social user
-  command: "docker compose exec social.pleroma /opt/pleroma/bin/pleroma_ctl user new {{social.user}} {{social.email}} --admin --password \"{{social.password}}\" -y"
+  command: >
+    docker compose exec social.pleroma /opt/pleroma/bin/pleroma_ctl user new {{social.user}} {{social.email}}
+    --admin --password "{{social.password}}" -y
   no_log: true
   args:
     chdir: "{{ docker_dir_social }}"
