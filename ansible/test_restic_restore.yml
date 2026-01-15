@@ -1,0 +1,74 @@
+---
+- name: Test Restic Restore Logic
+  hosts: test
+  become: true
+  vars:
+    test_restore_path: "/tmp/restore-test-data"
+    test_repo_path: "/tmp/restic-test-repo"
+    test_password: "testpassword"
+    test_backup_name: "test-mock"
+  tasks:
+    - name: Cleanup previous test data
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ test_restore_path }}"
+        - "{{ test_repo_path }}"
+        - "/etc/restic/env.{{ test_backup_name }}"
+
+    - name: Create test source directory
+      file:
+        path: "{{ test_restore_path }}/source"
+        state: directory
+
+    - name: Create test file
+      copy:
+        content: "RESTIC_RESTORE_TEST_SUCCESS"
+        dest: "{{ test_restore_path }}/source/verify.txt"
+
+    - name: Initialize mock repository
+      shell: |
+        export RESTIC_PASSWORD={{ test_password }}
+        restic init -r {{ test_repo_path }}
+      args:
+        creates: "{{ test_repo_path }}/config"
+
+    - name: Create mock environment file
+      copy:
+        content: |
+          export RESTIC_REPOSITORY={{ test_repo_path }}
+          export RESTIC_PASSWORD={{ test_password }}
+        dest: "/etc/restic/env.{{ test_backup_name }}"
+        mode: '0600'
+
+    - name: Perform mock backup
+      shell: |
+        source /etc/restic/env.{{ test_backup_name }}
+        restic backup {{ test_restore_path }}/source
+      args:
+        executable: /bin/bash
+
+    - name: Delete source file before restore
+      file:
+        path: "{{ test_restore_path }}/source/verify.txt"
+        state: absent
+
+    - name: Run restic_restore.yml logic
+      include_tasks: plays/roles/user/tasks/includes/restic_restore.yml
+      vars:
+        restore_path: "{{ test_restore_path }}/source"
+        backup_name: "{{ test_backup_name }}"
+        owner: "{{ ansible_user | default('ubuntu') }}"
+
+    - name: Verify restoration
+      slurp:
+        src: "{{ test_restore_path }}/source/verify.txt"
+      register: restored_content
+
+    - name: Assert content matches
+      assert:
+        that:
+          - (restored_content.content | b64decode) == "RESTIC_RESTORE_TEST_SUCCESS"
+        fail_msg: "Restoration failed or content mismatch"
+        success_msg: "Restic restore logic verified successfully!"
