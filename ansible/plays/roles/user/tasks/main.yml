@@ -32,8 +32,8 @@
     local_dir: "{{ docker.local_dir }}"
     branch: "{{ lookup('pipe', 'git -C ' ~ docker.local_dir ~ ' rev-parse --abbrev-ref HEAD') }}"
     check_git_servyy_reachable: true     # Check git.lehel.xyz (me/ submodule is there)
-    clone_submodules: true                # Clone submodules if reachable
-    update_submodules: true               # Update submodules on every deployment
+    clone_submodules: false               # Clone submodules if reachable
+    update_submodules: false              # Update submodules on every deployment
   tags:
     - user.docker.repo
     - user.docker
@@ -92,29 +92,6 @@
     - user.restic.restore
   when: with_containers | default(false)
 
-# - import_tasks: includes/docker_repo_restore.yml
-#   vars:
-#     # concatenate strings to prevent striping of first '/'
-#     backup_base: "{{backup_dir + docker.remote_dir}}"
-#     restore_base: "{{docker.remote_dir}}"
-#     restore_dir: "{{('pass', 'vw-data') | path_join}}"
-#     owner: "root"
-#   tags:
-#     - user.docker.restore.pass
-#     - user.docker
-#   when: with_containers | default(false)
-
-- import_tasks: includes/restic_restore.yml
-  vars:
-    restore_path: "{{ (docker.remote_dir, 'pass', 'vw-data') | path_join }}"
-    backup_name: "home"
-    owner: "root"
-  tags:
-    - user.docker.restore.pass
-    - user.docker
-    - user.restic.restore
-  when: with_containers | default(false)
-
 - import_tasks: bumbleflies.yml
   tags:
     - user.docker.bumbleflies
@@ -126,6 +103,12 @@
     - user.docker.setup
     - user.docker
   when: (with_docker or with_containers) | default(false)
+
+- import_tasks: early_vaultwarden.yml
+  when: with_containers | default(false)
+  tags:
+    - user.docker.pass.early
+    - never
 
 - import_tasks: docker_services.yml
   tags:
@@ -149,4 +132,20 @@
 - import_tasks: host_ping.yml
   tags:
     - user.ping
+  when: with_containers | default(false)
+
+- name: Final Vaultwarden configuration (Standard)
+  include_tasks: includes/vw_setup.yml
+  vars:
+    early_vw: false
+  tags:
+    - user.docker.pass.final
+  when: with_containers | default(false)
+
+- name: Cleanup temporary Vaultwarden files
+  file:
+    path: "{{ (docker.remote_dir, 'pass', 'docker-compose.early.yml') | path_join }}"
+    state: absent
+  tags:
+    - user.docker.pass.cleanup
   when: with_containers | default(false)
