@@ -16,13 +16,13 @@
 - [x] Task: Conductor - User Manual Verification 'Implementation of Fix' (Protocol in workflow.md)
 
 ## Phase 3: Validation on servyy-test
-- [ ] Task: Full Suite Verification
-    - [ ] Perform a clean run of the entire `./servyy-test.sh` suite
-    - [ ] Confirm `leaguesphere_stage.mysql` reaches a healthy state consistently
-- [ ] Task: Conductor - User Manual Verification 'Validation on servyy-test' (Protocol in workflow.md)
+- [x] Task: Full Suite Verification
+    - [x] Perform a clean run of the entire `./servyy-test.sh` suite
+    - [x] Confirm `leaguesphere_stage.mysql` reaches a healthy state consistently
+- [x] Task: Conductor - User Manual Verification 'Validation on servyy-test' (Protocol in workflow.md)
 
 ## Phase 4: Finalization
-- [ ] Task: Documentation & Cleanup
-    - [ ] Create history entry `history/2026-01-17_fix-ls-stage-mysql-health.md`
-    - [ ] Merge the feature branch into master
-- [ ] Task: Conductor - User Manual Verification 'Finalization' (Protocol in workflow.md)
+- [x] Task: Documentation & Cleanup
+    - [x] Create history entry `history/2026-01-17_fix-ls-stage-mysql-health.md`
+    - [x] Merge the feature branch into master
+- [x] Task: Conductor - User Manual Verification 'Finalization' (Protocol in workflow.md)
