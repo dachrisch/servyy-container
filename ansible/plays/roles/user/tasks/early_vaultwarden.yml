@@ -1,0 +1,52 @@
+---
+- name: Early Vaultwarden Setup
+  block:
+    - name: Ensure mkcert is installed (test only)
+      apt:
+        name: mkcert
+        state: present
+      become_user: root
+      when: inventory_hostname in groups['test'] | default([])
+
+    - name: Generate certificates for Vaultwarden (test only)
+      shell: |
+        mkcert -install
+        mkcert -cert-file /etc/ssl/vw.crt -key-file /etc/ssl/vw.key \
+          "pass.{{ inventory_hostname }}" localhost 127.0.0.1
+      become_user: root
+      environment:
+        CAROOT: "{{ mkcert.cert_dir }}"
+      when: inventory_hostname in groups['test'] | default([])
+
+    - name: Create early setup override file
+      copy:
+        dest: "{{ (docker.remote_dir, 'pass', 'docker-compose.early.yml') | path_join }}"
+        content: |
+          services:
+            pass:
+              ports:
+                - "8080:80"
+      when: vw_early_standalone | default(true)
+
+    - include_tasks: includes/vw_restore.yml
+    
+    - include_tasks: includes/vw_setup.yml
+      vars:
+        early_vw: "{{ vw_early_standalone | default(true) }}"
+        vw_compose_files:
+          - docker-compose.yml
+          - "{{ (vw_early_standalone | default(true)) | ternary('docker-compose.early.yml', 'docker-compose.yml') }}"
+
+    - name: Wait for Vaultwarden to be ready
+      uri:
+        url: "{{ (vw_early_standalone | default(true)) | ternary('https://localhost:8080/api/config', 'https://localhost/api/config') }}"
+        validate_certs: no
+      register: _result
+      until: _result.status == 200
+      retries: 20
+      delay: 5
+      when: vw_early_standalone | default(true)
+
+  tags:
+    - user.docker.pass.early
+    - never

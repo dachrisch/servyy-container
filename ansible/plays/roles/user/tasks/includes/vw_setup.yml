@@ -1,0 +1,26 @@
+---
+- name: Create Vaultwarden .env file
+  template:
+    src: docker.env.j2
+    dest: "{{ (docker.remote_dir, 'pass', '.env') | path_join }}"
+    mode: '0600'
+  vars:
+    service:
+      host: "pass.{{ inventory_hostname }}"
+      name: "pass"
+      early: "{{ early_vw | default(false) }}"
+    user:
+      id: "{{ created_user.uid }}"
+      group: "{{ created_user.group }}"
+  tags:
+    - user.docker.env
+    - user.docker.pass.env
+
+- name: Start Vaultwarden service
+  community.docker.docker_compose_v2:
+    project_src: "{{ (docker.remote_dir, 'pass') | path_join }}"
+    files: "{{ vw_compose_files | default(['docker-compose.yml']) }}"
+    state: present
+  tags:
+    - user.docker.services.start
+    - user.docker.pass.start

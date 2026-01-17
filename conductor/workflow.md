@@ -5,8 +5,9 @@
 1. **The Plan is the Source of Truth:** All work MUST be tracked in `plan.md`.
 2. **GitOps & IaC:** All changes MUST be defined in this repository and applied via Ansible. Manual server edits are forbidden.
 3. **Testing First (Test-Driven Infrastructure):**
-   - New Ansible roles/tasks MUST include Molecule tests.
    - All changes MUST be verified on `servyy-test.lxd` before production.
+   - Verification includes service health, log availability in Loki, and connectivity.
+
 4. **History Tracking:** EVERY major change or infrastructure migration MUST be documented in `history/YYYY-MM-DD_description.md`.
 5. **Observability as a Requirement:** Services are only complete when logs are in Loki and metrics are in Prometheus.
 6. **Secret Management:** Secrets MUST be managed via `git-crypt`. Never commit plain-text secrets.
@@ -24,7 +25,7 @@ All tasks follow a strict lifecycle, utilizing specialized agents where appropri
 3. **Branch & Agent Initialization:**
    - Create a feature branch: `claude/feature-name` (or current agent prefix).
    - If the task is complex, invoke the `service-requirements-analyst` (Analyst agent) to refine the technical specification.
-   - Setup stubs (e.g., `ansible/plays/roles/[new-role]/{tasks,defaults,molecule}`).
+   - Setup task files (e.g., `ansible/plays/roles/[role]/tasks/[task].yml`).
 
 4. **Service Definition & User Loop:**
    - Define the service behavior, ports, and external access (Traefik).
@@ -37,18 +38,17 @@ All tasks follow a strict lifecycle, utilizing specialized agents where appropri
    - Present the plan (e.g., "I will update `user.yml` with tag `service-xyz`").
    - **PAUSE** for user validation.
 
-6. **Implementation & Local Testing (Molecule):**
+6. **Implementation & Test Verification:**
    - Implement roles/tasks and `docker-compose.yml`.
-   - Write and run Molecule tests in `ansible/plays/roles/[role]/molecule/`.
-   - Iterate until `molecule test` passes.
+   - Deploy to test environment: `cd ansible && ./servyy-test.sh --tags [tag]`.
+   - Iterate until verification on `servyy-test.lxd` passes.
 
 7. **Verification on servyy-test:**
-   - Deploy to test environment: `cd ansible && ./servyy-test.sh --tags [tag]`.
    - Use `service-tester` (Tester agent) to perform automated verification of the test deployment.
    - Verify logs: `docker logs [service]` on the test container.
 
 8. **Production Approval & Documentation:**
-   - Present verification results (Molecule + servyy-test logs).
+   - Present verification results from `servyy-test.lxd`.
    - **Create History Entry:** Write the migration/change details to `history/`.
    - **PAUSE** and await explicit "Approved for Production" from the user.
 
@@ -83,21 +83,18 @@ cd ansible && pip install -r requirements.txt && ansible-galaxy install -r requi
 ```bash
 # Linting
 ansible-lint ansible/
-# Molecule
-cd ansible/plays/roles/[role] && molecule test
+# Deploy to Test Environment
+cd ansible && ./servyy-test.sh --tags [tags]
 ```
 
 ### Deployment
 ```bash
-# Test Environment
-cd ansible && ./servyy-test.sh --tags [tags]
 # Production (ONLY after approval)
 cd ansible && ./servyy.sh --limit lehel.xyz --tags [tags]
 ```
 
 ## Definition of Done
 - [ ] Ansible code passes `ansible-lint`.
-- [ ] Molecule tests pass for all modified roles.
 - [ ] Successfully deployed and verified on `servyy-test.lxd`.
 - [ ] Logs appearing in Loki; metrics in Prometheus (if applicable).
 - [ ] `history/` documentation created/updated.

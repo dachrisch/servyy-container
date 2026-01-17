@@ -12,5 +12,6 @@
       group: "{{ created_user.group }}"
   with_items:
     - "{{ docker.services }}"
+  when: item.dir != 'pass'
   tags:
     - user.docker.env

@@ -1,0 +1,11 @@
+---
+- name: Restore Vaultwarden data from restic
+  include_tasks: restic_restore.yml
+  vars:
+    restore_path: "{{ (docker.remote_dir, 'pass', 'vw-data') | path_join }}"
+    backup_name: "home"
+    owner: "root"
+  tags:
+    - user.docker.restore.pass
+    - user.docker
+    - user.restic.restore

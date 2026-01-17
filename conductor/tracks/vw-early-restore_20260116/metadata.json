@@ -1,0 +1,8 @@
+{
+  "track_id": "vw-early-restore_20260116",
+  "type": "refactor",
+  "status": "new",
+  "created_at": "2026-01-16T14:45:00Z",
+  "updated_at": "2026-01-16T14:45:00Z",
+  "description": "move restore of vaultwarden to the earliest possible moment. maybe we need to realign the loop logic to extract this service, but i still want as much reusability as possible. background: we want to make requests to running vw in later steps so this needs to be running just before this. best approach from my view: setup temp container, but we may have problems with certificates when we connect with cli (which requires ssl). on the other side with full setup we also require traefik. make a suggestion on workable approach"
+}

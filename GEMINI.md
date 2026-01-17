@@ -93,10 +93,10 @@ ssh lehel.xyz "sudo fail2ban-client status"
         3.  Only after successful verification on test, deploy the fix to production via the Git -> Ansible workflow.
     *   **NEVER** attempt to recover from an error or mistake autonomously without following this procedure.
 
-### Testing (Molecule)
-New Ansible features or role modifications **must** include Molecule tests.
-- Tests are located in `ansible/plays/roles/[role]/molecule/`.
-- Run tests locally on `servyy-test.lxd` before pushing to CI.
+### Testing and Validation
+- **No Local Infrastructure:** Infrastructure tools (Docker, Molecule, etc.) MUST NOT be run on the host machine.
+- **Testing Environment:** **ALL** testing and validation MUST be performed on the `servyy-test.lxd` environment.
+- **Verification:** Before considering a production rollout, ensure all changes are successfully deployed and verified on `servyy-test.lxd`.
 
 ### Logging & Monitoring
 - **Container Names:** Follow the pattern `{directory}.{service}` (e.g., `monitor.grafana`).

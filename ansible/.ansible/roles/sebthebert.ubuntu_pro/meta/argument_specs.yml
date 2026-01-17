@@ -1,0 +1,106 @@
+---
+argument_specs:
+  main:
+    short_description: Register host on Ubuntu Pro (https://ubuntu.com/pro)
+    description:
+      - The main entry point just combines the repositories and packages
+             entry points.
+    options:
+      debug:
+        description: Use debug module to display 'pro' command stdout/stderr
+        type: bool
+        default: false
+      disabled_services:
+        description: List of services to disable
+        type: list
+        elements: str
+        choices:
+          - 'cc-eal'       # Common Criteria EAL2
+          - 'esm-infra'    # Expanded Security Maintenance for Infrastructure
+          - 'fips'
+          - 'fips-updates'
+          - 'livepatch'    # Canonical Kernel Livepatch
+          - 'usg'
+      enabled_services:
+        description: List of services to enable
+        type: list
+        elements: str
+        choices:
+          - 'cc-eal'       # Common Criteria EAL2
+          - 'esm-infra'    # Expanded Security Maintenance for Infrastructure
+          - 'fips'
+          - 'fips-updates'
+          - 'livepatch'    # Canonical Kernel Livepatch
+          - 'usg'
+      state:
+        description: State of Ubuntu Pro installation
+        type: str
+        choices:
+          - absent
+          - attached
+          - detached
+          - present
+        default: present
+      ubuntu_pro_token:
+        description:
+          - Ubuntu Pro token
+        type: str
+        required: true
+      ubuntu_pro_config.http_proxy:
+        description:
+          - HTTP Proxy
+        type: str
+        required: false
+      ubuntu_pro_config.https_proxy:
+        description:
+          - HTTPS Proxy
+        type: str
+        required: false
+      ubuntu_pro_config.apt_http_proxy:
+        description:
+          - apt HTTP Proxy
+        type: str
+        required: false
+      ubuntu_pro_config.apt_https_proxy:
+        description:
+          - apt HTTPS Proxy
+        type: str
+        required: false
+      ubuntu_pro_config.ua_apt_http_proxy:
+        description:
+          - ua apt HTTP Proxy
+        type: str
+        required: false
+      ubuntu_pro_config.ua_apt_https_proxy:
+        description:
+          - ua apt HTTPS Proxy
+        type: str
+        required: false
+      ubuntu_pro_config.global_apt_http_proxy:
+        description:
+          - global apt HTTP Proxy
+        type: str
+        required: false
+      ubuntu_pro_config.global_apt_https_proxy:
+        description:
+          - global apt HTTPS Proxy
+        type: str
+        required: false
+      ubuntu_pro_config.update_messaging_timer:
+        description:
+          - Update Messaging timer
+        type: int
+        required: false
+        default: 21600
+      ubuntu_pro_config.update_status_timer:
+        description:
+          - Update Status timer
+        type: int
+        required: false
+        default: 43200
+      ubuntu_pro_config.metering_timer:
+        description:
+          - Metering timer
+        type: int
+        required: false
+        default: 43200

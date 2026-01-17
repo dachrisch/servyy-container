@@ -9,3 +9,4 @@
 ---
 
 - [x] **Track: refactor restic check task to use loop with home and root**
+\n---\n\n- [~] **Track: Early Vaultwarden Restore and Deployment**\n*Link: [./tracks/vw-early-restore_20260116/](./tracks/vw-early-restore_20260116/)*

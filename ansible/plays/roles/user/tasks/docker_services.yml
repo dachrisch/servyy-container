@@ -17,7 +17,7 @@
     state: present
   with_items:
     - "{{ docker.services }}"
-  when: not ('manual' in item)
+  when: not ('manual' in item) and item.dir != 'pass'
   tags:
     - user.docker.services.start
 
