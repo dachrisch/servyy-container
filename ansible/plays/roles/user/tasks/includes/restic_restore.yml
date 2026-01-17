@@ -40,6 +40,7 @@
   args:
     executable: /bin/bash
   become: true
+  become_user: root
   register: restic_restored
   when: 
     - target_stat.stat.exists and target_stat.stat.isdir
