@@ -1,4 +1,8 @@
 ---
+- name: Gather facts for .env generation
+  setup:
+  when: ansible_facts['hostname'] is not defined
+
 - name: Create Vaultwarden .env file
   template:
     src: docker.env.j2
