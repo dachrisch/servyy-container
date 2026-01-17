@@ -32,8 +32,8 @@
     local_dir: "{{ docker.local_dir }}"
     branch: "{{ lookup('pipe', 'git -C ' ~ docker.local_dir ~ ' rev-parse --abbrev-ref HEAD') }}"
     check_git_servyy_reachable: true     # Check git.lehel.xyz (me/ submodule is there)
-    clone_submodules: false               # Clone submodules if reachable
-    update_submodules: false              # Update submodules on every deployment
+    clone_submodules: true                # Clone submodules if reachable
+    update_submodules: true               # Update submodules on every deployment
   tags:
     - user.docker.repo
     - user.docker
