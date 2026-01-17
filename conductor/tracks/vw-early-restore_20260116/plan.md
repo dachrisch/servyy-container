@@ -21,10 +21,11 @@
 - [ ] Task: Conductor - User Manual Verification 'Standalone Deployment Implementation' (Protocol in workflow.md)
 
 ## Phase 3: Test Verification on servyy-test
-- [ ] Task: Verify on `servyy-test.lxd`
-    - [ ] Deploy the full playbook to the test container.
-    - [ ] Verify that Vaultwarden starts early and is accessible via HTTPS.
-    - [ ] Confirm that subsequent tasks (e.g., seeding) can communicate with the service.
+- [x] Task: Verify on `servyy-test.lxd`
+    - [x] Deploy the full playbook to the test container.
+    - [x] Verify that Vaultwarden starts early and is accessible via HTTPS.
+    - [x] Confirm that subsequent tasks can communicate with the service.
+    - [x] Verify final standard reconfiguration and cleanup.
 - [ ] Task: Conductor - User Manual Verification 'Local & Test Verification' (Protocol in workflow.md)
 
 ## Phase 4: Finalization & Rollout
