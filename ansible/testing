@@ -5,3 +5,5 @@ test:
         with_containers: true
         with_docker: false
         skip_storagebox: true
+        restic_home_repository: "/tmp/restic-home"
+        restic_root_repository: "/tmp/restic-root"
