@@ -13,8 +13,12 @@
 
 - name: Check for existing snapshots in {{ backup_name }}
   shell: |
-    source "/etc/restic/env.{{ backup_name }}"
-    restic snapshots --json
+    if [ -f "/etc/restic/env.{{ backup_name }}" ]; then
+        source "/etc/restic/env.{{ backup_name }}"
+        restic snapshots --json
+    else
+        echo "[]"
+    fi
   args:
     executable: /bin/bash
   register: restic_snapshots_check
