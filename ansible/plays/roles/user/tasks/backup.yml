@@ -6,10 +6,12 @@
 
 - name: Ensure backup dir exists
   file:
-    path: "{{(backup_dir) | path_join}}"
+    path: "{{ backup_dir }}"
     state: directory
+  become_user: root
+  when: not (skip_storagebox | default(false))
   tags:
-    - user.backup.dir.ensure
+    - user.backup.dir
 
 - name: Create backup for homes
   template:
@@ -26,6 +28,7 @@
     backup_dest: "{{(backup_dir, 'home') | path_join}}"
     backup_source: "{{remote_user_home}}"
     with_timestamp:
+  when: not (skip_storagebox | default(false))
   tags:
     - user.backup.script.homes
 
@@ -62,6 +65,7 @@
     backup_dest: "{{(backup_dir, 'root') | path_join}}"
     backup_source: "/"
     with_timestamp:
+  when: not (skip_storagebox | default(false))
   tags:
     - user.backup.script.root
 
@@ -85,4 +89,4 @@
       command: "{{(shell.remote_dir, 'custom/bin/sync_photos.sh') | path_join}}"
   tags:
     - user.backup.systemd.photos
-  when: backup_photos | default(false)
+  when: (backup_photos | default(false)) and not (skip_storagebox | default(false))

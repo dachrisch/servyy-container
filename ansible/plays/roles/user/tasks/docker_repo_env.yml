@@ -8,7 +8,7 @@
       host: "{{item.dir}}.{{inventory_hostname}}"
       name: "{{item.dir}}"
     user:
-      id: "{{ created_user.uid }}"
+      id: "{{ created_user.uid | default(ansible_user_id) }}"
       group: "{{ created_user.group }}"
   with_items:
     - "{{ docker.services }}"

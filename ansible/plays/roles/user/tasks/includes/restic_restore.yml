@@ -11,6 +11,22 @@
   register: target_files
   when: target_stat.stat.exists and target_stat.stat.isdir
 
+- name: Check for existing snapshots in {{ backup_name }}
+  shell: |
+    if [ -f "/etc/restic/env.{{ backup_name }}" ]; then
+        source "/etc/restic/env.{{ backup_name }}"
+        restic snapshots --json
+    else
+        echo "[]"
+    fi
+  args:
+    executable: /bin/bash
+  register: restic_snapshots_check
+  become: true
+  become_user: root
+  changed_when: false
+  failed_when: false
+
 - name: Restore [{{ restore_path }}] from restic ({{ backup_name }})
   shell: |
     set -e
@@ -26,11 +42,9 @@
   become: true
   become_user: root
   register: restic_restored
-  when: >
-    (not target_stat.stat.exists) or
-    (target_stat.stat.isdir and (target_files.matched | default(0)) == 0) or
-    (force_restore | default(false))
-  changed_when: "'restored' in restic_restored.stdout or restic_restored.rc == 0"
+  when: 
+    - target_stat.stat.exists and target_stat.stat.isdir
+    - (restic_snapshots_check.stdout | from_json | length) > 0
   tags:
     - user.restic.restore
 
