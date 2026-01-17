@@ -14,8 +14,8 @@
       name: "pass"
       early: "{{ early_vw | default(false) }}"
     user:
-      id: "{{ created_user.uid }}"
-      group: "{{ created_user.group }}"
+      id: "{{ created_user.uid | default(ansible_user_id) }}"
+      group: "{{ created_user.group | default(ansible_user_gid) }}"
   tags:
     - user.docker.env
     - user.docker.pass.env
