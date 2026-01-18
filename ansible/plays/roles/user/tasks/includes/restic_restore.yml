@@ -15,7 +15,7 @@
   shell: |
     if [ -f "/etc/restic/env.{{ backup_name }}" ]; then
         source "/etc/restic/env.{{ backup_name }}"
-        restic snapshots --json
+        restic snapshots --json 2>/dev/null || echo "[]"
     else
         echo "[]"
     fi
@@ -44,7 +44,7 @@
   register: restic_restored
   when: 
     - target_stat.stat.exists and target_stat.stat.isdir
-    - (restic_snapshots_check.stdout | from_json | length) > 0
+    - (restic_snapshots_check.stdout | default('[]') | from_json | length) > 0
   tags:
     - user.restic.restore
 
