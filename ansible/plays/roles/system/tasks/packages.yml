@@ -11,8 +11,20 @@
   tags:
     - system.packages.dist-upgrade
 
+- name: Pre-create monit log file (workaround for installer bug)
+  file:
+    path: /var/log/monit.log
+    state: touch
+    owner: root
+    group: root
+    mode: '0640'
+  tags:
+    - system.packages.install
+
 - name: Install required system packages
-  apt: name={{ sys_packages }} state=latest
+  apt:
+    name: "{{ sys_packages | reject('match', '^linux-image-.*') | list if ansible_facts['virtualization_type'] | default('') in ['lxc', 'docker'] else sys_packages }}"
+    state: latest
   tags:
     - system.packages.install
 
@@ -36,6 +48,6 @@
     msg: Reboot after system update
   when:
     - upgrade.changed
-    - ansible_facts['virtualization_type'] | default('') != 'docker'
+    - ansible_facts['virtualization_type'] | default('') not in ['docker', 'lxc']
   tags:
     - system.packages.reboot
