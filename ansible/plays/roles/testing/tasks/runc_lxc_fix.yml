@@ -30,11 +30,14 @@
 - name: Determine if runc needs fixing (problematic 1.3.x version)
   set_fact:
     runc_needs_fix: >-
-      {{ runc_installed and 
-         runc_current_version is version('1.3', '>=') and 
+      {{ runc_installed and
+         runc_current_version is version('1.3', '>=') and
          runc_current_version is version(runc_safe_version, '<') and
          ansible_distribution_version is version('25.10', '<') }}
-    runc_is_safe: "{{ runc_installed and (runc_current_version is version(runc_safe_version, '>=') or ansible_distribution_version is version('25.10', '>=')) }}"
+    runc_is_safe: >-
+      {{ runc_installed and
+         (runc_current_version is version(runc_safe_version, '>=') or
+          ansible_distribution_version is version('25.10', '>=')) }}
   tags:
     - testing.runc
 

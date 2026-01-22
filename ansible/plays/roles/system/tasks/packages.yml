@@ -23,7 +23,10 @@
 
 - name: Install required system packages
   apt:
-    name: "{{ sys_packages | reject('match', '^linux-image-.*') | list if ansible_facts['virtualization_type'] | default('') in ['lxc', 'docker'] else sys_packages }}"
+    name: >-
+      {{ sys_packages | reject('match', '^linux-image-.*') | list
+         if ansible_facts['virtualization_type'] | default('') in ['lxc', 'docker']
+         else sys_packages }}
     state: latest
   tags:
     - system.packages.install

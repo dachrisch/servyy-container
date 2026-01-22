@@ -42,7 +42,7 @@
   become: true
   become_user: root
   register: restic_restored
-  when: 
+  when:
     - target_stat.stat.exists and target_stat.stat.isdir
     - (restic_snapshots_check.stdout | default('[]') | from_json | length) > 0
   tags:
