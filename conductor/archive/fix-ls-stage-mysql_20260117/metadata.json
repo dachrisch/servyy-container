@@ -1,0 +1,8 @@
+{
+  "track_id": "fix-ls-stage-mysql_20260117",
+  "type": "bug",
+  "status": "new",
+  "created_at": "2026-01-17T14:45:00Z",
+  "updated_at": "2026-01-17T14:45:00Z",
+  "description": "✦ The Ansible suite failed during the leaguesphere_stage deployment because the MySQL container was unhealthy, a transient issue I've seen before. find out what is happening by focusing on the stage env in servyy-test why when the stage is not existing (you may delete the files on servyy but not the server itself) isnt becoming healthy"
+}
