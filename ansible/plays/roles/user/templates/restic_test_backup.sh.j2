@@ -1,0 +1,30 @@
+#!/bin/bash
+# Restic test backup script for servyy-test.lxd
+# Backs up service directories to local test repository
+
+set -e
+
+# Source test restic environment
+source /etc/restic/env.test
+
+echo "=== Restic Test Backup ==="
+echo "Repository: ${RESTIC_REPOSITORY}"
+echo "Starting backup at $(date)"
+
+# Backup servyy-container directory
+restic backup \
+    /home/{{ create_user }}/servyy-container \
+    --tag test-backup \
+    --tag manual
+
+echo "Backup completed at $(date)"
+
+# Show latest snapshot
+echo ""
+echo "=== Latest Snapshots ==="
+restic snapshots --last 3
+
+# Show repository stats
+echo ""
+echo "=== Repository Stats ==="
+restic stats latest

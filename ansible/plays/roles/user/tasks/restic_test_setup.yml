@@ -1,0 +1,81 @@
+---
+# Setup local restic repository for testing on servyy-test.lxd
+# This creates a local repository instead of using SFTP to storagebox
+
+- name: Create local test restic repository directory
+  file:
+    path: /tmp/restic-test-repo
+    state: directory
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0755'
+  become: true
+
+- name: Generate test restic password
+  set_fact:
+    restic_test_password: "test-restic-{{ ansible_hostname }}-{{ ansible_date_time.epoch }}"
+
+- name: Ensure /etc/restic directory exists
+  file:
+    path: /etc/restic
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+
+- name: Create test restic environment file
+  shell: |
+    echo '# Restic test environment configuration' > /etc/restic/env.test
+    echo '# Local repository for testing purposes only' >> /etc/restic/env.test
+    echo 'export RESTIC_REPOSITORY="/tmp/restic-test-repo"' >> /etc/restic/env.test
+    echo 'export RESTIC_PASSWORD="{{ restic_test_password }}"' >> /etc/restic/env.test
+    echo 'export RESTIC_CACHE_DIR="${HOME}/.cache/restic"' >> /etc/restic/env.test
+    chmod 0600 /etc/restic/env.test
+    chown root:root /etc/restic/env.test
+  args:
+    executable: /bin/bash
+    creates: /etc/restic/env.test
+  become: true
+
+- name: Check if test repository is initialized
+  shell: |
+    source /etc/restic/env.test
+    restic snapshots --json 2>/dev/null || echo "[]"
+  args:
+    executable: /bin/bash
+  register: test_repo_check
+  become: true
+  changed_when: false
+  failed_when: false
+
+- name: Initialize test restic repository
+  shell: |
+    source /etc/restic/env.test
+    restic init
+  args:
+    executable: /bin/bash
+  become: true
+  when: (test_repo_check.stdout | default('[]') | from_json | length) == 0 and test_repo_check.rc != 0
+
+- name: Create test backup script
+  template:
+    src: restic_test_backup.sh.j2
+    dest: "{{ remote_user_home }}/.backup-scripts/restic-test-backup.sh"
+    mode: '0750'
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+
+- name: Display test restic status
+  debug:
+    msg: |
+      Test restic repository configured:
+      - Repository: /tmp/restic-test-repo
+      - Environment: /etc/restic/env.test
+      - Backup script: {{ remote_user_home }}/.backup-scripts/restic-test-backup.sh
+
+      To create a test backup:
+      ssh {{ inventory_hostname }} "{{ remote_user_home }}/.backup-scripts/restic-test-backup.sh"
+
+      To list snapshots:
+      ssh {{ inventory_hostname }} "source /etc/restic/env.test && restic snapshots"
