@@ -1,0 +1,30 @@
+---
+# Run test backup on servyy-test.lxd
+# Backs up servyy-container directory to local test repository
+
+- name: Run test backup script
+  shell: "{{ remote_user_home }}/.backup-scripts/restic-test-backup.sh"
+  args:
+    executable: /bin/bash
+  register: backup_result
+  become: true
+  become_user: "{{ create_user }}"
+
+- name: Display backup results
+  debug:
+    var: backup_result.stdout_lines
+
+- name: Check snapshot count
+  shell: |
+    set -o pipefail
+    source /etc/restic/env.test
+    restic snapshots --json | jq '. | length'
+  args:
+    executable: /bin/bash
+  register: snapshot_count
+  become: true
+  changed_when: false
+
+- name: Display snapshot count
+  debug:
+    msg: "Total snapshots in test repository: {{ snapshot_count.stdout }}"

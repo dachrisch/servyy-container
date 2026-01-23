@@ -146,6 +146,49 @@
   tags:
     - user.restic
 
+- import_tasks: restic_test_setup.yml
+  tags:
+    - user.restic.test.setup
+  when: inventory_hostname == 'servyy-test.lxd'
+
+- import_tasks: restic_test_data.yml
+  tags:
+    - user.restic.test.data
+  when: inventory_hostname == 'servyy-test.lxd'
+
+- import_tasks: restic_test_backup.yml
+  tags:
+    - user.restic.test.backup
+  when: inventory_hostname == 'servyy-test.lxd'
+
+# Test restore tasks using local test repository
+- import_tasks: includes/restic_restore.yml
+  vars:
+    restore_path: "{{ (docker.remote_dir, 'git', 'repos') | path_join }}"
+    backup_name: "test"
+    owner: "root"
+  tags:
+    - user.restic.test.restore.git
+  when: inventory_hostname == 'servyy-test.lxd'
+
+- import_tasks: includes/restic_restore.yml
+  vars:
+    restore_path: "{{ (docker.remote_dir, 'photoprism', 'database') | path_join }}"
+    backup_name: "test"
+    owner: "{{ create_user }}"
+  tags:
+    - user.restic.test.restore.photoprism
+  when: inventory_hostname == 'servyy-test.lxd'
+
+- import_tasks: includes/restic_restore.yml
+  vars:
+    restore_path: "{{ (docker.remote_dir, 'pass', 'vw-data') | path_join }}"
+    backup_name: "test"
+    owner: "root"
+  tags:
+    - user.restic.test.restore.pass
+  when: inventory_hostname == 'servyy-test.lxd'
+
 - import_tasks: host_ping.yml
   tags:
     - user.ping
