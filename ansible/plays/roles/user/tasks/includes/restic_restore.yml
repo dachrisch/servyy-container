@@ -1,4 +1,7 @@
 ---
+# Restic restore task with environment-aware error handling
+# Supports both empty container bootstrap and incremental restore
+
 - name: Check if restore target exists [{{ restore_path }}]
   stat:
     path: "{{ restore_path }}"
@@ -27,14 +30,68 @@
   changed_when: false
   failed_when: false
 
+- name: Set snapshot count fact
+  set_fact:
+    snapshot_count: "{{ restic_snapshots_check.stdout | default('[]') | from_json | length }}"
+
+- name: Set environment detection fact
+  set_fact:
+    is_test_environment: "{{ inventory_hostname == 'servyy-test.lxd' }}"
+
+# Environment-aware error handling for missing backups
+- name: FAIL on test environment if no snapshots exist
+  fail:
+    msg: |
+      RESTIC RESTORE FAILED: No snapshots found in repository '{{ backup_name }}'
+
+      Path to restore: {{ restore_path }}
+      Environment: TEST ({{ inventory_hostname }})
+
+      This is expected to FAIL on test environments to catch backup issues early.
+
+      Troubleshooting:
+      1. Check if backups are running: ssh {{ inventory_hostname }} "ls -la /var/log/restic/"
+      2. Verify restic env file exists: ssh {{ inventory_hostname }} "ls -la /etc/restic/env.{{ backup_name }}"
+      3. Check snapshot list: ssh {{ inventory_hostname }} "source /etc/restic/env.{{ backup_name }} && restic snapshots"
+  when:
+    - is_test_environment | bool
+    - snapshot_count | int == 0
+
+- name: LOG warning on production if no snapshots exist
+  debug:
+    msg: |
+      WARNING: No snapshots found in repository '{{ backup_name }}' for {{ restore_path }}
+
+      Environment: PRODUCTION ({{ inventory_hostname }})
+      Continuing deployment to allow fresh installations.
+
+      If this is unexpected, check backup status after deployment completes.
+  when:
+    - not (is_test_environment | bool)
+    - snapshot_count | int == 0
+
+# Create parent directory if it doesn't exist (fixes empty container issue)
+- name: Create parent directory for restore path if missing
+  file:
+    path: "{{ restore_path }}"
+    state: directory
+    owner: "{{ owner | default(create_user) }}"
+    group: "{{ group | default(owner) | default(create_user) }}"
+    mode: '0755'
+  become: true
+  become_user: root
+  when: not target_stat.stat.exists
+
 - name: Restore [{{ restore_path }}] from restic ({{ backup_name }})
   shell: |
     set -e
     if [ -f "/etc/restic/env.{{ backup_name }}" ]; then
         source "/etc/restic/env.{{ backup_name }}"
+        echo "Restoring {{ restore_path }} from latest snapshot..."
         restic restore latest --target / --include "{{ restore_path }}"
+        echo "Restore completed successfully for {{ restore_path }}"
     else
-        echo "Restic environment file /etc/restic/env.{{ backup_name }} not found" >&2
+        echo "ERROR: Restic environment file /etc/restic/env.{{ backup_name }} not found" >&2
         exit 1
     fi
   args:
@@ -42,11 +99,22 @@
   become: true
   become_user: root
   register: restic_restored
-  when:
-    - target_stat.stat.exists and target_stat.stat.isdir
-    - (restic_snapshots_check.stdout | default('[]') | from_json | length) > 0
+  when: snapshot_count | int > 0
   tags:
     - user.restic.restore
+
+- name: Display restore result
+  debug:
+    msg: |
+      {% if restic_restored.changed %}
+      ✅ RESTORED: {{ restore_path }}
+      Source: {{ backup_name }} repository (latest snapshot)
+      {% elif restic_restored.skipped %}
+      ⏭️  SKIPPED: No snapshots available for {{ restore_path }}
+      {% else %}
+      ℹ️  No restore needed for {{ restore_path }}
+      {% endif %}
+  when: snapshot_count | int > 0
 
 - name: Ensure permissions on [{{ restore_path }}]
   file:
@@ -57,6 +125,6 @@
     recurse: yes
   become: true
   become_user: root
-  when: restic_restored.changed or (ensure_permissions | default(true))
+  when: target_stat.stat.exists or restic_restored.changed
   tags:
     - user.restic.restore.permissions

@@ -1,0 +1,8 @@
+{
+  "track_id": "restic-restore-validation_20260123",
+  "type": "feature",
+  "status": "new",
+  "created_at": "2026-01-23T18:11:00Z",
+  "updated_at": "2026-01-23T18:11:00Z",
+  "description": "Validate and fix existing restic restore functionality for git/repos, photoprism/database, and pass/vw-data. Ensure 100% reliability through comprehensive testing on servyy-test, including full restore from empty container scenarios."
+}
