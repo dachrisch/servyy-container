@@ -35,7 +35,7 @@
     - name: test-repo-1.txt
       content: |
         Test repository file 1
-        Created: {{ ansible_date_time.iso8601 }}
+        Created: {{ ansible_facts['date_time']['iso8601'] }}
         This file tests git restore functionality
     - name: test-repo-2.txt
       content: |
@@ -59,7 +59,7 @@
     - name: test-db.sql
       content: |
         -- Test database file
-        -- Created: {{ ansible_date_time.iso8601 }}
+        -- Created: {{ ansible_facts['date_time']['iso8601'] }}
         CREATE TABLE test (id INT, name VARCHAR(50));
     - name: photoprism.db
       content: |
@@ -68,7 +68,7 @@
     - name: backup-info.txt
       content: |
         Database backup created for testing
-        Timestamp: {{ ansible_date_time.iso8601 }}
+        Timestamp: {{ ansible_facts['date_time']['iso8601'] }}
 
 - name: Create test files in pass/vw-data
   copy:
@@ -83,12 +83,12 @@
     - name: test-vault.db
       content: |
         Test Vaultwarden database
-        Created: {{ ansible_date_time.iso8601 }}
+        Created: {{ ansible_facts['date_time']['iso8601'] }}
     - name: config.json
       content: |
         {
           "test": true,
-          "created": "{{ ansible_date_time.iso8601 }}"
+          "created": "{{ ansible_facts['date_time']['iso8601'] }}"
         }
 
 - name: Display test data summary
