@@ -31,7 +31,7 @@
     echo 'export RESTIC_REPOSITORY="/tmp/restic-test-repo"' >> /etc/restic/env.test
     echo 'export RESTIC_PASSWORD="{{ restic_test_password }}"' >> /etc/restic/env.test
     echo 'export RESTIC_CACHE_DIR="${HOME}/.cache/restic"' >> /etc/restic/env.test
-    chmod 0600 /etc/restic/env.test
+    chmod 0644 /etc/restic/env.test
     chown root:root /etc/restic/env.test
   args:
     executable: /bin/bash
@@ -46,6 +46,7 @@
     executable: /bin/bash
   register: test_repo_check
   become: true
+  become_user: "{{ create_user }}"
   changed_when: false
   failed_when: false
 
@@ -56,6 +57,7 @@
   args:
     executable: /bin/bash
   become: true
+  become_user: "{{ create_user }}"
   when: (test_repo_check.stdout | default('[]') | from_json | length) == 0 and test_repo_check.rc != 0
 
 - name: Create test backup script

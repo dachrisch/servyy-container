@@ -23,6 +23,7 @@
     executable: /bin/bash
   register: snapshot_count
   become: true
+  become_user: "{{ create_user }}"
   changed_when: false
 
 - name: Display snapshot count
