@@ -2,27 +2,35 @@
 # Create test data for restic restore testing
 # Only runs on servyy-test.lxd
 
-- name: Ensure service directories exist
+- name: Ensure service directories exist with correct ownership
   file:
-    path: "{{ item }}"
+    path: "{{ item.path }}"
     state: directory
-    owner: "{{ create_user }}"
-    group: "{{ create_user }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
     mode: '0755'
   become: true
+  become_user: root
   loop:
-    - /home/{{ create_user }}/servyy-container/git/repos
-    - /home/{{ create_user }}/servyy-container/photoprism/database
-    - /home/{{ create_user }}/servyy-container/pass/vw-data
+    - path: /home/{{ create_user }}/servyy-container/git/repos
+      owner: root
+      group: root
+    - path: /home/{{ create_user }}/servyy-container/photoprism/database
+      owner: "{{ create_user }}"
+      group: "{{ create_user }}"
+    - path: /home/{{ create_user }}/servyy-container/pass/vw-data
+      owner: root
+      group: root
 
 - name: Create test files in git/repos
   copy:
     dest: /home/{{ create_user }}/servyy-container/git/repos/{{ item.name }}
     content: "{{ item.content }}"
-    owner: "{{ create_user }}"
-    group: "{{ create_user }}"
+    owner: root
+    group: root
     mode: '0644'
   become: true
+  become_user: root
   loop:
     - name: test-repo-1.txt
       content: |
@@ -46,6 +54,7 @@
     group: "{{ create_user }}"
     mode: '0644'
   become: true
+  become_user: root
   loop:
     - name: test-db.sql
       content: |
@@ -65,10 +74,11 @@
   copy:
     dest: /home/{{ create_user }}/servyy-container/pass/vw-data/{{ item.name }}
     content: "{{ item.content }}"
-    owner: "{{ create_user }}"
-    group: "{{ create_user }}"
+    owner: root
+    group: root
     mode: '0644'
   become: true
+  become_user: root
   loop:
     - name: test-vault.db
       content: |

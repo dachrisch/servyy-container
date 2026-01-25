@@ -13,7 +13,7 @@
 
 - name: Generate test restic password
   set_fact:
-    restic_test_password: "test-restic-{{ ansible_hostname }}-{{ ansible_date_time.epoch }}"
+    restic_test_password: "test-restic-{{ ansible_facts['hostname'] }}-{{ ansible_facts['date_time']['epoch'] }}"
 
 - name: Ensure /etc/restic directory exists
   file:
