@@ -10,6 +10,15 @@
     - system.storagebox.credentials
   when: not (skip_storagebox | default(false))
 
+- name: Check if storagebox is already mounted (pre-check)
+  command: '/bin/mountpoint -q {{storagebox.mount}}'
+  register: storagebox_pre_check
+  failed_when: false
+  changed_when: false
+  tags:
+    - system.storagebox.mount.check
+  when: not (skip_storagebox | default(false))
+
 - name: Check mountpoint exist
   file:
     path: "{{ storagebox.mount }}"
@@ -19,7 +28,9 @@
     mode: "0755"
   tags:
     - system.storagebox.mount.exist
-  when: not (skip_storagebox | default(false))
+  when:
+    - not (skip_storagebox | default(false))
+    - storagebox_pre_check.rc != 0
 
 - block:
     - set_fact:
@@ -43,7 +54,9 @@
         path: '{{ storagebox.mount }}'
   tags:
     - system.storagebox.mount.fstab
-  when: not (skip_storagebox | default(false))
+  when:
+    - not (skip_storagebox | default(false))
+    - storagebox_pre_check.rc != 0
 
 - name: Check if storagebox is already mounted
   command: '/bin/mountpoint -q {{storagebox.mount}}'
