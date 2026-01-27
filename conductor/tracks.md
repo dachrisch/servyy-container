@@ -8,5 +8,5 @@
 
 ---
 
-## [~] Track: Restic Restore Validation & Fixes
+## [x] Track: Restic Restore Validation & Fixes
 *Link: [./conductor/tracks/restic-restore-validation_20260123/](./conductor/tracks/restic-restore-validation_20260123/)*
