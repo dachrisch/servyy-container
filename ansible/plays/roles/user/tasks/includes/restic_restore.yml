@@ -115,6 +115,8 @@
       ℹ️  No restore needed for {{ restore_path }}
       {% endif %}
   when: snapshot_count | int > 0
+  tags:
+    - user.restic.restore
 
 - name: Ensure permissions on [{{ restore_path }}]
   file:

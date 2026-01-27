@@ -72,32 +72,32 @@
 
 ## Phase 4: Empty Container Recovery Testing
 
-- [ ] Task 4.1: Prepare fresh servyy-test.lxd container
-  - [ ] Subtask 4.1.1: Destroy existing servyy-test.lxd: `lxc delete servyy-test --force`
-  - [ ] Subtask 4.1.2: Create fresh container: `./setup_test_container.sh`
-  - [ ] Subtask 4.1.3: Verify container is clean (no existing data)
-- [ ] Task 4.2: Run full deployment with restore
-  - [ ] Subtask 4.2.1: Deploy: `./servyy-test.sh --tags user.docker,user.restic.restore`
-  - [ ] Subtask 4.2.2: Monitor deployment for errors
-  - [ ] Subtask 4.2.3: Capture deployment logs
-- [ ] Task 4.3: Verify all services restored and running
-  - [ ] Subtask 4.3.1: Check all 3 services have restored data
-  - [ ] Subtask 4.3.2: Verify all containers started successfully
-  - [ ] Subtask 4.3.3: Test basic functionality of each service
-  - [ ] Subtask 4.3.4: Document bootstrap sequence and timing
-- [ ] Task 4.4: Document empty container recovery procedure
-  - [ ] Subtask 4.4.1: Write step-by-step recovery guide
-  - [ ] Subtask 4.4.2: Include verification commands
-  - [ ] Subtask 4.4.3: Note any manual steps required
-- [ ] Task: Conductor - User Manual Verification 'Phase 4: Empty Container Recovery Testing' (Protocol in workflow.md)
+- [x] Task 4.1: Prepare fresh servyy-test.lxd container
+  - [x] Subtask 4.1.1: Destroy existing servyy-test.lxd: `lxc delete servyy-test --force`
+  - [x] Subtask 4.1.2: Create fresh container: `./setup_test_container.sh`
+  - [x] Subtask 4.1.3: Verify container is clean (no existing data)
+- [x] Task 4.2: Run full deployment with restore
+  - [x] Subtask 4.2.1: Deploy: `./servyy-test.sh --tags user.docker,user.restic.restore` (Modified to run full playbook skipping restore initially, then test cycle)
+  - [x] Subtask 4.2.2: Monitor deployment for errors
+  - [x] Subtask 4.2.3: Capture deployment logs
+- [x] Task 4.3: Verify all services restored and running
+  - [x] Subtask 4.3.1: Check all 3 services have restored data
+  - [x] Subtask 4.3.2: Verify all containers started successfully
+  - [x] Subtask 4.3.3: Test basic functionality of each service
+  - [x] Subtask 4.3.4: Document bootstrap sequence and timing
+- [x] Task 4.4: Document empty container recovery procedure
+  - [x] Subtask 4.4.1: Write step-by-step recovery guide
+  - [x] Subtask 4.4.2: Include verification commands
+  - [x] Subtask 4.4.3: Note any manual steps required
+- [x] Task: Conductor - User Manual Verification 'Phase 4: Empty Container Recovery Testing' (Protocol in workflow.md)
 
 ## Phase 5: Production Deployment
 
-- [ ] Task 5.1: Create history documentation
-  - [ ] Subtask 5.1.1: Create `history/2026-01-23_restic-restore-validation.md`
-  - [ ] Subtask 5.1.2: Document problem, solution, and test results
-  - [ ] Subtask 5.1.3: Include verification commands
-  - [ ] Subtask 5.1.4: Note known limitations or caveats
+- [x] Task 5.1: Create history documentation
+  - [x] Subtask 5.1.1: Create `history/2026-01-27_restic-restore-validation.md`
+  - [x] Subtask 5.1.2: Document problem, solution, and test results
+  - [x] Subtask 5.1.3: Include verification commands
+  - [x] Subtask 5.1.4: Note known limitations or caveats
 - [ ] Task 5.2: Prepare production deployment plan
   - [ ] Subtask 5.2.1: Review changes to be deployed
   - [ ] Subtask 5.2.2: Identify deployment tags needed
