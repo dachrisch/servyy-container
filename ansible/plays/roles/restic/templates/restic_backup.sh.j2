@@ -3,7 +3,10 @@
 set -euo pipefail
 
 # Load logdy function for structured logging
-source "$HOME/.zprezto/custom/functions/logdy"
+if [ -f "/home/{{ create_user }}/.zshenv" ]; then
+    source "/home/{{ create_user }}/.zshenv"
+fi
+source "/home/{{ create_user }}/.zprezto/custom/functions/logdy"
 
 # Load restic environment from config file
 if [ -f "/etc/restic/env.{{ backup_name }}" ]; then
