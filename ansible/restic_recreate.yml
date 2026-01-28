@@ -1,9 +1,9 @@
 ---
-# Manual playbook to recreate locked out restic repositories
-# Use this ONLY if you have lost the password and are prepared to lose all backup history!
+# Manual playbook to recreate locked out restic repositories OR fix desynchronized config files
+# Use this if you have lost the password (recreate) or if local config is out of sync (fix)
 # Usage: ansible-playbook restic_recreate.yml -i production --limit <hostname>
 
-- name: MANUALLY RECREATE RESTIC REPOSITORIES
+- name: FIX RESTIC REPOSITORIES AND CONFIGURATION
   hosts: all
   strategy: linear # Required for the pause module
   become: true
@@ -14,7 +14,8 @@
     - plays/vars/secrets.yml
 
   tasks:
-    - name: Check if repositories are accessible
+    # 1. Check Repository Accessibility (Remote)
+    - name: Check if repositories are accessible (using Ansible password)
       shell: |
         export RESTIC_REPOSITORY="{{ item.repository }}"
         export RESTIC_PASSWORD="{{ item.password }}"
@@ -26,37 +27,83 @@
       failed_when: false
       changed_when: false
 
-    - name: Identify broken repositories
+    # 2. Check Local Environment Files (Local)
+    - name: Check local environment files content
+      slurp:
+        src: "/etc/restic/env.{{ item.name }}"
+      loop:
+        - { name: 'home' }
+        - { name: 'root' }
+      register: local_env_files
+      failed_when: false # File might not exist
+      become: true
+      become_user: root
+
+    # 3. Analyze State
+    - name: Analyze Restic State
       set_fact:
+        # Repos that cannot be opened with the CURRENT Ansible password -> Must be recreated
         broken_repos: "{{ repo_check.results | selectattr('rc', 'ne', 0) | map(attribute='item.name') | list }}"
+        
+        # Files that don't match the CURRENT Ansible password -> Must be updated
+        mismatched_files: >-
+          {%- set mismatches = [] -%}
+          {%- for result in local_env_files.results -%}
+            {%- set name = result.item.name -%}
+            {%- set expected_pass = (name == 'home') | ternary(restic.home.password, restic.root.password) -%}
+            {%- if result['content'] is defined -%}
+              {%- set content = result['content'] | b64decode -%}
+              {%- set current_pass = content | regex_findall('export RESTIC_PASSWORD="(.*)"') | first | default('') -%}
+              {%- if current_pass != expected_pass -%}
+                {{- mismatches.append(name) -}}
+              {%- endif -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {{ mismatches }}
 
-    - name: Fail if no repositories are broken (Safety Check)
+    - name: Display Status
+      debug:
+        msg: 
+          - "Broken Repositories (Lockout): {{ broken_repos }}"
+          - "Mismatched Config Files: {{ mismatched_files }}"
+
+    - name: Fail if everything is fine
       fail:
-        msg: "All Restic repositories are accessible on {{ inventory_hostname }}. No need to recreate."
-      when: broken_repos | length == 0
+        msg: "System is healthy. Repositories accessible and local config matches Ansible secrets."
+      when: 
+        - broken_repos | length == 0
+        - mismatched_files | length == 0
 
-    - name: "⚠️  WARNING: PERMANENT DATA LOSS AHEAD"
+    # 4. Confirmation
+    - name: "⚠️  WARNING: CONFIRM ACTIONS"
       pause:
         prompt: |
-          CRITICAL: The following repositories on {{ inventory_hostname }} are LOCKED OUT (password mismatch or missing):
-          {{ broken_repos | join(', ') }}
+          ACTIONS REQUIRED on {{ inventory_hostname }}:
 
-          Recreating them will PERMANENTLY DELETE all backup history for these repositories.
-          This action CANNOT be undone.
+          {% if broken_repos | length > 0 %}
+          [CRITICAL] RECREATE REPOSITORIES (Data Loss):
+          - {{ broken_repos | join(', ') }}
+          -> Will be WIPED and re-initialized. Backup history LOST.
+          {% endif %}
 
-          Are you absolutely sure you want to proceed? (yes/no)
+          {% if mismatched_files | length > 0 %}
+          [FIX] UPDATE CONFIGURATION FILES:
+          - {{ mismatched_files | join(', ') }}
+          -> Local file /etc/restic/env.* will be updated to match Ansible secrets.
+          {% endif %}
+
+          Are you sure you want to proceed? (yes/no)
       register: pause_result
-      when: 
-        - broken_repos | length > 0
-        - confirm_recreate | default('') | lower != 'yes'
+      when: confirm_recreate | default('') | lower != 'yes'
 
     - name: Abort if not confirmed
       fail:
-        msg: "Recreation aborted."
+        msg: "Aborted."
       when: 
         - not (confirm_recreate | default('') | lower == 'yes')
         - not (pause_result.user_input | default('') | lower == 'yes')
 
+    # 5. Recreate Logic
     - name: Recreate broken repositories
       block:
         - name: Check for local storagebox mount
@@ -74,9 +121,6 @@
 
         - name: Delete remote repository directories (SFTP Fallback)
           shell: |
-            # Attempt to delete the directory. 
-            # Note: sftp rmdir only works on empty dirs. 
-            # We try to delete some common subdirs first to increase chance of success if rmdir is the only option.
             sftp {{ restic.sftp.host_alias }} <<'EOF' 2>&1
             -rm {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-{{ item }}/config
             -rmdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-{{ item }}/data
@@ -114,10 +158,32 @@
           loop:
             - { name: 'home', repository: "{{ restic.home.repository }}", password: "{{ restic.home.password }}" }
             - { name: 'root', repository: "{{ restic.root.repository }}", password: "{{ restic.root.password }}" }
+          vars:
+            password: "{{ (item.name == 'home') | ternary(restic.home.password, restic.root.password) }}"
           when: item.name in broken_repos
           register: restic_reinit
           changed_when: "'created restic repository' in restic_reinit.stdout"
           failed_when: 
             - restic_reinit.rc != 0
             - "'config file already exists' not in restic_reinit.stderr"
+      when: broken_repos | length > 0
 
+    # 6. Config Fix Logic (Runs for both Recreated AND Mismatched)
+    - name: Force update environment files
+      template:
+        src: plays/roles/user/templates/restic_env.j2
+        dest: "/etc/restic/env.{{ item.name }}"
+        owner: root
+        group: root
+        mode: '0644'
+      vars:
+        env_name: "{{ item.name }}"
+        repository: "{{ item.repository }}"
+        password: "{{ item.password }}"
+      loop:
+        - { name: 'home', repository: "{{ restic.home.repository }}", password: "{{ restic.home.password }}" }
+        - { name: 'root', repository: "{{ restic.root.repository }}" , password: "{{ restic.root.password }}"}
+      # Update if it was broken (recreated) OR if it was mismatched
+      when: (item.name in broken_repos) or (item.name in mismatched_files)
+      become: true
+      become_user: root
