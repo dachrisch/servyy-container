@@ -187,3 +187,12 @@
       when: (item.name in broken_repos) or (item.name in mismatched_files)
       become: true
       become_user: root
+
+    # 7. Populate New Repositories
+    - name: Trigger immediate backup to populate new repositories
+      systemd:
+        scope: user
+        name: "restic-backup-{{ item }}.service"
+        state: started
+      loop: "{{ broken_repos }}"
+      when: broken_repos | length > 0
