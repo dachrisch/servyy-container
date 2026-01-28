@@ -189,10 +189,19 @@
       become_user: root
 
     # 7. Populate New Repositories
-    - name: Trigger immediate backup to populate new repositories
+    - name: Trigger immediate backup to populate new repositories (background)
       systemd:
         scope: user
         name: "restic-backup-{{ item }}.service"
         state: started
+        no_block: yes
       loop: "{{ broken_repos }}"
       when: broken_repos | length > 0
+
+    - name: Validate backup is running
+      shell: "sleep 2 && XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user is-active restic-backup-{{ item }}.service"
+      loop: "{{ broken_repos }}"
+      when: broken_repos | length > 0
+      register: backup_status
+      failed_when: "'active' not in backup_status.stdout and 'activating' not in backup_status.stdout"
+      changed_when: false
