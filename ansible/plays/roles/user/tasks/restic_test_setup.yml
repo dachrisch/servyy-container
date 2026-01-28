@@ -10,6 +10,7 @@
     group: "{{ create_user }}"
     mode: '0755'
   become: true
+  become_user: root
 
 - name: Generate test restic password
   set_fact:
@@ -23,6 +24,34 @@
     group: root
     mode: '0755'
   become: true
+
+- name: Check for existing test restic environment file
+  stat:
+    path: /etc/restic/env.test
+  register: test_env_stat
+  become: true
+  become_user: root
+
+- name: Slurp existing test restic environment file
+  slurp:
+    src: /etc/restic/env.test
+  when: test_env_stat.stat.exists
+  register: slurped_test_env
+  become: true
+  become_user: root
+
+- name: Verify test restic password integrity
+  fail:
+    msg: |
+      CRITICAL: Password mismatch for restic-test!
+      The password in Ansible variables does NOT match the password currently on the host.
+  vars:
+    existing_content: "{{ slurped_test_env.content | b64decode }}"
+    existing_pass: "{{ existing_content | regex_findall('export RESTIC_PASSWORD=\"(.*)\"') | first | default('') }}"
+  when:
+    - test_env_stat.stat.exists
+    - existing_pass != ""
+    - existing_pass != restic_test_password
 
 - name: Create test restic environment file
   copy:

@@ -103,6 +103,23 @@ New Ansible features or role modifications **must** include Molecule tests.
 - **Loki Queries:** Use `query_range` for log streams. Use the `container` label for filtering.
 - **Retention:** Journald is limited to 500MB/4 weeks; Loki has a 31-day retention policy.
 
+## Restic Backup & Recovery Safety
+
+To prevent data corruption and loss during recovery operations, the following safeguards are enforced:
+
+1.  **Restore Decision Matrix:**
+    *   **Container Status:** Restores are **BLOCKED** if the target service container is running.
+    *   **Directory Content:** Restores are **BLOCKED** if the target directory is non-empty (to prevent overwriting existing data).
+    *   **Automatic Provisioning:** Restores automatically create parent directories if they are missing (bootstrap support).
+2.  **Password Integrity:**
+    *   **Never Overwrite:** Restic environment files (`/etc/restic/env.*`) must **NEVER** be overwritten if the password in the deployment differs from the password currently on the host.
+    *   **Validation:** Ansible must verify that the local secret matches the remote secret before applying updates to sensitive configuration files.
+3.  **Lockout Recovery:**
+    *   **Manual Workflow:** `restic_recreate.yml` allows resetting locked repositories.
+    *   **Safety:** Requires explicit confirmation and verifies lockout status before deletion.
+4.  **Testing Requirements:**
+    *   All changes to restore logic must be validated against the 5-point decision matrix on `servyy-test.lxd` before production rollout.
+
 ## Automated Maintenance
 The infrastructure includes several automated maintenance tasks deployed via systemd timers:
 - **Docker Cleanup:** Weekly aggressive prune of unused images and volumes.

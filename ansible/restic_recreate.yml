@@ -1,0 +1,123 @@
+---
+# Manual playbook to recreate locked out restic repositories
+# Use this ONLY if you have lost the password and are prepared to lose all backup history!
+# Usage: ansible-playbook restic_recreate.yml -i production --limit <hostname>
+
+- name: MANUALLY RECREATE RESTIC REPOSITORIES
+  hosts: all
+  strategy: linear # Required for the pause module
+  become: true
+  become_user: "{{ create_user }}"
+  vars_files:
+    - plays/vars/default.yml
+    - plays/vars/restic.yml
+    - plays/vars/secrets.yml
+
+  tasks:
+    - name: Check if repositories are accessible
+      shell: |
+        export RESTIC_REPOSITORY="{{ item.repository }}"
+        export RESTIC_PASSWORD="{{ item.password }}"
+        restic snapshots >/dev/null 2>&1
+      loop:
+        - { name: 'home', repository: "{{ restic.home.repository }}", password: "{{ restic.home.password }}" }
+        - { name: 'root', repository: "{{ restic.root.repository }}", password: "{{ restic.root.password }}" }
+      register: repo_check
+      failed_when: false
+      changed_when: false
+
+    - name: Identify broken repositories
+      set_fact:
+        broken_repos: "{{ repo_check.results | selectattr('rc', 'ne', 0) | map(attribute='item.name') | list }}"
+
+    - name: Fail if no repositories are broken (Safety Check)
+      fail:
+        msg: "All Restic repositories are accessible on {{ inventory_hostname }}. No need to recreate."
+      when: broken_repos | length == 0
+
+    - name: "⚠️  WARNING: PERMANENT DATA LOSS AHEAD"
+      pause:
+        prompt: |
+          CRITICAL: The following repositories on {{ inventory_hostname }} are LOCKED OUT (password mismatch or missing):
+          {{ broken_repos | join(', ') }}
+
+          Recreating them will PERMANENTLY DELETE all backup history for these repositories.
+          This action CANNOT be undone.
+
+          Are you absolutely sure you want to proceed? (yes/no)
+      register: pause_result
+      when: 
+        - broken_repos | length > 0
+        - confirm_recreate | default('') | lower != 'yes'
+
+    - name: Abort if not confirmed
+      fail:
+        msg: "Recreation aborted."
+      when: 
+        - not (confirm_recreate | default('') | lower == 'yes')
+        - not (pause_result.user_input | default('') | lower == 'yes')
+
+    - name: Recreate broken repositories
+      block:
+        - name: Check for local storagebox mount
+          stat:
+            path: "/mnt/storagebox/backup/{{ inventory_hostname }}"
+          register: storagebox_mount
+
+        - name: Delete repository via local mount (Preferred)
+          file:
+            path: "/mnt/storagebox/backup/{{ inventory_hostname }}/restic-{{ item }}"
+            state: absent
+          loop: "{{ broken_repos }}"
+          when: storagebox_mount.stat.exists and storagebox_mount.stat.writeable
+          register: mount_delete
+
+        - name: Delete remote repository directories (SFTP Fallback)
+          shell: |
+            # Attempt to delete the directory. 
+            # Note: sftp rmdir only works on empty dirs. 
+            # We try to delete some common subdirs first to increase chance of success if rmdir is the only option.
+            sftp {{ restic.sftp.host_alias }} <<'EOF' 2>&1
+            -rm {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-{{ item }}/config
+            -rmdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-{{ item }}/data
+            -rmdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-{{ item }}/index
+            -rmdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-{{ item }}/keys
+            -rmdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-{{ item }}/snapshots
+            -rmdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-{{ item }}
+            EOF
+          loop: "{{ broken_repos }}"
+          when: 
+            - "restic[item].repository.startswith('sftp://')"
+            - not (mount_delete.results | selectattr('item', 'equalto', item) | map(attribute='changed') | first | default(false))
+          register: sftp_delete
+          failed_when: false
+
+        - name: Delete local repository directories
+          file:
+            path: "{{ restic[item].repository }}"
+            state: absent
+          loop: "{{ broken_repos }}"
+          when: "not restic[item].repository.startswith('sftp://')"
+          become: true
+          become_user: root
+
+        - name: Re-initialize repositories
+          shell: |
+            export RESTIC_REPOSITORY="{{ item.repository }}"
+            export RESTIC_PASSWORD="{{ item.password }}"
+            if [[ "{{ item.repository }}" == sftp://* ]]; then
+               sftp {{ restic.sftp.host_alias }} <<EOF
+               -mkdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-{{ item.name }}
+            EOF
+            fi
+            restic init
+          loop:
+            - { name: 'home', repository: "{{ restic.home.repository }}", password: "{{ restic.home.password }}" }
+            - { name: 'root', repository: "{{ restic.root.repository }}", password: "{{ restic.root.password }}" }
+          when: item.name in broken_repos
+          register: restic_reinit
+          changed_when: "'created restic repository' in restic_reinit.stdout"
+          failed_when: 
+            - restic_reinit.rc != 0
+            - "'config file already exists' not in restic_reinit.stderr"
+
