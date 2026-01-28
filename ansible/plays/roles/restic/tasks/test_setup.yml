@@ -58,7 +58,7 @@
       The password in Ansible variables does NOT match the password currently on the host.
   vars:
     existing_content: "{{ slurped_test_env.content | b64decode }}"
-    existing_pass: "{{ existing_content | regex_findall('export RESTIC_PASSWORD="(.*)"') | first | default('') }}"
+    existing_pass: "{{ existing_content | regex_findall('export RESTIC_PASSWORD=\"(.*)\"') | first | default('') }}"
   when:
     - test_env_stat.stat.exists
     - existing_pass != ""
