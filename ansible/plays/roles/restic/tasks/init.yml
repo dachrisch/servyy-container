@@ -9,7 +9,7 @@
   become: true
   become_user: root
   tags:
-    - user.restic.init
+    - restic.init
 
 - name: Create restic config directory (system-wide)
   file:
@@ -21,7 +21,7 @@
   become: true
   become_user: root
   tags:
-    - user.restic.init
+    - restic.init
 
 - name: Check for existing restic environment files
   stat:
@@ -33,7 +33,7 @@
   become: true
   become_user: root
   tags:
-    - user.restic.init
+    - restic.init
 
 - name: Slurp existing restic environment files
   slurp:
@@ -44,7 +44,7 @@
   become: true
   become_user: root
   tags:
-    - user.restic.init
+    - restic.init
 
 - name: Verify restic password integrity
   fail:
@@ -66,7 +66,7 @@
     - existing_pass != ""
     - existing_pass != expected_pass
   tags:
-    - user.restic.init
+    - restic.init
 
 - name: Deploy restic environment files (system-wide)
   template:
@@ -92,7 +92,7 @@
   become: true
   become_user: root
   tags:
-    - user.restic.init
+    - restic.init
 
 - name: Create restic config directory for user
   file:
@@ -102,7 +102,7 @@
     group: "{{ create_user }}"
     mode: '0700'
   tags:
-    - user.restic.init
+    - restic.init
 
 - name: Create default restic environment for user (symlink to home)
   file:
@@ -110,7 +110,7 @@
     dest: "{{ remote_user_home }}/.config/restic/env"
     state: link
   tags:
-    - user.restic.init
+    - restic.init
 
 - name: Create restic config directory for root
   file:
@@ -122,7 +122,7 @@
   become: true
   become_user: root
   tags:
-    - user.restic.init
+    - restic.init
 
 - name: Create default restic environment for root (symlink to root repo)
   file:
@@ -132,7 +132,7 @@
   become: true
   become_user: root
   tags:
-    - user.restic.init
+    - restic.init
 
 - name: Ensure .ssh directory exists
   file:
@@ -142,7 +142,7 @@
     group: "{{ create_user }}"
     mode: '0700'
   tags:
-    - user.restic.init
+    - restic.init
 
 - name: Copy Storage Box SSH private key to server
   copy:
@@ -152,7 +152,7 @@
     group: "{{ create_user }}"
     mode: '0600'
   tags:
-    - user.restic.init
+    - restic.init
 
 - name: Copy Storage Box SSH public key to server
   copy:
@@ -162,7 +162,7 @@
     group: "{{ create_user }}"
     mode: '0644'
   tags:
-    - user.restic.init
+    - restic.init
 
 - name: Deploy SSH config for Storage Box
   template:
@@ -172,7 +172,7 @@
     group: "{{ create_user }}"
     mode: '0600'
   tags:
-    - user.restic.init
+    - restic.init
 
 - name: Add Storage Box to known_hosts
   shell: |
@@ -185,7 +185,7 @@
   changed_when: "'added' in ssh_keyscan.stdout or ssh_keyscan.rc == 0"
   failed_when: false
   tags:
-    - user.restic.init
+    - restic.init
 
 - name: Create restic repository directories on Storage Box
   shell: |
@@ -197,7 +197,7 @@
   failed_when: false
   changed_when: "'Failure' not in sftp_mkdir.stdout and 'File exists' not in sftp_mkdir.stdout"
   tags:
-    - user.restic.init
+    - restic.init
 
 - name: Initialize restic repositories
   shell: |
@@ -216,7 +216,7 @@
   changed_when: "'created restic repository' in restic_init.stdout"
   failed_when: false
   tags:
-    - user.restic.init
+    - restic.init
 
 - name: Create restic log files with correct permissions
   file:
@@ -231,7 +231,7 @@
   become: true
   become_user: root
   tags:
-    - user.restic.init
+    - restic.init
 
 # Root user SSH setup for sudo restic operations
 - name: Ensure root .ssh directory exists
@@ -244,7 +244,7 @@
   become: true
   become_user: root
   tags:
-    - user.restic.init
+    - restic.init
 
 - name: Copy Storage Box SSH keys to root
   copy:
@@ -260,7 +260,7 @@
   become: true
   become_user: root
   tags:
-    - user.restic.init
+    - restic.init
 
 - name: Deploy SSH config for Storage Box (root)
   template:
@@ -272,7 +272,7 @@
   become: true
   become_user: root
   tags:
-    - user.restic.init
+    - restic.init
 
 - name: Add Storage Box to known_hosts (root)
   shell: |
@@ -287,4 +287,4 @@
   become: true
   become_user: root
   tags:
-    - user.restic.init
+    - restic.init

@@ -11,10 +11,14 @@
     mode: '0755'
   become: true
   become_user: root
+  tags:
+    - restic.test
 
 - name: Generate test restic password
   set_fact:
     restic_test_password: "static-test-password-servyy-test"
+  tags:
+    - restic.test
 
 - name: Ensure /etc/restic directory exists
   file:
@@ -24,6 +28,9 @@
     group: root
     mode: '0755'
   become: true
+  become_user: root
+  tags:
+    - restic.test
 
 - name: Check for existing test restic environment file
   stat:
@@ -31,6 +38,8 @@
   register: test_env_stat
   become: true
   become_user: root
+  tags:
+    - restic.test
 
 - name: Slurp existing test restic environment file
   slurp:
@@ -39,6 +48,8 @@
   register: slurped_test_env
   become: true
   become_user: root
+  tags:
+    - restic.test
 
 - name: Verify test restic password integrity
   fail:
@@ -47,11 +58,13 @@
       The password in Ansible variables does NOT match the password currently on the host.
   vars:
     existing_content: "{{ slurped_test_env.content | b64decode }}"
-    existing_pass: "{{ existing_content | regex_findall('export RESTIC_PASSWORD=\"(.*)\"') | first | default('') }}"
+    existing_pass: "{{ existing_content | regex_findall('export RESTIC_PASSWORD="(.*)"') | first | default('') }}"
   when:
     - test_env_stat.stat.exists
     - existing_pass != ""
     - existing_pass != restic_test_password
+  tags:
+    - restic.test
 
 - name: Create test restic environment file
   copy:
@@ -67,11 +80,15 @@
     group: root
   become: true
   become_user: root
+  tags:
+    - restic.test
 
 - name: Check if test repository is initialized
   stat:
     path: /tmp/restic-test-repo/config
   register: repo_config_stat
+  tags:
+    - restic.test
 
 - name: Initialize test restic repository
   shell: |
@@ -82,6 +99,8 @@
   become: true
   become_user: "{{ create_user }}"
   when: not repo_config_stat.stat.exists
+  tags:
+    - restic.test
 
 - name: Create test backup script
   template:
@@ -90,17 +109,5 @@
     mode: '0750'
     owner: "{{ create_user }}"
     group: "{{ create_user }}"
-
-- name: Display test restic status
-  debug:
-    msg: |
-      Test restic repository configured:
-      - Repository: /tmp/restic-test-repo
-      - Environment: /etc/restic/env.test
-      - Backup script: {{ remote_user_home }}/.backup-scripts/restic-test-backup.sh
-
-      To create a test backup:
-      ssh {{ inventory_hostname }} "{{ remote_user_home }}/.backup-scripts/restic-test-backup.sh"
-
-      To list snapshots:
-      ssh {{ inventory_hostname }} "source /etc/restic/env.test && restic snapshots"
+  tags:
+    - restic.test

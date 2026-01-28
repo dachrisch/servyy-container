@@ -1,19 +1,10 @@
 ---
-# Manual playbook to recreate locked out restic repositories OR fix desynchronized config files
-# Use this if you have lost the password (recreate) or if local config is out of sync (fix)
-# Usage: ansible-playbook restic_recreate.yml -i production --limit <hostname>
+# Manual task to recreate locked out restic repositories OR fix desynchronized config files
+# Usage: ansible-playbook restic_recreate.yml --limit <hostname>
+# (Or after migration: ./servyy.sh --tags restic.recreate --limit <hostname>)
 
 - name: FIX RESTIC REPOSITORIES AND CONFIGURATION
-  hosts: all
-  strategy: linear # Required for the pause module
-  become: true
-  become_user: "{{ create_user }}"
-  vars_files:
-    - plays/vars/default.yml
-    - plays/vars/restic.yml
-    - plays/vars/secrets.yml
-
-  tasks:
+  block:
     # 1. Check Repository Accessibility (Remote)
     - name: Check if repositories are accessible (using Ansible password)
       shell: |
@@ -26,6 +17,8 @@
       register: repo_check
       failed_when: false
       changed_when: false
+      tags:
+        - restic.recreate
 
     # 2. Check Local Environment Files (Local)
     - name: Check local environment files content
@@ -35,17 +28,16 @@
         - { name: 'home' }
         - { name: 'root' }
       register: local_env_files
-      failed_when: false # File might not exist
+      failed_when: false
       become: true
       become_user: root
+      tags:
+        - restic.recreate
 
     # 3. Analyze State
     - name: Analyze Restic State
       set_fact:
-        # Repos that cannot be opened with the CURRENT Ansible password -> Must be recreated
         broken_repos: "{{ repo_check.results | selectattr('rc', 'ne', 0) | map(attribute='item.name') | list }}"
-        
-        # Files that don't match the CURRENT Ansible password -> Must be updated
         mismatched_files: >-
           {%- set mismatches = [] -%}
           {%- for result in local_env_files.results -%}
@@ -60,12 +52,16 @@
             {%- endif -%}
           {%- endfor -%}
           {{ mismatches }}
+      tags:
+        - restic.recreate
 
     - name: Display Status
       debug:
         msg: 
           - "Broken Repositories (Lockout): {{ broken_repos }}"
           - "Mismatched Config Files: {{ mismatched_files }}"
+      tags:
+        - restic.recreate
 
     - name: Fail if everything is fine
       fail:
@@ -73,6 +69,8 @@
       when: 
         - broken_repos | length == 0
         - mismatched_files | length == 0
+      tags:
+        - restic.recreate
 
     # 4. Confirmation
     - name: "⚠️  WARNING: CONFIRM ACTIONS"
@@ -95,6 +93,8 @@
           Are you sure you want to proceed? (yes/no)
       register: pause_result
       when: confirm_recreate | default('') | lower != 'yes'
+      tags:
+        - restic.recreate
 
     - name: Abort if not confirmed
       fail:
@@ -102,6 +102,8 @@
       when: 
         - not (confirm_recreate | default('') | lower == 'yes')
         - not (pause_result.user_input | default('') | lower == 'yes')
+      tags:
+        - restic.recreate
 
     # 5. Recreate Logic
     - name: Recreate broken repositories
@@ -136,15 +138,6 @@
           register: sftp_delete
           failed_when: false
 
-        - name: Delete local repository directories
-          file:
-            path: "{{ restic[item].repository }}"
-            state: absent
-          loop: "{{ broken_repos }}"
-          when: "not restic[item].repository.startswith('sftp://')"
-          become: true
-          become_user: root
-
         - name: Re-initialize repositories
           shell: |
             export RESTIC_REPOSITORY="{{ item.repository }}"
@@ -158,8 +151,6 @@
           loop:
             - { name: 'home', repository: "{{ restic.home.repository }}", password: "{{ restic.home.password }}" }
             - { name: 'root', repository: "{{ restic.root.repository }}", password: "{{ restic.root.password }}" }
-          vars:
-            password: "{{ (item.name == 'home') | ternary(restic.home.password, restic.root.password) }}"
           when: item.name in broken_repos
           register: restic_reinit
           changed_when: "'created restic repository' in restic_reinit.stdout"
@@ -167,11 +158,13 @@
             - restic_reinit.rc != 0
             - "'config file already exists' not in restic_reinit.stderr"
       when: broken_repos | length > 0
+      tags:
+        - restic.recreate
 
-    # 6. Config Fix Logic (Runs for both Recreated AND Mismatched)
+    # 6. Config Fix Logic
     - name: Force update environment files
       template:
-        src: plays/roles/user/templates/restic_env.j2
+        src: restic_env.j2
         dest: "/etc/restic/env.{{ item.name }}"
         owner: root
         group: root
@@ -182,11 +175,12 @@
         password: "{{ item.password }}"
       loop:
         - { name: 'home', repository: "{{ restic.home.repository }}", password: "{{ restic.home.password }}" }
-        - { name: 'root', repository: "{{ restic.root.repository }}" , password: "{{ restic.root.password }}"}
-      # Update if it was broken (recreated) OR if it was mismatched
+        - { name: 'root', repository: "{{ restic.root.repository }}", password: "{{ restic.root.password }}" }
       when: (item.name in broken_repos) or (item.name in mismatched_files)
       become: true
       become_user: root
+      tags:
+        - restic.recreate
 
     # 7. Populate New Repositories
     - name: Trigger immediate backup to populate new repositories (background)
@@ -197,6 +191,8 @@
         no_block: yes
       loop: "{{ broken_repos }}"
       when: broken_repos | length > 0
+      tags:
+        - restic.recreate
 
     - name: Validate backup is running
       shell: "sleep 2 && XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user is-active restic-backup-{{ item }}.service"
@@ -205,3 +201,6 @@
       register: backup_status
       failed_when: "'active' not in backup_status.stdout and 'activating' not in backup_status.stdout"
       changed_when: false
+      tags:
+        - restic.recreate
+  when: ansible_run_tags | intersect(['restic.recreate']) | length > 0
