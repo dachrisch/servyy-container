@@ -15,6 +15,9 @@ cd scripts && ./setup_test_container.sh && cd ../ansible && ./servyy-test.sh
 # Targeted deployment
 cd ansible && ./servyy.sh --tags "docker" --limit lehel.xyz
 
+# Recreate locked Restic repositories (DESTRUCTIVE)
+cd ansible && ansible-playbook restic_recreate.yml --limit lehel.xyz
+
 # Service management
 ssh lehel.xyz "docker ps"                          # Check running containers
 ssh lehel.xyz "docker logs {container} --tail 50"  # View logs
@@ -419,6 +422,22 @@ ssh lehel.xyz "sudo bash /usr/local/bin/blocklist/update-from-loki.sh"
 # Navigate to: https://monitor.lehel.xyz → Explore → Loki
 # Query: {job="docker",container="traefik.traefik"} | json
 ```
+
+## Backup & Recovery Rules
+
+1. **Restic Restore Safeguards (MANDATORY)**
+   - ❌ **NEVER** restore data while the target container is running
+   - ❌ **NEVER** restore data into a non-empty directory (prevents corruption/overwrite)
+   - ✅ **ALWAYS** verify target state (stopped container, empty/missing dir) before restore
+   - ✅ **ALWAYS** test restore logic on `servyy-test.lxd` before applying to production
+
+2. **Password Integrity**
+   - ❌ **NEVER** overwrite Restic environment files (`/etc/restic/env.*`) if the password differs
+   - ✅ **Manual intervention** is required if Restic passwords need to be changed/synchronized
+
+3. **Repository Lockout Recovery**
+   - **Manual Only:** Use `ansible-playbook restic_recreate.yml` to wipe and re-init locked repos
+   - **Verification:** The playbook automatically verifies lockouts and requires explicit confirmation
 
 ## Cleanup Automation
 
