@@ -1,0 +1,62 @@
+#!/bin/zsh
+# Restic backup script - {{ backup_name }}
+set -euo pipefail
+
+# Load logdy function for structured logging
+source "$HOME/.zprezto/custom/functions/logdy"
+
+# Load restic environment from config file
+if [ -f "/etc/restic/env.{{ backup_name }}" ]; then
+    source "/etc/restic/env.{{ backup_name }}"
+else
+    logdy error "Restic environment file not found" path="/etc/restic/env.{{ backup_name }}"
+    exit 1
+fi
+
+export LOGDY_ALSO_TO_FILE="{{ log_file }}"
+LOG_FILE="{{ log_file }}"
+
+logdy info "Starting restic backup" backup_type="{{ backup_name }}" repository="$RESTIC_REPOSITORY"
+
+# Pre-backup: Check repository
+if ! restic snapshots --latest 1 &>> "$LOG_FILE"; then
+    logdy error "Repository check failed" backup_type="{{ backup_name }}"
+    exit 1
+fi
+
+# Build backup command
+BACKUP_CMD="restic backup {{ source_path }}"
+
+# Add exclude-caches flag (honors CACHEDIR.TAG files)
+{% if exclude_caches | default(true) %}
+BACKUP_CMD="$BACKUP_CMD --exclude-caches"
+{% endif %}
+
+# Add exclusions
+{% if excludes is defined and excludes | length > 0 %}
+{% for exclude in excludes %}
+BACKUP_CMD="$BACKUP_CMD --exclude '{{ exclude }}'"
+{% endfor %}
+{% endif %}
+
+# Add tag and host
+BACKUP_CMD="$BACKUP_CMD --tag {{ backup_name }} --host {{ inventory_hostname }}"
+
+logdy info "Running backup" command="$BACKUP_CMD"
+
+{% if with_sudo is defined %}
+# Run with sudo for root filesystem
+# Root reads from its own environment file
+if sudo bash -c "source /etc/restic/env.{{ backup_name }} && $BACKUP_CMD" >> "$LOG_FILE" 2>&1; then
+{% else %}
+# Run as user
+if eval "$BACKUP_CMD" >> "$LOG_FILE" 2>&1; then
+{% endif %}
+    logdy info "Backup completed successfully" backup_type="{{ backup_name }}"
+    restic snapshots --latest 1 --tag {{ backup_name }} >> "$LOG_FILE" 2>&1
+    exit 0
+else
+    EXIT_CODE=$?
+    logdy error "Backup failed" backup_type="{{ backup_name }}" exit_code=$EXIT_CODE
+    exit $EXIT_CODE
+fi

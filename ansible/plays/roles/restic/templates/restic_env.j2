@@ -1,0 +1,8 @@
+# Restic environment configuration for {{ env_name }}
+# Source this file to set restic environment variables
+
+export RESTIC_REPOSITORY="{{ repository }}"
+export RESTIC_PASSWORD="{{ password }}"
+
+# Optional: Prevent accidental modifications
+export RESTIC_CACHE_DIR="${HOME}/.cache/restic"

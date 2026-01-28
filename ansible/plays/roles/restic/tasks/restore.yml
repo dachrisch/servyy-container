@@ -6,6 +6,8 @@
   stat:
     path: "{{ restore_path }}"
   register: target_stat
+  tags:
+    - restic.restore
 
 - name: Check if target directory is empty
   find:
@@ -13,6 +15,8 @@
     recurse: no
   register: target_files
   when: target_stat.stat.exists and target_stat.stat.isdir
+  tags:
+    - restic.restore
 
 - name: Check for existing snapshots in {{ backup_name }}
   shell: |
@@ -29,14 +33,20 @@
   become_user: root
   changed_when: false
   failed_when: false
+  tags:
+    - restic.restore
 
 - name: Set snapshot count fact
   set_fact:
     snapshot_count: "{{ restic_snapshots_check.stdout | default('[]') | from_json | length }}"
+  tags:
+    - restic.restore
 
 - name: Set environment detection fact
   set_fact:
     is_test_environment: "{{ inventory_hostname == 'servyy-test.lxd' }}"
+  tags:
+    - restic.restore
 
 # Environment-aware error handling for missing backups
 - name: FAIL on test environment if no snapshots exist
@@ -48,14 +58,11 @@
       Environment: TEST ({{ inventory_hostname }})
 
       This is expected to FAIL on test environments to catch backup issues early.
-
-      Troubleshooting:
-      1. Check if backups are running: ssh {{ inventory_hostname }} "ls -la /var/log/restic/"
-      2. Verify restic env file exists: ssh {{ inventory_hostname }} "ls -la /etc/restic/env.{{ backup_name }}"
-      3. Check snapshot list: ssh {{ inventory_hostname }} "source /etc/restic/env.{{ backup_name }} && restic snapshots"
   when:
     - is_test_environment | bool
     - snapshot_count | int == 0
+  tags:
+    - restic.restore
 
 - name: LOG warning on production if no snapshots exist
   debug:
@@ -64,31 +71,28 @@
 
       Environment: PRODUCTION ({{ inventory_hostname }})
       Continuing deployment to allow fresh installations.
-
-      If this is unexpected, check backup status after deployment completes.
   when:
     - not (is_test_environment | bool)
     - snapshot_count | int == 0
+  tags:
+    - restic.restore
 
 # ============================================================================
 # PRE-RESTORE DECISION MATRIX
-# ============================================================================
-# Check conditions to determine if restore should proceed:
-# - No snapshots: Error on test, warning on production (handled above)
-# - No target dir: OK - create and restore
-# - Target dir empty: OK - restore
-# - Target dir non-empty: SKIP - already populated
-# - Running containers: SKIP - service already operational
 # ============================================================================
 
 - name: Check if target directory is non-empty
   set_fact:
     target_is_empty: "{{ (not target_stat.stat.exists) or (target_files.matched | default(0) == 0) }}"
+  tags:
+    - restic.restore
 
 - name: Check if Docker Compose service exists for this restore path
   stat:
     path: "{{ restore_path | dirname }}/docker-compose.yml"
   register: docker_compose_exists
+  tags:
+    - restic.restore
 
 - name: Check if any containers are running for this service
   shell: |
@@ -104,55 +108,45 @@
   become: true
   become_user: root
   failed_when: false
+  tags:
+    - restic.restore
 
 - name: Set container running status
   set_fact:
     containers_running: "{{ docker_compose_exists.stat.exists and (running_containers_count.stdout | default('0') | int > 0) }}"
+  tags:
+    - restic.restore
 
 - name: Determine if restore should proceed
   set_fact:
     should_restore: "{{ (snapshot_count | int > 0) and target_is_empty and not containers_running }}"
+  tags:
+    - restic.restore
 
 - name: LOG skip reason - directory non-empty
   debug:
     msg: |
       ⏭️  SKIPPING RESTORE: Target directory is not empty
-
       Path: {{ restore_path }}
-      Files found: {{ target_files.matched | default(0) }}
-
-      The directory already contains data. Restore is only performed on empty directories
-      to prevent accidental data loss. This is normal for operational services.
-
-      To force restore (DESTRUCTIVE - will overwrite existing data):
-      1. Stop service: ssh {{ inventory_hostname }} "cd {{ restore_path | dirname }} && docker compose down"
-      2. Clear directory: ssh {{ inventory_hostname }} "rm -rf {{ restore_path }}/*"
-      3. Re-run restore: ./servyy.sh --tags "user.docker.restore.*" --limit {{ inventory_hostname }}
   when:
     - snapshot_count | int > 0
     - not target_is_empty
     - not containers_running
+  tags:
+    - restic.restore
 
 - name: LOG skip reason - containers running
   debug:
     msg: |
       ⏭️  SKIPPING RESTORE: Service containers are running
-
       Path: {{ restore_path }}
-      Running containers: {{ running_containers_count.stdout | default('0') }}
-      Compose file: {{ restore_path | dirname }}/docker-compose.yml
-
-      The service is operational. Restore is skipped to prevent corruption of live data.
-      This is the expected behavior for running services.
-
-      To restore (only if service is broken):
-      1. Stop service: ssh {{ inventory_hostname }} "cd {{ restore_path | dirname }} && docker compose down"
-      2. Re-run restore: ./servyy.sh --tags "user.docker.restore.*" --limit {{ inventory_hostname }}
   when:
     - snapshot_count | int > 0
     - containers_running
+  tags:
+    - restic.restore
 
-# Create parent directory if it doesn't exist (fixes empty container issue)
+# Create parent directory if it doesn't exist
 - name: Create parent directory for restore path if missing
   file:
     path: "{{ restore_path }}"
@@ -163,19 +157,14 @@
   become: true
   become_user: root
   when: not target_stat.stat.exists
+  tags:
+    - restic.restore
 
 - name: Restore [{{ restore_path }}] from restic ({{ backup_name }})
   shell: |
     set -e
-    if [ -f "/etc/restic/env.{{ backup_name }}" ]; then
-        source "/etc/restic/env.{{ backup_name }}"
-        echo "Restoring {{ restore_path }} from latest snapshot..."
-        restic restore latest --target / --include "{{ restore_path }}"
-        echo "Restore completed successfully for {{ restore_path }}"
-    else
-        echo "ERROR: Restic environment file /etc/restic/env.{{ backup_name }} not found" >&2
-        exit 1
-    fi
+    source "/etc/restic/env.{{ backup_name }}"
+    restic restore latest --target / --include "{{ restore_path }}"
   args:
     executable: /bin/bash
   become: true
@@ -183,24 +172,19 @@
   register: restic_restored
   when: should_restore | bool
   tags:
-    - user.restic.restore
+    - restic.restore
 
 - name: Display restore result
   debug:
     msg: |
       {% if restic_restored.changed %}
       ✅ RESTORED: {{ restore_path }}
-      Source: {{ backup_name }} repository (latest snapshot)
-      Target was: {{ 'new directory' if not target_stat.stat.exists else 'empty directory' }}
       {% elif restic_restored.skipped %}
       ⏭️  SKIPPED: Restore not needed for {{ restore_path }}
-      Reason: {{ 'No snapshots available' if snapshot_count | int == 0 else 'Directory populated or containers running (safe default)' }}
-      {% else %}
-      ℹ️  No restore action taken for {{ restore_path }}
       {% endif %}
   when: snapshot_count | int > 0
   tags:
-    - user.restic.restore
+    - restic.restore
 
 - name: Ensure permissions on [{{ restore_path }}]
   file:
@@ -211,6 +195,7 @@
     recurse: yes
   become: true
   become_user: root
-  when: target_stat.stat.exists or restic_restored.changed
+  when: target_stat.stat.exists or (restic_restored.changed | default(false))
   tags:
-    - user.restic.restore.permissions
+    - restic.restore
+    - restic.restore.permissions

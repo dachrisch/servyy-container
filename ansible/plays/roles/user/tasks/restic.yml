@@ -1,9 +1,0 @@
----
-# Restic backup configuration tasks
-- import_tasks: restic_init.yml
-  tags:
-    - user.restic.init
-
-- import_tasks: restic_backup.yml
-  tags:
-    - user.restic.backup

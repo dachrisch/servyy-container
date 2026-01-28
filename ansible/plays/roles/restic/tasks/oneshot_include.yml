@@ -1,0 +1,35 @@
+---
+- name: Create the systemd directory if it does not exist
+  ansible.builtin.file:
+    path: "{{ remote_user_systemd }}"
+    state: directory
+
+- name: Create {{service.name}} service
+  template:
+    src: oneshot.service.j2
+    dest: "{{ (remote_user_systemd, service.name) | path_join }}.service"
+  tags:
+    - restic.backup
+    - restic.systemd
+
+- name: Create timer for {{ service.name }}
+  template:
+    src: oneshot.timer.j2
+    dest: "{{ (remote_user_systemd, service.name) | path_join }}.timer"
+  vars:
+    timer:
+      description: 'Trigger for {{ service.name }}'
+      schedule: '{{ service.schedule }}'
+  tags:
+    - restic.backup
+    - restic.systemd
+
+- name: Start timer for {{ service. name }}
+  systemd:
+    scope: user
+    name: '{{service.name}}.timer'
+    state: started
+    enabled: yes
+  tags:
+    - restic.backup
+    - restic.systemd

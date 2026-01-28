@@ -6,7 +6,7 @@
     state: directory
     mode: '0755'
   tags:
-    - user.restic.backup
+    - restic.backup
 
 # Home backup
 - name: Deploy restic backup script for home
@@ -21,9 +21,9 @@
     exclude_caches: "{{ restic.exclude_caches }}"
     log_file: "{{ restic.logs.backup_home }}"
   tags:
-    - user.restic.backup
+    - restic.backup
 
-- import_tasks: includes/oneshot.yml
+- import_tasks: oneshot_include.yml
   vars:
     service:
       name: restic-backup-home
@@ -31,7 +31,7 @@
       schedule: '{{ restic.schedules.backup_home }}'
       command: "{{ remote_user_home }}/.backup-scripts/restic-backup-home.sh"
   tags:
-    - user.restic.backup
+    - restic.backup
 
 # Root backup
 - name: Deploy restic backup script for root
@@ -48,9 +48,9 @@
     log_file: "{{ restic.logs.backup_root }}"
     with_sudo: true
   tags:
-    - user.restic.backup
+    - restic.backup
 
-- import_tasks: includes/oneshot.yml
+- import_tasks: oneshot_include.yml
   vars:
     service:
       name: restic-backup-root
@@ -58,4 +58,4 @@
       schedule: '{{ restic.schedules.backup_root }}'
       command: "{{ remote_user_home }}/.backup-scripts/restic-backup-root.sh"
   tags:
-    - user.restic.backup
+    - restic.backup
