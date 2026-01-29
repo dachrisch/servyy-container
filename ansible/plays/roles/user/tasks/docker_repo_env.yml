@@ -14,3 +14,13 @@
     - "{{ docker.services }}"
   tags:
     - user.docker.env
+
+- name: Create energy.env file for docker service
+  template:
+    src: energy.env.j2
+    dest: "{{(docker.remote_dir, 'energy', 'energy.env') | path_join}}"
+    mode: '0600'
+    owner: "{{create_user}}"
+  tags:
+    - user.docker.env
+    - user.docker.env.energy
