@@ -29,13 +29,10 @@ for ca_loc in "/etc/ssl/mkcert/rootCA.pem" "/usr/local/share/ca-certificates/ser
     fi
 done
 
-# Fallback for test environment if CA is not found or trust fails
+# Force disable SSL verification for test environment to avoid common Node.js trust issues
 if [[ "$HOSTNAME" == *"test.lxd" ]]; then
-    if [ "$CA_FOUND" = false ]; then
-        echo "Warning: CA certificate not found for test environment. Disabling SSL verification."
-        export NODE_TLS_REJECT_UNAUTHORIZED=0
-    fi
-    # If we still get verification errors, the user can set this manually
+    echo "Test environment detected. Disabling SSL verification for Bitwarden CLI."
+    export NODE_TLS_REJECT_UNAUTHORIZED=0
 fi
 
 # Check if server is reachable (5 second timeout)
