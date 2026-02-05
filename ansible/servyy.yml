@@ -5,6 +5,7 @@
 # > usermod -aG sudo username
 # https://linuxize.com/post/how-to-add-user-to-sudoers-in-ubuntu/
 
+- import_playbook: plays/bw_auth.yml
 - import_playbook: plays/system.yml
 - import_playbook: plays/user.yml
 - import_playbook: plays/restic.yml
