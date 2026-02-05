@@ -215,9 +215,9 @@ The synchronization is automated in the `restic` role. Deployment will prompt fo
 **Disaster Recovery Retrieval:**
 If local password files are lost, retrieve from Vaultwarden:
 ```bash
-bw config set baseUrl https://pass.<hostname>
+bw config server https://pass.<hostname>
 bw login <email>
-bw get notes "<hostname>/restic-password-home"
+bw get password "<hostname>/restic-password-home"
 ```
 
 ## git-crypt (CRITICAL)

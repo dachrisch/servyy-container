@@ -165,19 +165,21 @@ for type in home root; do
 
     if [[ -n "$ITEM_ID" && "$ITEM_ID" != "null" ]]; then
         # Update existing item
+        # We change type to 1 (Login) to enable password history
         bw get item "$ITEM_ID" \
-            | jq --arg notes "$PASSWORD" '.notes = $notes' \
+            | jq --arg password "$PASSWORD" --arg username "restic" \
+              '.type = 1 | .login = {username: $username, password: $password} | del(.secureNote)' \
             | bw encode \
             | bw edit item "$ITEM_ID" > /dev/null
-        echo "Successfully updated: ${ITEM_NAME}"
+        echo "Successfully updated: ${ITEM_NAME} (as Login item)"
     else
-        # Create new item
+        # Create new item as type 1 (Login)
         bw get template item \
-            | jq --arg name "$ITEM_NAME" --arg notes "$PASSWORD" --arg folderId "$FOLDER_ID" \
-              '.type = 2 | .secureNote.type = 0 | .name = $name | .notes = $notes | .folderId = $folderId' \
+            | jq --arg name "$ITEM_NAME" --arg password "$PASSWORD" --arg folderId "$FOLDER_ID" --arg username "restic" \
+              '.type = 1 | .name = $name | .login = {username: $username, password: $password} | .folderId = $folderId' \
             | bw encode \
             | bw create item > /dev/null
-        echo "Successfully created: ${ITEM_NAME}"
+        echo "Successfully created: ${ITEM_NAME} (as Login item)"
     fi
 done
 
