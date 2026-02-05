@@ -41,8 +41,22 @@ if ! curl -s --connect-timeout 5 -k "${BW_BASE_URL}/api/config" > /dev/null; the
     exit 1
 fi
 
-echo "Configuring Bitwarden CLI for: ${BW_BASE_URL}"
-bw config server "$BW_BASE_URL" > /dev/null
+# 2. Configure server URL if needed
+CURRENT_SERVER=$(bw status | jq -r '.serverUrl' || echo "")
+if [[ "$CURRENT_SERVER" != "$BW_BASE_URL" ]]; then
+    # If we are logged in to a different server, we must logout first
+    IS_LOGGED_IN=$(bw status | jq -r '.status')
+    if [[ "$IS_LOGGED_IN" != "unauthenticated" ]]; then
+        echo "Logging out from ${CURRENT_SERVER} to switch to ${BW_BASE_URL}..."
+        bw logout > /dev/null 2>&1 || true
+        # Clear cached session if server changes
+        rm -f "${BITWARDENCLI_APPDATA_DIR}/session"
+    fi
+    echo "Configuring Bitwarden CLI for: ${BW_BASE_URL}"
+    bw config server "$BW_BASE_URL" > /dev/null
+else
+    echo "Bitwarden CLI already configured for: ${BW_BASE_URL}"
+fi
 
 # Authentication logic
 # 1. Try to use existing session if provided or cached
