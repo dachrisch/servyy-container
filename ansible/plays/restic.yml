@@ -9,19 +9,36 @@
     - vars/default.yml
     - vars/restic.yml
     - vars/secrets.yml
-    - ["vars/.bw_credentials.yml", "vars/empty.yml"] # Try to load cached credentials
-
-  vars_prompt:
-    - name: vaultwarden_email
-      prompt: "Vaultwarden Email (for password sync)"
-      private: no
-      default: "{{ vaultwarden_email | default('') }}"
-    - name: vaultwarden_password
-      prompt: "Vaultwarden Master Password"
-      private: yes
-      default: "{{ vaultwarden_password | default('') }}"
+    - ["vars/.bw_credentials.yml", "vars/empty.yml"]
 
   tasks:
+    - name: Get Vaultwarden credentials if missing
+      delegate_to: localhost
+      run_once: true
+      block:
+        - name: Prompt for Vaultwarden Email
+          pause:
+            prompt: "Vaultwarden Email (for password sync)"
+          register: email_prompt
+          when: vaultwarden_email is not defined or vaultwarden_email == ""
+
+        - name: Set Vaultwarden Email fact
+          set_fact:
+            vaultwarden_email: "{{ email_prompt.user_input | default(vaultwarden_email) }}"
+          when: email_prompt.user_input is defined
+
+        - name: Prompt for Vaultwarden Master Password
+          pause:
+            prompt: "Vaultwarden Master Password"
+            echo: no
+          register: pass_prompt
+          when: vaultwarden_password is not defined or vaultwarden_password == ""
+
+        - name: Set Vaultwarden Password fact
+          set_fact:
+            vaultwarden_password: "{{ pass_prompt.user_input | default(vaultwarden_password) }}"
+          when: pass_prompt.user_input is defined
+
     - name: Cache Vaultwarden credentials locally
       delegate_to: localhost
       run_once: true

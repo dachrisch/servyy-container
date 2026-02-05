@@ -18,14 +18,30 @@ command -v bw >/dev/null 2>&1 || { echo >&2 "Error: Bitwarden CLI (bw) is requir
 command -v jq >/dev/null 2>&1 || { echo >&2 "Error: jq is required but not installed."; exit 1; }
 
 # SSL Trust for test environment (mkcert)
-if [[ -f "/etc/ssl/mkcert/rootCA.pem" ]]; then
-    export NODE_EXTRA_CA_CERTS="/etc/ssl/mkcert/rootCA.pem"
+# Check multiple possible locations for the CA certificate
+CA_FOUND=false
+for ca_loc in "/etc/ssl/mkcert/rootCA.pem" "/usr/local/share/ca-certificates/servyy-test-ca.crt" "/tmp/servyy-test-ca.pem"; do
+    if [[ -f "$ca_loc" ]]; then
+        export NODE_EXTRA_CA_CERTS="$ca_loc"
+        echo "Using CA certificate: $ca_loc"
+        CA_FOUND=true
+        break
+    fi
+done
+
+# Fallback for test environment if CA is not found or trust fails
+if [[ "$HOSTNAME" == *"test.lxd" ]]; then
+    if [ "$CA_FOUND" = false ]; then
+        echo "Warning: CA certificate not found for test environment. Disabling SSL verification."
+        export NODE_TLS_REJECT_UNAUTHORIZED=0
+    fi
+    # If we still get verification errors, the user can set this manually
 fi
 
 # Check if server is reachable (5 second timeout)
 if ! curl -s --connect-timeout 5 -k "${BW_BASE_URL}/api/config" > /dev/null; then
-    echo "Warning: Vaultwarden at ${BW_BASE_URL} is unreachable. Skipping sync for ${HOSTNAME}."
-    exit 0
+    echo "Error: Vaultwarden at ${BW_BASE_URL} is unreachable." >&2
+    exit 1
 fi
 
 echo "Configuring Bitwarden CLI for: ${BW_BASE_URL}"
@@ -38,17 +54,34 @@ if [[ -z "${BW_SESSION:-}" && -f "${BITWARDENCLI_APPDATA_DIR}/session" ]]; then
     export BW_SESSION
 fi
 
+# Function to perform login/unlock
+do_auth() {
+    local email="${1:-}"
+    local password="${2:-}"
+    local session=""
+
+    if [[ -n "$email" && -n "$password" ]]; then
+        # Try login, if already logged in try unlock
+        session=$(bw login "$email" "$password" --raw 2>/dev/null || bw unlock "$password" --raw 2>/dev/null)
+    elif [[ -n "$password" ]]; then
+        session=$(bw unlock "$password" --raw 2>/dev/null)
+    fi
+    echo "$session"
+}
+
 # 2. Check if we are unlocked
 IS_UNLOCKED=$(bw status | jq -r '.status' || echo "error")
 
 if [[ "$IS_UNLOCKED" != "unlocked" ]]; then
     if [[ -n "${BW_EMAIL:-}" && -n "${BW_PASSWORD:-}" ]]; then
         echo "Attempting non-interactive login..."
-        # If logged in but locked, login fails, so try unlock.
-        if [[ "$IS_UNLOCKED" == "locked" ]]; then
-            BW_SESSION=$(bw unlock "$BW_PASSWORD" --raw)
-        else
-            BW_SESSION=$(bw login "$BW_EMAIL" "$BW_PASSWORD" --raw)
+        BW_SESSION=$(do_auth "$BW_EMAIL" "$BW_PASSWORD")
+        
+        # If it failed and we are in test environment, try disabling TLS verification
+        if [[ ( -z "${BW_SESSION}" || "$BW_SESSION" == "null" ) && "$HOSTNAME" == *"test.lxd" ]]; then
+            echo "Authentication failed. Retrying with SSL verification disabled for test environment..."
+            export NODE_TLS_REJECT_UNAUTHORIZED=0
+            BW_SESSION=$(do_auth "$BW_EMAIL" "$BW_PASSWORD")
         fi
         
         if [[ -z "${BW_SESSION}" || "$BW_SESSION" == "null" ]]; then
