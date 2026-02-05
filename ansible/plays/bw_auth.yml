@@ -1,0 +1,55 @@
+- name: Setup Vaultwarden Authentication
+  hosts: all
+  gather_facts: no
+  vars_files:
+    - vars/default.yml
+    - vars/restic.yml
+    - vars/secrets.yml
+    - ["vars/.bw_credentials.yml", "vars/empty.yml"]
+
+  tasks:
+    - name: Get Vaultwarden credentials if missing
+      delegate_to: localhost
+      run_once: true
+      tags: [always]
+      block:
+        - name: Prompt for Vaultwarden Email
+          pause:
+            prompt: "Vaultwarden Email (for password sync)"
+          register: email_prompt
+          when: vaultwarden_email is not defined or vaultwarden_email == ""
+          tags: [always]
+
+        - name: Set Vaultwarden Email fact
+          set_fact:
+            vaultwarden_email: "{{ email_prompt.user_input | default(vaultwarden_email) }}"
+          when: email_prompt is defined and email_prompt.user_input is defined
+          tags: [always]
+
+        - name: Prompt for Vaultwarden Master Password
+          pause:
+            prompt: "Vaultwarden Master Password"
+            echo: no
+          register: pass_prompt
+          when: vaultwarden_password is not defined or vaultwarden_password == ""
+          tags: [always]
+
+        - name: Set Vaultwarden Password fact
+          set_fact:
+            vaultwarden_password: "{{ pass_prompt.user_input | default(vaultwarden_password) }}"
+          when: pass_prompt is defined and pass_prompt.user_input is defined
+          tags: [always]
+
+    - name: Cache Vaultwarden credentials locally
+      delegate_to: localhost
+      run_once: true
+      copy:
+        dest: "{{ playbook_dir }}/vars/.bw_credentials.yml"
+        content: |
+          vaultwarden_email: "{{ vaultwarden_email }}"
+          vaultwarden_password: "{{ vaultwarden_password }}"
+        mode: '0600'
+      when: vaultwarden_email != "" and vaultwarden_password != ""
+      tags: [always]
+  
+  tags: [always]
