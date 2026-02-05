@@ -161,14 +161,22 @@ for type in home root; do
     # Check if item exists in the infrastructure folder
     # Filter by exact name and folderId
     ITEMS_JSON=$(bw list items --search "$ITEM_NAME")
-    ITEM_ID=$(echo "$ITEMS_JSON" | jq -r ".[] | select(.name == \"$ITEM_NAME\" and .folderId == \"$FOLDER_ID\") | .id" | head -n 1)
+    ITEM_DATA=$(echo "$ITEMS_JSON" | jq -c ".[] | select(.name == \"$ITEM_NAME\" and .folderId == \"$FOLDER_ID\")" | head -n 1)
+    ITEM_ID=$(echo "$ITEM_DATA" | jq -r ".id // empty")
+    ITEM_TYPE=$(echo "$ITEM_DATA" | jq -r ".type // empty")
 
-    if [[ -n "$ITEM_ID" && "$ITEM_ID" != "null" ]]; then
+    if [[ -n "$ITEM_ID" ]]; then
+        if [[ "$ITEM_TYPE" != "1" ]]; then
+            echo "Item exists but is not a Login item (type: $ITEM_TYPE). Recreating as Login item..."
+            bw delete item "$ITEM_ID" > /dev/null
+            ITEM_ID=""
+        fi
+    fi
+
+    if [[ -n "$ITEM_ID" ]]; then
         # Update existing item
-        # We change type to 1 (Login) to enable password history
         bw get item "$ITEM_ID" \
-            | jq --arg password "$PASSWORD" --arg username "restic" \
-              '.type = 1 | .login = {username: $username, password: $password} | del(.secureNote)' \
+            | jq --arg password "$PASSWORD" '.login.password = $password' \
             | bw encode \
             | bw edit item "$ITEM_ID" > /dev/null
         echo "Successfully updated: ${ITEM_NAME} (as Login item)"
