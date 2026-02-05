@@ -22,17 +22,18 @@ if [[ -f "/etc/ssl/mkcert/rootCA.pem" ]]; then
 fi
 
 echo "Configuring Bitwarden CLI for: ${BW_BASE_URL}"
-bw config set baseUrl "$BW_BASE_URL" >/dev/null
+bw config server "$BW_BASE_URL" > /dev/null
 
 # Authentication logic
 if [[ -n "${BW_EMAIL:-}" && -n "${BW_PASSWORD:-}" ]]; then
     echo "Attempting non-interactive login..."
-    # Attempt to login and get session key
-    BW_SESSION=$(bw login "$BW_EMAIL" "$BW_PASSWORD" --raw || bw unlock "$BW_PASSWORD" --raw)
+    # Attempt to login and get session key. 
+    # If already logged in but locked, login fails, so try unlock.
+    BW_SESSION=$(bw login "$BW_EMAIL" "$BW_PASSWORD" --raw 2>/dev/null || bw unlock "$BW_PASSWORD" --raw)
     export BW_SESSION
 else
     # Interactive login
-    if ! bw status --session "${BW_SESSION:-}" | jq -e '.status == "unlocked"' >/dev/null; then
+    if ! bw status | jq -e '.status == "unlocked"' > /dev/null; then
         echo "Authentication required for Vaultwarden at ${BW_BASE_URL}"
         bw login
         BW_SESSION=$(bw unlock --raw)
@@ -43,11 +44,11 @@ fi
 # 1. Ensure 'infrastructure' folder exists
 FOLDER_NAME="infrastructure"
 echo "Verifying folder: ${FOLDER_NAME}"
-FOLDER_ID=$(bw list folders --session "$BW_SESSION" | jq -r ".[] | select(.name == \"$FOLDER_NAME\") | .id")
+FOLDER_ID=$(bw list folders | jq -r ".[] | select(.name == \"$FOLDER_NAME\") | .id")
 
 if [[ -z "$FOLDER_ID" ]]; then
     echo "Creating root folder: ${FOLDER_NAME}"
-    FOLDER_ID=$(bw get template folder | jq --arg name "$FOLDER_NAME" '.name = $name' | bw encode | bw create folder --session "$BW_SESSION" | jq -r ".id")
+    FOLDER_ID=$(bw get template folder | jq --arg name "$FOLDER_NAME" '.name = $name' | bw encode | bw create folder | jq -r ".id")
 fi
 
 # 2. Sync passwords (home and root)
@@ -63,6 +64,38 @@ for type in home root; do
             break
         fi
     done
+
+    if [[ -z "$PASS_FILE" ]]; then
+        echo "Warning: Restic password file for ${type} not found. Skipping."
+        continue
+    fi
+
+    PASSWORD=$(cat "$PASS_FILE")
+    ITEM_NAME="${HOSTNAME}/restic-password-${type}"
+    
+    echo "Syncing item: ${ITEM_NAME}"
+    
+    # Check if item exists in the infrastructure folder
+    ITEM_ID=$(bw list items --search "$ITEM_NAME" | jq -r ".[] | select(.name == \"$ITEM_NAME\" and .folderId == \"$FOLDER_ID\") | .id" | head -n 1)
+
+    if [[ -n "$ITEM_ID" ]]; then
+        # Update existing item
+        bw get item "$ITEM_ID" \
+            | jq --arg notes "$PASSWORD" '.notes = $notes' \
+            | bw encode \
+            | bw edit item "$ITEM_ID" > /dev/null
+        echo "Successfully updated: ${ITEM_NAME}"
+    else
+        # Create new item
+        bw get template item \
+            | jq --arg name "$ITEM_NAME" --arg notes "$PASSWORD" --arg folderId "$FOLDER_ID" \
+              '.type = 2 | .secureNote.type = 0 | .name = $name | .notes = $notes | .folderId = $folderId' \
+            | bw encode \
+            | bw create item > /dev/null
+        echo "Successfully created: ${ITEM_NAME}"
+    fi
+done
+
 
     if [[ -z "$PASS_FILE" ]]; then
         echo "Warning: Restic password file for ${type} not found. Skipping."
