@@ -14,7 +14,6 @@
   tags:
     - restic
     - restic.vaultwarden
-  ignore_errors: yes
 
 - name: Initialize Restic Infrastructure
   include_tasks: init.yml

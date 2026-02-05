@@ -39,7 +39,7 @@ if [[ -z "${BW_SESSION:-}" && -f "${BITWARDENCLI_APPDATA_DIR}/session" ]]; then
 fi
 
 # 2. Check if we are unlocked
-IS_UNLOCKED=$(bw status | jq -r '.status')
+IS_UNLOCKED=$(bw status | jq -r '.status' || echo "error")
 
 if [[ "$IS_UNLOCKED" != "unlocked" ]]; then
     if [[ -n "${BW_EMAIL:-}" && -n "${BW_PASSWORD:-}" ]]; then
@@ -50,6 +50,12 @@ if [[ "$IS_UNLOCKED" != "unlocked" ]]; then
         else
             BW_SESSION=$(bw login "$BW_EMAIL" "$BW_PASSWORD" --raw)
         fi
+        
+        if [[ -z "${BW_SESSION}" || "$BW_SESSION" == "null" ]]; then
+            echo "Error: Authentication failed for user ${BW_EMAIL}" >&2
+            exit 1
+        fi
+        
         export BW_SESSION
         echo "$BW_SESSION" > "${BITWARDENCLI_APPDATA_DIR}/session"
     else
@@ -57,6 +63,12 @@ if [[ "$IS_UNLOCKED" != "unlocked" ]]; then
         echo "Authentication required for Vaultwarden at ${BW_BASE_URL}"
         bw login
         BW_SESSION=$(bw unlock --raw)
+        
+        if [[ -z "${BW_SESSION}" || "$BW_SESSION" == "null" ]]; then
+            echo "Error: Authentication failed" >&2
+            exit 1
+        fi
+        
         export BW_SESSION
         echo "$BW_SESSION" > "${BITWARDENCLI_APPDATA_DIR}/session"
     fi
@@ -67,11 +79,15 @@ FOLDER_NAME="infrastructure"
 echo "Verifying folder: ${FOLDER_NAME}"
 # bw list folders might return empty if nothing exists yet
 FOLDERS_JSON=$(bw list folders)
-FOLDER_ID=$(echo "$FOLDERS_JSON" | jq -r ".[] | select(.name == \"$FOLDER_NAME\") | .id" || true)
+FOLDER_ID=$(echo "$FOLDERS_JSON" | jq -r ".[] | select(.name == \"$FOLDER_NAME\") | .id")
 
 if [[ -z "$FOLDER_ID" || "$FOLDER_ID" == "null" ]]; then
     echo "Creating root folder: ${FOLDER_NAME}"
     FOLDER_ID=$(bw get template folder | jq --arg name "$FOLDER_NAME" '.name = $name' | bw encode | bw create folder | jq -r ".id")
+    if [[ -z "$FOLDER_ID" || "$FOLDER_ID" == "null" ]]; then
+        echo "Error: Failed to create folder ${FOLDER_NAME}" >&2
+        exit 1
+    fi
 fi
 
 # 2. Sync passwords (home and root)
@@ -100,7 +116,8 @@ for type in home root; do
     
     # Check if item exists in the infrastructure folder
     # Filter by exact name and folderId
-    ITEM_ID=$(bw list items --search "$ITEM_NAME" | jq -r ".[] | select(.name == \"$ITEM_NAME\" and .folderId == \"$FOLDER_ID\") | .id" | head -n 1 || true)
+    ITEMS_JSON=$(bw list items --search "$ITEM_NAME")
+    ITEM_ID=$(echo "$ITEMS_JSON" | jq -r ".[] | select(.name == \"$ITEM_NAME\" and .folderId == \"$FOLDER_ID\") | .id" | head -n 1)
 
     if [[ -n "$ITEM_ID" && "$ITEM_ID" != "null" ]]; then
         # Update existing item
