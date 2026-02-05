@@ -6,7 +6,8 @@ set -euo pipefail
 # infrastructure/<hostname>/restic-password-{home,root}
 
 HOSTNAME=${1:? "Usage: $0 <hostname>"}
-BW_BASE_URL="https://pass.${HOSTNAME}"
+# Use VAULTWARDEN_URL if provided, else derive it
+BW_BASE_URL="${VAULTWARDEN_URL:-https://pass.${HOSTNAME}}"
 
 # Isolate Bitwarden config to avoid interfering with user's main profile
 export BITWARDENCLI_APPDATA_DIR="${HOME}/.config/bw-infrastructure"
@@ -21,32 +22,54 @@ if [[ -f "/etc/ssl/mkcert/rootCA.pem" ]]; then
     export NODE_EXTRA_CA_CERTS="/etc/ssl/mkcert/rootCA.pem"
 fi
 
+# Check if server is reachable (5 second timeout)
+if ! curl -s --connect-timeout 5 -k "${BW_BASE_URL}/api/config" > /dev/null; then
+    echo "Warning: Vaultwarden at ${BW_BASE_URL} is unreachable. Skipping sync for ${HOSTNAME}."
+    exit 0
+fi
+
 echo "Configuring Bitwarden CLI for: ${BW_BASE_URL}"
 bw config server "$BW_BASE_URL" > /dev/null
 
 # Authentication logic
-if [[ -n "${BW_EMAIL:-}" && -n "${BW_PASSWORD:-}" ]]; then
-    echo "Attempting non-interactive login..."
-    # Attempt to login and get session key. 
-    # If already logged in but locked, login fails, so try unlock.
-    BW_SESSION=$(bw login "$BW_EMAIL" "$BW_PASSWORD" --raw 2>/dev/null || bw unlock "$BW_PASSWORD" --raw)
+# 1. Try to use existing session if provided or cached
+if [[ -z "${BW_SESSION:-}" && -f "${BITWARDENCLI_APPDATA_DIR}/session" ]]; then
+    BW_SESSION=$(cat "${BITWARDENCLI_APPDATA_DIR}/session")
     export BW_SESSION
-else
-    # Interactive login
-    if ! bw status | jq -e '.status == "unlocked"' > /dev/null; then
+fi
+
+# 2. Check if we are unlocked
+IS_UNLOCKED=$(bw status | jq -r '.status')
+
+if [[ "$IS_UNLOCKED" != "unlocked" ]]; then
+    if [[ -n "${BW_EMAIL:-}" && -n "${BW_PASSWORD:-}" ]]; then
+        echo "Attempting non-interactive login..."
+        # If logged in but locked, login fails, so try unlock.
+        if [[ "$IS_UNLOCKED" == "locked" ]]; then
+            BW_SESSION=$(bw unlock "$BW_PASSWORD" --raw)
+        else
+            BW_SESSION=$(bw login "$BW_EMAIL" "$BW_PASSWORD" --raw)
+        fi
+        export BW_SESSION
+        echo "$BW_SESSION" > "${BITWARDENCLI_APPDATA_DIR}/session"
+    else
+        # Interactive login
         echo "Authentication required for Vaultwarden at ${BW_BASE_URL}"
         bw login
         BW_SESSION=$(bw unlock --raw)
         export BW_SESSION
+        echo "$BW_SESSION" > "${BITWARDENCLI_APPDATA_DIR}/session"
     fi
 fi
 
 # 1. Ensure 'infrastructure' folder exists
 FOLDER_NAME="infrastructure"
 echo "Verifying folder: ${FOLDER_NAME}"
-FOLDER_ID=$(bw list folders | jq -r ".[] | select(.name == \"$FOLDER_NAME\") | .id")
+# bw list folders might return empty if nothing exists yet
+FOLDERS_JSON=$(bw list folders)
+FOLDER_ID=$(echo "$FOLDERS_JSON" | jq -r ".[] | select(.name == \"$FOLDER_NAME\") | .id" || true)
 
-if [[ -z "$FOLDER_ID" ]]; then
+if [[ -z "$FOLDER_ID" || "$FOLDER_ID" == "null" ]]; then
     echo "Creating root folder: ${FOLDER_NAME}"
     FOLDER_ID=$(bw get template folder | jq --arg name "$FOLDER_NAME" '.name = $name' | bw encode | bw create folder | jq -r ".id")
 fi
@@ -76,9 +99,10 @@ for type in home root; do
     echo "Syncing item: ${ITEM_NAME}"
     
     # Check if item exists in the infrastructure folder
-    ITEM_ID=$(bw list items --search "$ITEM_NAME" | jq -r ".[] | select(.name == \"$ITEM_NAME\" and .folderId == \"$FOLDER_ID\") | .id" | head -n 1)
+    # Filter by exact name and folderId
+    ITEM_ID=$(bw list items --search "$ITEM_NAME" | jq -r ".[] | select(.name == \"$ITEM_NAME\" and .folderId == \"$FOLDER_ID\") | .id" | head -n 1 || true)
 
-    if [[ -n "$ITEM_ID" ]]; then
+    if [[ -n "$ITEM_ID" && "$ITEM_ID" != "null" ]]; then
         # Update existing item
         bw get item "$ITEM_ID" \
             | jq --arg notes "$PASSWORD" '.notes = $notes' \
@@ -96,37 +120,5 @@ for type in home root; do
     fi
 done
 
-
-    if [[ -z "$PASS_FILE" ]]; then
-        echo "Warning: Restic password file for ${type} not found. Skipping."
-        continue
-    fi
-
-    PASSWORD=$(cat "$PASS_FILE")
-    ITEM_NAME="${HOSTNAME}/restic-password-${type}"
-    
-    echo "Syncing item: ${ITEM_NAME}"
-    
-    # Check if item exists in the infrastructure folder
-    ITEM_ID=$(bw list items --search "$ITEM_NAME" --session "$BW_SESSION" | jq -r ".[] | select(.name == \"$ITEM_NAME\" and .folderId == \"$FOLDER_ID\") | .id")
-
-    if [[ -n "$ITEM_ID" ]]; then
-        # Update existing item
-        bw get item "$ITEM_ID" --session "$BW_SESSION" \
-            | jq --arg notes "$PASSWORD" '.notes = $notes' \
-            | bw encode \
-            | bw edit item "$ITEM_ID" --session "$BW_SESSION" >/dev/null
-        echo "Successfully updated: ${ITEM_NAME}"
-    else
-        # Create new item
-        bw get template item \
-            | jq --arg name "$ITEM_NAME" --arg notes "$PASSWORD" --arg folderId "$FOLDER_ID" \
-              '.type = 2 | .secureNote.type = 0 | .name = $name | .notes = $notes | .folderId = $folderId' \
-            | bw encode \
-            | bw create item --session "$BW_SESSION" >/dev/null
-        echo "Successfully created: ${ITEM_NAME}"
-    fi
-done
-
-echo "Sync complete. Locking session..."
-bw lock >/dev/null
+echo "Sync complete."
+# We don't lock here to allow session reuse across hosts in same run

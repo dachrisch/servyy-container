@@ -4,17 +4,36 @@
   remote_user: "{{ create_user }}"
   become: true
   become_user: "{{ create_user }}"
-  vars_prompt:
-    - name: vaultwarden_email
-      prompt: "Vaultwarden Email (for password sync)"
-      private: no
-    - name: vaultwarden_password
-      prompt: "Vaultwarden Master Password"
-      private: yes
+  
   vars_files:
     - vars/default.yml
     - vars/restic.yml
     - vars/secrets.yml
+    - ["vars/.bw_credentials.yml", "vars/empty.yml"] # Try to load cached credentials
+
+  vars_prompt:
+    - name: vaultwarden_email
+      prompt: "Vaultwarden Email (for password sync)"
+      private: no
+      default: "{{ vaultwarden_email | default('') }}"
+    - name: vaultwarden_password
+      prompt: "Vaultwarden Master Password"
+      private: yes
+      default: "{{ vaultwarden_password | default('') }}"
+
+  tasks:
+    - name: Cache Vaultwarden credentials locally
+      delegate_to: localhost
+      run_once: true
+      copy:
+        dest: "{{ playbook_dir }}/vars/.bw_credentials.yml"
+        content: |
+          vaultwarden_email: "{{ vaultwarden_email }}"
+          vaultwarden_password: "{{ vaultwarden_password }}"
+        mode: '0600'
+      when: vaultwarden_email is defined and vaultwarden_password is defined
+      tags: [restic, restic.vaultwarden]
+
   roles:
     - restic
   tags:
