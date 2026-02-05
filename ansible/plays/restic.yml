@@ -4,6 +4,13 @@
   remote_user: "{{ create_user }}"
   become: true
   become_user: "{{ create_user }}"
+  vars_prompt:
+    - name: vaultwarden_email
+      prompt: "Vaultwarden Email (for password sync)"
+      private: no
+    - name: vaultwarden_password
+      prompt: "Vaultwarden Master Password"
+      private: yes
   vars_files:
     - vars/default.yml
     - vars/restic.yml

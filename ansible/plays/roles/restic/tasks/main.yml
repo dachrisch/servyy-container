@@ -1,6 +1,21 @@
 ---
 # Orchestrator for Restic role
 
+- name: Sync Restic passwords to Vaultwarden
+  delegate_to: localhost
+  run_once: false
+  become: false
+  shell: "./scripts/add-restic-passwords-to-vaultwarden.sh {{ inventory_hostname }}"
+  args:
+    chdir: "{{ playbook_dir }}/../../"
+  environment:
+    BW_EMAIL: "{{ vaultwarden_email | default('') }}"
+    BW_PASSWORD: "{{ vaultwarden_password | default('') }}"
+  tags:
+    - restic
+    - restic.vaultwarden
+  ignore_errors: yes
+
 - name: Initialize Restic Infrastructure
   include_tasks: init.yml
   tags:

@@ -261,6 +261,23 @@ services:
         read_only: true
 ```
 
+### Vaultwarden Integration - Restic Passwords
+Store Restic backup passwords in Vaultwarden for secure backup key management:
+
+**Manual Sync:**
+```bash
+./scripts/add-restic-passwords-to-vaultwarden.sh <hostname>
+```
+
+**As Part of Deployment:**
+The process is integrated into `ansible/plays/restic.yml` and runs on every deployment. It will prompt for your Vaultwarden email and master password.
+
+**What it does:**
+- Reads Restic passwords from `ansible/plays/vars/.restic_password_*`
+- Creates/overwrites secure notes in Vaultwarden folder: `infrastructure/`
+- Item naming: `<hostname>/restic-password-{home,root}`
+- Uses private CLI config to avoid interference with local user settings
+
 ### Emergency Procedures
 - **Never** make manual changes to production servers
 - **Always** replicate manual changes in git repo

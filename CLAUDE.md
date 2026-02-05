@@ -194,6 +194,32 @@ ssh lehel.xyz "docker restart monitor.grafana"
 
 **Testing is not optional** - if you modify a role, update or add tests. The CI will reject PRs without test coverage.
 
+## Vaultwarden Integration
+
+### Restic Passwords Backup
+
+Restic backup passwords are stored in Vaultwarden for disaster recovery and secure backup key management.
+
+**Storage Location:**
+- **Folder:** `infrastructure/`
+- **Items:** `<hostname>/restic-password-{home,root}`
+
+**Manual Synchronization:**
+```bash
+./scripts/add-restic-passwords-to-vaultwarden.sh <hostname>
+```
+
+**During Deployment:**
+The synchronization is automated in the `restic` role. Deployment will prompt for Vaultwarden credentials once per session.
+
+**Disaster Recovery Retrieval:**
+If local password files are lost, retrieve from Vaultwarden:
+```bash
+bw config set baseUrl https://pass.<hostname>
+bw login <email>
+bw get notes "<hostname>/restic-password-home"
+```
+
 ## git-crypt (CRITICAL)
 
 **Encrypted patterns:** `docker-compose.yml`, `*.yaml`, `*.env`, `*.conf`, `secrets.*`, `secret_*`
