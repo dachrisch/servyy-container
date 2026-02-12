@@ -41,6 +41,15 @@
 
 - name: Create Agent Zero specific configuration
   block:
+    - name: Create Agent Zero data directory
+      file:
+        path: "{{ (docker.remote_dir, 'agent-zero', 'data') | path_join }}"
+        state: directory
+        owner: "{{ create_user }}"
+        group: "{{ create_user }}"
+        mode: '0775'
+      become: true
+
     - name: Create Agent Zero data directories
       file:
         path: "{{ (docker.remote_dir, 'agent-zero', 'data', item) | path_join }}"
@@ -54,6 +63,7 @@
         - usr
         - memory
         - projects
+      become: true
 
     - name: Create Agent Zero .env file
       template:
