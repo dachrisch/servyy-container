@@ -49,6 +49,7 @@
         group: "{{ create_user }}"
         mode: '0775'
       become: true
+      become_user: root
 
     - name: Create Agent Zero data directories
       file:
@@ -64,6 +65,7 @@
         - memory
         - projects
       become: true
+      become_user: root
 
     - name: Create Agent Zero .env file
       template:
