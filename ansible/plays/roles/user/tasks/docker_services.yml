@@ -11,6 +11,19 @@
   tags:
     - user.docker.services.script
 
+- name: Create OpenCode data directory
+  file:
+    path: "{{ (docker.remote_dir, 'opencode', 'data') | path_join }}"
+    state: directory
+    owner: "{{ create_user }}"
+    group: "docker"
+    mode: '0775'
+  become: true
+  become_user: root
+  when: with_containers | default(false)
+  tags:
+    - user.docker.opencode
+
 - name: Start docker services
   community.docker.docker_compose_v2:
     project_src: "{{ (docker.remote_dir, item.dir ) | path_join }}"
