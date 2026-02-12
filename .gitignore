@@ -18,3 +18,4 @@ dns/volumes
 # jekyll
 bumbleflies/site
 *.log
+.worktrees/
