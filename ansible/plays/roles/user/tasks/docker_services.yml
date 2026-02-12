@@ -38,3 +38,28 @@
 
   tags:
     - user.docker.systemd.service.index
+
+- name: Create Agent Zero specific configuration
+  block:
+    - name: Create Agent Zero data directories
+      file:
+        path: "{{ (docker.remote_dir, 'agent-zero', 'data', item) | path_join }}"
+        state: directory
+        owner: "{{ create_user }}"
+        group: "docker"
+        mode: '0775'
+      loop:
+        - logs
+        - knowledge
+        - usr
+        - memory
+        - projects
+
+    - name: Create Agent Zero .env file
+      template:
+        src: agent_zero.env.j2
+        dest: "{{ (docker.remote_dir, 'agent-zero', '.env') | path_join }}"
+        mode: '0600'
+  when: "with_containers | default(false)"
+  tags:
+    - user.docker.agent-zero
