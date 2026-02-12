@@ -16,7 +16,7 @@ Integrated OpenCode as a new Docker service:
 - **Port:** 4096 (standard OpenCode port).
 - **Authentication:** HTTP Basic Auth secured via `OPENCODE_SERVER_PASSWORD`.
 - **Persistence:** Persistent configuration and data stored in `opencode/data/`.
-- **Reverse Proxy:** Traefik routing with TLS support via `opencode.lehel.xyz`.
+- **Reverse Proxy:** Traefik routing with TLS support via `opencode.lehel.xyz` and local qualified routing for development.
 
 ## Implementation
 
@@ -24,7 +24,8 @@ Integrated OpenCode as a new Docker service:
 
 **opencode/docker-compose.yml:**
 - Defined the `opencode` service.
-- Configured Traefik labels for routing, TLS, and load balancing.
+- Configured Traefik labels for routing, TLS (matching `pass` pattern), and load balancing.
+- Set up local qualified routing for `.lxd` environments.
 - Set up volume mounts for persistent data.
 - Configured environment variables via `.env` (generic) and `opencode.env` (app-specific).
 
