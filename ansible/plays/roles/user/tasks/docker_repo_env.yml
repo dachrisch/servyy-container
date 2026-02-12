@@ -24,3 +24,13 @@
   tags:
     - user.docker.env
     - user.docker.env.energy
+
+- name: Create opencode.env file for docker service
+  template:
+    src: opencode.env.j2
+    dest: "{{(docker.remote_dir, 'opencode', 'opencode.env') | path_join}}"
+    mode: '0600'
+    owner: "{{create_user}}"
+  tags:
+    - user.docker.env
+    - user.docker.env.opencode
