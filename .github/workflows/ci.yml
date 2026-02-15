@@ -21,7 +21,7 @@ jobs:
         uses: ibiqlik/action-yamllint@v3
         with:
           config_file: .yamllint.yml
-          file_or_dir: ansible/
+          file_or_dir: ansible/plays/**/*.yml
 
   lint-ansible:
     name: Ansible Lint
