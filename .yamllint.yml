@@ -30,4 +30,4 @@ ignore: |
   ansible/plays/roles/user/defaults/
   ansible/plays/roles/testing/defaults/
   # Encrypted .yaml files (git-crypt) should not be linted
-  '*.yaml'
+  *.yaml
