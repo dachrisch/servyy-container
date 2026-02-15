@@ -57,7 +57,7 @@
 
     - name: Display Status
       debug:
-        msg:
+        msg: 
           - "Broken Repositories (Lockout): {{ broken_repos }}"
           - "Mismatched Config Files: {{ mismatched_files }}"
       tags:
