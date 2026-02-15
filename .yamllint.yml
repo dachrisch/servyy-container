@@ -29,3 +29,4 @@ ignore: |
   ansible/plays/roles/ls_*/
   ansible/plays/roles/user/defaults/
   ansible/plays/roles/testing/defaults/
+  ansible/plays/roles/**/*.yaml  # All encrypted .yaml files
