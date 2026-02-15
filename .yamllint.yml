@@ -29,7 +29,21 @@ ignore: |
   ansible/plays/roles/ls_*/
   ansible/plays/roles/user/defaults/
   ansible/plays/roles/testing/defaults/
-  # Encrypted .yaml files (git-crypt) should not be linted
-  ansible/plays/roles/system/.*\.yaml
-  ansible/plays/roles/testing/.*\.yaml
-  ansible/plays/roles/user/.*\.yaml
+  ansible/plays/roles/ls_access/tasks/git.yaml
+  ansible/plays/roles/ls_access/tasks/jail_ssh.yaml
+  ansible/plays/roles/ls_access/tasks/tmp.yaml
+  ansible/plays/roles/ls_app/defaults/main.yaml
+  ansible/plays/roles/ls_app/tasks/deploy.yaml
+  ansible/plays/roles/ls_app/tasks/env.yaml
+  ansible/plays/roles/ls_app/tasks/fix_staging.yaml
+  ansible/plays/roles/ls_app/tasks/main.yaml
+  ansible/plays/roles/ls_app/tasks/pull.yaml
+  ansible/plays/roles/ls_app/vars/secret_main.yaml
+  ansible/plays/roles/ls_app/vars/secret_stage.yaml
+  ansible/plays/roles/ls_setup/handlers/main.yaml
+  ansible/plays/roles/ls_setup/tasks/add_to_docker.yaml
+  ansible/plays/roles/ls_setup/tasks/jail_group.yaml
+  ansible/plays/roles/testing/defaults/main.yaml
+  ansible/plays/roles/user/defaults/main.yaml
+  ansible/plays/vars/secret_leaguesphere.yaml
+  ansible/plays/vars/ssh_jail.yaml
