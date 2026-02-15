@@ -23,12 +23,10 @@ ignore: |
   ansible/plays/vars/secrets.yml
   ansible/plays/vars/secret_*.yaml
   ansible/plays/vars/secret_*.yml
-  ansible/plays/vars/ssh_jail.yaml
   ansible/plays/roles/geerlingguy.*/
   ansible/plays/roles/sebthebert.*/
   ansible/plays/roles/ls_*/
-  ansible/plays/roles/user/defaults/
-  ansible/plays/roles/testing/defaults/
+  # Encrypted .yaml files (git-crypt protected)
   ansible/plays/roles/ls_access/tasks/git.yaml
   ansible/plays/roles/ls_access/tasks/jail_ssh.yaml
   ansible/plays/roles/ls_access/tasks/tmp.yaml
