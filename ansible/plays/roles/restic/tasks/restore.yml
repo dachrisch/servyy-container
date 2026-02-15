@@ -96,6 +96,7 @@
 
 - name: Check if any containers are running for this service
   shell: |
+    set -o pipefail
     cd "{{ restore_path | dirname }}"
     if [ -f "docker-compose.yml" ]; then
       docker compose ps -q 2>/dev/null | wc -l
