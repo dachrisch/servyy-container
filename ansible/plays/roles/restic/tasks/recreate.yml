@@ -57,7 +57,7 @@
 
     - name: Display Status
       debug:
-        msg: 
+        msg:
           - "Broken Repositories (Lockout): {{ broken_repos }}"
           - "Mismatched Config Files: {{ mismatched_files }}"
       tags:
@@ -66,7 +66,7 @@
     - name: Fail if everything is fine
       fail:
         msg: "System is healthy. Repositories accessible and local config matches Ansible secrets."
-      when: 
+      when:
         - broken_repos | length == 0
         - mismatched_files | length == 0
       tags:
@@ -99,7 +99,7 @@
     - name: Abort if not confirmed
       fail:
         msg: "Aborted."
-      when: 
+      when:
         - not (confirm_recreate | default('') | lower == 'yes')
         - not (pause_result.user_input | default('') | lower == 'yes')
       tags:
@@ -132,7 +132,7 @@
             -rmdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-{{ item }}
             EOF
           loop: "{{ broken_repos }}"
-          when: 
+          when:
             - "restic[item].repository.startswith('sftp://')"
             - not (mount_delete.results | selectattr('item', 'equalto', item) | map(attribute='changed') | first | default(false))
           register: sftp_delete
@@ -154,7 +154,7 @@
           when: item.name in broken_repos
           register: restic_reinit
           changed_when: "'created restic repository' in restic_reinit.stdout"
-          failed_when: 
+          failed_when:
             - restic_reinit.rc != 0
             - "'config file already exists' not in restic_reinit.stderr"
       when: broken_repos | length > 0
