@@ -60,9 +60,6 @@
         dest: /etc/monit/scripts/check_docker_compose-{{ item.dir }}.sh
         mode: 0750
       vars:
-        container_names: >-
-          {{ (lookup('file', (docker.local_dir, item.dir, 'docker-compose.yml') | path_join ) | from_yaml)['services']
-          | dict2items | map(attribute='key') | list }}
         dir_name: "{{ item.dir }}"
       when: not ('manual' in item)
       with_items:
