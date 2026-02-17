@@ -27,8 +27,8 @@
   stat:
     path: "/etc/restic/env.{{ item.name }}"
   loop:
-    - { name: 'home' }
-    - { name: 'root' }
+    - {name: 'home'}
+    - {name: 'root'}
   register: restic_env_stats
   become: true
   become_user: root
