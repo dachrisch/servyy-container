@@ -12,8 +12,8 @@
         export RESTIC_PASSWORD="{{ item.password }}"
         restic snapshots >/dev/null 2>&1
       loop:
-        - { name: 'home', repository: "{{ restic.home.repository }}", password: "{{ restic.home.password }}" }
-        - { name: 'root', repository: "{{ restic.root.repository }}", password: "{{ restic.root.password }}" }
+        - {name: 'home', repository: "{{ restic.home.repository }}", password: "{{ restic.home.password }}"}
+        - {name: 'root', repository: "{{ restic.root.repository }}", password: "{{ restic.root.password }}"}
       register: repo_check
       failed_when: false
       changed_when: false
@@ -25,8 +25,8 @@
       slurp:
         src: "/etc/restic/env.{{ item.name }}"
       loop:
-        - { name: 'home' }
-        - { name: 'root' }
+        - {name: 'home'}
+        - {name: 'root'}
       register: local_env_files
       failed_when: false
       become: true
@@ -149,8 +149,8 @@
             fi
             restic init
           loop:
-            - { name: 'home', repository: "{{ restic.home.repository }}", password: "{{ restic.home.password }}" }
-            - { name: 'root', repository: "{{ restic.root.repository }}", password: "{{ restic.root.password }}" }
+          - {name: 'home', repository: "{{ restic.home.repository }}", password: "{{ restic.home.password }}"}
+          - {name: 'root', repository: "{{ restic.root.repository }}", password: "{{ restic.root.password }}"}
           when: item.name in broken_repos
           register: restic_reinit
           changed_when: "'created restic repository' in restic_reinit.stdout"
@@ -174,8 +174,8 @@
         repository: "{{ item.repository }}"
         password: "{{ item.password }}"
       loop:
-        - { name: 'home', repository: "{{ restic.home.repository }}", password: "{{ restic.home.password }}" }
-        - { name: 'root', repository: "{{ restic.root.repository }}", password: "{{ restic.root.password }}" }
+        - {name: 'home', repository: "{{ restic.home.repository }}", password: "{{ restic.home.password }}"}
+        - {name: 'root', repository: "{{ restic.root.repository }}", password: "{{ restic.root.password }}"}
       when: (item.name in broken_repos) or (item.name in mismatched_files)
       become: true
       become_user: root
