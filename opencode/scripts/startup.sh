@@ -8,7 +8,7 @@ echo "📦 [Startup] Installing system packages..."
 # apt-get update
 # apt-get install -y git curl python3 python3-pip
 apk update
-apk add git curl github-cli nodejs npm python3 py3-pip
+apk add git curl github-cli nodejs npm python3 py3-pip openssh
 
 # 2. Extensions (Placeholder)
 # echo "🧩 [Startup] Installing extensions..."
