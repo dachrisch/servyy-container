@@ -20,28 +20,28 @@ ignore: |
   .backup/
   .cache/
   __pycache__/
-  ansible/plays/vars/secrets.yml
-  ansible/plays/vars/secret_*.yaml
-  ansible/plays/vars/secret_*.yml
-  ansible/plays/roles/geerlingguy.*/
-  ansible/plays/roles/sebthebert.*/
-  ansible/plays/roles/ls_*/
+  plays/vars/secrets.yml
+  plays/vars/secret_*.yaml
+  plays/vars/secret_*.yml
+  plays/roles/geerlingguy.*/
+  plays/roles/sebthebert.*/
+  plays/roles/ls_*/
   # Encrypted .yaml files (git-crypt protected)
-  ansible/plays/roles/ls_access/tasks/git.yaml
-  ansible/plays/roles/ls_access/tasks/jail_ssh.yaml
-  ansible/plays/roles/ls_access/tasks/tmp.yaml
-  ansible/plays/roles/ls_app/defaults/main.yaml
-  ansible/plays/roles/ls_app/tasks/deploy.yaml
-  ansible/plays/roles/ls_app/tasks/env.yaml
-  ansible/plays/roles/ls_app/tasks/fix_staging.yaml
-  ansible/plays/roles/ls_app/tasks/main.yaml
-  ansible/plays/roles/ls_app/tasks/pull.yaml
-  ansible/plays/roles/ls_app/vars/secret_main.yaml
-  ansible/plays/roles/ls_app/vars/secret_stage.yaml
-  ansible/plays/roles/ls_setup/handlers/main.yaml
-  ansible/plays/roles/ls_setup/tasks/add_to_docker.yaml
-  ansible/plays/roles/ls_setup/tasks/jail_group.yaml
-  ansible/plays/roles/testing/defaults/main.yaml
-  ansible/plays/roles/user/defaults/main.yaml
-  ansible/plays/vars/secret_leaguesphere.yaml
-  ansible/plays/vars/ssh_jail.yaml
+  plays/roles/ls_access/tasks/git.yaml
+  plays/roles/ls_access/tasks/jail_ssh.yaml
+  plays/roles/ls_access/tasks/tmp.yaml
+  plays/roles/ls_app/defaults/main.yaml
+  plays/roles/ls_app/tasks/deploy.yaml
+  plays/roles/ls_app/tasks/env.yaml
+  plays/roles/ls_app/tasks/fix_staging.yaml
+  plays/roles/ls_app/tasks/main.yaml
+  plays/roles/ls_app/tasks/pull.yaml
+  plays/roles/ls_app/vars/secret_main.yaml
+  plays/roles/ls_app/vars/secret_stage.yaml
+  plays/roles/ls_setup/handlers/main.yaml
+  plays/roles/ls_setup/tasks/add_to_docker.yaml
+  plays/roles/ls_setup/tasks/jail_group.yaml
+  plays/roles/testing/defaults/main.yaml
+  plays/roles/user/defaults/main.yaml
+  plays/vars/secret_leaguesphere.yaml
+  plays/vars/ssh_jail.yaml

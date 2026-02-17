@@ -149,8 +149,8 @@
             fi
             restic init
           loop:
-          - {name: 'home', repository: "{{ restic.home.repository }}", password: "{{ restic.home.password }}"}
-          - {name: 'root', repository: "{{ restic.root.repository }}", password: "{{ restic.root.password }}"}
+            - {name: 'home', repository: "{{ restic.home.repository }}", password: "{{ restic.home.password }}"}
+            - {name: 'root', repository: "{{ restic.root.repository }}", password: "{{ restic.root.password }}"}
           when: item.name in broken_repos
           register: restic_reinit
           changed_when: "'created restic repository' in restic_reinit.stdout"
