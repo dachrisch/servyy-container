@@ -1,5 +1,4 @@
 check program "Docker Service {{ service.name }}" with path "/etc/monit/scripts/check_docker_compose-{{ service.dir }}.sh"
     with timeout 30 seconds
-    if status != 0 for 2 cycles then restart
-    if status != 0 for 4 cycles then alert
+    if status != 0 for 2 cycles then alert
     group docker
