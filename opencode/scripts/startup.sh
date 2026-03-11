@@ -15,7 +15,8 @@ echo "⚙️ [Startup] Configuring OpenCode..."
 if [ -f "/root/.config/opencode/opencode.json" ]; then
     # We create a temporary file to avoid reading and writing to the same file simultaneously
     envsubst < /root/.config/opencode/opencode.json > /tmp/opencode.json
-    mv /tmp/opencode.json /root/.config/opencode/opencode.json
+    cat /tmp/opencode.json > /root/.config/opencode/opencode.json
+    rm /tmp/opencode.json
 fi
 
 # 3. Extensions (Placeholder)
