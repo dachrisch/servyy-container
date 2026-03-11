@@ -13,8 +13,12 @@ apk add git curl github-cli nodejs npm python3 py3-pip openssh git-crypt gettext
 # 2. Configuration Substitution
 echo "⚙️ [Startup] Configuring OpenCode..."
 if [ -f "/root/.config/opencode/opencode.json" ]; then
+    # Set default if not provided
+    export CIRCLECI_BASE_URL="${CIRCLECI_BASE_URL:-https://circleci.com}"
+    
+    # We only substitute specific variables to avoid breaking $schema
     # We create a temporary file to avoid reading and writing to the same file simultaneously
-    envsubst < /root/.config/opencode/opencode.json > /tmp/opencode.json
+    envsubst '$CIRCLECI_TOKEN $CIRCLECI_BASE_URL' < /root/.config/opencode/opencode.json > /tmp/opencode.json
     cat /tmp/opencode.json > /root/.config/opencode/opencode.json
     rm /tmp/opencode.json
 fi
