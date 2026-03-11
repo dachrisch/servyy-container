@@ -11,8 +11,8 @@
       ],
       "enabled": true,
       "environment": {
-        "CIRCLECI_TOKEN": "${CIRCLECI_TOKEN}",
-        "CIRCLECI_BASE_URL": "${CIRCLECI_BASE_URL:-https://circleci.com}"
+        "CIRCLECI_TOKEN": "$CIRCLECI_TOKEN",
+        "CIRCLECI_BASE_URL": "$CIRCLECI_BASE_URL"
       }
     }
   }
