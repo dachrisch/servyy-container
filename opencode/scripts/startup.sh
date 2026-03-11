@@ -8,9 +8,17 @@ echo "📦 [Startup] Installing system packages..."
 # apt-get update
 # apt-get install -y git curl python3 python3-pip
 apk update
-apk add git curl github-cli nodejs npm python3 py3-pip openssh git-crypt
+apk add git curl github-cli nodejs npm python3 py3-pip openssh git-crypt gettext
 
-# 2. Extensions (Placeholder)
+# 2. Configuration Substitution
+echo "⚙️ [Startup] Configuring OpenCode..."
+if [ -f "/root/.config/opencode/opencode.json" ]; then
+    # We create a temporary file to avoid reading and writing to the same file simultaneously
+    envsubst < /root/.config/opencode/opencode.json > /tmp/opencode.json
+    mv /tmp/opencode.json /root/.config/opencode/opencode.json
+fi
+
+# 3. Extensions (Placeholder)
 # echo "🧩 [Startup] Installing extensions..."
 # code-server --install-extension <extension-id>
 
