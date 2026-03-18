@@ -34,3 +34,13 @@
   tags:
     - user.docker.env
     - user.docker.env.opencode
+
+- name: Create groceries.env file for docker service
+  template:
+    src: groceries.env.j2
+    dest: "{{(docker.remote_dir, 'groceries', 'groceries.env') | path_join}}"
+    mode: '0600'
+    owner: "{{create_user}}"
+  tags:
+    - user.docker.env
+    - user.docker.env.groceries
