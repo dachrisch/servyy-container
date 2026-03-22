@@ -103,6 +103,34 @@
   changed_when: true
   no_log: true
 
+- name: Create finance tables via sqlmigrate and record migration
+  shell: |
+    docker run --rm \
+      --network {{ stage_app.app.name }}_backend \
+      -e MYSQL_HOST={{ stage_app.app.name }}.mysql \
+      -e MYSQL_DB_NAME={{ stage_app.app.db_name }} \
+      -e MYSQL_USER={{ stage_app.app.db_user }} \
+      -e MYSQL_PWD='{{ stage_app.app.db_password }}' \
+      -e MYSQL_ROOT_PASSWORD='{{ stage_app.app.db_root_password }}' \
+      -e MYSQL_FINANCE_HOST={{ stage_app.app.name }}.finance-db \
+      -e MYSQL_FINANCE_DB_NAME={{ stage_app.app.db_finance_name }} \
+      -e MYSQL_FINANCE_USER={{ stage_app.app.db_finance_user }} \
+      -e MYSQL_FINANCE_PWD='{{ stage_app.app.db_finance_password }}' \
+      -e DJANGO_SETTINGS_MODULE=league_manager.settings.stage \
+      -e SECRET_KEY='{{ stage_app.app.secret_key }}' \
+      leaguesphere/backend:staging \
+      python manage.py sqlmigrate --database finance finance 0001_initial 2>/dev/null \
+    | grep -v '^--' \
+    | (echo 'SET FOREIGN_KEY_CHECKS=0;'; cat; echo 'SET FOREIGN_KEY_CHECKS=1;') \
+    | docker exec -i {{ stage_app.app.name }}.finance-db \
+        mariadb -h localhost -u root -p'{{ stage_app.app.db_finance_root_password }}' {{ stage_app.app.db_finance_name }}
+    docker exec {{ stage_app.app.name }}.finance-db \
+      mariadb -h localhost -u root -p'{{ stage_app.app.db_finance_root_password }}' \
+      -e "INSERT IGNORE INTO django_migrations (app, name, applied) VALUES ('finance', '0001_initial', NOW());" \
+      {{ stage_app.app.db_finance_name }}
+  changed_when: true
+  no_log: true
+
 - name: Restart staging app
   shell: docker restart {{ stage_app.app.name }}.app
 
