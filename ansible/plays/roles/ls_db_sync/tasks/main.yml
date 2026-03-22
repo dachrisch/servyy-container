@@ -50,11 +50,14 @@
       -e "DROP DATABASE IF EXISTS {{ stage_app.app.db_name }}; CREATE DATABASE {{ stage_app.app.db_name }} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
   changed_when: true
 
-- name: Drop staging finance database to allow fresh migration run
+- name: Drop and recreate staging finance database to allow fresh migration run
   shell: |
     docker exec {{ stage_app.app.name }}.finance-db \
       mariadb -h localhost -u root -p'{{ stage_app.app.db_finance_root_password }}' \
-      -e "DROP DATABASE IF EXISTS {{ stage_app.app.db_finance_name }};"
+      -e "DROP DATABASE IF EXISTS {{ stage_app.app.db_finance_name }};
+          CREATE DATABASE {{ stage_app.app.db_finance_name }} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          GRANT ALL PRIVILEGES ON {{ stage_app.app.db_finance_name }}.* TO '{{ stage_app.app.db_finance_user }}'@'%';
+          FLUSH PRIVILEGES;"
   changed_when: true
 
 - name: Import database
