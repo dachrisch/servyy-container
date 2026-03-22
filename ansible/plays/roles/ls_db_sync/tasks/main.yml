@@ -126,6 +126,21 @@
         mariadb -h localhost -u root -p'{{ stage_app.app.db_finance_root_password }}' {{ stage_app.app.db_finance_name }}
     docker exec {{ stage_app.app.name }}.finance-db \
       mariadb -h localhost -u root -p'{{ stage_app.app.db_finance_root_password }}' \
+      -e "CREATE TABLE IF NOT EXISTS django_migrations (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            app VARCHAR(255) NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            applied DATETIME(6) NOT NULL
+          );" \
+      {{ stage_app.app.db_finance_name }}
+    docker exec {{ stage_app.app.name }}.mysql \
+      mariadb -h localhost -u root -p'{{ stage_app.app.db_root_password }}' \
+      -N -e "SELECT CONCAT('INSERT IGNORE INTO django_migrations (app,name,applied) VALUES (',QUOTE(app),',',QUOTE(name),',',QUOTE(applied),');') FROM django_migrations;" \
+      {{ stage_app.app.db_name }} \
+    | docker exec -i {{ stage_app.app.name }}.finance-db \
+        mariadb -h localhost -u root -p'{{ stage_app.app.db_finance_root_password }}' {{ stage_app.app.db_finance_name }}
+    docker exec {{ stage_app.app.name }}.finance-db \
+      mariadb -h localhost -u root -p'{{ stage_app.app.db_finance_root_password }}' \
       -e "INSERT IGNORE INTO django_migrations (app, name, applied) VALUES ('finance', '0001_initial', NOW());" \
       {{ stage_app.app.db_finance_name }}
   changed_when: true
