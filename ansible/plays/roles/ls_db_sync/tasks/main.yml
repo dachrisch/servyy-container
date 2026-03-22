@@ -64,12 +64,26 @@
       < "{{ sql_dump_file }}"
   changed_when: true
 
-- name: Fake gamedays.0023 migration if applied dependency is missing after sync
+- name: Remove staging-branch migration records to allow clean re-run
   shell: |
     docker exec {{ stage_app.app.name }}.mysql \
       mariadb -h localhost -u root -p'{{ stage_app.app.db_root_password }}' \
-      -e "INSERT IGNORE INTO django_migrations (app, name, applied)
-          VALUES ('gamedays', '0023_gameinfo_league_group', NOW());" \
+      -e "DELETE FROM django_migrations WHERE app='gameday_designer';
+          DELETE FROM django_migrations WHERE app='gamedays' AND name='0023_gameinfo_league_group';" \
+      {{ stage_app.app.db_name }}
+  changed_when: true
+
+- name: Drop staging-branch-only tables and schema to allow fresh migration run
+  shell: |
+    docker exec {{ stage_app.app.name }}.mysql \
+      mariadb -h localhost -u root -p'{{ stage_app.app.db_root_password }}' \
+      -e "DROP TABLE IF EXISTS
+            gameday_designer_templateupdateruleteam,
+            gameday_designer_templateupdaterule,
+            gameday_designer_templateapplication,
+            gameday_designer_templateslot,
+            gameday_designer_scheduletemplate;
+          ALTER TABLE gamedays_gameinfo DROP COLUMN IF EXISTS league_group_id;" \
       {{ stage_app.app.db_name }}
   changed_when: true
 
