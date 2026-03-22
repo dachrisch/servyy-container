@@ -59,9 +59,9 @@
 
 - name: Import database
   shell: |
+    (echo "SET FOREIGN_KEY_CHECKS=0;"; cat "{{ sql_dump_file }}"; echo "SET FOREIGN_KEY_CHECKS=1;") | \
     docker exec -i {{ stage_app.app.name }}.mysql \
-      mariadb -u root -p'{{ stage_app.app.db_root_password }}' {{ stage_app.app.db_name }} \
-      < "{{ sql_dump_file }}"
+      mariadb -u root -p'{{ stage_app.app.db_root_password }}' {{ stage_app.app.db_name }}
   changed_when: true
 
 - name: Fake gamedays.0023 migration (column exists in prod, required by 0024+)
