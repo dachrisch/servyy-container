@@ -64,6 +64,15 @@
       < "{{ sql_dump_file }}"
   changed_when: true
 
+- name: Fake gamedays.0023 migration if applied dependency is missing after sync
+  shell: |
+    docker exec {{ stage_app.app.name }}.mysql \
+      mariadb -h localhost -u root -p'{{ stage_app.app.db_root_password }}' \
+      -e "INSERT IGNORE INTO django_migrations (app, name, applied)
+          VALUES ('gamedays', '0023_gameinfo_league_group', NOW());" \
+      {{ stage_app.app.db_name }}
+  changed_when: true
+
 - name: Restart staging app
   shell: docker restart {{ stage_app.app.name }}.app
 
