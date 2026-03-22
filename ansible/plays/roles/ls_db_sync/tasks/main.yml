@@ -67,41 +67,6 @@
       mariadb -u root -p'{{ stage_app.app.db_root_password }}' {{ stage_app.app.db_name }}
   changed_when: true
 
-- name: Fake gamedays.0023 migration (column exists in prod, required by 0024+)
-  shell: |
-    docker exec {{ stage_app.app.name }}.mysql \
-      mariadb -h localhost -u root -p'{{ stage_app.app.db_root_password }}' \
-      -e "INSERT IGNORE INTO django_migrations (app, name, applied)
-          VALUES ('gamedays', '0023_gameinfo_league_group', NOW());" \
-      {{ stage_app.app.db_name }}
-  changed_when: true
-
-- name: Create league_table tables via sqlmigrate and record migration
-  shell: |
-    docker run --rm \
-      --network {{ stage_app.app.name }}_backend \
-      -e MYSQL_HOST={{ stage_app.app.name }}.mysql \
-      -e MYSQL_DB_NAME={{ stage_app.app.db_name }} \
-      -e MYSQL_USER={{ stage_app.app.db_user }} \
-      -e MYSQL_PWD='{{ stage_app.app.db_password }}' \
-      -e MYSQL_ROOT_PASSWORD='{{ stage_app.app.db_root_password }}' \
-      -e MYSQL_FINANCE_HOST={{ stage_app.app.db_finance_host | default('finance-db') }} \
-      -e MYSQL_FINANCE_DB_NAME={{ stage_app.app.db_finance_name }} \
-      -e MYSQL_FINANCE_USER={{ stage_app.app.db_finance_user }} \
-      -e MYSQL_FINANCE_PWD='{{ stage_app.app.db_finance_password }}' \
-      -e DJANGO_SETTINGS_MODULE=league_manager.settings.stage \
-      -e SECRET_KEY='{{ stage_app.app.secret_key }}' \
-      leaguesphere/backend:staging \
-      python manage.py sqlmigrate league_table 0001_initial 2>/dev/null \
-    | grep -v '^--' \
-    | docker exec -i {{ stage_app.app.name }}.mysql \
-        mariadb -u root -p'{{ stage_app.app.db_root_password }}' {{ stage_app.app.db_name }}
-    docker exec {{ stage_app.app.name }}.mysql \
-      mariadb -h localhost -u root -p'{{ stage_app.app.db_root_password }}' \
-      -e "INSERT IGNORE INTO django_migrations (app, name, applied) VALUES ('league_table', '0001_initial', NOW());" \
-      {{ stage_app.app.db_name }}
-  changed_when: true
-  no_log: true
 
 - name: Create finance tables via sqlmigrate and record migration
   shell: |
