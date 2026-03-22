@@ -73,7 +73,7 @@
       {{ stage_app.app.db_name }}
   changed_when: true
 
-- name: Create league_table tables and record migration (staging-only app not in prod)
+- name: Create league_table tables via sqlmigrate and record migration
   shell: |
     docker run --rm \
       --network {{ stage_app.app.name }}_backend \
@@ -89,11 +89,14 @@
       -e DJANGO_SETTINGS_MODULE=league_manager.settings.stage \
       -e SECRET_KEY='{{ stage_app.app.secret_key }}' \
       leaguesphere/backend:staging \
-      python -c "import django; django.setup(); \
-        from django.db.migrations.executor import MigrationExecutor; \
-        from django.db import connections; \
-        MigrationExecutor(connections['default']).migrate([('league_table', '0001_initial')]); \
-        print('league_table migration complete')"
+      python manage.py sqlmigrate league_table 0001_initial 2>/dev/null \
+    | grep -v '^--' \
+    | docker exec -i {{ stage_app.app.name }}.mysql \
+        mariadb -u root -p'{{ stage_app.app.db_root_password }}' {{ stage_app.app.db_name }}
+    docker exec {{ stage_app.app.name }}.mysql \
+      mariadb -h localhost -u root -p'{{ stage_app.app.db_root_password }}' \
+      -e "INSERT IGNORE INTO django_migrations (app, name, applied) VALUES ('league_table', '0001_initial', NOW());" \
+      {{ stage_app.app.db_name }}
   changed_when: true
   no_log: true
 
