@@ -64,28 +64,38 @@
       < "{{ sql_dump_file }}"
   changed_when: true
 
-- name: Remove staging-branch migration records to allow clean re-run
+- name: Fake gamedays.0023 migration (column exists in prod, required by 0024+)
   shell: |
     docker exec {{ stage_app.app.name }}.mysql \
       mariadb -h localhost -u root -p'{{ stage_app.app.db_root_password }}' \
-      -e "DELETE FROM django_migrations WHERE app='gameday_designer';
-          DELETE FROM django_migrations WHERE app='gamedays' AND name='0023_gameinfo_league_group';" \
+      -e "INSERT IGNORE INTO django_migrations (app, name, applied)
+          VALUES ('gamedays', '0023_gameinfo_league_group', NOW());" \
       {{ stage_app.app.db_name }}
   changed_when: true
 
-- name: Drop staging-branch-only tables and schema to allow fresh migration run
+- name: Create league_table tables and record migration (staging-only app not in prod)
   shell: |
-    docker exec {{ stage_app.app.name }}.mysql \
-      mariadb -h localhost -u root -p'{{ stage_app.app.db_root_password }}' \
-      -e "DROP TABLE IF EXISTS
-            gameday_designer_templateupdateruleteam,
-            gameday_designer_templateupdaterule,
-            gameday_designer_templateapplication,
-            gameday_designer_templateslot,
-            gameday_designer_scheduletemplate;
-          ALTER TABLE gamedays_gameinfo DROP COLUMN IF EXISTS league_group_id;" \
-      {{ stage_app.app.db_name }}
+    docker run --rm \
+      --network {{ stage_app.app.name }}_backend \
+      -e MYSQL_HOST={{ stage_app.app.name }}.mysql \
+      -e MYSQL_DB_NAME={{ stage_app.app.db_name }} \
+      -e MYSQL_USER={{ stage_app.app.db_user }} \
+      -e MYSQL_PWD='{{ stage_app.app.db_password }}' \
+      -e MYSQL_ROOT_PASSWORD='{{ stage_app.app.db_root_password }}' \
+      -e MYSQL_FINANCE_HOST={{ stage_app.app.db_finance_host | default('finance-db') }} \
+      -e MYSQL_FINANCE_DB_NAME={{ stage_app.app.db_finance_name }} \
+      -e MYSQL_FINANCE_USER={{ stage_app.app.db_finance_user }} \
+      -e MYSQL_FINANCE_PWD='{{ stage_app.app.db_finance_password }}' \
+      -e DJANGO_SETTINGS_MODULE=league_manager.settings.stage \
+      -e SECRET_KEY='{{ stage_app.app.secret_key }}' \
+      leaguesphere/backend:staging \
+      python -c "import django; django.setup(); \
+        from django.db.migrations.executor import MigrationExecutor; \
+        from django.db import connections; \
+        MigrationExecutor(connections['default']).migrate([('league_table', '0001_initial')]); \
+        print('league_table migration complete')"
   changed_when: true
+  no_log: true
 
 - name: Restart staging app
   shell: docker restart {{ stage_app.app.name }}.app
