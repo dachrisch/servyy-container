@@ -1,7 +1,8 @@
 test:
   hosts:
     servyy-test.lxd:
-        root_user: ubuntu
-        with_containers: true
-        with_docker: false
-        skip_storagebox: false
+      ansible_host: 10.185.182.250
+      root_user: ubuntu
+      with_containers: true
+      with_docker: false
+      skip_storagebox: false

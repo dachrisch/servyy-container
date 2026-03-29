@@ -141,3 +141,4 @@
   when:
     - ansible_facts['virtualization_type'] | default('') != 'docker'
     - filesFound.matched > 0
+    - "'test' not in group_names"
