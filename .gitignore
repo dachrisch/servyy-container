@@ -19,3 +19,4 @@ dns/volumes
 bumbleflies/site
 *.log
 .worktrees/
+key

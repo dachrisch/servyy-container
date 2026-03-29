@@ -1,7 +1,15 @@
 [Unit]
 Description=Bind mount Docker socket into jail
-After=docker.service
-BindsTo=docker.service
+# Prevent systemd from auto-creating /run/docker.sock as a directory
+# by ensuring docker.socket has already created the real socket file.
+After=docker.socket
+Requires=docker.socket
+# Propagate docker.service stop/restart to this mount (one-way, no cycle).
+# BindsTo would create a shutdown ordering cycle with local-fs.target.
+PartOf=docker.service
+# Skip default .mount ordering deps (local-fs.target, umount.target) that
+# cause shutdown cycles with docker.service.
+DefaultDependencies=no
 
 [Mount]
 What=/var/run/docker.sock
