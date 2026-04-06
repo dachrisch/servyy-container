@@ -4,7 +4,8 @@
     "config:recommended"
   ],
   "docker-compose": {
-    "enabled": true
+    "enabled": true,
+    "managerFilePatterns": ["**/docker-compose*.{yml,yaml}"]
   },
   "packageRules": [
     {
