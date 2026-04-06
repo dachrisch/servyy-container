@@ -3,6 +3,9 @@
   "extends": [
     "config:recommended"
   ],
+  "docker-compose": {
+    "fileMatch": ["(^|/)docker-compose[^/]*\\.ya?ml$"]
+  },
   "packageRules": [
     {
       "description": "Automerge non-major updates",
