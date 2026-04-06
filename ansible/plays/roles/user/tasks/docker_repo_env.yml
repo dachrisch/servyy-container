@@ -64,3 +64,13 @@
   tags:
     - user.docker.env
     - user.docker.env.leagues-finance
+
+- name: Copy docker-compose.yml for leagues-finance
+  copy:
+    src: "{{ playbook_dir }}/../../leagues-finance/docker-compose.yml"
+    dest: "{{(docker.remote_dir, 'leagues-finance', 'docker-compose.yml') | path_join}}"
+    mode: '0644'
+    owner: "{{create_user}}"
+  tags:
+    - user.docker.env
+    - user.docker.env.leagues-finance
