@@ -4,3 +4,4 @@ plays/vars/.restic_password_root
 vars/.restic_password_home
 vars/.restic_password_root
 __pycache__/
+.ansible/
