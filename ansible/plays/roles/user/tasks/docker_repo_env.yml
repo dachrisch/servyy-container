@@ -45,6 +45,16 @@
     - user.docker.env
     - user.docker.env.groceries
 
+- name: Ensure leagues-finance directory exists
+  file:
+    path: "{{(docker.remote_dir, 'leagues-finance') | path_join}}"
+    state: directory
+    owner: "{{create_user}}"
+    mode: '0755'
+  tags:
+    - user.docker.env
+    - user.docker.env.leagues-finance
+
 - name: Create leagues-finance.env file for docker service
   template:
     src: leagues-finance.env.j2
