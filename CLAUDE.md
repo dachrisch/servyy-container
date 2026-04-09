@@ -231,6 +231,14 @@ Example:
 - Dev: `*.aqui.fritz.box` (aqui.fritz.box host)
 - Test: `*.servyy-test.lxd` (LXD container)
 
+**⚠️ CRITICAL: DO NOT NAME SERVICES "app"**
+- ❌ Never use `app` as a docker-compose service name or container name
+- ❌ Reason: DNS conflicts when multiple services named "app" exist on same networks
+- ✅ Use descriptive names: `finance-api`, `api`, `backend`, `webserver`, etc.
+- ✅ Example: `leagues-finance.finance-api` instead of `leagues-finance.app`
+
+This prevents DNS ambiguity where `getent hosts app` returns wrong service IP.
+
 ## Key Services
 
 | Service | Container Name | URL | Purpose |
@@ -348,14 +356,15 @@ ssh lehel.xyz "sudo journalctl -u fail2ban -n 50 --no-pager"
 3. **git-crypt locked files:** Run `git-crypt status` if files appear binary
 4. **Ansible changes not applied:** Check if templates are deployed to correct paths with `--check` mode
 5. **Dashboard not updating:** Restart Grafana after provisioning changes: `docker restart monitor.grafana`
+6. **DNS service conflicts:** DO NOT use "app" as a service name - causes DNS ambiguity across networks. Use descriptive names like `finance-api`, `backend`, `webserver`, etc.
 
 ## Adding a New Service
 
 1. Create `{service}/docker-compose.yml`:
 ```yaml
 services:
-  app:
-    container_name: ${COMPOSE_PROJECT_NAME}.app
+  api:  # ✅ Use descriptive name (NOT "app")
+    container_name: ${COMPOSE_PROJECT_NAME}.api
     image: {image}
     networks: [proxy]
     labels:
@@ -367,6 +376,7 @@ networks:
   proxy:
     external: true
 ```
+⚠️ **NEVER use "app" as service name** - causes DNS conflicts with other services
 
 2. Deploy: `cd ansible && ./servyy.sh --tags "docker" --limit lehel.xyz`
 
