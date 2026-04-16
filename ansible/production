@@ -3,7 +3,7 @@ prod:
     lehel.xyz:
         with_docker: true
         with_containers: true
-        has_10g_volume: true
+        has_10g_volume: false
         create_swap: true
     aqui.fritz.box:
         with_docker: true
