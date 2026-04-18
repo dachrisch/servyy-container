@@ -1,0 +1,8 @@
+---
+# ENCRYPTED: Use ansible-vault to edit
+# ansible-vault edit plays/vault/demo_vault.yml
+
+vault_demo_mysql_password: "GenerateSecurePasswordHere"
+vault_demo_mysql_root_password: "GenerateSecurePasswordHere"
+vault_demo_secret_key: "GenerateSecureSecretKeyHere"
+vault_demo_admin_password: "GenerateSecurePasswordHere"
