@@ -76,6 +76,12 @@
         - ls.app.env.docker
         - ls.app.env.ls
 
+    # Demo deployment
+    - role: ls_demo
+      tags:
+        - ls.demo
+        - demo
+
     # DB sync role (manual only)
     - role: ls_db_sync
       tags:
