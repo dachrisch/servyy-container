@@ -76,11 +76,26 @@
         - ls.app.env.docker
         - ls.app.env.ls
 
-    # Demo deployment
+    # Demo deployment (jail) - runs containers
     - role: ls_demo
+      vars:
+        container_dir: "{{ (ssh_chroot_jail_path, 'home', ls.user, 'container-demo') | path_join }}"
+        deploy_containers: true
+      become_user: "{{ ls.user }}"
       tags:
         - ls.demo
         - demo
+
+    # Demo deployment (dev) - env files only
+    - role: ls_demo
+      vars:
+        container_dir: "{{ ('~', 'dev', ls.user) | path_join }}"
+        deploy_containers: false
+      remote_user: "{{ create_user }}"
+      become_user: "{{ create_user }}"
+      tags:
+        - ls.demo
+        - ls.demo.env
 
     # DB sync role (manual only)
     - role: ls_db_sync
