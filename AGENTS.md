@@ -283,6 +283,13 @@ ansible-playbook servyy.yml --syntax-check -i testing
 cd ansible && yamllint -c ../.yamllint.yml .
 cd ansible && flake8 library/ --max-line-length=120
 cd ansible/library && python -m unittest discover -s tests -p "test_*.py" -v
+
+# LeagueSphere Demo Verification
+ssh lehel.xyz "docker ps | grep leaguesphere-demo"                    # Verify demo containers running
+ssh lehel.xyz "curl -s https://demo.leaguesphere.app/health/ | head"  # Check API health
+ssh lehel.xyz "docker logs portainer.ofelia | grep demo-reset"        # Verify Ofelia scheduler
+# Manual reset verification (if needed)
+ssh lehel.xyz "docker exec leaguesphere-demo.demo-app /bin/bash -c 'rm -f /app/.demo_last_reset && /app/entrypoint.demo.sh'"
 ```
 
 ## Notes for Agents
