@@ -63,6 +63,49 @@ ssh lehel.xyz "docker logs traefik.traefik --tail 50"
 ssh lehel.xyz "sudo fail2ban-client status"
 ```
 
+### LeagueSphere Demo Management
+
+The LeagueSphere demo environment runs on production with automated nightly resets via Ofelia scheduler.
+
+**Demo Services:**
+- **Frontend:** `leaguesphere-demo.www` (accessible at `https://demo.leaguesphere.app`)
+- **Backend API:** `leaguesphere-demo.demo-app` (port 8000, gunicorn)
+- **Database:** `leaguesphere-demo.mysql` (MariaDB)
+
+**Automated Reset (Ofelia):**
+- **Schedule:** Daily at 00:00 UTC (midnight)
+- **Command:** `rm -f /app/.demo_last_reset && /app/entrypoint.demo.sh`
+- **Actions:** Migrations → Demo data seeding → Database snapshot creation
+
+**Demo Data Created per Reset:**
+- 4 associations
+- 4 leagues
+- 3 seasons
+- 12 teams
+- 87 players
+- Demo user accounts
+- Database snapshot at `/app/snapshots/demo_snapshot.json`
+
+**Manual Reset (if needed):**
+```bash
+ssh lehel.xyz "docker exec leaguesphere-demo.demo-app /bin/bash -c 'rm -f /app/.demo_last_reset && /app/entrypoint.demo.sh'"
+```
+
+**Verification:**
+```bash
+# Check demo containers
+ssh lehel.xyz "docker ps | grep leaguesphere-demo"
+
+# View demo logs
+ssh lehel.xyz "docker logs leaguesphere-demo.demo-app --tail 50"
+
+# Verify Ofelia scheduling
+ssh lehel.xyz "docker logs portainer.ofelia --since 24h 2>&1 | grep demo-reset"
+
+# Test API health
+curl -s https://demo.leaguesphere.app/health/
+```
+
 ## Development Conventions
 
 ### Documentation & History

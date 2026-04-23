@@ -247,6 +247,7 @@ This prevents DNS ambiguity where `getent hosts app` returns wrong service IP.
 | monitor | monitor.{grafana,prometheus,loki,promtail} | monitor.lehel.xyz | Observability stack |
 | photoprism | photoprism.photoprism | photoprism.lehel.xyz | Photo library |
 | git | git.gitea | git.lehel.xyz | Git hosting |
+| leaguesphere-demo | leaguesphere-demo.{www,demo-app,mysql} | demo.leaguesphere.app | LeagueSphere demo (auto-resets nightly) |
 
 **Logging Flow:**
 - All Docker containers → stdout/stderr
@@ -427,6 +428,12 @@ ssh lehel.xyz "docker restart monitor.grafana"
 
 # Test fail2ban
 ssh lehel.xyz "sudo bash /usr/local/bin/blocklist/update-from-loki.sh"
+
+# LeagueSphere demo management
+ssh lehel.xyz "docker ps | grep leaguesphere-demo"              # Check demo containers
+ssh lehel.xyz "docker logs leaguesphere-demo.demo-app --tail 20" # View demo logs
+# Manual reset (Ofelia also runs this nightly at 00:00 UTC)
+ssh lehel.xyz "docker exec leaguesphere-demo.demo-app /bin/bash -c 'rm -f /app/.demo_last_reset && /app/entrypoint.demo.sh'"
 
 # View Loki logs
 # Navigate to: https://monitor.lehel.xyz → Explore → Loki
