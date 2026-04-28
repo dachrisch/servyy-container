@@ -95,6 +95,15 @@
     - user.docker.env
     - user.docker.env.finance
 
+- name: Add SERVICE_HOST_IMPORTER to finance .env file
+  lineinfile:
+    path: "{{(docker.remote_dir, 'finance', '.env') | path_join}}"
+    line: "SERVICE_HOST_IMPORTER={{ finance.importer_host }}"
+    state: present
+  tags:
+    - user.docker.env
+    - user.docker.env.finance
+
 - name: Copy docker-compose.yml for finance
   copy:
     src: "{{ playbook_dir }}/../../finance/docker-compose.yml"
