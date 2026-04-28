@@ -74,3 +74,33 @@
   tags:
     - user.docker.env
     - user.docker.env.leagues-finance
+
+- name: Ensure finance directory exists
+  file:
+    path: "{{(docker.remote_dir, 'finance') | path_join}}"
+    state: directory
+    owner: "{{create_user}}"
+    mode: '0755'
+  tags:
+    - user.docker.env
+    - user.docker.env.finance
+
+- name: Create finance.env file for docker service
+  template:
+    src: finance.env.j2
+    dest: "{{(docker.remote_dir, 'finance', 'finance.env') | path_join}}"
+    mode: '0600'
+    owner: "{{create_user}}"
+  tags:
+    - user.docker.env
+    - user.docker.env.finance
+
+- name: Copy docker-compose.yml for finance
+  copy:
+    src: "{{ playbook_dir }}/../../finance/docker-compose.yml"
+    dest: "{{(docker.remote_dir, 'finance', 'docker-compose.yml') | path_join}}"
+    mode: '0644'
+    owner: "{{create_user}}"
+  tags:
+    - user.docker.env
+    - user.docker.env.finance
