@@ -11,13 +11,33 @@
   tags:
     - user.docker.services.script
 
+- name: Create finance import directory
+  file:
+    path: "{{ (docker.remote_dir, 'finance', 'import') | path_join }}"
+    state: directory
+    owner: "{{ create_user }}"
+    group: "docker"
+    mode: '0755'
+  tags:
+    - user.docker.env
+
 - name: Create finance import config from template
   template:
     src: finance-import-config.json.j2
-    dest: "{{ (docker.remote_dir, 'finance', 'import_config.json') | path_join }}"
+    dest: "{{ (docker.remote_dir, 'finance', 'import', 'import_config.json') | path_join }}"
     owner: "{{ create_user }}"
     group: "docker"
     mode: '0644'
+  tags:
+    - user.docker.env
+
+- name: Create finance import script from template
+  template:
+    src: run-import.sh.j2
+    dest: "{{ (docker.remote_dir, 'finance', 'import', 'run-import.sh') | path_join }}"
+    owner: "{{ create_user }}"
+    group: "docker"
+    mode: '0755'
   tags:
     - user.docker.env
 
