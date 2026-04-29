@@ -11,6 +11,16 @@
   tags:
     - user.docker.services.script
 
+- name: Create finance import config from template
+  template:
+    src: finance-import-config.json.j2
+    dest: "{{ (docker.remote_dir, 'finance', 'import_config.json') | path_join }}"
+    owner: "{{ create_user }}"
+    group: "docker"
+    mode: '0644'
+  tags:
+    - user.docker.env
+
 - name: Create OpenCode data directory
   file:
     path: "{{ (docker.remote_dir, 'opencode', 'data') | path_join }}"
