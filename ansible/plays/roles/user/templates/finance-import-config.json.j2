@@ -33,18 +33,7 @@
     "accounts": {
         "{{ finance.import_config.account_uuid }}": {{ finance.import_config.account_id }}
     },
-    "new_accounts": {
-        "{{ finance.import_config.account_uuid }}": {
-            "create": "1",
-            "name": "{{ finance.import_config.account_name }}",
-            "type": "asset",
-            "account_role": "defaultAsset",
-            "liability_type": "debt",
-            "liability_direction": "credit",
-            "opening_balance": null,
-            "currency": "{{ finance.import_config.currency }}"
-        }
-    },
+    "new_accounts": [],
     "date_range": "all",
     "date_range_number": 30,
     "date_range_unit": "d",
