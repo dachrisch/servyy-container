@@ -5,3 +5,4 @@ secrets.* filter=git-crypt diff=git-crypt
 secret_* filter=git-crypt diff=git-crypt
 *.env filter=git-crypt diff=git-crypt
 *.conf filter=git-crypt diff=git-crypt
+*.pem filter=git-crypt diff=git-crypt
