@@ -20,7 +20,6 @@
     mode: '0755'
   tags:
     - user.docker.env
-    - user.docker.finance
 
 - name: Create finance import config from template
   template:
@@ -31,7 +30,6 @@
     mode: '0644'
   tags:
     - user.docker.env
-    - user.docker.finance
 
 - name: Create finance import script from template
   template:
@@ -42,7 +40,6 @@
     mode: '0755'
   tags:
     - user.docker.env
-    - user.docker.finance
 
 - name: Create OpenCode data directory
   file:
