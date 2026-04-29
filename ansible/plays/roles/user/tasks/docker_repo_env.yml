@@ -55,12 +55,23 @@
     - user.docker.env
     - user.docker.env.leagues-finance
 
+- name: Read and encode Enable Banking PEM key
+  slurp:
+    src: "{{ (docker.local_dir, 'finance', 'import', 'eb.pem') | path_join }}"
+  register: pem_file
+  delegate_to: localhost
+  tags:
+    - user.docker.env
+    - user.docker.env.finance
+
 - name: Create finance.env file for docker service
   template:
     src: finance.env.j2
     dest: "{{(docker.remote_dir, 'finance', 'finance.env') | path_join}}"
     mode: '0600'
     owner: "{{create_user}}"
+  vars:
+    enable_banking_private_key_b64: "{{ pem_file['content'] | regex_replace('-----BEGIN PRIVATE KEY-----\\n|-----END PRIVATE KEY-----\\n', '') | regex_replace('\\n', '') }}"
   tags:
     - user.docker.env
     - user.docker.env.finance
