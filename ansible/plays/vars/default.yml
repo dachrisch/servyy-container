@@ -21,6 +21,7 @@ sys_packages:
   - docker-buildx               # docker buildx plugin
   - restic                      # backup tool with deduplication
   - sshpass                     # SFTP authentication for restic
+  - gdu                         # disk usage analyzer
 
 swap_space: 2G
 
