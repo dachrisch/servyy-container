@@ -57,9 +57,9 @@
 
 - name: Import dump into staging database
   shell: |
-    docker exec {{ stage_app.app.name }}.mysql \
+    cat "{{ sql_dump_file }}" | docker exec -i {{ stage_app.app.name }}.mysql \
       mariadb -u root -p'{{ stage_app.app.db_root_password }}' \
-      {{ stage_app.app.db_name }} < /tmp/dump.sql
+      {{ stage_app.app.db_name }}
   changed_when: true
 
 - name: Cleanup dump from MySQL container
@@ -69,7 +69,7 @@
   ignore_errors: true
 
 - name: Restart staging app
-  shell: docker restart {{ stage_app.app.name }}.app
+  shell: docker restart {{ (stage_app.app.name ~ '.staging-app') if stage_app.app.name == 'leaguesphere_stage' else (stage_app.app.name ~ '.app') }}
 
 - name: Cleanup dumps
   file:
