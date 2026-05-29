@@ -3,6 +3,7 @@ set -e
 instance=servyy-test
 hostname="${instance}.lxd"
 retries=10
+UBUNTU_VERSION="${UBUNTU_VERSION:-$(grep 'VERSION_ID' /etc/os-release | cut -d '"' -f 2)}"
 
 if [[ "$1" = '-x' ]];then
   echo "removing [$instance] from lxd"
@@ -43,8 +44,8 @@ if ! lxc network show "$bridge_network" > /dev/null 2>&1;then
 fi
 
 if ! lxc info $instance > /dev/null 2>&1;then
-  echo "creating server [$instance]"
-  lxc launch -p $instance ubuntu:"$(grep 'VERSION_ID' /etc/os-release | cut -d '"' -f 2)" $instance
+  echo "creating server [$instance] with Ubuntu $UBUNTU_VERSION"
+  lxc launch -p $instance ubuntu:"$UBUNTU_VERSION" $instance
   lxc config set $instance security.privileged true
   lxc config set $instance security.nesting true
   if ssh-keygen -f "$HOME/.ssh/known_hosts" -F "$hostname" > /dev/null;then
