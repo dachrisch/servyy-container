@@ -1,7 +1,7 @@
 # CLAUDE.md - servyy-container Infrastructure
 
 > Self-hosted microservices platform (15+ Docker services) automated with Ansible
-> **Last Updated:** 2026-01-06 (Added Molecule Testing Requirements)
+> **Last Updated:** 2026-05-31 (Added Common Issues & Solutions, Deployment Verification Checklist)
 
 ## Quick Commands
 
@@ -350,6 +350,93 @@ ssh lehel.xyz "sudo bash /usr/local/bin/blocklist/update-from-loki.sh"
 ssh lehel.xyz "sudo journalctl -u fail2ban -n 50 --no-pager"
 ```
 
+## Common Issues & Solutions
+
+### Environment File Naming Issues
+
+**Problem:** Ansible deployment fails with "env file not found"
+- **Cause:** Hardcoded `docker_env_file` in role vars overrides env_suffix logic
+- **Solution:** Remove hardcoded `docker_env_file` from role invocation, let defaults handle it
+- **Reference:** `history/2026-05-31_staging_env_file_fix.md`
+
+```bash
+# ❌ Wrong - prevents env_suffix from being appended
+- role: ls_app
+  vars:
+    docker_env_file: ".env"  # This overrides suffix logic!
+
+# ✅ Correct - lets default logic work
+- role: ls_app
+  vars:
+    # No docker_env_file override - suffix will be appended
+```
+
+### Orphaned Containers Blocking Redeployment
+
+**Problem:** Docker-compose fails saying container already exists
+- **Cause:** Renamed/removed compose services leave old containers running
+- **Solution:** Manually remove orphaned containers before redeployment
+- **Reference:** `feedback_orphaned_containers.md`
+
+```bash
+# Find orphaned containers
+ssh lehel.xyz "docker ps -a | grep {old_service_name}"
+
+# Remove them
+ssh lehel.xyz "docker rm {container_id}"
+
+# Then retry deployment
+cd ansible && ./servyy-test.sh
+```
+
+### LeagueSphere Network DNS Resolution Failures
+
+**Problem:** Frontend can't reach backend - "unknown host" errors
+- **Cause:** Multi-network containers need backend service on same networks as frontend
+- **Solution:** Ensure backend service is on the `proxy` network
+- **Reference:** `leaguesphere_network_dns.md`
+
+```yaml
+# ✅ Correct - backend on proxy network
+services:
+  backend:
+    networks:
+      - proxy        # Frontend can reach it via this network
+      - internal     # Can also have private networks
+```
+
+### Deployment Requires Git Push First
+
+**Problem:** Server can't find changes - "Permission denied" or file not found
+- **Cause:** Ansible deploys from git, but server hasn't pulled latest commits
+- **Solution:** Push to origin first, ensure server's git pull succeeds
+- **Reference:** `feedback_deployment_git_pull.md`
+
+```bash
+# 1. Commit changes locally
+git commit -m "feat: description"
+
+# 2. Push to origin FIRST
+git push origin master
+
+# 3. Server's Ansible will pull during deployment
+# (servyy.sh runs: git pull origin master)
+```
+
+### Test Environment Not Initialized
+
+**Problem:** `servyy-test.sh` fails with "container not found" or permission errors
+- **Cause:** Test LXD container hasn't been created or is misconfigured
+- **Solution:** Initialize test container first
+
+```bash
+# Initialize test environment
+cd scripts && ./setup_test_container.sh
+
+# Then deploy
+cd ../ansible && ./servyy-test.sh
+```
+
 ## Common Pitfalls
 
 1. **Container label mismatch:** Always verify actual container name with `docker ps`, not the compose service name
@@ -358,6 +445,91 @@ ssh lehel.xyz "sudo journalctl -u fail2ban -n 50 --no-pager"
 4. **Ansible changes not applied:** Check if templates are deployed to correct paths with `--check` mode
 5. **Dashboard not updating:** Restart Grafana after provisioning changes: `docker restart monitor.grafana`
 6. **DNS service conflicts:** DO NOT use "app" as a service name - causes DNS ambiguity across networks. Use descriptive names like `finance-api`, `backend`, `webserver`, etc.
+
+## Deployment Verification Checklist
+
+Use this checklist after each deployment (test or production) to verify success:
+
+### Pre-Deployment
+
+- [ ] Changes committed to git
+- [ ] Pushed to origin/master (if production)
+- [ ] Tested on servyy-test.lxd (if production)
+- [ ] All Ansible syntax checks passed: `ansible-playbook servyy.yml --syntax-check`
+- [ ] User approved production deployment (if applicable)
+
+### Ansible Execution
+
+- [ ] Deployment completed without errors (exit code 0)
+- [ ] PLAY RECAP shows: `failed=0` and `unreachable=0`
+- [ ] Expected number of tasks ran (compare to previous deployments)
+- [ ] No unexpected `FAILED` entries in output
+
+### Docker Services
+
+```bash
+# Check all containers are running
+ssh {host} "docker ps | wc -l"  # Compare to expected count
+
+# Verify key services are healthy
+ssh {host} "docker ps | grep traefik"
+ssh {host} "docker ps | grep monitor"
+
+# Check for restart loops (many restarts = unhealthy)
+ssh {host} "docker ps --format '{{.Names}}: {{.Restarts}}' | grep -v ' 0$'"
+```
+
+### Network & Routing
+
+```bash
+# Verify proxy network exists
+ssh {host} "docker network ls | grep proxy"
+
+# Check Traefik is routing correctly
+ssh {host} "curl -I https://{service}.{host} 2>/dev/null | head -1"
+```
+
+### Logs & Monitoring
+
+```bash
+# Check for errors in Traefik logs
+ssh {host} "docker logs traefik.traefik --tail 20 | grep -i error"
+
+# Check system logs for deployment issues
+ssh {host} "journalctl -u docker --no-pager -n 20"
+
+# Verify Loki is receiving logs (if monitoring deployed)
+curl -s "https://monitor.lehel.xyz/loki/api/v1/label/__name__/values" | jq length
+```
+
+### Environment-Specific Checks
+
+**For LeagueSphere deployments:**
+```bash
+# Check both production and staging containers
+ssh {host} "docker ps | grep leaguesphere"
+
+# Verify database connectivity
+ssh {host} "docker logs leaguesphere.app --tail 20 | grep -i error"
+ssh {host} "docker logs leaguesphere_stage.mysql --tail 20 | grep -i error"
+```
+
+**For production (lehel.xyz):**
+```bash
+# Verify SSL certificates are valid
+ssh lehel.xyz "curl -I https://traefik.lehel.xyz 2>&1 | grep SSL"
+
+# Check fail2ban is active
+ssh lehel.xyz "sudo fail2ban-client status | grep -c 'jail'"
+```
+
+### Rollback Decision
+
+If any check fails:
+- [ ] Do NOT proceed with production deployment
+- [ ] Investigate root cause in test environment
+- [ ] Fix in git, commit, and re-test
+- [ ] Only deploy after successful test verification
 
 ## Adding a New Service
 
