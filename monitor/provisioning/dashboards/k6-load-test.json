@@ -85,7 +85,7 @@
       },
       "targets": [
         {
-          "expr": "k6_vu{job=\"k6-load-test\"}",
+          "expr": "rate(traefik_service_requests_total{service=~\".*leaguesphere.*\"}[1m])",
           "refId": "A"
         }
       ],
@@ -157,7 +157,10 @@
       "id": 2,
       "options": {
         "legend": {
-          "calcs": ["mean", "max"],
+          "calcs": [
+            "mean",
+            "max"
+          ],
           "displayMode": "table",
           "placement": "right"
         },
@@ -167,7 +170,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, k6_http_req_duration{job=\"k6-load-test\"})",
+          "expr": "histogram_quantile(0.95, sum(rate(traefik_service_request_duration_seconds_bucket{service=~\".*leaguesphere.*\"}[5m])) by (le))",
           "legendFormat": "p95 Latency",
           "refId": "A"
         }
@@ -240,7 +243,10 @@
       "id": 3,
       "options": {
         "legend": {
-          "calcs": ["mean", "max"],
+          "calcs": [
+            "mean",
+            "max"
+          ],
           "displayMode": "list",
           "placement": "bottom"
         },
@@ -250,7 +256,7 @@
       },
       "targets": [
         {
-          "expr": "rate(k6_http_errors_total{job=\"k6-load-test\"}[1m]) * 100",
+          "expr": "rate(traefik_service_requests_total{service=~\".*leaguesphere.*\",code=~\"5..\"}[5m]) * 100",
           "legendFormat": "Error Rate %",
           "refId": "A"
         }
@@ -319,7 +325,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "node_cpu_usage_percent{job=\"node-exporter\"}",
+          "expr": "100 - (avg(irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
           "legendFormat": "CPU %",
           "refId": "A"
         }
@@ -331,7 +337,11 @@
   "refresh": "5s",
   "schemaVersion": 35,
   "style": "dark",
-  "tags": ["k6", "load-testing", "leaguesphere"],
+  "tags": [
+    "k6",
+    "load-testing",
+    "leaguesphere"
+  ],
   "templating": {
     "list": []
   },
