@@ -223,46 +223,6 @@ groups:
     folder: Infrastructure
     interval: 1m
     rules:
-      # MEDIUM: Container is down
-      - uid: container_down
-        title: Container Down
-        condition: C
-        data:
-          - refId: A
-            relativeTimeRange:
-              from: 300
-              to: 0
-            datasourceUid: prometheus
-            model:
-              expr: 'up{job="cadvisor"} == 0'
-              refId: A
-          - refId: B
-            datasourceUid: __expr__
-            model:
-              expression: A
-              reducer: last
-              refId: B
-              type: reduce
-          - refId: C
-            datasourceUid: __expr__
-            model:
-              expression: B
-              refId: C
-              type: threshold
-              conditions:
-                - evaluator:
-                    params: [0.5]
-                    type: lt
-        noDataState: OK
-        execErrState: Error
-        for: 2m
-        annotations:
-          summary: 'Container is down'
-          description: 'Container {{ $labels.name }} is not responding for 2 minutes'
-        labels:
-          severity: medium
-        isPaused: false
-
       # MEDIUM: Disk space running low
       - uid: high_disk_usage
         title: High Disk Usage
