@@ -34,6 +34,7 @@ scrape_configs:
       # Drop entries older than 4h to prevent retry storms when monitoring is paused
       - drop:
           older_than: 4h
+          drop_counter_reason: too_old
       # Drop healthcheck logs
       - drop:
           expression: '"healthcheck"'
@@ -73,6 +74,7 @@ scrape_configs:
       # Drop entries older than 4h to prevent retry storms when monitoring is paused
       - drop:
           older_than: 4h
+          drop_counter_reason: too_old
       - regex:
           expression: '^(?P<timestamp>\w+\s+\d+\s+\d+:\d+:\d+)\s+(?P<host>\S+)\s+(?P<program>[^\[:]+)(?:\[(?P<pid>\d+)\])?:\s+(?P<message>.*)$'
       - labels:
@@ -91,3 +93,4 @@ scrape_configs:
       # Drop entries older than 4h to prevent retry storms when monitoring is paused
       - drop:
           older_than: 4h
+          drop_counter_reason: too_old
