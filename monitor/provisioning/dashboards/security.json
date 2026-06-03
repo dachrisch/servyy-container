@@ -1,5 +1,7 @@
 {
-  "annotations": { "list": [] },
+  "annotations": {
+    "list": []
+  },
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -8,37 +10,75 @@
   "panels": [
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
       "id": 100,
       "panels": [],
       "title": "Security Overview",
       "type": "row"
     },
     {
-      "datasource": { "type": "loki" },
+      "datasource": {
+        "type": "loki"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 20 }, { "color": "red", "value": 60 }] },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 20
+              },
+              {
+                "color": "red",
+                "value": 60
+              }
+            ]
+          },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      },
       "id": 1,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "targets": [
         {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)(sql.*injection|union.*select|<script|javascript:|eval\\\\(|exec\\\\()\"[$__range]))",
+          "datasource": {
+            "type": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=~\"traefik.*\"} |= \"select\" | path =~ \"(?i)(sql.*injection|union.*select|<script|javascript:|eval|exec)\"[$__range]))",
           "legendFormat": "Attacks",
           "refId": "A"
         }
@@ -47,30 +87,63 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "loki" },
+      "datasource": {
+        "type": "loki"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 200 }, { "color": "red", "value": 600 }] },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 200
+              },
+              {
+                "color": "red",
+                "value": 600
+              }
+            ]
+          },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 1
+      },
       "id": 2,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "targets": [
         {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)(\\\\.php|\\\\.asp|\\\\.env|wp-admin|wp-login|phpmyadmin|xmlrpc|/admin|/config)\"[$__range]))",
+          "datasource": {
+            "type": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=~\"traefik.*\"} | path =~ \"(?i)(\\\\.php|\\\\.asp|\\\\.env|wp-admin|wp-login|phpmyadmin|xmlrpc|/admin|/config)\"[$__range]))",
           "legendFormat": "Scans",
           "refId": "A"
         }
@@ -79,30 +152,63 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "loki" },
+      "datasource": {
+        "type": "loki"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 300 }] },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 100
+              },
+              {
+                "color": "red",
+                "value": 300
+              }
+            ]
+          },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 1
+      },
       "id": 3,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "targets": [
         {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)(curl/|wget/|python-requests|nikto|sqlmap|nmap|masscan|zgrab)\"[$__range]))",
+          "datasource": {
+            "type": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=~\"traefik.*\"} | user_agent =~ \"(?i)(curl/|wget/|python-requests|nikto|sqlmap|nmap|masscan|zgrab)\"[$__range]))",
           "legendFormat": "Bots",
           "refId": "A"
         }
@@ -111,29 +217,62 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "loki" },
+      "datasource": {
+        "type": "loki"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 300 }, { "color": "red", "value": 900 }] },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 300
+              },
+              {
+                "color": "red",
+                "value": 900
+              }
+            ]
+          },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      },
       "id": 4,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "targets": [
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "expr": "sum(count_over_time({job=\"auth\"} |~ \"Invalid user .* from\"[$__range]))",
           "legendFormat": "Failed",
           "refId": "A"
@@ -143,29 +282,62 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus" },
+      "datasource": {
+        "type": "prometheus"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 500 }, { "color": "red", "value": 1500 }] },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 500
+              },
+              {
+                "color": "red",
+                "value": 1500
+              }
+            ]
+          },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 1
+      },
       "id": 5,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus" },
+          "datasource": {
+            "type": "prometheus"
+          },
           "expr": "sum(increase(traefik_service_requests_total{code=~\"4..\"}[$__range]))",
           "legendFormat": "4xx",
           "refId": "A"
@@ -175,29 +347,62 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus" },
+      "datasource": {
+        "type": "prometheus"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 30 }, { "color": "red", "value": 90 }] },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 30
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
       "id": 6,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus" },
+          "datasource": {
+            "type": "prometheus"
+          },
           "expr": "sum(increase(traefik_service_requests_total{code=~\"5..\"}[$__range]))",
           "legendFormat": "5xx",
           "refId": "A"
@@ -208,36 +413,78 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
       "id": 106,
       "panels": [],
       "title": "Fail2ban Status",
       "type": "row"
     },
     {
-      "datasource": { "type": "loki" },
+      "datasource": {
+        "type": "loki"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "blue", "value": 1 }, { "color": "yellow", "value": 50 }, { "color": "red", "value": 100 }] },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "blue",
+                "value": 1
+              },
+              {
+                "color": "yellow",
+                "value": 50
+              },
+              {
+                "color": "red",
+                "value": 100
+              }
+            ]
+          },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": { "h": 3, "w": 4, "x": 0, "y": 6 },
+      "gridPos": {
+        "h": 3,
+        "w": 4,
+        "x": 0,
+        "y": 6
+      },
       "id": 21,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "targets": [
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*Ban\"[$__range]))",
           "legendFormat": "Bans",
           "refId": "A"
@@ -247,29 +494,66 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "loki" },
+      "datasource": {
+        "type": "loki"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "blue", "value": 1 }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 50 }] },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "blue",
+                "value": 1
+              },
+              {
+                "color": "yellow",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 50
+              }
+            ]
+          },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": { "h": 3, "w": 4, "x": 4, "y": 6 },
+      "gridPos": {
+        "h": 3,
+        "w": 4,
+        "x": 4,
+        "y": 6
+      },
       "id": 22,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "targets": [
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[sshd\\\\].*Ban\"[$__range]))",
           "legendFormat": "SSH",
           "refId": "A"
@@ -279,29 +563,66 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "loki" },
+      "datasource": {
+        "type": "loki"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "blue", "value": 1 }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 50 }] },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "blue",
+                "value": 1
+              },
+              {
+                "color": "yellow",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 50
+              }
+            ]
+          },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": { "h": 3, "w": 4, "x": 8, "y": 6 },
+      "gridPos": {
+        "h": 3,
+        "w": 4,
+        "x": 8,
+        "y": 6
+      },
       "id": 23,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "targets": [
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[sshd-invalid-user\\\\].*Ban\"[$__range]))",
           "legendFormat": "Invalid User",
           "refId": "A"
@@ -311,29 +632,66 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "loki" },
+      "datasource": {
+        "type": "loki"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "blue", "value": 1 }, { "color": "orange", "value": 20 }, { "color": "red", "value": 100 }] },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "blue",
+                "value": 1
+              },
+              {
+                "color": "orange",
+                "value": 20
+              },
+              {
+                "color": "red",
+                "value": 100
+              }
+            ]
+          },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": { "h": 3, "w": 4, "x": 12, "y": 6 },
+      "gridPos": {
+        "h": 3,
+        "w": 4,
+        "x": 12,
+        "y": 6
+      },
       "id": 24,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "targets": [
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban\"[$__range]))",
           "legendFormat": "Loki Blocklist",
           "refId": "A"
@@ -343,29 +701,66 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "loki" },
+      "datasource": {
+        "type": "loki"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "blue", "value": 1 }, { "color": "orange", "value": 20 }, { "color": "red", "value": 100 }] },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "blue",
+                "value": 1
+              },
+              {
+                "color": "orange",
+                "value": 20
+              },
+              {
+                "color": "red",
+                "value": 100
+              }
+            ]
+          },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": { "h": 3, "w": 3, "x": 16, "y": 6 },
+      "gridPos": {
+        "h": 3,
+        "w": 3,
+        "x": 16,
+        "y": 6
+      },
       "id": 28,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "targets": [
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban.*traefik-malicious-bot\"[$__range]))",
           "legendFormat": "Traefik Bots",
           "refId": "A"
@@ -375,29 +770,66 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "loki" },
+      "datasource": {
+        "type": "loki"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "blue", "value": 1 }, { "color": "orange", "value": 20 }, { "color": "red", "value": 100 }] },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "blue",
+                "value": 1
+              },
+              {
+                "color": "orange",
+                "value": 20
+              },
+              {
+                "color": "red",
+                "value": 100
+              }
+            ]
+          },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": { "h": 3, "w": 3, "x": 19, "y": 6 },
+      "gridPos": {
+        "h": 3,
+        "w": 3,
+        "x": 19,
+        "y": 6
+      },
       "id": 29,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "targets": [
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban.*traefik-rate-limit\"[$__range]))",
           "legendFormat": "Traefik Access",
           "refId": "A"
@@ -407,29 +839,66 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "loki" },
+      "datasource": {
+        "type": "loki"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "blue", "value": 1 }, { "color": "orange", "value": 10 }, { "color": "red", "value": 50 }] },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "blue",
+                "value": 1
+              },
+              {
+                "color": "orange",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 50
+              }
+            ]
+          },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": { "h": 3, "w": 2, "x": 22, "y": 6 },
+      "gridPos": {
+        "h": 3,
+        "w": 2,
+        "x": 22,
+        "y": 6
+      },
       "id": 31,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "targets": [
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban.*traefik-aggressive-crawler\"[$__range]))",
           "legendFormat": "Crawler Soft",
           "refId": "A"
@@ -439,29 +908,58 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "loki" },
+      "datasource": {
+        "type": "loki"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }] },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              }
+            ]
+          },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": { "h": 3, "w": 3, "x": 0, "y": 9 },
+      "gridPos": {
+        "h": 3,
+        "w": 3,
+        "x": 0,
+        "y": 9
+      },
       "id": 25,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "targets": [
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*Unban\"[$__range]))",
           "legendFormat": "Unbans",
           "refId": "A"
@@ -471,10 +969,14 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "loki" },
+      "datasource": {
+        "type": "loki"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "axisCenteredZero": false,
             "axisColorMode": "text",
@@ -484,68 +986,198 @@
             "drawStyle": "bars",
             "fillOpacity": 80,
             "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
             "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "never",
             "spanNulls": false,
-            "stacking": { "group": "A", "mode": "normal" },
-            "thresholdsStyle": { "mode": "off" }
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
           "unit": "short"
         },
         "overrides": [
-          { "matcher": { "id": "byName", "options": "sshd" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
-          { "matcher": { "id": "byName", "options": "sshd-invalid-user" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
-          { "matcher": { "id": "byName", "options": "loki-blocklist" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] },
-          { "matcher": { "id": "byName", "options": "traefik-bots" }, "properties": [{ "id": "color", "value": { "fixedColor": "purple", "mode": "fixed" } }] },
-          { "matcher": { "id": "byName", "options": "traefik-access" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] },
-          { "matcher": { "id": "byName", "options": "traefik-crawler-soft" }, "properties": [{ "id": "color", "value": { "fixedColor": "cyan", "mode": "fixed" } }] }
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "sshd"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "sshd-invalid-user"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "loki-blocklist"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "traefik-bots"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "traefik-access"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "traefik-crawler-soft"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "cyan",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
         ]
       },
-      "gridPos": { "h": 5, "w": 24, "x": 0, "y": 12 },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
       "id": 26,
       "options": {
-        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
+        "legend": {
+          "calcs": [
+            "sum"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[sshd\\\\].*Ban\"[5m]))",
           "legendFormat": "sshd",
           "refId": "A"
         },
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[sshd-invalid-user\\\\].*Ban\"[5m]))",
           "legendFormat": "sshd-invalid-user",
           "refId": "B"
         },
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban\"[5m]))",
           "legendFormat": "loki-blocklist",
           "refId": "C"
         },
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban.*traefik-malicious-bot\"[5m]))",
           "legendFormat": "traefik-bots",
           "refId": "D"
         },
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban.*traefik-rate-limit\"[5m]))",
           "legendFormat": "traefik-access",
           "refId": "E"
         },
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban.*traefik-aggressive-crawler\"[5m]))",
           "legendFormat": "traefik-crawler-soft",
           "refId": "F"
@@ -555,8 +1187,15 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "loki" },
-      "gridPos": { "h": 5, "w": 12, "x": 12, "y": 9 },
+      "datasource": {
+        "type": "loki"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
       "id": 27,
       "options": {
         "dedupStrategy": "none",
@@ -570,7 +1209,9 @@
       },
       "targets": [
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "expr": "{job=\"system\"} |~ \"fail2ban.*(Ban|Unban)\"",
           "refId": "A"
         }
@@ -580,17 +1221,26 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
       "id": 101,
       "panels": [],
       "title": "Suspicious Activity",
       "type": "row"
     },
     {
-      "datasource": { "type": "loki" },
+      "datasource": {
+        "type": "loki"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "axisCenteredZero": false,
             "axisColorMode": "text",
@@ -600,48 +1250,130 @@
             "drawStyle": "bars",
             "fillOpacity": 80,
             "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
             "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "never",
             "spanNulls": false,
-            "stacking": { "group": "A", "mode": "normal" },
-            "thresholdsStyle": { "mode": "off" }
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
           "unit": "short"
         },
         "overrides": [
-          { "matcher": { "id": "byName", "options": "Injection" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
-          { "matcher": { "id": "byName", "options": "Scanners" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
-          { "matcher": { "id": "byName", "options": "Path Traversal" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] }
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Injection"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Scanners"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Path Traversal"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
         ]
       },
-      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 18 },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 18
+      },
       "id": 10,
       "options": {
-        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
+        "legend": {
+          "calcs": [
+            "sum"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)(sql.*injection|union.*select|<script|javascript:|eval\\\\(|exec\\\\()\"[5m]))",
+          "datasource": {
+            "type": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=~\"traefik.*\"} |= \"select\" | path =~ \"(?i)(sql.*injection|union.*select|<script|javascript:|eval|exec)\"[5m]))",
           "legendFormat": "Injection",
           "refId": "A"
         },
         {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)(nikto|sqlmap|nmap|masscan|zgrab|nuclei|dirbuster)\"[5m]))",
+          "datasource": {
+            "type": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=~\"traefik.*\"} | user_agent =~ \"(?i)(nikto|sqlmap|nmap|masscan|zgrab|nuclei|dirbuster)\"[5m]))",
           "legendFormat": "Scanners",
           "refId": "B"
         },
         {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)(\\\\.\\\\./|%2e%2e|etc/passwd|etc/shadow)\"[5m]))",
+          "datasource": {
+            "type": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=~\"traefik.*\"} | path =~ \"(?i)(\\\\.\\\\./|%2e%2e|etc/passwd|etc/shadow)\"[5m]))",
           "legendFormat": "Path Traversal",
           "refId": "C"
         }
@@ -650,10 +1382,14 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "loki" },
+      "datasource": {
+        "type": "loki"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "axisCenteredZero": false,
             "axisColorMode": "text",
@@ -663,50 +1399,92 @@
             "drawStyle": "bars",
             "fillOpacity": 80,
             "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
             "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "never",
             "spanNulls": false,
-            "stacking": { "group": "A", "mode": "normal" },
-            "thresholdsStyle": { "mode": "off" }
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 18 },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 18
+      },
       "id": 11,
       "options": {
-        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
+        "legend": {
+          "calcs": [
+            "sum"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)\\\\.php\"[5m]))",
+          "datasource": {
+            "type": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=~\"traefik.*\"} | path =~ \"(?i)\\\\.php\"[5m]))",
           "legendFormat": ".php",
           "refId": "A"
         },
         {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)wp-admin|wp-login|wp-content\"[5m]))",
+          "datasource": {
+            "type": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=~\"traefik.*\"} | path =~ \"(?i)wp-admin|wp-login|wp-content\"[5m]))",
           "legendFormat": "WordPress",
           "refId": "B"
         },
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)\\\\.env|\\\\.git|config\\\\.\"[5m]))",
           "legendFormat": "Config Files",
           "refId": "C"
         },
         {
-          "datasource": { "type": "loki" },
-          "expr": "sum(count_over_time({job=\"docker\"} |~ \"(?i)phpmyadmin|adminer|mysql\"[5m]))",
+          "datasource": {
+            "type": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=~\"traefik.*\"} | path =~ \"(?i)phpmyadmin|adminer|mysql\"[5m]))",
           "legendFormat": "DB Admin",
           "refId": "D"
         }
@@ -715,8 +1493,15 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "loki" },
-      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 24 },
+      "datasource": {
+        "type": "loki"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
       "id": 12,
       "options": {
         "dedupStrategy": "none",
@@ -730,8 +1515,10 @@
       },
       "targets": [
         {
-          "datasource": { "type": "loki" },
-          "expr": "{job=\"docker\"} |~ \"(?i)(sql.*injection|union.*select|<script|javascript:|eval\\\\(|exec\\\\(|\\\\.\\\\./|%2e%2e|etc/passwd|nikto|sqlmap|nmap)\"",
+          "datasource": {
+            "type": "loki"
+          },
+          "expr": "{job=\"docker\", container=~\"traefik.*\"} |= \"select\" | path =~ \"(?i)(sql.*injection|union.*select|<script|javascript:|eval|exec|\\\\./|%2e%2e|etc/passwd|nikto|sqlmap|nmap)\"",
           "refId": "A"
         }
       ],
@@ -740,17 +1527,26 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
       "id": 104,
       "panels": [],
       "title": "Authentication & System",
       "type": "row"
     },
     {
-      "datasource": { "type": "loki" },
+      "datasource": {
+        "type": "loki"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
             "axisCenteredZero": false,
             "axisColorMode": "text",
@@ -760,46 +1556,114 @@
             "drawStyle": "bars",
             "fillOpacity": 80,
             "gradientMode": "none",
-            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
             "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 5,
-            "scaleDistribution": { "type": "linear" },
+            "scaleDistribution": {
+              "type": "linear"
+            },
             "showPoints": "never",
             "spanNulls": false,
-            "stacking": { "group": "A", "mode": "none" },
-            "thresholdsStyle": { "mode": "off" }
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
           "unit": "short"
         },
         "overrides": [
-          { "matcher": { "id": "byName", "options": "Failed" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
-          { "matcher": { "id": "byName", "options": "Success" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Failed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Success"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
         ]
       },
-      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 31 },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 31
+      },
       "id": 15,
       "options": {
-        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "desc" }
+        "legend": {
+          "calcs": [
+            "sum"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "expr": "sum(count_over_time({job=\"auth\"} |~ \"Accepted publickey|Accepted password\"[5m]))",
           "legendFormat": "Success",
           "refId": "A"
         },
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "expr": "sum(count_over_time({job=\"auth\"} |~ \"Invalid user .* from\"[5m]))",
           "legendFormat": "Brute Force",
           "refId": "B"
         },
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "expr": "sum(count_over_time({job=\"auth\"} |~ \"Failed password for\"[5m]))",
           "legendFormat": "Wrong Password",
           "refId": "C"
@@ -809,8 +1673,15 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "loki" },
-      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 31 },
+      "datasource": {
+        "type": "loki"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 31
+      },
       "id": 16,
       "options": {
         "dedupStrategy": "none",
@@ -824,7 +1695,9 @@
       },
       "targets": [
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "expr": "{job=\"auth\"} |~ \"(?i)(Failed|Invalid|error|Accepted)\"",
           "refId": "A"
         }
@@ -834,40 +1707,98 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 37 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 37
+      },
       "id": 105,
       "panels": [],
       "title": "Top Offenders",
       "type": "row"
     },
     {
-      "datasource": { "type": "loki" },
+      "datasource": {
+        "type": "loki"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "custom": {
             "align": "auto",
             "displayMode": "auto",
             "inspect": false
           },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 50 }] }
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 50
+              }
+            ]
+          }
         },
         "overrides": [
-          { "matcher": { "id": "byName", "options": "Count" }, "properties": [{ "id": "custom.displayMode", "value": "gradient-gauge" }, { "id": "max", "value": 100 }] }
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Count"
+            },
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "gradient-gauge"
+              },
+              {
+                "id": "max",
+                "value": 100
+              }
+            ]
+          }
         ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 38 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 38
+      },
       "id": 17,
       "options": {
-        "footer": { "fields": "", "reducer": ["sum"], "show": true },
+        "footer": {
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": true
+        },
         "showHeader": true,
-        "sortBy": [{ "desc": true, "displayName": "Count" }]
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Count"
+          }
+        ]
       },
       "pluginVersion": "10.0.0",
       "targets": [
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "editorMode": "code",
           "expr": "topk(5, sum by (ip) (count_over_time({job=\"auth\"} |~ \"Invalid user\" | regexp \"from (?P<ip>[0-9.]+) port\"[15m])))",
           "instant": true,
@@ -878,37 +1809,124 @@
       ],
       "title": "Top Attacking IPs (SSH Brute Force)",
       "transformations": [
-        { "id": "labelsToFields", "options": { "mode": "columns" } },
-        { "id": "merge", "options": {} },
-        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value #A": "Count", "ip": "IP Address" } } },
-        { "id": "sortBy", "options": { "fields": {}, "sort": [{ "desc": true, "field": "Count" }] } }
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value #A": "Count",
+              "ip": "IP Address"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "desc": true,
+                "field": "Count"
+              }
+            ]
+          }
+        }
       ],
       "type": "table"
     },
     {
-      "datasource": { "type": "loki" },
+      "datasource": {
+        "type": "loki"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
-          "custom": { "align": "auto", "displayMode": "auto", "inspect": false },
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto",
+            "inspect": false
+          },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 50 }] }
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 50
+              }
+            ]
+          }
         },
         "overrides": [
-          { "matcher": { "id": "byName", "options": "Count" }, "properties": [{ "id": "custom.displayMode", "value": "gradient-gauge" }, { "id": "max", "value": 100 }] }
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Count"
+            },
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "gradient-gauge"
+              },
+              {
+                "id": "max",
+                "value": 100
+              }
+            ]
+          }
         ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 38 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 38
+      },
       "id": 18,
       "options": {
-        "footer": { "fields": "", "reducer": ["sum"], "show": true },
+        "footer": {
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": true
+        },
         "showHeader": true,
-        "sortBy": [{ "desc": true, "displayName": "Count" }]
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Count"
+          }
+        ]
       },
       "pluginVersion": "10.0.0",
       "targets": [
         {
-          "datasource": { "type": "loki" },
+          "datasource": {
+            "type": "loki"
+          },
           "editorMode": "code",
           "expr": "topk(10, sum by (user) (count_over_time({job=\"auth\"} |~ \"Invalid user\" | regexp \"Invalid user (?P<user>[a-zA-Z0-9_-]+) from\"[15m])))",
           "instant": true,
@@ -919,10 +1937,40 @@
       ],
       "title": "Top Targeted Usernames (SSH)",
       "transformations": [
-        { "id": "labelsToFields", "options": { "mode": "columns" } },
-        { "id": "merge", "options": {} },
-        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value #A": "Count", "user": "Username" } } },
-        { "id": "sortBy", "options": { "fields": {}, "sort": [{ "desc": true, "field": "Count" }] } }
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value #A": "Count",
+              "user": "Username"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "desc": true,
+                "field": "Count"
+              }
+            ]
+          }
+        }
       ],
       "type": "table"
     }
@@ -930,9 +1978,18 @@
   "refresh": "30s",
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["security", "attacks", "fail2ban"],
-  "templating": { "list": [] },
-  "time": { "from": "now-1h", "to": "now" },
+  "tags": [
+    "security",
+    "attacks",
+    "fail2ban"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
   "timepicker": {},
   "timezone": "",
   "title": "Security",

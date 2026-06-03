@@ -42,6 +42,21 @@ scrape_configs:
           expression: '/ready HTTP'
       - drop:
           expression: '/metrics HTTP'
+      # Extract structured metadata from Traefik JSON logs for efficient security queries
+      - match:
+          selector: '{container=~"traefik.*"}'
+          stages:
+            - json:
+                expressions:
+                  method: RequestMethod
+                  status: DownstreamStatus
+                  path: RequestPath
+                  user_agent: '"request_User-Agent"'
+            - structured_metadata:
+                method: method
+                status: status
+                path: path
+                user_agent: user_agent
 
   # System logs
   - job_name: system
