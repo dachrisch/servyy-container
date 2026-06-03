@@ -32,7 +32,7 @@
     restore_path: "{{ (docker.remote_dir, 'git', 'repos') | path_join }}"
     backup_name: "{{ (inventory_hostname == 'servyy-test.lxd') | ternary('test', 'home') }}"
     owner: "root"
-  when: with_containers | default(false)
+  when: (with_containers | default(false)) | bool
   tags:
     - restic
     - restic.restore
@@ -43,7 +43,7 @@
     restore_path: "{{ (docker.remote_dir, 'photoprism', 'database') | path_join }}"
     backup_name: "{{ (inventory_hostname == 'servyy-test.lxd') | ternary('test', 'home') }}"
     owner: "{{ create_user }}"
-  when: with_containers | default(false)
+  when: (with_containers | default(false)) | bool
   tags:
     - restic
     - restic.restore
@@ -54,7 +54,7 @@
     restore_path: "{{ (docker.remote_dir, 'pass', 'vw-data') | path_join }}"
     backup_name: "{{ (inventory_hostname == 'servyy-test.lxd') | ternary('test', 'home') }}"
     owner: "root"
-  when: with_containers | default(false)
+  when: (with_containers | default(false)) | bool
   tags:
     - restic
     - restic.restore
