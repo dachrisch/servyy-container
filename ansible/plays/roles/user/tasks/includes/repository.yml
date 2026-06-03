@@ -32,7 +32,7 @@
     repo: "{{ repository_uri }}"
     dest: "{{ remote_dir }}"
     force: true
-    recursive: "{{ clone_submodules | default(git_servyy_reachable) }}"
+    recursive: "{{ clone_submodules | default(true) and git_servyy_reachable == 'yes' }}"
     version: "{{ branch | default('master') }}"
   tags:
     - user.repo.clone
