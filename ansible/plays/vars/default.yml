@@ -22,7 +22,7 @@ sys_packages:
   - restic                      # backup tool with deduplication
   - sshpass                     # SFTP authentication for restic
 
-swap_space: 2G
+swap_space: 10G
 
 storagebox:
   file: /etc/storagebox.cred
