@@ -1,4 +1,10 @@
 ---
+- name: Install mysql-client for DB export
+  apt:
+    name: default-mysql-client
+    state: present
+    update_cache: false
+
 - name: Load production variables
   include_vars:
     file: "{{ playbook_dir }}/roles/ls_app/vars/secret_main.yaml"
