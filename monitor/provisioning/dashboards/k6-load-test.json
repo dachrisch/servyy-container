@@ -653,5 +653,5 @@
   "timezone": "UTC",
   "title": "k6 Load Test - LeagueSphere Production",
   "uid": "k6-leaguesphere-prod",
-  "version": 1
+  "version": 2
 }
