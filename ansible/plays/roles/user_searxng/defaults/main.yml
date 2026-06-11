@@ -1,6 +1,6 @@
 ---
+container_project_name: searxng
 searxng_version: latest
-searxng_host: 0.0.0.0
 searxng_port: 8080
 searxng_service_host: search.lehel.xyz
 searxng_container_name: "{{ container_project_name }}.core"
