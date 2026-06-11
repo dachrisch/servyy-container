@@ -6,8 +6,8 @@
     mode: "0755"
 
 - name: Deploy docker-compose.yml
-  template:
-    src: docker-compose.yml.j2
+  copy:
+    src: ../../../searxng/docker-compose.yml
     dest: "{{ container_home }}/searxng/docker-compose.yml"
     mode: "0644"
 
