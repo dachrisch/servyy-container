@@ -19,7 +19,6 @@
     state: directory
     mode: "0755"
     owner: "{{ ansible_user_id }}"
-    recurse: yes
 
 - name: Deploy settings.yml
   template:
