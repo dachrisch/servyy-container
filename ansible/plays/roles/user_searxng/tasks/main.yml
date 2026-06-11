@@ -1,29 +1,5 @@
 ---
-- name: Create searxng directory
-  file:
-    path: "{{ container_home }}/searxng"
-    state: directory
-    mode: "0755"
-
-- name: Deploy docker-compose.yml
-  copy:
-    src: ../../../searxng/docker-compose.yml
-    dest: "{{ container_home }}/searxng/docker-compose.yml"
-    mode: "0644"
-
-- name: Create searxng core-config directory
-  file:
-    path: "{{ container_home }}/searxng/core-config"
-    state: directory
-    mode: "0755"
-
-- name: Deploy settings.yml
-  template:
-    src: settings.yml.j2
-    dest: "{{ container_home }}/searxng/core-config/settings.yml"
-    mode: "0644"
-
-- name: Generate .env file
+- name: Generate .env file with secrets
   template:
     src: env.j2
     dest: "{{ container_home }}/searxng/.env"
