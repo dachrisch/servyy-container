@@ -21,7 +21,7 @@ services:
       - "traefik.http.routers.searxng.entrypoints=websecure"
       - "traefik.http.routers.searxng.tls=true"
       - "traefik.http.routers.searxng.tls.certresolver=letsencryptdnsresolver"
-      - "traefik.http.services.searxng.loadbalancer.server.port=8080"
+      - "traefik.http.services.searxng.loadbalancer.server.port={{ searxng_port }}"
 
   valkey:
     container_name: {{ searxng_valkey_container_name }}
