@@ -14,5 +14,5 @@
   tasks:
     - name: Include user_searxng role
       ansible.builtin.include_role:
-        name: user_searxng
-        allow_duplicates: yes
+        name: "{{ playbook_dir }}/../../"
+        tasks_from: main.yml
