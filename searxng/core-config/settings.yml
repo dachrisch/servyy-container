@@ -1,0 +1,16 @@
+# Read the documentation before using this settings file:
+# https://docs.searxng.org/admin/settings/settings.html
+# Managed by Ansible - do not edit manually
+
+use_default_settings: true
+
+engines:
+  keep_only:
+    - google
+    - duckduckgo
+
+server:
+  secret_key: "changeme"
+  bind_address: 0.0.0.0
+  port: 8080
+  image_proxy: true
