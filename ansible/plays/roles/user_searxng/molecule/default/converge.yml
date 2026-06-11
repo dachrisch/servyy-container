@@ -6,6 +6,9 @@
     container_project_name: searxng
     container_home: /home/molecule
     vault_searxng_secret_key: "test-secret-key-for-molecule"
+    vault_searxng_google_token: "test-google-token"
+    vault_searxng_duckduckgo_token: "test-duckduckgo-token"
+    vault_searxng_brave_token: "test-brave-token"
   pre_tasks:
     - name: Create proxy network for testing
       community.docker.docker_network:
