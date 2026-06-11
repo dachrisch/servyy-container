@@ -12,7 +12,7 @@
         name: proxy
         state: present
   tasks:
-    - name: Include user_searxng role
+    - name: Include user_searxng role  # noqa: role-name[path]
       ansible.builtin.include_role:
         name: "{{ playbook_dir }}/../../"
         tasks_from: main.yml
