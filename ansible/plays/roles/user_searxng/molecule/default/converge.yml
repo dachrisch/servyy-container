@@ -2,7 +2,17 @@
 - name: Converge
   hosts: all
   become: true
+  vars:
+    container_project_name: searxng
+    container_home: /home/molecule
+    vault_searxng_secret_key: "test-secret-key-for-molecule"
+  pre_tasks:
+    - name: Create proxy network for testing
+      ansible.builtin.docker_network:
+        name: proxy
+        state: present
   tasks:
     - name: Include user_searxng role
       ansible.builtin.include_role:
         name: user_searxng
+        allow_duplicates: yes
