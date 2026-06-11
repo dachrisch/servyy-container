@@ -12,3 +12,23 @@
     - user
   tags:
     - user
+
+- name: Deploy Searxng service
+  hosts: all
+  strategy: free
+  remote_user: "{{ create_user }}"
+  become: true
+  become_user: "{{ create_user }}"
+  vars_files:
+    - vars/default.yml
+    - vars/restic.yml
+    - vars/secrets.yml
+  roles:
+    - name: user_searxng
+      vars:
+        container_project_name: searxng
+        container_home: "{{ ansible_user_dir }}/servyy-container"
+  tags:
+    - user
+    - user.docker
+    - user.docker.searxng
