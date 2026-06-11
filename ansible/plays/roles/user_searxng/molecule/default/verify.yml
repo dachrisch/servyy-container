@@ -42,29 +42,20 @@
       register: traefik_check
       failed_when: traefik_check.changed
 
-    - name: Verify settings.yml contains keep_only
+    - name: Verify settings.yml contains secret_key
       ansible.builtin.lineinfile:
         path: /home/molecule/searxng/core-config/settings.yml
-        line: '  keep_only:'
+        line: '  secret_key:'
         state: present
       check_mode: yes
-      register: keep_only_check
-      failed_when: keep_only_check.changed
+      register: secret_key_check
+      failed_when: secret_key_check.changed
 
-    - name: Verify settings.yml contains google engine
+    - name: Verify settings.yml contains image_proxy setting
       ansible.builtin.lineinfile:
         path: /home/molecule/searxng/core-config/settings.yml
-        line: '    - google'
+        line: '  image_proxy: true'
         state: present
       check_mode: yes
-      register: google_check
-      failed_when: google_check.changed
-
-    - name: Verify settings.yml contains duckduckgo engine
-      ansible.builtin.lineinfile:
-        path: /home/molecule/searxng/core-config/settings.yml
-        line: '    - duckduckgo'
-        state: present
-      check_mode: yes
-      register: duckduckgo_check
-      failed_when: duckduckgo_check.changed
+      register: image_proxy_check
+      failed_when: image_proxy_check.changed
