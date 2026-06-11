@@ -6,8 +6,14 @@
   ignore_errors: true
 
 - name: Fix core-config directory ownership
-  ansible.builtin.shell:
-    cmd: "sudo chown -R {{ ansible_user_id }}:{{ ansible_user_id }} {{ container_home }}/searxng/core-config"
+  ansible.builtin.file:
+    path: "{{ container_home }}/searxng/core-config"
+    state: directory
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_id }}"
+    recurse: true
+  become: true
+  become_user: root
 
 - name: Deploy settings.yml with engine tokens and secrets
   template:
