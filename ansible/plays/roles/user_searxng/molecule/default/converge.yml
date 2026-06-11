@@ -1,0 +1,7 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    - name: Include user_searxng role
+      include_role:
+        name: user_searxng
