@@ -6,7 +6,8 @@ use_default_settings:
   engines:
     keep_only:
       - google
-      - duckduckgo
+      - duckduckgo lite
+      - brave
 
 server:
   secret_key: "{{ searxng_secret_key }}"
@@ -23,6 +24,9 @@ engines:
   - name: google
     tokens:
       - "{{ searxng_google_token }}"
-  - name: duckduckgo
+  - name: duckduckgo lite
     tokens:
       - "{{ searxng_duckduckgo_token }}"
+  - name: brave
+    tokens:
+      - "{{ searxng_brave_token }}"
