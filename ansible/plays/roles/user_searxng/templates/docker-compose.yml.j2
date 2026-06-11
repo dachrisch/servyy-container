@@ -6,7 +6,7 @@ name: searxng
 services:
   core:
     container_name: {{ searxng_container_name }}
-    image: "docker.io/searxng/searxng:{{ searxng_version }}"
+    image: "docker.io/searxng/searxng:${SEARXNG_VERSION:-latest}"
     restart: unless-stopped
     networks:
       - proxy
@@ -21,7 +21,7 @@ services:
       - "traefik.http.routers.searxng.entrypoints=websecure"
       - "traefik.http.routers.searxng.tls=true"
       - "traefik.http.routers.searxng.tls.certresolver=letsencryptdnsresolver"
-      - "traefik.http.services.searxng.loadbalancer.server.port={{ searxng_port }}"
+      - "traefik.http.services.searxng.loadbalancer.server.port=${SEARXNG_PORT:-8080}"
 
   valkey:
     container_name: {{ searxng_valkey_container_name }}
