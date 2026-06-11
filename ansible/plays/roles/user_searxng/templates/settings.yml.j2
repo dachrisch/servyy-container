@@ -2,13 +2,22 @@
 # https://docs.searxng.org/admin/settings/settings.html
 # Managed by Ansible - do not edit manually
 
-use_default_settings: true
+use_default_settings:
+  engines:
+    keep_only:
+      - google
+      - duckduckgo
 
 server:
   secret_key: "{{ searxng_secret_key }}"
   bind_address: 0.0.0.0
   port: 8080
   image_proxy: true
+
+search:
+  formats:
+    - html
+    - json
 
 engines:
   - name: google
