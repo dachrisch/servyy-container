@@ -4,35 +4,30 @@
     path: "{{ container_home }}/searxng"
     state: directory
     mode: "0755"
-    owner: "{{ ansible_user_id }}"
 
 - name: Deploy docker-compose.yml
   template:
     src: docker-compose.yml.j2
     dest: "{{ container_home }}/searxng/docker-compose.yml"
     mode: "0644"
-    owner: "{{ ansible_user_id }}"
 
 - name: Create searxng core-config directory
   file:
     path: "{{ container_home }}/searxng/core-config"
     state: directory
     mode: "0755"
-    owner: "{{ ansible_user_id }}"
 
 - name: Deploy settings.yml
   template:
     src: settings.yml.j2
     dest: "{{ container_home }}/searxng/core-config/settings.yml"
     mode: "0644"
-    owner: "{{ ansible_user_id }}"
 
 - name: Generate .env file
   template:
     src: env.j2
     dest: "{{ container_home }}/searxng/.env"
     mode: "0600"
-    owner: "{{ ansible_user_id }}"
 
 - name: Deploy searxng services
   community.docker.docker_compose_v2:
