@@ -6,3 +6,4 @@ test:
       with_containers: true
       with_docker: false
       skip_storagebox: true
+      searxng_service_host: search.servyy-test.lxd
