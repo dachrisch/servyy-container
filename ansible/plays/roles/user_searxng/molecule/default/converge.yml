@@ -8,7 +8,7 @@
     vault_searxng_secret_key: "test-secret-key-for-molecule"
   pre_tasks:
     - name: Create proxy network for testing
-      ansible.builtin.docker_network:
+      community.docker.docker_network:
         name: proxy
         state: present
   tasks:
