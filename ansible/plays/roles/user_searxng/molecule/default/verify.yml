@@ -1,39 +1,40 @@
 ---
 - name: Verify
   hosts: all
+  become: true
   tasks:
     - name: Check searxng directory exists
-      stat:
+      ansible.builtin.stat:
         path: /home/molecule/searxng
       register: searxng_dir
       failed_when: not searxng_dir.stat.exists
 
     - name: Check core-config directory exists
-      stat:
+      ansible.builtin.stat:
         path: /home/molecule/searxng/core-config
       register: core_config_dir
       failed_when: not core_config_dir.stat.exists
 
     - name: Check docker-compose.yml exists
-      stat:
+      ansible.builtin.stat:
         path: /home/molecule/searxng/docker-compose.yml
       register: docker_compose
       failed_when: not docker_compose.stat.exists
 
     - name: Check settings.yml exists
-      stat:
+      ansible.builtin.stat:
         path: /home/molecule/searxng/core-config/settings.yml
       register: settings
       failed_when: not settings.stat.exists
 
     - name: Check .env file exists
-      stat:
+      ansible.builtin.stat:
         path: /home/molecule/searxng/.env
       register: env_file
       failed_when: not env_file.stat.exists
 
     - name: Verify docker-compose.yml contains Traefik labels
-      lineinfile:
+      ansible.builtin.lineinfile:
         path: /home/molecule/searxng/docker-compose.yml
         line: '      - "traefik.enable=true"'
         state: present
@@ -42,7 +43,7 @@
       failed_when: traefik_check.changed
 
     - name: Verify settings.yml contains keep_only
-      lineinfile:
+      ansible.builtin.lineinfile:
         path: /home/molecule/searxng/core-config/settings.yml
         line: '  keep_only:'
         state: present
@@ -51,7 +52,7 @@
       failed_when: keep_only_check.changed
 
     - name: Verify settings.yml contains google engine
-      lineinfile:
+      ansible.builtin.lineinfile:
         path: /home/molecule/searxng/core-config/settings.yml
         line: '    - google'
         state: present
@@ -60,7 +61,7 @@
       failed_when: google_check.changed
 
     - name: Verify settings.yml contains duckduckgo engine
-      lineinfile:
+      ansible.builtin.lineinfile:
         path: /home/molecule/searxng/core-config/settings.yml
         line: '    - duckduckgo'
         state: present
