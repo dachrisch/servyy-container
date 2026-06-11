@@ -7,3 +7,6 @@ test:
       with_docker: false
       skip_storagebox: true
       searxng_service_host: search.servyy-test.lxd
+      searxng_traefik_entrypoint: web
+      searxng_traefik_tls: "false"
+      searxng_traefik_certresolver: ""
