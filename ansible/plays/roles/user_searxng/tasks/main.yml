@@ -27,7 +27,7 @@
   template:
     src: env.j2
     dest: "{{ container_home }}/searxng/.env"
-    mode: "0644"
+    mode: "0600"
 
 - name: Deploy searxng services
   community.docker.docker_compose_v2:
