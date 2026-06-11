@@ -1,21 +1,9 @@
 ---
-- name: Copy docker-compose.yml
-  copy:
-    src: ../../../searxng/docker-compose.yml
-    dest: "{{ container_home }}/searxng/docker-compose.yml"
-    mode: "0644"
-
-- name: Create core-config directory
-  file:
-    path: "{{ container_home }}/searxng/core-config"
-    state: directory
-    mode: "0755"
-
-- name: Deploy settings.yml with vault secret
+- name: Deploy settings.yml with engine tokens and secrets
   template:
     src: settings.yml.j2
     dest: "{{ container_home }}/searxng/core-config/settings.yml"
-    mode: "0644"
+    mode: "0600"
 
 - name: Generate .env file with secrets
   template:
