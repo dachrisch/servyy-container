@@ -1,0 +1,4 @@
+---
+- name: Deploy Searxng
+  debug:
+    msg: "Deploying searxng {{ searxng_version }}"

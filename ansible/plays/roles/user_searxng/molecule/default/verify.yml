@@ -1,0 +1,7 @@
+---
+- name: Verify
+  hosts: all
+  tasks:
+    - name: Verify placeholder
+      debug:
+        msg: "Verify will check deployment"

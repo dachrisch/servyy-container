@@ -1,0 +1,7 @@
+---
+searxng_version: latest
+searxng_host: 0.0.0.0
+searxng_port: 8080
+searxng_container_name: "{{ container_project_name }}.core"
+searxng_valkey_container_name: "{{ container_project_name }}.valkey"
+searxng_secret_key: "{{ vault_searxng_secret_key }}"
