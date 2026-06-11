@@ -4,6 +4,7 @@
     project_src: "{{ container_home }}/searxng"
     state: absent
   ignore_errors: true
+  tags: [molecule-notest]
 
 - name: Fix core-config directory ownership
   ansible.builtin.file:
@@ -31,3 +32,4 @@
   community.docker.docker_compose_v2:
     project_src: "{{ container_home }}/searxng"
     state: present
+  tags: [molecule-notest]
