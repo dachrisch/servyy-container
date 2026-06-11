@@ -1,10 +1,4 @@
 ---
-- name: Copy docker-compose.yml from git
-  copy:
-    src: ../../../searxng/docker-compose.yml
-    dest: "{{ container_home }}/searxng/docker-compose.yml"
-    mode: "0644"
-
 - name: Create core-config directory
   file:
     path: "{{ container_home }}/searxng/core-config"
@@ -23,7 +17,8 @@
     dest: "{{ container_home }}/searxng/.env"
     mode: "0600"
 
-- name: Deploy searxng services
+- name: Deploy searxng services (from git location)
   community.docker.docker_compose_v2:
-    project_src: "{{ container_home }}/searxng"
+    project_src: "{{ playbook_dir }}/../../../../searxng"
     state: present
+    project_name: searxng
