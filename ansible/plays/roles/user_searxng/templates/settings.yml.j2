@@ -1,6 +1,6 @@
 # Searxng Settings Configuration
 # https://docs.searxng.org/admin/settings/settings.html
-# Managed by Ansible - injected with vault secret
+# Managed by Ansible - do not edit manually
 
 use_default_settings: true
 
@@ -9,3 +9,11 @@ server:
   bind_address: 0.0.0.0
   port: 8080
   image_proxy: true
+
+engines:
+  - name: google
+    tokens:
+      - "{{ searxng_google_token }}"
+  - name: duckduckgo
+    tokens:
+      - "{{ searxng_duckduckgo_token }}"
