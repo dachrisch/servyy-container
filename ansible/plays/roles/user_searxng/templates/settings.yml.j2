@@ -1,2 +1,15 @@
-# Placeholder - will update in Task 3
+# Searxng Settings Configuration
+# Managed by Ansible - do not edit manually
+
 use_default_settings: true
+
+engines:
+  keep_only:
+    - google
+    - duckduckgo
+
+server:
+  secret_key: "{{ searxng_secret_key }}"
+  bind_address: 0.0.0.0
+  port: 8080
+  image_proxy: true
