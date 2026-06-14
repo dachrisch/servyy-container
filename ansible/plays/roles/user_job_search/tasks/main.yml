@@ -1,0 +1,24 @@
+---
+- name: Generate .env file
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ container_home }}/{{ container_project_name }}/.env"
+    mode: "0600"
+
+- name: Generate api.env file
+  ansible.builtin.template:
+    src: api.env.j2
+    dest: "{{ container_home }}/{{ container_project_name }}/api.env"
+    mode: "0600"
+
+- name: Generate crawler.env file
+  ansible.builtin.template:
+    src: crawler.env.j2
+    dest: "{{ container_home }}/{{ container_project_name }}/crawler.env"
+    mode: "0600"
+
+- name: Deploy job-search services
+  community.docker.docker_compose_v2:
+    project_src: "{{ container_home }}/{{ container_project_name }}"
+    state: present
+  tags: [molecule-notest]
