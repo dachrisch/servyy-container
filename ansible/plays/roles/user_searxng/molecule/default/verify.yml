@@ -45,7 +45,8 @@
     - name: Verify settings.yml contains secret_key
       ansible.builtin.lineinfile:
         path: /home/molecule/searxng/core-config/settings.yml
-        line: '  secret_key:'
+        regexp: '^\s+secret_key:'
+        line: '  secret_key: PLACEHOLDER'
         state: present
       check_mode: yes
       register: secret_key_check
