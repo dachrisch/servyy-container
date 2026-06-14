@@ -37,6 +37,11 @@
         cmd: grep -q 'JWT_SECRET=test-jwt-secret-for-molecule' /home/molecule/job-search/api.env
       changed_when: false
 
+    - name: Verify api.env contains SEARXNG_TOKEN
+      ansible.builtin.command:
+        cmd: grep -q 'SEARXNG_TOKEN=test-searxng-token-for-molecule' /home/molecule/job-search/api.env
+      changed_when: false
+
     - name: Verify crawler.env contains SEARXNG_TOKEN
       ansible.builtin.command:
         cmd: grep -q 'SEARXNG_TOKEN=test-searxng-token-for-molecule' /home/molecule/job-search/crawler.env
