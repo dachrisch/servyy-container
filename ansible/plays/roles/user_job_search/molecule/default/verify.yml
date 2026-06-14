@@ -42,6 +42,21 @@
         cmd: grep -q 'SEARXNG_TOKEN=test-searxng-token-for-molecule' /home/molecule/job-search/crawler.env
       changed_when: false
 
+    - name: Verify crawler.env contains SEARXNG_URL
+      ansible.builtin.command:
+        cmd: grep -q 'SEARXNG_URL=https://search.lehel.xyz' /home/molecule/job-search/crawler.env
+      changed_when: false
+
+    - name: Verify env files have mode 0600
+      ansible.builtin.stat:
+        path: "/home/molecule/job-search/{{ item }}"
+      register: env_stat
+      failed_when: env_stat.stat.mode != '0600'
+      loop:
+        - .env
+        - api.env
+        - crawler.env
+
     - name: Verify no CLAUDE_API_KEY in any env file
       ansible.builtin.command:
         cmd: grep -rq 'CLAUDE_API_KEY' /home/molecule/job-search/

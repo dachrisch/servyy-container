@@ -246,6 +246,8 @@ jobs:
             scenario: docker-only
           - role: user_searxng
             scenario: default
+          - role: user_job_search
+            scenario: default
     steps:
       - uses: actions/checkout@v6
 
