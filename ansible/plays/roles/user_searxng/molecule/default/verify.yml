@@ -43,14 +43,9 @@
       failed_when: traefik_check.changed
 
     - name: Verify settings.yml contains secret_key
-      ansible.builtin.lineinfile:
-        path: /home/molecule/searxng/core-config/settings.yml
-        regexp: '^\s+secret_key:'
-        line: '  secret_key: PLACEHOLDER'
-        state: present
-      check_mode: yes
-      register: secret_key_check
-      failed_when: secret_key_check.changed
+      ansible.builtin.command:
+        cmd: grep -q 'secret_key:' /home/molecule/searxng/core-config/settings.yml
+      changed_when: false
 
     - name: Verify settings.yml contains image_proxy setting
       ansible.builtin.lineinfile:
