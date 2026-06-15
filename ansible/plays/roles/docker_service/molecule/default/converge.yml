@@ -1,0 +1,53 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    docker:
+      remote_dir: /home/molecule
+    extension_drive:
+      path: /var/lib
+    job_search_jwt_secret: test-jwt-secret
+    job_search_searxng_token: test-searxng-token
+    job_search_searxng_url: https://search.lehel.xyz
+
+  pre_tasks:
+    - name: Create service directories
+      ansible.builtin.file:
+        path: "/home/molecule/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - simple-svc
+        - job-search
+        - manual-svc
+
+  tasks:
+    - name: Deploy simple service
+      ansible.builtin.include_role:
+        name: docker_service
+        tasks_from: main.yml
+      vars:
+        service_dir: simple-svc
+
+    - name: Deploy multi-template job-search service
+      ansible.builtin.include_role:
+        name: docker_service
+        tasks_from: main.yml
+      vars:
+        service_dir: job-search
+        env_templates:
+          - src: docker.env.j2
+            dest: .env
+          - src: job-search/api.env.j2
+            dest: api.env
+          - src: job-search/crawler.env.j2
+            dest: crawler.env
+
+    - name: Deploy manual service (env only, no compose)
+      ansible.builtin.include_role:
+        name: docker_service
+        tasks_from: main.yml
+      vars:
+        service_dir: manual-svc
+        manual: true

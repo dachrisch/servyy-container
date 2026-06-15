@@ -8,7 +8,7 @@ driver:
   name: docker
 
 platforms:
-  - name: instance-job-search
+  - name: instance-docker-service
     image: geerlingguy/docker-ubuntu2204-ansible:latest
     command: ""
     volumes:
@@ -30,6 +30,7 @@ provisioner:
       roles_path: ../../../
   env:
     ANSIBLE_FORCE_COLOR: "1"
+    ANSIBLE_ROLES_PATH: "${MOLECULE_PROJECT_DIRECTORY}/.."
 
 verifier:
   name: ansible

@@ -10,7 +10,7 @@ use_default_settings:
       - brave
 
 server:
-  secret_key: "{{ searxng_secret_key }}"
+  secret_key: "{{ vault_searxng_secret_key }}"
   bind_address: 0.0.0.0
   port: 8080
   image_proxy: true
@@ -23,10 +23,10 @@ search:
 engines:
   - name: google
     tokens:
-      - "{{ searxng_google_token }}"
+      - "{{ vault_searxng_google_token }}"
   - name: duckduckgo lite
     tokens:
-      - "{{ searxng_duckduckgo_token }}"
+      - "{{ vault_searxng_duckduckgo_token }}"
   - name: brave
     tokens:
-      - "{{ searxng_brave_token }}"
+      - "{{ vault_searxng_brave_token }}"

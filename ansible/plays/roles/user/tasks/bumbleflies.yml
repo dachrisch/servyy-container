@@ -1,10 +1,7 @@
-- name: Gather bumbleflies service dir
-  set_fact:
-    dir_bumbleflies: "{{ (docker.services | selectattr('name', 'equalto', 'Bumbleflies') | first).dir }}"
-
+---
 - name: Setting working dir for bumbleflies service
   set_fact:
-    docker_dir_bumbleflies: "{{ (docker.remote_dir, dir_bumbleflies ) | path_join }}"
+    docker_dir_bumbleflies: "{{ (docker.remote_dir, 'bumbleflies') | path_join }}"
 
 - name: Configure safe directory for {{ docker_dir_bumbleflies }}/site
   git_config:
