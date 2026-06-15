@@ -182,3 +182,54 @@
     - role: docker_service
       vars: { service_dir: monitor, manual: true }
       tags: [user.docker, user.docker.monitor]
+
+  post_tasks:
+    - name: Wait for leagues-finance mongo to become healthy
+      community.docker.docker_container_info:
+        name: "leagues-finance.mongo"
+      register: lf_mongo_info
+      until: >
+        lf_mongo_info.container is not none and
+        lf_mongo_info.container.State.Health.Status is defined and
+        lf_mongo_info.container.State.Health.Status == 'healthy'
+      retries: 15
+      delay: 2
+      failed_when: false
+      tags:
+        - user.docker.leagues-finance
+        - user.docker
+
+    - name: Remove corrupted mongo volume and restart if unhealthy
+      when: >
+        lf_mongo_info.container is none or
+        lf_mongo_info.container.State.Health.Status != 'healthy'
+      block:
+        - name: Stop leagues-finance containers
+          community.docker.docker_compose_v2:
+            project_src: "{{ (docker.remote_dir, 'leagues-finance') | path_join }}"
+            project_name: leagues-finance
+            state: stopped
+
+        - name: Remove leagues-finance mongo_data volume
+          community.docker.docker_volume:
+            name: leagues-finance_mongo_data
+            state: absent
+
+        - name: Restart leagues-finance containers
+          community.docker.docker_compose_v2:
+            project_src: "{{ (docker.remote_dir, 'leagues-finance') | path_join }}"
+            project_name: leagues-finance
+            state: present
+
+        - name: Wait for mongo after volume reset
+          community.docker.docker_container_info:
+            name: "leagues-finance.mongo"
+          register: lf_mongo_retry
+          until: >
+            lf_mongo_retry.container is not none and
+            lf_mongo_retry.container.State.Health.Status == 'healthy'
+          retries: 15
+          delay: 2
+      tags:
+        - user.docker.leagues-finance
+        - user.docker
