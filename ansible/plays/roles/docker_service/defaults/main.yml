@@ -1,0 +1,9 @@
+---
+service_dir: ""
+service_name: "{{ service_dir }}"
+service_host: "{{ service_dir }}.{{ inventory_hostname }}"
+env_templates:
+  - src: docker.env.j2
+    dest: .env
+compose_file: docker-compose.yml
+manual: false
