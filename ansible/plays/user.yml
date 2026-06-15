@@ -78,31 +78,38 @@
   roles:
     # Simple services — generic .env only
     - role: docker_service
-      vars: { service_dir: traefik }
+      vars:
+        service_dir: traefik
       tags: [user.docker, user.docker.traefik]
 
     - role: docker_service
-      vars: { service_dir: git }
+      vars:
+        service_dir: git
       tags: [user.docker, user.docker.git]
 
     - role: docker_service
-      vars: { service_dir: photoprism }
+      vars:
+        service_dir: photoprism
       tags: [user.docker, user.docker.photoprism]
 
     - role: docker_service
-      vars: { service_dir: bumbleflies }
+      vars:
+        service_dir: bumbleflies
       tags: [user.docker, user.docker.bumbleflies]
 
     - role: docker_service
-      vars: { service_dir: achim-hoefer }
+      vars:
+        service_dir: achim-hoefer
       tags: [user.docker, user.docker.achim-hoefer]
 
     - role: docker_service
-      vars: { service_dir: portainer }
+      vars:
+        service_dir: portainer
       tags: [user.docker, user.docker.portainer]
 
     - role: docker_service
-      vars: { service_dir: pass }
+      vars:
+        service_dir: pass
       tags: [user.docker, user.docker.pass]
 
     # Services with additional env templates
@@ -110,40 +117,50 @@
       vars:
         service_dir: opencode
         env_templates:
-          - { src: docker.env.j2, dest: .env }
-          - { src: opencode/.env.j2, dest: opencode.env }
+          - src: docker.env.j2
+            dest: .env
+          - src: opencode/.env.j2
+            dest: opencode.env
       tags: [user.docker, user.docker.opencode]
 
     - role: docker_service
       vars:
         service_dir: energy
         env_templates:
-          - { src: docker.env.j2, dest: .env }
-          - { src: energy/.env.j2, dest: energy.env }
+          - src: docker.env.j2
+            dest: .env
+          - src: energy/.env.j2
+            dest: energy.env
       tags: [user.docker, user.docker.energy]
 
     - role: docker_service
       vars:
         service_dir: groceries
         env_templates:
-          - { src: docker.env.j2, dest: .env }
-          - { src: groceries/.env.j2, dest: groceries.env }
+          - src: docker.env.j2
+            dest: .env
+          - src: groceries/.env.j2
+            dest: groceries.env
       tags: [user.docker, user.docker.groceries]
 
     - role: docker_service
       vars:
         service_dir: leagues-finance
         env_templates:
-          - { src: docker.env.j2, dest: .env }
-          - { src: leagues-finance/.env.j2, dest: leagues-finance.env }
+          - src: docker.env.j2
+            dest: .env
+          - src: leagues-finance/.env.j2
+            dest: leagues-finance.env
       tags: [user.docker, user.docker.leagues-finance]
 
     - role: docker_service
       vars:
         service_dir: finance
         env_templates:
-          - { src: docker.env.j2, dest: .env }
-          - { src: finance/.env.j2, dest: finance.env }
+          - src: docker.env.j2
+            dest: .env
+          - src: finance/.env.j2
+            dest: finance.env
       tags: [user.docker, user.docker.finance]
 
     # Searxng — custom service_host (search.* not searxng.*)
@@ -153,7 +170,8 @@
         service_host: "search.{{ inventory_hostname }}"
         service_name: searxng
         env_templates:
-          - { src: searxng/.env.j2, dest: .env }
+          - src: searxng/.env.j2
+            dest: .env
       tags: [user.docker, user.docker.searxng]
 
     # Job search — three env files
@@ -165,22 +183,31 @@
         job_search_searxng_token: "{{ vault_searxng_brave_token }}"
         job_search_searxng_url: https://search.lehel.xyz
         env_templates:
-          - { src: job-search/.env.j2, dest: .env }
-          - { src: job-search/api.env.j2, dest: api.env }
-          - { src: job-search/crawler.env.j2, dest: crawler.env }
+          - src: job-search/.env.j2
+            dest: .env
+          - src: job-search/api.env.j2
+            dest: api.env
+          - src: job-search/crawler.env.j2
+            dest: crawler.env
       tags: [user.docker, user.docker.job-search]
 
     # Manual services — env rendered, compose not started
     - role: docker_service
-      vars: { service_dir: dns, manual: true }
+      vars:
+        service_dir: dns
+        manual: true
       tags: [user.docker, user.docker.dns]
 
     - role: docker_service
-      vars: { service_dir: me, manual: true }
+      vars:
+        service_dir: me
+        manual: true
       tags: [user.docker, user.docker.me]
 
     - role: docker_service
-      vars: { service_dir: monitor, manual: true }
+      vars:
+        service_dir: monitor
+        manual: true
       tags: [user.docker, user.docker.monitor]
 
   post_tasks:

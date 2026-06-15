@@ -7,23 +7,30 @@
     owner: "{{ create_user }}"
   vars:
     services:
-      - { dir: traefik }
-      - { dir: git, depends: traefik }
-      - { dir: photoprism, depends: traefik }
-      - { dir: bumbleflies, depends: traefik }
-      - { dir: achim-hoefer, depends: traefik }
-      - { dir: portainer }
-      - { dir: pass }
-      - { dir: opencode }
-      - { dir: energy }
-      - { dir: groceries }
-      - { dir: leagues-finance }
-      - { dir: finance }
-      - { dir: searxng }
-      - { dir: job-search }
-      - { dir: dns, manual: {} }
-      - { dir: me, manual: {} }
-      - { dir: monitor, manual: {} }
+      - dir: traefik
+      - dir: git
+        depends: traefik
+      - dir: photoprism
+        depends: traefik
+      - dir: bumbleflies
+        depends: traefik
+      - dir: achim-hoefer
+        depends: traefik
+      - dir: portainer
+      - dir: pass
+      - dir: opencode
+      - dir: energy
+      - dir: groceries
+      - dir: leagues-finance
+      - dir: finance
+      - dir: searxng
+      - dir: job-search
+      - dir: dns
+        manual: {}
+      - dir: me
+        manual: {}
+      - dir: monitor
+        manual: {}
     services_root: "{{ docker.remote_dir }}"
   tags:
     - user.docker.services.script
