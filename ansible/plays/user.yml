@@ -204,11 +204,11 @@
         lf_mongo_info.container is none or
         lf_mongo_info.container.State.Health.Status != 'healthy'
       block:
-        - name: Stop leagues-finance containers
+        - name: Remove leagues-finance containers
           community.docker.docker_compose_v2:
             project_src: "{{ (docker.remote_dir, 'leagues-finance') | path_join }}"
             project_name: leagues-finance
-            state: stopped
+            state: absent
 
         - name: Remove leagues-finance mongo_data volume
           community.docker.docker_volume:
