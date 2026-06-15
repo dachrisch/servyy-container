@@ -1,7 +1,7 @@
 # CLAUDE.md - servyy-container Infrastructure
 
 > Self-hosted microservices platform (15+ Docker services) automated with Ansible
-> **Last Updated:** 2026-05-31 (Added Common Issues & Solutions, Deployment Verification Checklist)
+> **Last Updated:** 2026-06-15 (Unified docker_service role, updated molecule patterns)
 
 ## Quick Commands
 
@@ -154,7 +154,7 @@ ssh lehel.xyz "docker restart monitor.grafana"
 5. DOCUMENT: Update history/YYYY-MM-DD_*.md
 ```
 
-**Current Coverage**: 7 scenarios across system/testing/user roles
+**Current Coverage**: 8 scenarios across system/testing/user/docker_service roles
 **Test Environment**: servyy-test.lxd (validates before CI)
 **CI Platform**: GitHub Actions (runs all scenarios in parallel)
 
@@ -173,8 +173,9 @@ ssh lehel.xyz "docker restart monitor.grafana"
 
 **3. Use include_role Pattern**
 - Templates need proper resolution
-- Pattern: `include_role` with `playbook_dir` variable
-- Never use `import_tasks` for tasks using templates
+- Pattern: `include_role` with role name (not path) — set `ANSIBLE_ROLES_PATH` in molecule.yml provisioner env
+- Never use path-based role names (`{{ playbook_dir }}/../../`) — ansible-lint flags these and they break in CI
+- Set `ANSIBLE_ROLES_PATH: "${MOLECULE_PROJECT_DIRECTORY}/.."` so the role is discoverable by name
 
 **4. Verify What Was Actually Configured**
 - Don't test skipped tasks
@@ -187,6 +188,7 @@ ssh lehel.xyz "docker restart monitor.grafana"
 - `ansible/plays/roles/system/molecule/` - System configuration
 - `ansible/plays/roles/testing/molecule/` - Development utilities
 - `ansible/plays/roles/user/molecule/` - User environment setup
+- `ansible/plays/roles/docker_service/molecule/` - Generic Docker service role
 
 **Reference documentation**:
 - `history/2026-01-05_molecule-testing-validation.md` - Complete validation report
@@ -265,7 +267,7 @@ ansible/
 └── plays/
     ├── system.yml          # OS, fail2ban, monit, backups
     ├── user.yml            # Docker services, containers
-    └── roles/{system,user,testing,ls_*}/
+    └── roles/{system,user,testing,docker_service,ls_*}/
 ```
 
 **Common Tags:**
@@ -551,12 +553,34 @@ networks:
 ```
 ⚠️ **NEVER use "app" as service name** - causes DNS conflicts with other services
 
-2. Deploy: `cd ansible && ./servyy.sh --tags "docker" --limit lehel.xyz`
+2. Add a role invocation to `ansible/plays/user.yml` using the `docker_service` role:
+```yaml
+# Simple service (single .env from docker.env.j2)
+- role: docker_service
+  vars:
+    service_dir: my-service
+  tags: [user.docker, user.docker.my-service]
 
-3. Verify:
+# Service with extra env templates
+- role: docker_service
+  vars:
+    service_dir: my-service
+    env_templates:
+      - src: docker.env.j2
+        dest: .env
+      - src: my-service/.env.j2
+        dest: service.env
+  tags: [user.docker, user.docker.my-service]
+```
+
+3. Add the service to the script list in `ansible/plays/roles/user/tasks/docker_extras.yml`.
+
+4. Deploy: `cd ansible && ./servyy.sh --tags "docker" --limit lehel.xyz`
+
+5. Verify:
 ```bash
 ssh lehel.xyz "docker ps | grep {service}"
-ssh lehel.xyz "docker logs {service}.app"
+ssh lehel.xyz "docker logs {service}.api --tail 20"
 curl -I https://{service}.lehel.xyz
 ```
 
@@ -579,7 +603,8 @@ curl -I https://{service}.lehel.xyz
 | `/usr/local/bin/blocklist/update-from-loki.sh` | fail2ban Loki integration |
 | `/var/log/fail2ban-loki.log` | fail2ban blocklist log |
 | `ansible/plays/vars/secrets.yml` | Encrypted Ansible secrets |
-| `ansible/plays/roles/user/templates/docker.env.j2` | Service .env template |
+| `ansible/plays/roles/docker_service/templates/docker.env.j2` | Default service .env template |
+| `ansible/plays/roles/docker_service/templates/{service}/` | Per-service env templates |
 | `monitor/provisioning/dashboards/` | Grafana dashboard JSON files |
 | `monitor/provisioning/datasources/` | Grafana datasource configs |
 
