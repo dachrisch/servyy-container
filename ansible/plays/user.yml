@@ -165,7 +165,6 @@
         job_search_searxng_token: "{{ vault_searxng_brave_token }}"
         job_search_searxng_url: https://search.lehel.xyz
         env_templates:
-          - { src: docker.env.j2, dest: .env }
           - { src: job-search/.env.j2, dest: .env }
           - { src: job-search/api.env.j2, dest: api.env }
           - { src: job-search/crawler.env.j2, dest: crawler.env }
