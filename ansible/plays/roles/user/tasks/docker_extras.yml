@@ -1,0 +1,98 @@
+---
+- name: Create docker script for services
+  template:
+    src: docker_command.sh.j2
+    dest: "{{ (remote_user_home, 'forall_docker_services.sh') | path_join }}"
+    mode: 0770
+    owner: "{{ create_user }}"
+  vars:
+    services:
+      - dir: traefik
+      - dir: git
+        depends: traefik
+      - dir: photoprism
+        depends: traefik
+      - dir: bumbleflies
+        depends: traefik
+      - dir: achim-hoefer
+        depends: traefik
+      - dir: portainer
+      - dir: pass
+      - dir: opencode
+      - dir: energy
+      - dir: groceries
+      - dir: leagues-finance
+      - dir: finance
+      - dir: searxng
+      - dir: job-search
+      - dir: dns
+        manual: {}
+      - dir: me
+        manual: {}
+      - dir: monitor
+        manual: {}
+    services_root: "{{ docker.remote_dir }}"
+  tags:
+    - user.docker.services.script
+
+- name: Create finance import directory
+  file:
+    path: "{{ (docker.remote_dir, 'finance', 'import') | path_join }}"
+    state: directory
+    owner: "{{ create_user }}"
+    group: "docker"
+    mode: '0755'
+  tags:
+    - user.docker.env
+
+- name: Create finance import config from template
+  template:
+    src: finance-import-config.json.j2
+    dest: "{{ (docker.remote_dir, 'finance', 'import', 'import_config.json') | path_join }}"
+    owner: "{{ create_user }}"
+    group: "docker"
+    mode: '0644'
+  tags:
+    - user.docker.env
+
+- name: Create finance import script from template
+  template:
+    src: run-import.sh.j2
+    dest: "{{ (docker.remote_dir, 'finance', 'import', 'run-import.sh') | path_join }}"
+    owner: "{{ create_user }}"
+    group: "docker"
+    mode: '0755'
+  tags:
+    - user.docker.env
+
+- name: Create OpenCode data directory
+  file:
+    path: "{{ (docker.remote_dir, 'opencode', 'data') | path_join }}"
+    state: directory
+    owner: "{{ create_user }}"
+    group: "docker"
+    mode: '0775'
+  become: true
+  become_user: root
+  when: with_containers | default(false)
+  tags:
+    - user.docker.opencode
+
+
+- name: Ensure lingering enabled
+  command: "loginctl enable-linger {{ create_user }}"
+  args:
+    creates: "/var/lib/systemd/linger/{{ create_user }}"
+  tags:
+    - user.docker.systemd.linger
+
+- import_tasks: includes/oneshot.yml
+  vars:
+    service:
+      name: docker-photo-index
+      description: 'Docker Compose - Photo Index'
+      schedule: '00/2:30'
+      command: "{{ (docker.remote_dir, 'scripts', 'index-photos.sh') | path_join }}"
+
+  tags:
+    - user.docker.systemd.service.index

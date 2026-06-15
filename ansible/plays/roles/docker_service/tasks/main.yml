@@ -1,0 +1,5 @@
+---
+- include_tasks: env.yml
+
+- include_tasks: deploy.yml
+  when: not manual
