@@ -87,20 +87,31 @@ server version:
 3. Atomically swap `/backup/new` → `/backup/current` (keep the previous prepared set until the
    new one is complete).
 
-**Restic capture** — the host-side `./mysql-backup/current` directory must live within a
-restic-backed `source_path`. `restic.home` backs up `{{ remote_user_home }}` **hourly** and
-PhotoPrism's DB is restored from that "home" repo, so a path under the backed-up home tree is
-captured automatically — **no new restic repo required**.
+**Restic capture — the jail changes where this data lands (verified).** Prod deploys to
+`container_dir = /var/jail/home/leaguesphere/container/` (the SSH chroot jail,
+`ssh_chroot_jail_path = /var/jail`, owned by the `leaguesphere` user). So the bind mounts
+resolve to `/var/jail/home/leaguesphere/container/mysql-data` and `.../mysql-backup`. Against
+`restic.yml`:
 
-> **⚠️ Verification item (carry into the plan):** LeagueSphere prod is deployed inside an SSH
-> **chroot jail** (`…/home/leaguesphere/container/`), which may sit **outside** the main user's
-> home that `restic.home` covers. The plan must confirm the chosen `./mysql-backup/current`
-> path resolves inside a restic `source_path`. If it does not, add a dedicated restic backup
-> entry/path for it. **Do not assume it is covered.**
+- `restic.home` (`source_path = /home/{{ create_user }}`, **hourly**) — **does NOT cover** the
+  jail tree. (PhotoPrism rides the home repo because it lives in the admin user's home;
+  LeagueSphere does not.)
+- `restic.root` (`source_path = /`, **daily**, excludes `/var/lib/docker`, `/var/cache`,
+  `/var/tmp`, logs) — **does cover** `/var/jail/...` (under `/var`, matches no exclude).
+
+> **Load-bearing design choice:** the DB uses a **bind mount** to `/var/jail/...`, *not* a named
+> Docker volume — a named volume would fall under the `/var/lib/docker` exclude and be **silently
+> not backed up**.
+
+**Cadence decision:** prod DB is backed up **hourly** via a **dedicated restic entry + systemd
+timer** for the `mysql-backup` path (matching the home cadence), rather than relying on the daily
+root repo. This minimizes the data-loss window and gives the DB its own repo/restore target.
 
 **Restore** — add a new env-aware `restore.yml` include to `restic/tasks/main.yml` for the DB
 backup path, reusing the existing decision matrix (fail on test if no snapshot, skip on healthy
-prod when the dir is non-empty / containers running). Recovery procedure:
+prod when the dir is non-empty / containers running). **The restore block must reference the new
+dedicated DB repo** (`backup_name`), not `home` (which the existing Gitea/PhotoPrism/Vaultwarden
+blocks use). Recovery procedure:
 
 1. Restore the backup path from restic.
 2. Stop `leaguesphere.db`.
@@ -172,11 +183,15 @@ deploy:
 
 ## Open items to resolve in the implementation plan
 
-1. **Restic coverage of the backup path inside the chroot jail** (see verification item above).
+1. ~~Restic coverage of the backup path inside the chroot jail~~ **RESOLVED:** prod lives in
+   `/var/jail` (covered only by the daily root repo), so the DB gets a **dedicated hourly restic
+   entry + timer** for `/var/jail/home/leaguesphere/container/mysql-backup`, with its own
+   restore repo. The plan must wire this new entry (repo URL, password, schedule) and point the
+   `restore.yml` block at it.
 2. Exact `mariadb-backup` user grants and whether to use `--history`/incremental backups (start
    with full backups; incremental is a later optimization).
-3. Backup timer schedule (propose: align with or run shortly before the hourly home backup so
-   `current` is fresh when restic runs).
+3. Backup timer ordering — the `mariadb-backup` step must complete (produce a fresh
+   `mysql-backup/current`) **before** the dedicated hourly restic run captures it.
 4. Confirm prod Django settings module reads DB host from env cleanly for the cutover flip.
 5. Read-only/maintenance mechanism for the prod app during Phase C.
 
