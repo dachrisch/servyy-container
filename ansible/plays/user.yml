@@ -157,7 +157,7 @@
       vars:
         service_dir: finance
         env_templates:
-          - src: docker.env.j2
+          - src: finance/docker.env.j2
             dest: .env
           - src: finance/.env.j2
             dest: finance.env
