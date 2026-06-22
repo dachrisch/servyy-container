@@ -251,6 +251,10 @@ This prevents DNS ambiguity where `getent hosts app` returns wrong service IP.
 | git | git.gitea | git.lehel.xyz | Git hosting |
 | leaguesphere-demo | leaguesphere-demo.{www,demo-app,mysql} | demo.leaguesphere.app | LeagueSphere demo (auto-resets nightly) |
 
+> **LeagueSphere prod/stage/demo/test environments, setup, logs, and the
+> "investigate-on-prod / reproduce-with-prod-data-on-stage" workflows:** see
+> **[docs/leaguesphere-environments.md](docs/leaguesphere-environments.md)**.
+
 **Logging Flow:**
 - All Docker containers → stdout/stderr
 - Promtail scrapes Docker logs + system logs (`/var/log/syslog`, `/var/log/auth.log`)
