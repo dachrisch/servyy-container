@@ -4,7 +4,7 @@ set -euo pipefail
 source "/home/{{ create_user }}/.zprezto/custom/functions/logdy" 2>/dev/null || true
 
 CONTAINER="leaguesphere.db"
-BACKUP_ROOT="{{ ls_backup_host_dir }}"   # /var/jail/home/leaguesphere/container/mysql-backup
+BACKUP_ROOT="{{ ls_backup_host_dir }}"   # /var/jail/home/leaguesphere/container/deployed/mysql-backup
 NEW="$BACKUP_ROOT/new"
 CUR="$BACKUP_ROOT/current"
 

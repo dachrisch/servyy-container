@@ -84,7 +84,7 @@ restic:
     enabled: true
     repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-ls-db"
     password: "{{ restic_password_ls_db }}"
-    source_path: "/var/jail/home/leaguesphere/container/mysql-backup/current"
+    source_path: "/var/jail/home/leaguesphere/container/deployed/mysql-backup/current"
 
   # Backup schedules
   schedules:

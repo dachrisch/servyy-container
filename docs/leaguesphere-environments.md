@@ -146,7 +146,7 @@ service being healthy before it starts.
 **Prod DB backup design:**
 - `mariadb-backup` runs inside the container (`docker exec leaguesphere.db mariadb-backup …`)
   so its version always matches the server. It writes a *prepared* physical backup set to
-  `container/mysql-backup/current/` (bind-mounted from the jail).
+  `container/deployed/mysql-backup/current/` (bind-mounted from the jail).
 - A systemd user timer (`mariadb-backup-ls`, fires at `:40`) refreshes the prepared set.
 - A second timer (`restic-backup-ls-db`, hourly) snapshots `current/` into the dedicated
   restic repo `restic-ls-db` on the Hetzner Storage Box.
@@ -275,7 +275,7 @@ restored from restic and then copied back:
 ```bash
 cd ansible
 ./servyy.sh --tags restic.restore --limit lehel.xyz
-# Restic repopulates /var/jail/home/leaguesphere/container/mysql-backup/current/
+# Restic repopulates /var/jail/home/leaguesphere/container/deployed/mysql-backup/current/
 ```
 
 **Step 2 — Copy-back to MariaDB data directory (run on the host):**

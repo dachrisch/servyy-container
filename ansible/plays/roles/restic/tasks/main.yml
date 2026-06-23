@@ -61,15 +61,17 @@
 
 # RECOVERY (manual, after restore.yml repopulates current/):
 #   1. docker compose -p leaguesphere stop db
-#   2. empty /var/jail/home/leaguesphere/container/mysql-data
-#   3. docker run --rm -v mysql-data:/var/lib/mysql -v mysql-backup/current:/backup \
+#   2. empty /var/jail/home/leaguesphere/container/deployed/mysql-data
+#   3. docker run --rm \
+#        -v /var/jail/home/leaguesphere/container/deployed/mysql-data:/var/lib/mysql \
+#        -v /var/jail/home/leaguesphere/container/deployed/mysql-backup/current:/backup \
 #        mariadb:latest mariadb-backup --copy-back --target-dir=/backup
-#   4. chown -R 999:999 mysql-data   # mariadb uid in image
+#   4. chown -R 999:999 /var/jail/home/leaguesphere/container/deployed/mysql-data
 #   5. docker compose -p leaguesphere start db ; verify health
 - name: Restore LeagueSphere Prod DB Backup
   include_tasks: restore.yml
   vars:
-    restore_path: "/var/jail/home/leaguesphere/container/mysql-backup/current"
+    restore_path: "/var/jail/home/leaguesphere/container/deployed/mysql-backup/current"
     backup_name: "db"
     owner: "root"
   when: (with_containers | default(false)) | bool
