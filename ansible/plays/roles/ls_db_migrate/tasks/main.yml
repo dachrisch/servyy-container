@@ -1,0 +1,48 @@
+---
+- name: Install mysql client for export
+  apt: { name: default-mysql-client, state: present, update_cache: false }
+
+- name: Load production variables
+  include_vars:
+    file: "{{ playbook_dir }}/roles/ls_app/vars/secret_main.yaml"
+    name: prod_app
+
+- name: Set dump file path
+  set_fact:
+    ls_migrate_dump: "/tmp/ls_prod_seed_{{ ansible_facts['date_time']['epoch'] }}.sql"
+
+- name: Export external prod DB (ignore views)
+  shell: |
+    IGNORE=$(mysql -h {{ prod_app.app.db_host }} -u {{ prod_app.app.db_user }} \
+      -p'{{ prod_app.app.db_password }}' -N \
+      -e "SELECT CONCAT('--ignore-table={{ prod_app.app.db_name }}.', table_name) \
+          FROM information_schema.views WHERE table_schema='{{ prod_app.app.db_name }}'")
+    mysqldump -h {{ prod_app.app.db_host }} -u {{ prod_app.app.db_user }} \
+      -p'{{ prod_app.app.db_password }}' --single-transaction --quick --lock-tables=false \
+      $IGNORE {{ prod_app.app.db_name }} > "{{ ls_migrate_dump }}"
+  changed_when: true
+
+- name: Wait for local DB health
+  shell: docker inspect {{ ls_migrate_local_container }} --format='{{ "{{.State.Health.Status}}" }}'
+  register: db_health
+  until: db_health.stdout == 'healthy'
+  retries: 30
+  delay: 2
+  changed_when: false
+
+- name: Drop & recreate local prod database
+  shell: |
+    docker exec {{ ls_migrate_local_container }} \
+      mariadb -u root -p'{{ prod_app.app.db_root_password }}' \
+      -e "DROP DATABASE IF EXISTS {{ prod_app.app.db_name }}; \
+          CREATE DATABASE {{ prod_app.app.db_name }} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+  changed_when: true
+
+- name: Import dump into local prod database
+  shell: |
+    cat "{{ ls_migrate_dump }}" | docker exec -i {{ ls_migrate_local_container }} \
+      mariadb -u root -p'{{ prod_app.app.db_root_password }}' {{ prod_app.app.db_name }}
+  changed_when: true
+
+- name: Remove dump
+  file: { path: "{{ ls_migrate_dump }}", state: absent }

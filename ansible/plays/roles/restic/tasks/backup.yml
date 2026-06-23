@@ -59,3 +59,56 @@
       command: "{{ remote_user_home }}/.backup-scripts/restic-backup-root.sh"
   tags:
     - restic.backup
+
+# LeagueSphere prod DB backup (mariadb-backup -> prepared current set)
+- name: Load prod app vars for backup creds
+  include_vars:
+    file: "{{ playbook_dir }}/roles/ls_app/vars/secret_main.yaml"
+    name: ls_prod
+  tags: [restic.backup]
+
+- name: Deploy mariadb-backup script
+  template:
+    src: mariadb_backup.sh.j2
+    dest: "{{ remote_user_home }}/.backup-scripts/mariadb-backup-ls.sh"
+    mode: '0750'
+  vars:
+    ls_backup_host_dir: "/var/jail/home/leaguesphere/container/mysql-backup"
+    ls_backup_user: "{{ ls_prod.app.db_backup_user }}"
+    ls_backup_password: "{{ ls_prod.app.db_backup_password }}"
+  no_log: true
+  tags: [restic.backup]
+
+- import_tasks: oneshot_include.yml
+  vars:
+    service:
+      name: mariadb-backup-ls
+      description: 'mariadb-backup of leaguesphere prod db'
+      schedule: '{{ restic.schedules.backup_ls_db_dump | default("*-*-* *:40:00") }}'
+      command: "{{ remote_user_home }}/.backup-scripts/mariadb-backup-ls.sh"
+  tags: [restic.backup]
+
+# LeagueSphere prod DB restic backup (hourly, reads prepared current set)
+- name: Deploy restic backup script for ls-db
+  template:
+    src: restic_backup.sh.j2
+    dest: "{{ remote_user_home }}/.backup-scripts/restic-backup-ls-db.sh"
+    mode: '0750'
+  vars:
+    backup_name: "db"
+    source_path: "{{ restic.db.source_path }}"
+    exclude_caches: false
+    log_file: "{{ restic.logs.backup_ls_db }}"
+    with_sudo: true
+  tags:
+    - restic.backup
+
+- import_tasks: oneshot_include.yml
+  vars:
+    service:
+      name: restic-backup-ls-db
+      description: 'Restic backup - leaguesphere prod db'
+      schedule: '{{ restic.schedules.backup_ls_db }}'
+      command: "{{ remote_user_home }}/.backup-scripts/restic-backup-ls-db.sh"
+  tags:
+    - restic.backup
