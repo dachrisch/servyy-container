@@ -1,3 +1,8 @@
 ---
 # Defaults for ls_db_sync role
 # No defaults needed - all variables come from secret_main.yaml and secret_stage.yaml
+
+# 'external' = dump from s207.goserver.host (pre-cutover)
+# 'local'    = dump from the local prod container leaguesphere.db (validation + post-cutover)
+ls_db_sync_source: "external"
+ls_db_sync_local_container: "leaguesphere.db"

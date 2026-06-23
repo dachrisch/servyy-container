@@ -102,5 +102,10 @@
         - ls.db.sync
         - ls.app.stage
         - ls.app
+
+    # DB migrate role - on-demand seed of local prod db from external (tag-only, not in default ls run)
+    - role: ls_db_migrate
+      tags:
+        - ls.db.migrate
   tags:
     - ls
