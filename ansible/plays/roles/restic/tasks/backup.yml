@@ -76,6 +76,7 @@
     ls_backup_host_dir: "/var/jail/home/leaguesphere/container/mysql-backup"
     ls_backup_user: "{{ ls_prod.app.db_backup_user }}"
     ls_backup_password: "{{ ls_prod.app.db_backup_password }}"
+  no_log: true
   tags: [restic.backup]
 
 - import_tasks: oneshot_include.yml
