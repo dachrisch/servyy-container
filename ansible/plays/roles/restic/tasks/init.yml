@@ -29,6 +29,7 @@
   loop:
     - {name: 'home'}
     - {name: 'root'}
+    - {name: 'db'}
   register: restic_env_stats
   become: true
   become_user: root
@@ -59,7 +60,7 @@
   vars:
     existing_content: "{{ item.content | b64decode }}"
     existing_pass: "{{ existing_content | regex_findall('export RESTIC_PASSWORD=\"(.*)\"') | first | default('') }}"
-    expected_pass: "{{ (item.item.item.name == 'home') | ternary(restic.home.password, restic.root.password) }}"
+    expected_pass: "{{ (item.item.item.name == 'home') | ternary(restic.home.password, (item.item.item.name == 'root') | ternary(restic.root.password, restic.db.password)) }}"
   loop: "{{ slurped_restic_envs.results }}"
   when:
     - item.skipped is not defined
@@ -88,6 +89,10 @@
       repository: "{{ restic.root.repository }}"
       password: "{{ restic.root.password }}"
       env_name: "root"
+    - name: db
+      repository: "{{ restic.db.repository }}"
+      password: "{{ restic.db.password }}"
+      env_name: "db"
   register: restic_env_files
   become: true
   become_user: root
@@ -192,6 +197,7 @@
     sftp {{ restic.sftp.host_alias }} <<'EOF' 2>&1
     -mkdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-home
     -mkdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-root
+    -mkdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-ls-db
     EOF
   register: sftp_mkdir
   failed_when: false
@@ -211,6 +217,7 @@
   loop:
     - "{{ restic.home }}"
     - "{{ restic.root }}"
+    - "{{ restic.db }}"
   register: restic_init
   when: restic_env_files.changed or sftp_mkdir.changed
   changed_when: "'created restic repository' in restic_init.stdout"

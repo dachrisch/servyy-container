@@ -79,10 +79,19 @@ restic:
       - 'swap.img'
       - '*.swap'
 
+  # LeagueSphere prod DB backup (hourly)
+  db:
+    enabled: true
+    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-ls-db"
+    password: "{{ restic_password_ls_db }}"
+    source_path: "/var/jail/home/leaguesphere/container/mysql-backup/current"
+
   # Backup schedules
   schedules:
     backup_home: 'hourly'                      # Home: every hour at :00
     backup_root: 'daily'                       # Root: once per day at 00:00
+    backup_ls_db: 'hourly'                     # DB: every hour at :00
+    backup_ls_db_dump: '*-*-* *:40:00'        # mariadb-backup dump: :40 past every hour
     forget_daily: '*-*-* 05:00:00'            # Daily at 05:00 UTC
     check_weekly: 'Sun 06:00'                 # Weekly integrity check
 
@@ -107,6 +116,7 @@ restic:
   logs:
     backup_home: '/var/log/restic/backup-home.log'
     backup_root: '/var/log/restic/backup-root.log'
+    backup_ls_db: '/var/log/restic/backup-ls-db.log'
     forget: '/var/log/restic/forget.log'
     check: '/var/log/restic/check.log'
 
