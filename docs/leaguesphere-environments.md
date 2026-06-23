@@ -228,7 +228,7 @@ groups, "Gewinner/Verlierer HF…", etc.). If you see `Team.DoesNotExist`, re-ru
 1. Dump the **prod** DB (single-transaction, `--lock-tables=false`, **all views ignored**) into
    `/tmp/leaguesphere_prod_<epoch>.sql`. The dump source is controlled by `ls_db_sync_source`:
    - `external` (default pre-cutover): `mysqldump` from `s207.goserver.host`
-   - `local` (default post-cutover): `mariadump` from the `leaguesphere.db` container
+   - `local` (default post-cutover): `mariadb-dump` from the `leaguesphere.db` container
 2. Wait for `leaguesphere_stage.mysql` to be healthy.
 3. **Drop & recreate** the `leaguesphere_stage` database (utf8mb4).
 4. `docker cp` the dump in and import it.

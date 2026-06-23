@@ -61,7 +61,7 @@ Commits (leaguesphere repo):
 | `ansible/plays/roles/restic/tasks/init.yml` | Extended loops for `db` repo: env file, sftp mkdir, repo init |
 | `ansible/plays/roles/restic/tasks/main.yml` | Added restore include for `db` repo path (env-aware, skips on healthy/populated) |
 | `ansible/plays/roles/ls_db_sync/defaults/main.yml` | Added `ls_db_sync_source` toggle (`external` | `local`) and `ls_db_sync_local_container` |
-| `ansible/plays/roles/ls_db_sync/tasks/main.yml` | Branched export task: external path uses `mysqldump` against remote host; local path uses `mariadump` via `docker exec` |
+| `ansible/plays/roles/ls_db_sync/tasks/main.yml` | Branched export task: external path uses `mysqldump` against remote host; local path uses `mariadb-dump` via `docker exec` |
 
 Commits (container repo):
 - `c496c80` — feat(ls): prod db container creds + backup-user env
@@ -148,9 +148,7 @@ app since `app.db_host` now points away from it.
 The external DB (`s207.goserver.host` / `web35_db8`) is retained for **14 days** post-cutover
 as a rollback safety net. After that window it may be dropped.
 
-Assuming cutover on 2026-06-22: **decommission on/after 2026-07-06**.
-
-> STATUS: PENDING — adjust to actual cutover date once Task 11 completes.
+Decommission on/after **actual cutover date + 14 days** (e.g. if cutover lands 2026-06-23 → decommission 2026-07-07). STATUS: PENDING — set the concrete date once Task 11 cutover completes.
 
 Decommission checklist (separate change, out of scope for this PR):
 - [ ] Remove `external` branch of `ls_db_sync` (the `when: ls_db_sync_source == 'external'` task).
