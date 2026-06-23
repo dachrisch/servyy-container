@@ -19,25 +19,29 @@
   set_fact:
     sql_dump_file: "/tmp/leaguesphere_prod_{{ ansible_facts['date_time']['epoch'] }}.sql"
 
-- name: Export DB ignoring all views
+- name: Export prod DB from EXTERNAL host (ignore views)
+  when: ls_db_sync_source == 'external'
   shell: |
-    IGNORE=$(mysql -h {{ prod_app.app.db_host }} \
-                   -u {{ prod_app.app.db_user }} \
-                   -p'{{ prod_app.app.db_password }}' \
-                   -N -e "SELECT CONCAT('--ignore-table={{ prod_app.app.db_name }}.', table_name)
-                          FROM information_schema.views
-                          WHERE table_schema='{{ prod_app.app.db_name }}'")
-    mysqldump -h {{ prod_app.app.db_host }} \
-              -u {{ prod_app.app.db_user }} \
-              -p'{{ prod_app.app.db_password }}' \
-              --single-transaction \
-              --quick \
-              --lock-tables=false \
-              $IGNORE \
-              {{ prod_app.app.db_name }} \
-              > "{{ sql_dump_file }}"
-  no_log: false
-  register: export_result
+    IGNORE=$(mysql -h {{ prod_app.app.db_host }} -u {{ prod_app.app.db_user }} \
+      -p'{{ prod_app.app.db_password }}' -N \
+      -e "SELECT CONCAT('--ignore-table={{ prod_app.app.db_name }}.', table_name) \
+          FROM information_schema.views WHERE table_schema='{{ prod_app.app.db_name }}'")
+    mysqldump -h {{ prod_app.app.db_host }} -u {{ prod_app.app.db_user }} \
+      -p'{{ prod_app.app.db_password }}' --single-transaction --quick --lock-tables=false \
+      $IGNORE {{ prod_app.app.db_name }} > "{{ sql_dump_file }}"
+  changed_when: true
+
+- name: Export prod DB from LOCAL container (ignore views)
+  when: ls_db_sync_source == 'local'
+  shell: |
+    IGNORE=$(docker exec {{ ls_db_sync_local_container }} mariadb -u root \
+      -p'{{ prod_app.app.db_root_password }}' -N \
+      -e "SELECT CONCAT('--ignore-table={{ prod_app.app.db_name }}.', table_name) \
+          FROM information_schema.views WHERE table_schema='{{ prod_app.app.db_name }}'")
+    docker exec {{ ls_db_sync_local_container }} mariadb-dump -u root \
+      -p'{{ prod_app.app.db_root_password }}' --single-transaction --quick --lock-tables=false \
+      $IGNORE {{ prod_app.app.db_name }} > "{{ sql_dump_file }}"
+  changed_when: true
 
 - name: Wait for MySQL container health
   shell: >
