@@ -102,6 +102,18 @@
   tags:
     - restic.test
 
+- name: Ensure backup scripts directory exists
+  # test_setup runs before backup.yml (which also creates this dir), so on a
+  # fresh host the dir would not yet exist when the test backup script lands.
+  file:
+    path: "{{ remote_user_home }}/.backup-scripts"
+    state: directory
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0750'
+  tags:
+    - restic.test
+
 - name: Create test backup script
   template:
     src: restic_test_backup.sh.j2

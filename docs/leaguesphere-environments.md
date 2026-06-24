@@ -268,14 +268,33 @@ for you, so a clean first run on the test box is:
 
 ## Prod DB restore procedure
 
-If `leaguesphere.db` data is lost or corrupt, the last prepared `mariadb-backup` set can be
-restored from restic and then copied back:
+If `leaguesphere.db` data is lost or corrupt — or you are **rebuilding a host from scratch
+after a disaster** — the last prepared `mariadb-backup` set is restored from restic and then
+**copied back manually**.
+
+> ### ⚠️ The restore is TWO steps. restic alone does NOT bring the data back.
+> The restic restore (Step 1, also run automatically during a fresh `./servyy.sh`) only
+> repopulates the backup **files** in `…/deployed/mysql-backup/current/`. It does **not** load
+> them into the running database. After a fresh reprovision, `leaguesphere.db` comes up on an
+> **empty data dir** serving an **empty schema** — the data is recovered only once you run the
+> **copy-back** (Step 2). This is deliberate: an automated re-provision must never overwrite a
+> healthy live DB. When the integrated restore fires on a fresh host, Ansible prints a loud
+> `LEAGUESPHERE DB RESTORE` notice with the exact copy-back commands below — do not consider the
+> host recovered until you have run them.
+
+### Fresh-container / full-disaster rebuild
+
+A from-scratch `./servyy.sh` (or `./servyy-test.sh`) provisions the host and, via the integrated
+restic restore, repopulates `…/mysql-backup/current/` — then brings `leaguesphere.db` up **empty**.
+To finish recovery, run **Step 2 (copy-back)** and **Step 3 (verify)** below. (Step 1 already ran
+as part of the reprovision; run it standalone only when recovering an already-provisioned host.)
 
 **Step 1 — Restore the prepared set from restic:**
 ```bash
 cd ansible
 ./servyy.sh --tags restic.restore --limit lehel.xyz
 # Restic repopulates /var/jail/home/leaguesphere/container/deployed/mysql-backup/current/
+# NOTE: this restores FILES only — the live DB is still empty until Step 2.
 ```
 
 **Step 2 — Copy-back to MariaDB data directory (run on the host):**
