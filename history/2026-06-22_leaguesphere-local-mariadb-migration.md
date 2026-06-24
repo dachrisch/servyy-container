@@ -1,5 +1,22 @@
 # 2026-06-22 — LeagueSphere Local MariaDB Migration
 
+## Current Status (updated 2026-06-23)
+
+**Implementation: COMPLETE and merged. Restore drill: PASSED on servyy-test. Prod cutover: NOT yet done.**
+
+| Item | State |
+|------|-------|
+| `leaguesphere` compose + db-init (PR #1377) | ✅ merged to `master` (merge commit `4c98a884`) |
+| `container` Ansible roles/backups/restore (PR #23) | ✅ merged to `master` (squash `e81bef5`) |
+| Egress regression fix (app lost outbound internet when `database` net removed) | ✅ merged in #1377 (`egress` bridge added to compose) |
+| Restore drill on `servyy-test.lxd` (Task 10) | ✅ PASSED — 103 tables pre-loss == 103 post-restore (see `2026-06-22_ls-db-restore-drill.md`) |
+| Drill-found path/connection fixes (`deployed/` paths, `-h localhost`) | 🔄 open in **container PR #24** — merge before cutover |
+| Production cutover (Task 11) | ⏳ PENDING — approval-gated; not started |
+| External-DB 14-day decommission | ⏳ PENDING — date set at cutover + 14 days |
+
+**Next actions:** merge PR #24 → run the approval-gated prod cutover (Task 11) → fill the
+cutover/decommission details below → schedule the external-DB decommission.
+
 ## Problem
 
 LeagueSphere prod was backed by an external managed MySQL instance (`s207.goserver.host`).
@@ -39,7 +56,7 @@ Key design decisions:
 
 | File | Change |
 |------|--------|
-| `deployed/docker-compose.yaml` | Added `db` service (MariaDB, internal `backend` network, bind mounts `mysql-data` + `mysql-backup`); moved `app` onto `backend`; added `depends_on: db: condition: service_healthy`; removed `database` network |
+| `deployed/docker-compose.yaml` | Added `db` service (MariaDB, internal `backend` network, bind mounts `mysql-data` + `mysql-backup`); moved `app` onto `backend`; added `depends_on: db: condition: service_healthy`; removed `database` network; **added a non-internal `egress` bridge for `app`** to restore the outbound internet the removed `database` network (internal:false) had provided |
 | `deployed/mysql-init/01-create-staging-db.sh` | Optionally creates a dedicated `mariadb-backup` user when `MYSQL_BACKUP_USER` env var is set (guarded so stage, which doesn't set it, is unaffected) |
 
 Commits (leaguesphere repo):
@@ -90,12 +107,27 @@ All code changes were validated on `servyy-test.lxd` before any prod deployment:
    prod container rather than external).
 7. Restore drill (Task 10) — see below.
 
-## Restore Drill (Task 10)
+## Restore Drill (Task 10) — ✅ PASSED (2026-06-23)
 
-> STATUS: PENDING — restore drill on `servyy-test.lxd` has not been executed yet.
-> Complete Task 10 and record the outcome here before proceeding to Task 11 (prod cutover).
->
-> Record: snapshot ID used, pre-loss and post-restore table counts, pass/fail.
+Executed end-to-end on `servyy-test.lxd`. Full record: `history/2026-06-22_ls-db-restore-drill.md`.
+
+- Snapshot used: `fb13731d` (restic `db` repo, ~176 MiB), host `servyy-test.lxd`.
+- Pre-loss base-table count: **103** (`web35_db8`).
+- Post-restore base-table count: **103** — match.
+- Sequence: deploy prod-config stack → seed → `mariadb-backup` prepared set → restic snapshot →
+  restore-skips-on-healthy → simulate loss (stop db, move data aside) → `restic.restore` →
+  `mariadb-backup --copy-back` → start → verify.
+
+**Bugs the drill caught (fixed in PR #24, merge before cutover):**
+1. `ls_db_migrate` in-container `mariadb` calls missing `-h localhost` (container `MYSQL_HOST`
+   points at the external host, so the client dialed the wrong server).
+2–4. Backup/restore paths missing the `deployed/` component — real path is
+   `/var/jail/home/leaguesphere/container/deployed/mysql-backup` (compose bind mounts resolve
+   under `deployed/`). Corrected in `restic` backup/source/restore + template comment + env doc.
+
+**Operational notes for cutover:** stop `leaguesphere.app` before `ls.db.migrate` (external DB
+`max_user_connections` is tight; the cutover maintenance window handles this in prod). `restic.restore`
+on the test box needs the test repo bootstrapped first (test-only quirk).
 
 ## Production Cutover (Task 11)
 
@@ -119,7 +151,7 @@ ssh lehel.xyz "sudo bash -c 'source /etc/restic/env.db && restic snapshots --lat
 
 # Run a manual mariadb-backup
 ssh lehel.xyz "systemctl --user start mariadb-backup-ls.service"
-ssh lehel.xyz "ls -la /var/jail/home/leaguesphere/container/mysql-backup/current/ | head"
+ssh lehel.xyz "ls -la /var/jail/home/leaguesphere/container/deployed/mysql-backup/current/ | head"
 ```
 
 ## Rollback Procedure

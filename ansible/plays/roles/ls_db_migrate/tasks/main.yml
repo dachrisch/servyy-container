@@ -33,7 +33,7 @@
 - name: Drop & recreate local prod database
   shell: |
     docker exec {{ ls_migrate_local_container }} \
-      mariadb -u root -p'{{ prod_app.app.db_root_password }}' \
+      mariadb -h localhost -u root -p'{{ prod_app.app.db_root_password }}' \
       -e "DROP DATABASE IF EXISTS {{ prod_app.app.db_name }}; \
           CREATE DATABASE {{ prod_app.app.db_name }} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
   changed_when: true
@@ -41,7 +41,7 @@
 - name: Import dump into local prod database
   shell: |
     cat "{{ ls_migrate_dump }}" | docker exec -i {{ ls_migrate_local_container }} \
-      mariadb -u root -p'{{ prod_app.app.db_root_password }}' {{ prod_app.app.db_name }}
+      mariadb -h localhost -u root -p'{{ prod_app.app.db_root_password }}' {{ prod_app.app.db_name }}
   changed_when: true
 
 - name: Remove dump
