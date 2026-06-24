@@ -64,3 +64,48 @@ ssh servyy-test.lxd "docker exec leaguesphere.db mariadb -h localhost -u root -p
 # snapshot list
 ssh servyy-test.lxd "sudo bash -c 'source /etc/restic/env.db && restic snapshots'"
 ```
+
+---
+
+## Destructive full-rebuild re-run (2026-06-24)
+
+Hardest variant of the drill: instead of simulating data loss on a live box, the **entire
+`servyy-test` LXD container was destroyed and rebuilt from scratch** (`scripts/setup_test_container.sh -x`
+→ fresh Ubuntu 26.04), then the LeagueSphere DB was recovered **from the offsite Storage Box
+restic repo** — proving the backup survives total host loss, not just a wiped data dir.
+
+### Result: ✅ PASSED — 0 → 103 tables, ~379k rows
+
+| Step | Action | Result |
+|------|--------|--------|
+| Pre-wipe gate | confirm offsite `db` snapshots + baseline | 8 snapshots; baseline **103** base tables |
+| Wipe | `setup_test_container.sh -x` | fresh blank Ubuntu 26.04 container |
+| Reprovision | base + complete `ls` role | `leaguesphere.db` healthy, schema **empty (0 tables)** |
+| Offsite reachability | `source /etc/restic/env.db && restic snapshots` on the rebuilt box | reachable (key + `env.db` redeployed by `restic.init`) |
+| Restore | `--tags restic.restore` | `✅ RESTORED` `…/mysql-backup/current`; **operator notice fired** (DB only) |
+| Copy-back | `mariadb-backup --copy-back` per the notice | `completed OK!` |
+| Verify | base tables + rows | **103 tables / ~379,402 rows** (`gamedays_teamlog`=204,574) |
+
+**Decisive numbers:** pre-restore **0** tables → post-restore **103** tables with real data. ✅
+
+### Bugs found & fixed during this drill
+
+Only a from-scratch host exposes these (a re-provision over existing state hides them):
+
+1. **`restic/tasks/test_setup.yml`** — wrote `restic-test-backup.sh` into `~/.backup-scripts`
+   before that dir existed (it is created later in `backup.yml`). Added a dir-create task to
+   `test_setup.yml` so it is self-sufficient on a fresh host.
+2. **`ls_app/templates/ls.env.j2`** — emitted `MYSQL_BACKUP_USER`/`MYSQL_BACKUP_PWD` for any app
+   with `db_root_password` defined, but **stage** (`secret_stage.yaml`) has no `db_backup_user` →
+   `ls.env` render failed, breaking the stage deploy. Guarded the backup-user lines with
+   `{% if app.db_backup_user is defined %}`.
+
+### Operational notes
+
+- The notice now printed by `restore.yml` makes the **manual copy-back** unmissable: a full
+  reprovision restores the backup *files* into `current/` but intentionally does NOT load them
+  into the live DB (no auto-clobber). Operator must run the copy-back shown in the notice.
+- `ls_db_sync` still fails on a full `ls` run while `leaguesphere.app` holds external
+  `max_user_connections` (documented, environmental — not a code defect). Irrelevant to DB DR.
+- Fresh LXD containers need ~1–2 min for IPv6 RA routing to settle; pulls/fetches that run too
+  early (Docker Hub, prod Gitea) can transiently time out — retry, not a fault.
