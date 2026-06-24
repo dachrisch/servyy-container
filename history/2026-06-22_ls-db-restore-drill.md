@@ -24,6 +24,8 @@ restore from restic.
 
 **Decisive numbers:** pre-loss **103** tables == post-restore **103** tables. ✅
 
+**Re-run 2026-06-24:** repeated end-to-end against merged `master` (PR #24, `e38cafc`) — passed clean with **zero manual file edits**, 103 == 103, snapshot `1e7ed1f2`; confirms the fixes below are fully landed.
+
 ## Bugs found & fixed during the drill (container repo)
 
 The drill surfaced four real defects that would have broken the prod cutover; all fixed and
