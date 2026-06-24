@@ -73,7 +73,7 @@
     dest: "{{ remote_user_home }}/.backup-scripts/mariadb-backup-ls.sh"
     mode: '0750'
   vars:
-    ls_backup_host_dir: "/var/jail/home/leaguesphere/container/mysql-backup"
+    ls_backup_host_dir: "/var/jail/home/leaguesphere/container/deployed/mysql-backup"
     ls_backup_user: "{{ ls_prod.app.db_backup_user }}"
     ls_backup_password: "{{ ls_prod.app.db_backup_password }}"
   no_log: true
