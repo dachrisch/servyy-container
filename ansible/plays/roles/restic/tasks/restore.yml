@@ -244,6 +244,20 @@
   tags:
     - restic.restore
 
+# Loud operator reminder for restores that need a manual follow-up step
+# (e.g. the LeagueSphere DB: restic restores the files, copy-back is manual).
+# Fires ONLY when this restore actually changed something AND the caller
+# supplied a notice, so healthy/skip runs stay quiet.
+- name: Operator notice — manual follow-up required after restore
+  debug:
+    msg: "{{ post_restore_notice.split('\n') }}"
+  when:
+    - post_restore_notice is defined
+    - restic_restored is defined
+    - restic_restored.changed | default(false) | bool
+  tags:
+    - restic.restore
+
 - name: Ensure permissions on [{{ restore_path }}]
   file:
     path: "{{ restore_path }}"

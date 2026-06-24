@@ -74,6 +74,33 @@
     restore_path: "/var/jail/home/leaguesphere/container/deployed/mysql-backup/current"
     backup_name: "db"
     owner: "root"
+    # Shown ONLY when restic actually restored the set (fresh/empty host or
+    # force_restore). restic restores the backup FILES into current/; loading
+    # them into the live DB is a deliberate manual copy-back — see below.
+    post_restore_notice: |
+      ════════════════════════════════════════════════════════════════════
+      ⚠️  LEAGUESPHERE DB RESTORE: backup FILES restored — DB is NOT live yet
+      ════════════════════════════════════════════════════════════════════
+      restic restored the prepared mariadb-backup set to:
+        /var/jail/home/leaguesphere/container/deployed/mysql-backup/current
+
+      The leaguesphere.db container is still on a FRESH/EMPTY data dir. To
+      load the backup into the live database you MUST run copy-back manually
+      on this host (one-time, after a disaster rebuild or data loss):
+
+        cd /var/jail/home/leaguesphere/container/deployed
+        docker compose -p leaguesphere stop db
+        sudo rm -rf mysql-data/*
+        docker run --rm \
+          -v $(pwd)/mysql-data:/var/lib/mysql \
+          -v $(pwd)/mysql-backup/current:/backup \
+          mariadb:latest mariadb-backup --copy-back --target-dir=/backup
+        sudo chown -R 999:999 mysql-data    # mariadb uid inside the image
+        docker compose -p leaguesphere start db
+
+      Until copy-back runs, leaguesphere.db serves an EMPTY schema.
+      Full runbook: docs/leaguesphere-environments.md → "Prod DB restore procedure"
+      ════════════════════════════════════════════════════════════════════
   when: (with_containers | default(false)) | bool
   tags:
     - restic
