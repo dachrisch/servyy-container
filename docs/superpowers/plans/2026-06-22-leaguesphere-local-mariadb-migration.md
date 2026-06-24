@@ -690,23 +690,29 @@ git -C container commit -m "feat(ls_db_sync): source toggle external|local for s
 
 ---
 
-## Task 10: Full restore drill on TEST (gate before cutover)
+## Task 10: Full restore drill on TEST (gate before cutover) — ✅ DONE
+
+> **PASSED.** Run three times on `servyy-test` (2026-06-23 simulated loss; 2026-06-24 re-run on
+> merged master; 2026-06-24 **destructive full `lxc` rebuild** recovering from the OFFSITE restic
+> repo — 0 → 103 tables, ~379k rows). Results + drill-found fixes in
+> `history/2026-06-22_ls-db-restore-drill.md`. The destructive variant exceeds the Step 2
+> "move the data dir aside" simulation: the entire host was destroyed and rebuilt.
 
 **Files:** none (verification runbook; capture results in `container/history/`).
 
-- [ ] **Step 1: Snapshot exists** — `ssh servyy-test.lxd "sudo bash -c 'source /etc/restic/env.db && restic snapshots'"` shows ≥1 `db` snapshot.
+- [x] **Step 1: Snapshot exists** — `ssh servyy-test.lxd "sudo bash -c 'source /etc/restic/env.db && restic snapshots'"` shows ≥1 `db` snapshot.
 
-- [ ] **Step 2: Simulate loss** — stop db, move aside the data dir:
+- [x] **Step 2: Simulate loss** — stop db, move aside the data dir (destructive variant: full `lxc delete` + rebuild from scratch):
 
 ```bash
 ssh servyy-test.lxd "cd /var/jail/home/leaguesphere/container && docker compose -p leaguesphere stop db && sudo mv mysql-data mysql-data.bak && sudo mv mysql-backup/current /tmp/cur.bak"
 ```
 
-- [ ] **Step 3: Restore from restic** — `./servyy-test.sh --tags restic.restore` (dir now empty → restore proceeds). Confirm `mysql-backup/current` is repopulated.
+- [x] **Step 3: Restore from restic** — `./servyy-test.sh --tags restic.restore` (dir now empty → restore proceeds). Confirm `mysql-backup/current` is repopulated.
 
-- [ ] **Step 4: copy-back + start** — run the recovery procedure from Task 8 Step 2.
+- [x] **Step 4: copy-back + start** — run the recovery procedure from Task 8 Step 2.
 
-- [ ] **Step 5: Verify** — db healthy and row counts match pre-loss:
+- [x] **Step 5: Verify** — db healthy and row counts match pre-loss:
 
 ```bash
 ssh servyy-test.lxd "docker exec leaguesphere.db mariadb -u root -p<root> -N -e \
@@ -714,7 +720,7 @@ ssh servyy-test.lxd "docker exec leaguesphere.db mariadb -u root -p<root> -N -e 
 ```
 Expected: equal to Task 5 Step 5 count. Record outcome in `container/history/2026-06-22_ls-db-restore-drill.md`.
 
-- [ ] **Step 6: Commit the drill record**
+- [x] **Step 6: Commit the drill record**
 
 ```bash
 git -C container add history/2026-06-22_ls-db-restore-drill.md
