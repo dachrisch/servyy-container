@@ -8,6 +8,8 @@
 
 **Tech Stack:** Docker Compose (`leaguesphere/deployed/`), Ansible (`container/ansible`), MariaDB.
 
+> **STATUS (2026-06-25):** Tasks 0–3 complete. Compose revert merged to leaguesphere `master` (#1390). **Task 2 & 3 validated on `servyy-test`:** redeploy added only `leaguesphere.db` (`changed=1`); `app`/`www` container IDs byte-identical (not recreated); app stayed on external DB (`MYSQL_HOST=s207.goserver.host`); destructive stop-path stayed `skipping`; seed → 103 base tables; `mariadb-backup` produced a complete prepared `current/` set. The first seed hit the documented `max_user_connections` (ERROR 1203) because the live app held external connections — resolved by stopping the app, seeding, restarting (environmental, test-box only). Phase A is therefore non-disruptive. Remaining: Task 4 (two-phase docs), Task 5 (PRs).
+
 ## Global Constraints
 
 - **Two repos, scoped commands only.** `git -C container …` / `git -C leaguesphere …`; non-git: `cd container && …` / `cd leaguesphere && …`. Never mix a commit across repos.
@@ -151,7 +153,7 @@ db_host flip move to the cutover window (Phase B)."
 
 ---
 
-## Task 2: Prove non-disruptive deploy on `servyy-test`
+## Task 2: Prove non-disruptive deploy on `servyy-test` — ✅ DONE (2026-06-25)
 
 **Files:** none (validation; the test box already runs the leaguesphere stack from earlier work).
 
@@ -160,7 +162,7 @@ db_host flip move to the cutover window (Phase B)."
 - Produces: evidence that deploying the reverted compose to a host already running the
   pre-migration `app` config adds only `db` (unchanged `app`/`www` container IDs).
 
-- [ ] **Step 1: Put the test box into the prod-equivalent baseline.** Deploy the reverted compose once (recreates `app` to the reverted == pre-migration config), then remove `db` to mirror prod's "db not present yet" state:
+- [x] **Step 1: Put the test box into the prod-equivalent baseline.** Deploy the reverted compose once (recreates `app` to the reverted == pre-migration config), then remove `db` to mirror prod's "db not present yet" state:
 
 ```bash
 cd container/ansible
@@ -171,7 +173,7 @@ ssh -o IdentitiesOnly=yes -i ~/.ssh/id_rsa ubuntu@servyy-test.lxd "sudo docker r
 ```
 Expected: deploy succeeds; `app`/`www` healthy; `leaguesphere.db` removed.
 
-- [ ] **Step 2: Record `app`/`www` container IDs (the "before")**
+- [x] **Step 2: Record `app`/`www` container IDs (the "before")**
 
 ```bash
 ssh -o IdentitiesOnly=yes -i ~/.ssh/id_rsa ubuntu@servyy-test.lxd \
@@ -179,7 +181,7 @@ ssh -o IdentitiesOnly=yes -i ~/.ssh/id_rsa ubuntu@servyy-test.lxd \
 ```
 Expected: two container IDs.
 
-- [ ] **Step 3: Deploy the reverted compose again (the action under test)**
+- [x] **Step 3: Deploy the reverted compose again (the action under test)**
 
 ```bash
 cd container/ansible
@@ -189,7 +191,7 @@ ANSIBLE_PRIVATE_KEY_FILE="$HOME/.ssh/id_rsa" ANSIBLE_HOST_KEY_CHECKING=False \
 ```
 Expected: `EXIT=0`.
 
-- [ ] **Step 4: Assert app/www NOT recreated, db created**
+- [x] **Step 4: Assert app/www NOT recreated, db created**
 
 ```bash
 ssh -o IdentitiesOnly=yes -i ~/.ssh/id_rsa ubuntu@servyy-test.lxd \
@@ -200,14 +202,14 @@ ssh -o IdentitiesOnly=yes -i ~/.ssh/id_rsa ubuntu@servyy-test.lxd \
 ```
 Expected: `APP/WWW UNCHANGED ✅` (identical IDs) and `leaguesphere.db` → `healthy` (newly created).
 
-- [ ] **Step 5: Confirm the deploy.yaml stop-path stayed dormant**
+- [x] **Step 5: Confirm the deploy.yaml stop-path stayed dormant**
 
 Run: `grep -E "Stop containers before volume cleanup|state.*stopped" /tmp/ls-redeploy.log | grep -iv skipping; grep -c "changed=" /tmp/ls-redeploy.log`
 Expected: no evidence the whole project was stopped (the "Stop containers before volume cleanup" task is skipped). If it shows as `changed`/run, STOP — the destructive path fired and must be addressed before prod.
 
 ---
 
-## Task 3: Re-confirm seed + backup under the reverted topology
+## Task 3: Re-confirm seed + backup under the reverted topology — ✅ DONE (2026-06-25)
 
 **Files:** none (validation).
 
@@ -215,7 +217,7 @@ Expected: no evidence the whole project was stopped (the "Stop containers before
 - Consumes: `leaguesphere.db` from Task 2.
 - Produces: evidence the seed/backup pipeline is unaffected by the app-network revert.
 
-- [ ] **Step 1: Seed the local db from external and verify rows**
+- [x] **Step 1: Seed the local db from external and verify rows**
 
 ```bash
 cd container/ansible
@@ -227,7 +229,7 @@ ssh -o IdentitiesOnly=yes -i ~/.ssh/id_rsa ubuntu@servyy-test.lxd \
 ```
 Expected: seed completes; base-table count `103` (matches the validated drill baseline). Note: if the test box's `leaguesphere.app` is connected to external and exhausts `max_user_connections`, stop it first (`sudo docker stop leaguesphere.app`) — documented, environmental.
 
-- [ ] **Step 2: Take one mariadb-backup + restic snapshot**
+- [x] **Step 2: Take one mariadb-backup + restic snapshot**
 
 ```bash
 cd container/ansible
@@ -241,7 +243,7 @@ Expected: `current/` holds the prepared set (`ibdata1`, `mariadb_backup_checkpoi
 
 ---
 
-## Task 4: Restructure cutover docs into two phases
+## Task 4: Restructure cutover docs into two phases — ✅ DONE (2026-06-25)
 
 **Files:**
 - Modify: `container/docs/superpowers/plans/2026-06-22-leaguesphere-local-mariadb-migration.md`
@@ -252,7 +254,7 @@ Expected: `current/` holds the prepared set (`ibdata1`, `mariadb_backup_checkpoi
   maintenance-window requirement, and Phase B (cutover) bundles the `database`→`egress` rename
   with the `db_host` flip.
 
-- [ ] **Step 1: Rewrite Task 11 in the migration plan into Phase A / Phase B.** Replace the body of "## Task 11: Production cutover" so it reads as two phases:
+- [x] **Step 1: Rewrite Task 11 in the migration plan into Phase A / Phase B.** Replace the body of "## Task 11: Production cutover" so it reads as two phases:
   - **Phase A — DB stand-up + validation (no maintenance window, non-disruptive):**
     1. `./servyy.sh --tags ls.app.prod --limit lehel.xyz` — adds `leaguesphere.db` only (app/www untouched).
     2. `./servyy.sh --tags restic.init,restic.backup --limit lehel.xyz`.
@@ -266,9 +268,9 @@ Expected: `current/` holds the prepared set (`ibdata1`, `mariadb_backup_checkpoi
     5. Set `ls_db_sync_source: "local"` default; commit.
   Add a note: Phase A is safe because the deployed `app`/`www` config is byte-identical to prod, so only `db` is created.
 
-- [ ] **Step 2: Update the cutover runbook in `leaguesphere-environments.md`.** Replace the "Cutover runbook (external → local DB)" section's single sequence with the same Phase A / Phase B split, and add one line under the DB-backup notes: "Standing up `leaguesphere.db` (Phase A) does not touch the live app — the app moves to the local DB only at cutover (Phase B), via the single `db_host` flip + the `database`→`egress` rename."
+- [x] **Step 2: Update the cutover runbook in `leaguesphere-environments.md`.** Replace the "Cutover runbook (external → local DB)" section's single sequence with the same Phase A / Phase B split, and add one line under the DB-backup notes: "Standing up `leaguesphere.db` (Phase A) does not touch the live app — the app moves to the local DB only at cutover (Phase B), via the single `db_host` flip + the `database`→`egress` rename."
 
-- [ ] **Step 3: Verify the docs render and reference the right tags**
+- [x] **Step 3: Verify the docs render and reference the right tags**
 
 Run: `grep -nE "Phase A|Phase B|database.*egress|db_host" container/docs/leaguesphere-environments.md container/docs/superpowers/plans/2026-06-22-leaguesphere-local-mariadb-migration.md | head`
 Expected: both files show the Phase A/B structure and the rename+flip in Phase B.
