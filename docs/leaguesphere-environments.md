@@ -324,20 +324,38 @@ ssh lehel.xyz "
 
 ## Cutover runbook (external → local DB) — two phases
 
-> STATUS: PENDING — prod cutover (migration plan Task 11 Phase B) has not run yet. The steps
-> below document the planned procedure. Phase B executes only with explicit user approval.
+> STATUS: **Phase A DONE on prod (2026-06-25)** — `leaguesphere.db` stands up, seeded (103 base
+> tables), backed up; the app still runs on the **external** DB. **Phase B (the cutover) has not
+> run** and executes only with explicit user approval.
 >
-> **Why two phases:** standing up `leaguesphere.db` (Phase A) does not touch the live app — the
-> deployed `app`/`www` config is byte-identical to today's, so only the `db` container is created
-> (proven on `servyy-test`, 2026-06-25: app/www container IDs unchanged across a redeploy). The
-> app moves to the local DB only at cutover (Phase B), via the single `db_host` flip + the
-> `database`→`egress` rename, where the app is recreated once.
+> **Why two phases:** standing up `leaguesphere.db` (Phase A) does not move the app off the
+> external DB — the app keeps `MYSQL_HOST=external`. The app moves to the local DB only at
+> cutover (Phase B), via the single `db_host` flip + the `database`→`egress` rename.
 
-### Phase A — DB stand-up + validation (no maintenance window)
+> ⚠️ **Two things actually happen in Phase A on prod (observed 2026-06-25), so it is _not_
+> strictly zero-touch:**
+>
+> 1. **app/www are recreated once.** The `git pull` updates the on-host `deployed/` checkout to
+>    `master`; if prod was behind (it was), `docker compose up` recreates `app`/`www` to match —
+>    a few seconds' blip. (On `servyy-test` the checkout already matched, so IDs were unchanged
+>    there — that test did **not** exercise the stale-checkout case.) Schedule Phase A in a quiet
+>    window even though it needs no formal maintenance.
+> 2. **The seed competes for the external DB's `max_user_connections`.** `mysqldump` opens
+>    connections to the shared external host (`web35_8@s207`) **on top of** the live app's pool.
+>    **Any other consumer of the same user pushes it over the limit** and the live app starts
+>    returning HTTP 500 (`OperationalError 1203`). In the 2026-06-25 run a still-running
+>    `servyy-test` app shared that user and caused a transient prod login outage until it was
+>    stopped. **Before seeding prod, stop every non-prod stack that points at the external DB**
+>    (`servyy-test`, stage-on-external, local dev) — see the warning under "Reproduce a prod
+>    issue" / `ls_db_sync`.
+
+### Phase A — DB stand-up + validation (no maintenance window; brief app/www restart + external-DB contention — see warning above)
 
 ```bash
 cd ansible
-./servyy.sh --tags ls.app.prod --limit lehel.xyz      # adds leaguesphere.db only; app/www untouched
+# Pre-flight: stop any non-prod stack still connected to the external DB (web35_8@s207)
+#   so the seed's mysqldump doesn't exhaust max_user_connections and 500 the live app.
+./servyy.sh --tags ls.app.prod --limit lehel.xyz      # pulls master; adds leaguesphere.db (recreates app/www once if checkout was stale)
 ./servyy.sh --tags restic.init,restic.backup --limit lehel.xyz
 ssh lehel.xyz "docker inspect -f '{{.State.Health.Status}}' leaguesphere.db"   # → healthy
 ./servyy.sh --tags ls.db.migrate --limit lehel.xyz    # seed; verify table parity (base-table baseline 103)
