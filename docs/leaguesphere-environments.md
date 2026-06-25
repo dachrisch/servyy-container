@@ -322,30 +322,34 @@ ssh lehel.xyz "
 
 ---
 
-## Cutover runbook (external → local DB)
+## Cutover runbook (external → local DB) — two phases
 
-> STATUS: PENDING — prod cutover (Task 11) has not run yet. The steps below document
-> the planned procedure. Execute only with explicit user approval.
+> STATUS: PENDING — prod cutover (migration plan Task 11 Phase B) has not run yet. The steps
+> below document the planned procedure. Phase B executes only with explicit user approval.
+>
+> **Why two phases:** standing up `leaguesphere.db` (Phase A) does not touch the live app — the
+> deployed `app`/`www` config is byte-identical to today's, so only the `db` container is created
+> (proven on `servyy-test`, 2026-06-25: app/www container IDs unchanged across a redeploy). The
+> app moves to the local DB only at cutover (Phase B), via the single `db_host` flip + the
+> `database`→`egress` rename, where the app is recreated once.
 
-**Pre-flight (db container already deployed, app still on external):**
+### Phase A — DB stand-up + validation (no maintenance window)
+
 ```bash
 cd ansible
-./servyy.sh --tags ls.app.prod --limit lehel.xyz      # brings up leaguesphere.db alongside live app
+./servyy.sh --tags ls.app.prod --limit lehel.xyz      # adds leaguesphere.db only; app/www untouched
 ./servyy.sh --tags restic.init,restic.backup --limit lehel.xyz
 ssh lehel.xyz "docker inspect -f '{{.State.Health.Status}}' leaguesphere.db"   # → healthy
+./servyy.sh --tags ls.db.migrate --limit lehel.xyz    # seed; verify table parity (base-table baseline 103)
 ```
 
-**Seed local DB from external:**
-```bash
-./servyy.sh --tags ls.db.migrate --limit lehel.xyz
-# Verify row parity: table count in leaguesphere.db should match external
-```
+### Phase B — cutover (maintenance window, app recreated once, approval-gated)
 
-**Final delta + cutover (app in maintenance):**
 ```bash
 # 1. Enter maintenance / make app read-only
 ./servyy.sh --tags ls.db.migrate --limit lehel.xyz    # final delta with no in-flight writes
-# 2. Flip app.db_host to 'leaguesphere.db' in secret_main.yaml, then:
+# 2. In ONE deploy: flip app.db_host to 'leaguesphere.db' in secret_main.yaml
+#    AND rename database->egress in leaguesphere/deployed/docker-compose.yaml, then:
 ./servyy.sh --tags ls.app.prod --limit lehel.xyz
 ssh lehel.xyz "docker exec leaguesphere.app sh -c 'env | grep MYSQL_HOST'"   # → leaguesphere.db
 # 3. Smoke test (login, read, write), then exit maintenance

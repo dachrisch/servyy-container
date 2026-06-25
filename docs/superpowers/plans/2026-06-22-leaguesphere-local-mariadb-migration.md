@@ -729,31 +729,34 @@ git -C container commit -m "docs(history): leaguesphere prod db restore drill on
 
 ---
 
-## Task 11: Production cutover (read-only window) — **requires explicit approval**
+## Task 11: Production cutover — two phases — **Phase B requires explicit approval**
 
 **Files:**
-- Modify: `container/ansible/plays/roles/ls_app/vars/secret_main.yaml` (flip `db_host`)
-- Modify: `container/ansible/plays/roles/ls_db_sync/defaults/main.yml` (default → `local`)
+- Modify: `container/ansible/plays/roles/ls_app/vars/secret_main.yaml` (flip `db_host` — Phase B)
+- Modify: `leaguesphere/deployed/docker-compose.yaml` (rename `database`→`egress` — Phase B)
+- Modify: `container/ansible/plays/roles/ls_db_sync/defaults/main.yml` (default → `local` — Phase B)
 
 > Do not run any prod step without the user's explicit go-ahead (repo policy).
 
-- [ ] **Step 1: Pre-flight on prod** — deploy the build pieces (db container, backups) to prod with app still on external:
+> **Why two phases:** the deployed prod `app`/`www` config is byte-identical to today's, so
+> standing up `leaguesphere.db` only **creates** that one container — `app`/`www` are not
+> recreated. This was proven on `servyy-test` (decouple plan Task 2, 2026-06-25: app/www
+> container IDs unchanged across redeploy). So Phase A needs **no maintenance window**; only
+> Phase B (the `db_host` flip + `database`→`egress` rename, where the app is recreated once)
+> does.
 
-```bash
-cd container/ansible
-./servyy.sh --tags ls.app.prod --limit lehel.xyz     # brings up leaguesphere.db alongside live app
-./servyy.sh --tags restic.init,restic.backup --limit lehel.xyz
-ssh lehel.xyz "docker inspect -f '{{.State.Health.Status}}' leaguesphere.db"
-```
-Expected: `healthy`; app still serving on external DB.
+### Phase A — DB stand-up + validation (no maintenance window, non-disruptive)
 
-- [ ] **Step 2: Seed + verify parity on prod** — `./servyy.sh --tags ls.db.migrate --limit lehel.xyz`; compare local vs external table/row counts.
+- [ ] **A1: Stand up the db container** — `./servyy.sh --tags ls.app.prod --limit lehel.xyz`. Adds `leaguesphere.db` only; app/www untouched (verify container IDs unchanged). App keeps serving on external DB.
+- [ ] **A2: Init + first backup** — `./servyy.sh --tags restic.init,restic.backup --limit lehel.xyz`; `ssh lehel.xyz "docker inspect -f '{{.State.Health.Status}}' leaguesphere.db"` → `healthy`.
+- [ ] **A3: Seed + verify parity** — `./servyy.sh --tags ls.db.migrate --limit lehel.xyz`; compare local vs external table/row counts (base-table baseline `103`).
+- [ ] **A4: Optional restore drill** against the seeded set (the full destructive drill is already validated — `history/2026-06-22_ls-db-restore-drill.md`).
 
-- [ ] **Step 3: Enter read-only/maintenance** for the prod app (mechanism per environments doc — e.g. scale `app` to a maintenance page or set the app read-only). Confirm no writes are reaching external.
+### Phase B — cutover (maintenance window, app recreated once, approval-gated)
 
-- [ ] **Step 4: Final delta seed** — `./servyy.sh --tags ls.db.migrate --limit lehel.xyz` (re-dumps external with no in-flight writes → local now identical).
-
-- [ ] **Step 5: Flip the env var** — set prod `app.db_host: leaguesphere.db` in `secret_main.yaml`. Redeploy app:
+- [ ] **B1: Enter read-only/maintenance** for the prod app (mechanism per environments doc). Confirm no writes are reaching external.
+- [ ] **B2: Final delta seed** — `./servyy.sh --tags ls.db.migrate --limit lehel.xyz` (re-dumps external with no in-flight writes → local now identical).
+- [ ] **B3: Flip + rename in one deploy** — set prod `app.db_host: leaguesphere.db` in `secret_main.yaml` **and** rename `database`→`egress` in `leaguesphere/deployed/docker-compose.yaml`, then:
 
 ```bash
 ./servyy.sh --tags ls.app.prod --limit lehel.xyz
@@ -761,9 +764,9 @@ ssh lehel.xyz "docker exec leaguesphere.app sh -c 'env | grep MYSQL_HOST'"
 ```
 Expected: `MYSQL_HOST=leaguesphere.db`; app health `healthy`.
 
-- [ ] **Step 6: Smoke test + lift maintenance.** Verify login, a read, and a write against prod. Then exit maintenance.
+- [ ] **B4: Smoke test + lift maintenance.** Verify login, a read, and a write against prod. Then exit maintenance.
 
-- [ ] **Step 7: Switch stage source to local permanently** — set `ls_db_sync_source: "local"` default. Commit:
+- [ ] **B5: Switch stage source to local permanently** — set `ls_db_sync_source: "local"` default. Commit:
 
 ```bash
 git -C container add ansible/plays/roles/ls_app/vars/secret_main.yaml ansible/plays/roles/ls_db_sync/defaults/main.yml
