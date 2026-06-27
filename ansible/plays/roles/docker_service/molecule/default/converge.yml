@@ -10,6 +10,16 @@
     job_search_jwt_secret: test-jwt-secret
     job_search_searxng_token: test-searxng-token
     job_search_searxng_url: https://search.lehel.xyz
+    opencode:
+      server_password: test-opencode-pass
+      circleci_token: test-circleci-token
+      github_pat: test-github-pat
+      git_crypt_key_b64: dGVzdC1jcnlwdC1rZXk=
+      servy_ssh_key_b64: dGVzdC1zc2gta2V5
+      servy_ssh_pubkey: "ssh-ed25519 AAAATESTKEY opencode@servy.lehel.xyz"
+      dev_repos:
+        - { dir: "leaguesphere", repo: "https://example.com/x.git", branch: "master", crypt: false }
+        - { dir: "servyy-container", repo: "https://example.com/y.git", branch: "master", crypt: true }
 
   pre_tasks:
     - name: Create service directories
@@ -21,6 +31,7 @@
         - simple-svc
         - job-search
         - manual-svc
+        - opencode
 
   tasks:
     - name: Deploy simple service
@@ -51,3 +62,16 @@
       vars:
         service_dir: manual-svc
         manual: true
+
+    - name: Deploy opencode service (env only)
+      ansible.builtin.include_role:
+        name: docker_service
+        tasks_from: main.yml
+      vars:
+        service_dir: opencode
+        manual: true
+        env_templates:
+          - src: docker.env.j2
+            dest: .env
+          - src: opencode/.env.j2
+            dest: opencode.env
