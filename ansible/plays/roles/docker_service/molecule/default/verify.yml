@@ -79,3 +79,27 @@
       ansible.builtin.command:
         cmd: grep -q 'SERVICE_HOST=manual-svc\.' /home/molecule/manual-svc/.env
       changed_when: false
+
+    - name: Check opencode.env exists
+      ansible.builtin.stat:
+        path: /home/molecule/opencode/opencode.env
+      register: oc_env
+      failed_when: not oc_env.stat.exists
+
+    - name: Verify opencode.env carries GITHUB_PAT
+      ansible.builtin.command:
+        cmd: grep -q '^GITHUB_PAT=test-github-pat$' /home/molecule/opencode/opencode.env
+      changed_when: false
+
+    - name: Verify opencode.env DEV_REPOS_B64 decodes to JSON with servyy-container
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          grep '^DEV_REPOS_B64=' /home/molecule/opencode/opencode.env | cut -d= -f2- | base64 -d | grep -q '"dir": "servyy-container"'
+      changed_when: false
+
+    - name: Verify opencode.env has mode 0600
+      ansible.builtin.stat:
+        path: /home/molecule/opencode/opencode.env
+      register: oc_env_perms
+      failed_when: oc_env_perms.stat.mode != '0600'
