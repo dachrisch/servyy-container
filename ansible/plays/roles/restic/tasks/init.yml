@@ -225,6 +225,53 @@
   tags:
     - restic.init
 
+- name: Verify each restic repository opens with the configured password
+  shell: |
+    export RESTIC_REPOSITORY="{{ item.repository }}"
+    export RESTIC_PASSWORD="{{ item.password }}"
+    restic cat config
+  loop:
+    - "{{ restic.home }}"
+    - "{{ restic.root }}"
+    - "{{ restic.db }}"
+  loop_control:
+    label: "{{ item.repository }}"
+  register: restic_access_check
+  changed_when: false
+  failed_when: false
+  no_log: true
+  when: item.enabled | default(true)
+  become: true
+  become_user: root
+  tags:
+    - restic.init
+
+# The "Verify restic password integrity" task above only compares env-file vs Ansible
+# password; it cannot detect a repo whose stored key no longer matches that password
+# (e.g. a repo restored/recreated under a different password). That class of failure is
+# silent: backups and checks fail every run but nothing aborts the playbook. This guard
+# actually opens each repo and aborts loudly so the mismatch is caught immediately.
+- name: Fail loudly if any restic repository rejects the configured password
+  vars:
+    inaccessible: >-
+      {{ restic_access_check.results
+         | selectattr('stderr', 'defined')
+         | selectattr('stderr', 'search', 'wrong password or no key found')
+         | map(attribute='item.repository') | list }}
+  fail:
+    msg: |
+      CRITICAL: the configured RESTIC_PASSWORD does not open these repositories:
+        {{ inaccessible | join('\n  ') }}
+      Backups and integrity checks will silently fail until this is resolved. Either:
+        1. Restore the correct password in plays/vars/.restic_password_<name>, or
+        2. If the repository key is unrecoverable, move it aside and re-init (loses old
+           snapshots; preserve them as .stale):
+             ssh <host> "sudo mv <repo-path> <repo-path>.stale.$(date +%Y%m%d) \
+               && sudo bash -c 'source /etc/restic/env.<name> && restic init'"
+  when: inaccessible | length > 0
+  tags:
+    - restic.init
+
 - name: Create restic log files with correct permissions
   file:
     path: "{{ item }}"
