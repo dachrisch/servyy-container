@@ -324,9 +324,17 @@ ssh lehel.xyz "
 
 ## Cutover runbook (external → local DB) — two phases
 
+> 📋 **Cutover day → use the [Phase B cutover checklist](leaguesphere-cutover-checklist.md).**
+> That is the tickable pre-flight → execute → verify → post sheet. The block below is the
+> condensed reference the checklist links back to.
+
 > STATUS: **Phase A DONE on prod (2026-06-25)** — `leaguesphere.db` stands up, seeded (103 base
 > tables), backed up; the app still runs on the **external** DB. **Phase B (the cutover) has not
 > run** and executes only with explicit user approval.
+>
+> **Phase B plan: full-downtime window.** The app is taken fully offline, the final delta seed
+> runs against a quiet DB, then a single deploy flips `app.db_host` and brings the app back up on
+> the local DB.
 >
 > **Why two phases:** standing up `leaguesphere.db` (Phase A) does not move the app off the
 > external DB — the app keeps `MYSQL_HOST=external`. The app moves to the local DB only at
@@ -361,17 +369,23 @@ ssh lehel.xyz "docker inspect -f '{{.State.Health.Status}}' leaguesphere.db"   #
 ./servyy.sh --tags ls.db.migrate --limit lehel.xyz    # seed; verify table parity (base-table baseline 103)
 ```
 
-### Phase B — cutover (maintenance window, app recreated once, approval-gated)
+### Phase B — cutover (full-downtime maintenance window, approval-gated)
+
+> Day-of: follow the [cutover checklist](leaguesphere-cutover-checklist.md). Condensed here:
 
 ```bash
-# 1. Enter maintenance / make app read-only
-./servyy.sh --tags ls.db.migrate --limit lehel.xyz    # final delta with no in-flight writes
-# 2. In ONE deploy: flip app.db_host to 'leaguesphere.db' in secret_main.yaml
+# 0. Pre-flight: verify backups (timers active, set log-applied & fresh, restic snapshot < 1h)
+#    AND stop every NON-prod stack still on the external DB (servyy-test, stage-on-external, dev).
+# 1. Take the app OFFLINE — full downtime, no in-flight writes, no external-DB contention:
+ssh lehel.xyz "cd /var/jail/home/leaguesphere/container && docker compose -p leaguesphere stop app www"
+# 2. Final delta seed while the app is down (verify base-table parity = 103):
+./servyy.sh --tags ls.db.migrate --limit lehel.xyz
+# 3. In ONE deploy: flip app.db_host to 'leaguesphere.db' in secret_main.yaml
 #    AND rename database->egress in leaguesphere/deployed/docker-compose.yaml, then:
-./servyy.sh --tags ls.app.prod --limit lehel.xyz
+./servyy.sh --tags ls.app.prod --limit lehel.xyz      # recreates app/www → back ONLINE on local DB
 ssh lehel.xyz "docker exec leaguesphere.app sh -c 'env | grep MYSQL_HOST'"   # → leaguesphere.db
-# 3. Smoke test (login, read, write), then exit maintenance
-# 4. Set ls_db_sync_source: "local" default in ls_db_sync/defaults/main.yml and commit
+# 4. Smoke test (login, read, write); the app is already back up. Then end the window.
+# 5. Set ls_db_sync_source: "local" default in ls_db_sync/defaults/main.yml and commit
 ```
 
 ---
