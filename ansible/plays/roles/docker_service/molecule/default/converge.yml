@@ -16,6 +16,7 @@
       github_pat: test-github-pat
       git_crypt_key_b64: dGVzdC1jcnlwdC1rZXk=
       servy_ssh_key_b64: dGVzdC1zc2gta2V5
+      auth_google_b64: eyJnb29nbGUiOiB7InR5cGUiOiAib2F1dGgifX0=
       servy_ssh_pubkey: "ssh-ed25519 AAAATESTKEY opencode@servy.lehel.xyz"
       dev_repos:
         - {dir: "leaguesphere", repo: "https://example.com/x.git", branch: "master", crypt: false}
