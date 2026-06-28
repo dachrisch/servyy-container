@@ -36,6 +36,16 @@ git config --global --add safe.directory '*'
 git config --global user.name  "${GIT_AUTHOR_NAME:-opencode}"
 git config --global user.email "${GIT_AUTHOR_EMAIL:-opencode@servy.lehel.xyz}"
 
+# 2b. Seed Antigravity (Google) OAuth credential for OpenCode.
+# Merge the baked-in {"google": {...}} into auth.json without clobbering a
+# credential opencode may have refreshed on a previous boot (persisted volume).
+if [ -n "${OPENCODE_AUTH_GOOGLE_B64:-}" ]; then
+  AUTH_DIR="$HOME/.local/share/opencode"; export AUTH_DIR
+  result="$(python3 "$(dirname "$0")/seed_auth.py")" \
+    && log "opencode google auth $result" \
+    || log "WARN: opencode google auth seed failed (continuing)"
+fi
+
 # 3. Decode git-crypt key (used for repos flagged crypt=true)
 CRYPT_KEY=""
 if [ -n "${GIT_CRYPT_KEY_B64:-}" ]; then
