@@ -28,6 +28,12 @@ fi
 # echo "🧩 [Startup] Installing extensions..."
 # code-server --install-extension <extension-id>
 
+# 4. Provision dev checkouts & credentials (idempotent, runs every boot)
+if [ -f /scripts/provision-dev.sh ]; then
+    echo "🌱 [Startup] Provisioning dev checkouts..."
+    sh /scripts/provision-dev.sh || echo "⚠️ [Startup] provision-dev.sh reported issues (continuing)"
+fi
+
 echo "🚀 [Startup] Setup complete. Launching application..."
 # Execute the original command passed to the container, or default
 exec opencode web --hostname 0.0.0.0 --port 4096
