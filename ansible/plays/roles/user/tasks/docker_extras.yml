@@ -78,6 +78,17 @@
   tags:
     - user.docker.opencode
 
+- name: Authorize OpenCode container SSH key (scoped to local docker networks)
+  ansible.posix.authorized_key:
+    user: "{{ create_user }}"
+    key: "{{ opencode.servy_ssh_pubkey }}"
+    key_options: 'from="172.16.0.0/12,127.0.0.1"'
+    comment: "opencode-container-servy"
+    state: present
+  tags:
+    - user.docker.opencode
+    - user.ssh.opencode
+
 
 - name: Ensure lingering enabled
   command: "loginctl enable-linger {{ create_user }}"
