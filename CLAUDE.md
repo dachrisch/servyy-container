@@ -667,6 +667,23 @@ ssh lehel.xyz "docker exec leaguesphere-demo.demo-app /bin/bash -c 'rm -f /app/.
    - ⚠️ Do **not** make Vaultwarden the source restic reads from at deploy time — restic backs up Vaultwarden, so a bare-metal restore must not depend on it. Keep an offline copy of the master + restic passwords.
    - Reference: `history/2026-06-29_restic-vaultwarden-copy.md`
 
+5. **Seed-Password Recovery Guard (prevents silent generation)**
+   - The restic role runs `tasks/seed_guard.yml` FIRST (before any `restic_password_*`
+     is dereferenced). If a seed file `ansible/plays/vars/.restic_password_*` is missing
+     (fresh/re-cloned controller), it refuses to let Ansible silently generate a new
+     password. Recovery precedence: **seed file → Vaultwarden (auto) → operator prompt → generate**.
+   - Missing seed + blank Vaultwarden master password (or `bw` unreachable) → **hard-fail**.
+     Provide the VW master password at the prompt to pull the password from Vaultwarden,
+     or restore the seed files from your offline copy first.
+   - A new password is generated ONLY when the operator leaves the prompt blank after
+     Vaultwarden was actually probed and had no matching item — i.e. a never-initialized repo.
+   - Guards init AND the destructive `restic.recreate` path (so recreate's wipe/re-init
+     decision uses the real password, not a wrong-password artifact).
+   - Reference: `history/2026-06-29_restic-seed-guard.md`
+
+> **Note:** CLAUDE.md elsewhere references a standalone `ansible-playbook restic_recreate.yml`
+> — no such file exists; recreate runs via `--tags restic.recreate` through the restic role.
+
 ## Cleanup Automation
 
 **Automated disk space management** (deployed via Ansible):
