@@ -24,6 +24,7 @@
       {{ seed_stats.results | rejectattr('stat.exists') | map(attribute='item') | list }}
   delegate_to: localhost
   run_once: true
+  become: false
 
 - name: Report seed-file state
   ansible.builtin.debug:
@@ -32,6 +33,7 @@
       ({{ missing_seeds | map(attribute='seed') | join(', ') | default('none') }}).
   delegate_to: localhost
   run_once: true
+  become: false
 
 # --- Everything below only runs when at least one seed is missing -------------
 - name: Recover missing restic seeds
@@ -128,3 +130,4 @@
       ansible.builtin.command:
         cmd: bw lock
       changed_when: false
+      failed_when: false
