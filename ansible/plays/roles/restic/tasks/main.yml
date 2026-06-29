@@ -1,6 +1,17 @@
 ---
 # Orchestrator for Restic role
 
+# Pre-flight: recover missing restic password seed files from Vaultwarden (or
+# prompt the operator) BEFORE any restic_password_* var is dereferenced, so a
+# missing seed never silently generates a new password. Tagged for init AND
+# recreate so it guards the destructive recreate path too.
+- name: Guard restic password seed files
+  include_tasks: seed_guard.yml
+  tags:
+    - restic
+    - restic.init
+    - restic.recreate
+
 - name: Initialize Restic Infrastructure
   include_tasks: init.yml
   tags:
