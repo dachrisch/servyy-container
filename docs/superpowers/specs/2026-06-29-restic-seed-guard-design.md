@@ -55,6 +55,8 @@ All tasks run on the controller: `delegate_to: localhost`, `run_once: true`, `be
    2. **Unlock** the vault (shared `bw_unlock.yml`, see below) to obtain `bw_session`.
    3. **Probe** each missing seed via `bw get item "<vw_item_name>"` (`failed_when: false`):
       - **Found** → extract `(stdout | from_json).login.password`; fail if empty/malformed; otherwise write it to the seed file (`mode 0600`, trailing newline to match the existing 33-byte format). Outcome: *recovered from Vaultwarden*.
+
+      > **Implementation note (as built):** the guard uses `bw get password "<vw_item_name>"` (which returns the password directly) rather than `bw get item … | from_json`. An empty result or not-found (rc≠0) does **not** hard-fail — it falls through to the operator prompt (4. below), so a blank/missing/ambiguous VW item never writes a bad seed but still lets the operator recover or generate. A duplicate-named VW item makes `bw get password` error → also falls through to the prompt.
       - **Not found** → `pause` prompt: paste the `RESTIC_PASSWORD`, **or leave blank to GENERATE a new password (only valid for a never-initialized repo)**.
         - Non-empty input → write the seed file.
         - Empty input → leave the seed absent; the downstream `lookup('password', …)` will generate a fresh one. Outcome: *will generate*.
