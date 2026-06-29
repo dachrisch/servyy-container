@@ -30,7 +30,7 @@
   ansible.builtin.debug:
     msg: >-
       Restic seed guard: {{ missing_seeds | length }} missing
-      ({{ missing_seeds | map(attribute='seed') | join(', ') | default('none') }}).
+      ({{ missing_seeds | map(attribute='seed') | join(', ') | default('none', true) }}).
   delegate_to: localhost
   run_once: true
   become: false
@@ -77,7 +77,7 @@
     - name: Restore seed files found in Vaultwarden
       ansible.builtin.copy:
         dest: "{{ playbook_dir }}/{{ item.item.seed }}"
-        content: "{{ item.stdout }}\n"
+        content: "{{ item.stdout | trim }}\n"
         mode: '0600'
       loop: "{{ vw_probe.results }}"
       loop_control:
