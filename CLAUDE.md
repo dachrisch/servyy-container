@@ -1,7 +1,7 @@
 # CLAUDE.md - servyy-container Infrastructure
 
 > Self-hosted microservices platform (15+ Docker services) automated with Ansible
-> **Last Updated:** 2026-06-15 (Unified docker_service role, updated molecule patterns)
+> **Last Updated:** 2026-06-29 (restic→Vaultwarden password backup playbook)
 
 ## Quick Commands
 
@@ -606,7 +606,9 @@ curl -I https://{service}.lehel.xyz
 | `/mnt/storagebox/backup/` | Backup storage |
 | `/usr/local/bin/blocklist/update-from-loki.sh` | fail2ban Loki integration |
 | `/var/log/fail2ban-loki.log` | fail2ban blocklist log |
-| `ansible/plays/vars/secrets.yml` | Encrypted Ansible secrets |
+| `ansible/plays/vars/secrets.yml` | Encrypted Ansible secrets (incl. `vaultwarden_api` API key) |
+| `ansible/plays/vars/.restic_password_{home,root,ls_db}` | Restic password seed files (**source of truth**) |
+| `ansible/plays/roles/restic/tasks/vaultwarden_push.yml` | Push restic passwords into Vaultwarden (handler-driven backup copy) |
 | `ansible/plays/roles/docker_service/templates/docker.env.j2` | Default service .env template |
 | `ansible/plays/roles/docker_service/templates/{service}/` | Per-service env templates |
 | `monitor/provisioning/dashboards/` | Grafana dashboard JSON files |
@@ -656,6 +658,14 @@ ssh lehel.xyz "docker exec leaguesphere-demo.demo-app /bin/bash -c 'rm -f /app/.
 3. **Repository Lockout Recovery**
    - **Manual Only:** Use `ansible-playbook restic_recreate.yml` to wipe and re-init locked repos
    - **Verification:** The playbook automatically verifies lockouts and requires explicit confirmation
+
+4. **Off-host Password Backup (Vaultwarden)**
+   - The restic passwords are mirrored into Vaultwarden (`pass.lehel.xyz`) as a human-readable backup copy
+   - **Source of truth stays the seed files** `ansible/plays/vars/.restic_password_*` — Vaultwarden is a *copy*, not the master
+   - **Automatic, handler-driven:** the restic play (`plays/restic.yml`) prompts for the Vaultwarden master password at the start of every run (press enter to skip). The push fires only when `init.yml` actually writes/updates an `/etc/restic/env.*` file, and only on production (`lehel.xyz`). Idempotent — creates missing Login items only. API key from `secrets.yml` (`vaultwarden_api`).
+   - To force a push when nothing changed, re-run with the env files dirty (or temporarily touch them) — there is no standalone playbook.
+   - ⚠️ Do **not** make Vaultwarden the source restic reads from at deploy time — restic backs up Vaultwarden, so a bare-metal restore must not depend on it. Keep an offline copy of the master + restic passwords.
+   - Reference: `history/2026-06-29_restic-vaultwarden-copy.md`
 
 ## Cleanup Automation
 
