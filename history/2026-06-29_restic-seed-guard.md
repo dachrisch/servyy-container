@@ -38,10 +38,11 @@ VW item names to seed paths without triggering the lookup.
   — play aborts at the guard's hard-fail task with the recovery message naming the
   missing seed and `pass.lehel.xyz`; `bw` is NOT invoked (fail fires before bw_unlock);
   seed restored afterward and byte-identical to backup.
-- Vaultwarden live recovery round-trip: to be operator-validated (`bw get password
-  "restic - ls_db (lehel.xyz)"` vs the live seed). The probe command and bw auth path
-  are lint/syntax-clean and identical to the production push path; the controller-side
-  recovery mechanics (stat → probe → write) are verified structurally.
+- Vaultwarden live recovery round-trip: operator-validated — `bw get password
+  "restic - ls_db (lehel.xyz)"` (after `bw login`/`bw sync` against pass.lehel.xyz)
+  matched the live seed byte-for-byte (MATCH). Confirms the Vaultwarden copy is a
+  faithful recovery source. (The guard authenticates via `bw login --apikey` before
+  probing, identical to the production push path.)
 - **Wiring bug caught and fixed during verification:** dynamic `include_tasks` did not
   propagate tags, so the guard's inner tasks were skipped under `--tags restic.init` /
   `restic.recreate`. Fixed with `apply.tags` on the include (committed on this branch).
