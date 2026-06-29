@@ -96,6 +96,7 @@
   register: restic_env_files
   become: true
   become_user: root
+  notify: Push restic passwords to Vaultwarden
   tags:
     - restic.init
 

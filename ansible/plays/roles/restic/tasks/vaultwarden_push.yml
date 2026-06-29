@@ -1,0 +1,137 @@
+---
+# Push a backup copy of the restic repository passwords into Vaultwarden.
+# Runs on the Ansible CONTROLLER via the `bw` CLI (not the remote host).
+# Idempotent: only creates missing Login items. Invoked by the restic role
+# handler (when /etc/restic/env.* changes) and by the standalone
+# restic_to_vaultwarden.yml playbook.
+#
+# Requires (from vars/secrets.yml): vaultwarden_api.client_id/secret,
+# restic_password_{home,root,ls_db}; and vw_master_password (vars_prompt).
+
+- name: Check bw authentication status
+  ansible.builtin.command:
+    cmd: bw status
+  delegate_to: localhost
+  run_once: true
+  become: false
+  register: bw_status
+  changed_when: false
+  failed_when: false
+
+- name: Point bw at the self-hosted Vaultwarden (only while logged out)
+  ansible.builtin.command:
+    cmd: "bw config server {{ vw_server }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  changed_when: true
+  when: "'unauthenticated' in (bw_status.stdout | lower)"
+
+- name: Assert bw already targets the expected server (when logged in)
+  ansible.builtin.assert:
+    that:
+      - (bw_status.stdout | from_json).serverUrl | default('') == vw_server
+    fail_msg: >-
+      bw is logged in to '{{ (bw_status.stdout | from_json).serverUrl | default('(none)') }}'
+      but this push expects '{{ vw_server }}'. Run `bw logout` on the controller and retry.
+  delegate_to: localhost
+  run_once: true
+  when: "'unauthenticated' not in (bw_status.stdout | lower)"
+
+- name: Authenticate with API key (no 2FA prompt)
+  ansible.builtin.command:
+    cmd: bw login --apikey
+  environment:
+    BW_CLIENTID: "{{ vaultwarden_api.client_id }}"
+    BW_CLIENTSECRET: "{{ vaultwarden_api.client_secret }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  register: bw_login
+  changed_when: "'logged in' in (bw_login.stdout | lower)"
+  failed_when:
+    - bw_login.rc != 0
+    - "'already logged in' not in (bw_login.stderr | lower)"
+  no_log: true
+
+- name: Unlock vault with the prompted master password
+  ansible.builtin.command:
+    cmd: bw unlock --passwordenv BW_MASTER --raw
+  environment:
+    BW_MASTER: "{{ vw_master_password }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  register: bw_unlock
+  changed_when: false
+  no_log: true
+
+- name: Sync vault
+  ansible.builtin.command:
+    cmd: bw sync
+  environment:
+    BW_SESSION: "{{ bw_unlock.stdout }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  changed_when: false
+
+- name: List existing vault item names
+  ansible.builtin.command:
+    cmd: bw list items
+  environment:
+    BW_SESSION: "{{ bw_unlock.stdout }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  register: bw_items_raw
+  changed_when: false
+  no_log: true
+
+- name: Compute set of item names already present
+  ansible.builtin.set_fact:
+    existing_item_names: "{{ bw_items_raw.stdout | from_json | map(attribute='name') | list }}"
+  delegate_to: localhost
+  run_once: true
+
+- name: Create missing restic items in Vaultwarden
+  ansible.builtin.shell:
+    cmd: "set -o pipefail; printf '%s' {{ item_json | quote }} | bw encode | bw create item"
+    executable: /bin/bash
+  environment:
+    BW_SESSION: "{{ bw_unlock.stdout }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    item_json: >-
+      {{ {'type': 1,
+          'name': item.name,
+          'notes': item.notes,
+          'login': {'username': 'restic', 'password': item.password, 'uris': []}}
+         | to_json }}
+  loop: "{{ restic_vaultwarden_items }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.name not in existing_item_names
+  changed_when: true
+  no_log: true
+
+- name: Report which restic items were created vs already present
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.name }}:
+      {{ 'already present (skipped)' if item.name in existing_item_names else 'created' }}
+  delegate_to: localhost
+  run_once: true
+  loop: "{{ restic_vaultwarden_items }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Lock the vault again
+  ansible.builtin.command:
+    cmd: bw lock
+  delegate_to: localhost
+  run_once: true
+  become: false
+  changed_when: false

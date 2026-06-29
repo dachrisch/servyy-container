@@ -8,6 +8,12 @@
     - vars/default.yml
     - vars/restic.yml
     - vars/secrets.yml
+  vars_prompt:
+    - name: vw_master_password
+      prompt: "Vaultwarden master password (enter to skip restic password backup copy)"
+      private: true
+      default: ""
+      confirm: false
   roles:
     - restic
   tags:

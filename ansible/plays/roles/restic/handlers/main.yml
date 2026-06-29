@@ -1,0 +1,9 @@
+---
+# Fires only when init.yml actually writes/updates an /etc/restic/env.* file.
+# Skips silently unless this is the production host AND a master password was
+# entered at the vars_prompt (empty = user chose to skip the backup copy).
+- name: Push restic passwords to Vaultwarden
+  ansible.builtin.include_tasks: vaultwarden_push.yml
+  when:
+    - inventory_hostname == 'lehel.xyz'
+    - (vw_master_password | default('')) | length > 0
