@@ -5,8 +5,18 @@
 # prompt the operator) BEFORE any restic_password_* var is dereferenced, so a
 # missing seed never silently generates a new password. Tagged for init AND
 # recreate so it guards the destructive recreate path too.
+# `apply.tags` is REQUIRED: with dynamic include_tasks, tags on the include
+# statement do NOT propagate to the included tasks, so under `--tags restic.init`
+# / `--tags restic.recreate` the guard's inner tasks would be skipped (no-op)
+# without it — defeating the guard on exactly the recreate path it must protect.
 - name: Guard restic password seed files
-  include_tasks: seed_guard.yml
+  include_tasks:
+    file: seed_guard.yml
+    apply:
+      tags:
+        - restic
+        - restic.init
+        - restic.recreate
   tags:
     - restic
     - restic.init
