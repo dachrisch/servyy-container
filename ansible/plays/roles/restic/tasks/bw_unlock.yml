@@ -24,6 +24,7 @@
       or restore the restic seed files (vars/.restic_password_*) from your offline copy.
   delegate_to: localhost
   run_once: true
+  become: false
   when: bw_version.rc != 0
 
 - name: Check bw authentication status
@@ -54,6 +55,7 @@
       but this operation expects '{{ vw_server }}'. Run `bw logout` on the controller and retry.
   delegate_to: localhost
   run_once: true
+  become: false
   when: "'unauthenticated' not in (bw_status.stdout | lower)"
 
 - name: Authenticate with API key (no 2FA prompt)
@@ -89,6 +91,7 @@
     bw_session: "{{ bw_unlock.stdout }}"
   delegate_to: localhost
   run_once: true
+  become: false
   no_log: true
 
 - name: Sync vault
@@ -100,3 +103,4 @@
   run_once: true
   become: false
   changed_when: false
+  no_log: true

@@ -27,6 +27,7 @@
     existing_item_names: "{{ bw_items_raw.stdout | from_json | map(attribute='name') | list }}"
   delegate_to: localhost
   run_once: true
+  become: false
 
 - name: Create missing restic items in Vaultwarden
   ansible.builtin.shell:
@@ -58,6 +59,7 @@
       {{ 'already present (skipped)' if item.name in existing_item_names else 'created' }}
   delegate_to: localhost
   run_once: true
+  become: false
   loop: "{{ restic_vaultwarden_items }}"
   loop_control:
     label: "{{ item.name }}"
