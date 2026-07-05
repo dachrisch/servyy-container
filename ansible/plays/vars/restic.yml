@@ -69,6 +69,9 @@ restic:
       # Logs (rebuildable / handled by journald retention)
       - /var/log
 
+      # LXD runtime namespace pseudo-files (unreadable, cause restic exit 3)
+      - /var/snap/lxd/common/ns
+
       # Sockets and swap
       - '*.sock'
       - 'swap.img'
