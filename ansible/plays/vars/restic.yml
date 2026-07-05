@@ -57,22 +57,17 @@ restic:
       - /mnt
       - /media
 
-      # Docker (NEVER backup Docker library)
+      # Container runtime layers (NEVER backup - rebuildable)
       - /var/lib/docker
+      - /var/lib/containerd
 
       # Caches
       - /var/cache
       - /var/tmp
+      - /var/lib/snapd/cache
 
-      # Old logs (keep recent logs only)
-      - '/var/log/*.gz'
-      - '/var/log/*.1'
-      - '/var/log/*.2'
-      - '/var/log/*.3'
-      - '/var/log/*.old'
-
-      # Journal logs (handled by journald retention)
-      - /var/log/journal
+      # Logs (rebuildable / handled by journald retention)
+      - /var/log
 
       # Sockets and swap
       - '*.sock'
