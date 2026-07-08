@@ -1,2 +1,7 @@
 ---
 ls_migrate_local_container: "leaguesphere.db"
+# Source host for the external prod dump. Kept separate from secret_main.yaml's app.db_host
+# because the cutover repoints app.db_host to the local container (leaguesphere.db), which
+# would otherwise make this role dump the local DB into itself instead of seeding it from
+# external. Mirrors ls_db_sync_external_host. Override with -e if the external host moves.
+ls_migrate_external_host: "s207.goserver.host"
