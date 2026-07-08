@@ -37,8 +37,9 @@ cd ansible
 >
 > **Source toggle (`ls_db_sync_source`):** since the local mariadb migration, `ls_db_sync` can
 > pull from either the legacy external host (`external`) or the new local prod container
-> `leaguesphere.db` (`local`). The default is `external` until the prod cutover completes;
-> after cutover it will be set to `local` permanently. Override on the command line:
+> `leaguesphere.db` (`local`). **Prod cutover completed 2026-07-08**, so `local` is now the
+> correct source; the code default is still `external` (a follow-up flips it to `local`).
+> Override on the command line:
 > `./servyy.sh --tags ls.db.sync -e ls_db_sync_source=local`
 >
 > This is **separate** from `spinup_test_db.sh`, which seeds a lighter `mysql` container on
@@ -71,10 +72,11 @@ cd ansible
 > within restic's covered paths. The container is initialised with the same `db_name` / `db_user`
 > / `db_password` the app already uses; cutover required changing only `app.db_host`.
 >
-> > STATUS: PENDING — prod cutover (Task 11) has not run yet. Until it does, the prod app
-> > still points at the legacy external host (`s207.goserver.host`). The `leaguesphere.db`
-> > container is deployed and healthy on prod, but `app.db_host` has not been flipped yet.
-> > This table reflects the target architecture once Task 11 completes.
+> > STATUS: **DONE — prod cutover completed 2026-07-08.** The prod app now runs on the local
+> > `leaguesphere.db` container (`MYSQL_HOST=leaguesphere.db`, db `web35_db8`); `app.db_host` is
+> > flipped. The legacy external host (`s207.goserver.host`) is retained as a rollback net until
+> > **2026-07-22** (cutover + 14 days), then decommissioned. This table reflects the live
+> > architecture.
 
 Container names follow this repo's convention `{project}.{compose-service}`, which is also the
 **Loki `container` label** — see [Logs & metrics](#logs--metrics).
@@ -328,13 +330,17 @@ ssh lehel.xyz "
 > That is the tickable pre-flight → execute → verify → post sheet. The block below is the
 > condensed reference the checklist links back to.
 
-> STATUS: **Phase A DONE on prod (2026-06-25)** — `leaguesphere.db` stands up, seeded (103 base
-> tables), backed up; the app still runs on the **external** DB. **Phase B (the cutover) has not
-> run** and executes only with explicit user approval.
+> STATUS: **Phase A DONE (2026-06-25)** and **Phase B DONE (2026-07-08)** — cutover complete.
+> Prod app now runs on the local `leaguesphere.db` (`web35_db8`), `RUN_MIGRATIONS=true`
+> (migrate-on-start). External `s207.goserver.host` retained as rollback net until 2026-07-22.
+> Full write-up: `history/2026-07-08_leaguesphere-phase-b-cutover.md`.
 >
-> **Phase B plan: full-downtime window.** The app is taken fully offline, the final delta seed
-> runs against a quiet DB, then a single deploy flips `app.db_host` and brings the app back up on
-> the local DB.
+> **Phase B plan (as executed): full-downtime window.** App taken fully offline, the final seed
+> ran against the quiet local DB, then a single `ls.app.prod` deploy brought app/www back up on
+> the local DB. Deviation from the original plan: the final seed was sourced from the **stage
+> copy** (`leaguesphere_stage`, which already held a fresh external dump) rather than re-pulling
+> `s207` — same data, no dependency on the flaky external host. The `database`→`egress` network
+> rename (old cutover PR #34) was **not** applied; the app reaches the local DB over `backend`.
 >
 > **Why two phases:** standing up `leaguesphere.db` (Phase A) does not move the app off the
 > external DB — the app keeps `MYSQL_HOST=external`. The app moves to the local DB only at
