@@ -1,5 +1,12 @@
 # LeagueSphere — Phase B Cutover Checklist (external → local MariaDB)
 
+> ✅ **EXECUTED 2026-07-08 — cutover complete.** Prod runs on local `leaguesphere.db` (`web35_db8`),
+> `RUN_MIGRATIONS=true`. Post-cutover baseline backup taken (restic snapshot `bb4542a9`). Write-up:
+> `history/2026-07-08_leaguesphere-phase-b-cutover.md`. Kept below as the as-run record.
+> **Deviations:** the final seed was sourced from the stage copy (`leaguesphere_stage`) instead of
+> a fresh `s207` pull (§1); the `database`→`egress` net rename (PR #34) was not applied.
+> **Remaining:** flip `ls_db_sync_source` default → `local`; decommission `s207` on/after 2026-07-22.
+
 > **One-page, tick-through sheet for cutover day.** Full detail and rationale live in the
 > [cutover runbook](leaguesphere-environments.md#cutover-runbook-external--local-db--two-phases).
 > This sheet is the *do-it* version: pre-flight → execute → verify → post.
