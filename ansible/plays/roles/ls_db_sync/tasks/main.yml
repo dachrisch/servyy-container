@@ -16,8 +16,13 @@
     name: stage_app
 
 - name: Set dump file variable
+  command: date +%s
+  register: dump_timestamp
+  changed_when: false
+
+- name: Set dump file path
   set_fact:
-    sql_dump_file: "/tmp/leaguesphere_prod_{{ ansible_facts['date_time']['epoch'] }}.sql"
+    sql_dump_file: "/tmp/leaguesphere_prod_{{ dump_timestamp.stdout }}.sql"
 
 - name: Export prod DB from EXTERNAL host (ignore views)
   when: ls_db_sync_source == 'external'
