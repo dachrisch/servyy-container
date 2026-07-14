@@ -5,3 +5,18 @@ ls_migrate_local_container: "leaguesphere.db"
 # would otherwise make this role dump the local DB into itself instead of seeding it from
 # external. Mirrors ls_db_sync_external_host. Override with -e if the external host moves.
 ls_migrate_external_host: "s207.goserver.host"
+
+# Dump source selector:
+#   'external' = dump the prod DB from the external managed MySQL (ls_migrate_external_host)
+#                using prod app creds. Original behaviour; pre-cutover recovery seed.
+#   'stage'    = dump the stage DB out of the local leaguesphere_stage.mysql container and
+#                seed prod from it. Codifies the MANUAL stage->prod seed performed at the
+#                2026-07-08 Phase B cutover (see
+#                history/2026-07-08_leaguesphere-phase-b-cutover.md): dump stage -> verify
+#                the dump is complete BEFORE any DROP -> DROP/recreate prod db -> import.
+ls_migrate_source: "external"
+
+# Safety floor (bytes) for the completeness guard. The dump must be at least this large AND
+# end with mysqldump's "-- Dump completed" marker before the destructive DROP is allowed.
+# The 2026-07-08 stage dump was ~30.5 MB; 1 MB is a conservative "not empty/truncated" floor.
+ls_migrate_min_dump_bytes: 1000000
