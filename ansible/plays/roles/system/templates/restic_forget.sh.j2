@@ -13,6 +13,8 @@ logdy info "Starting restic forget/prune" retention_policy="GFS"
 apply_retention() {
     local env_file="$1"
     local tag="$2"
+    shift 2
+    local keep_args=("$@")
 
     # Load environment from config file
     if [ ! -f "$env_file" ]; then
@@ -26,9 +28,7 @@ apply_retention() {
 
     if restic forget \
         --tag "$tag" \
-        --keep-hourly {{ restic.retention.hourly }} \
-        --keep-daily {{ restic.retention.daily }} \
-        --keep-monthly {{ restic.retention.monthly }} \
+        "${keep_args[@]}" \
         --prune \
         --verbose >> "$LOG_FILE" 2>&1; then
         logdy info "Retention applied successfully" tag="$tag"
@@ -39,10 +39,24 @@ apply_retention() {
 }
 
 FAILED=0
-apply_retention "/etc/restic/env.home" "home" || FAILED=1
-apply_retention "/etc/restic/env.root" "root" || FAILED=1
+apply_retention "/etc/restic/env.home" "home" \
+    --keep-last {{ restic.retention.home.last }} \
+    --keep-hourly {{ restic.retention.home.hourly }} \
+    --keep-daily {{ restic.retention.home.daily }} \
+    --keep-weekly {{ restic.retention.home.weekly }} \
+    --keep-monthly {{ restic.retention.home.monthly }} || FAILED=1
+apply_retention "/etc/restic/env.root" "root" \
+    --keep-last {{ restic.retention.root.last }} \
+    --keep-daily {{ restic.retention.root.daily }} \
+    --keep-weekly {{ restic.retention.root.weekly }} \
+    --keep-monthly {{ restic.retention.root.monthly }} || FAILED=1
 {% if restic.db.enabled | default(false) %}
-apply_retention "/etc/restic/env.db" "db" || FAILED=1
+apply_retention "/etc/restic/env.db" "db" \
+    --keep-last {{ restic.retention.db.last }} \
+    --keep-hourly {{ restic.retention.db.hourly }} \
+    --keep-daily {{ restic.retention.db.daily }} \
+    --keep-weekly {{ restic.retention.db.weekly }} \
+    --keep-monthly {{ restic.retention.db.monthly }} || FAILED=1
 {% endif %}
 
 if [ $FAILED -eq 0 ]; then
