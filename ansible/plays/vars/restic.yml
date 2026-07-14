@@ -93,11 +93,33 @@ restic:
     forget_daily: '*-*-* 05:00:00'            # Daily at 05:00 UTC
     check_weekly: 'Sun 06:00'                 # Weekly integrity check
 
-  # GFS retention policy
+  # GFS retention policy — PER REPOSITORY.
+  #
+  # A single aggressive policy (keep-hourly 2 / keep-daily 2 / keep-monthly 3) was
+  # previously applied to every repo, including the HOURLY `db` repo. That pruned
+  # every DB snapshot within ~2 days, so a problem noticed days later had no
+  # recoverable backup (LeagueSphere gd874 data-loss, 2026-07). Retention is now
+  # sized per repo, with the production DB kept generously in both the short and
+  # long term. restic de-duplicates, so a slowly-changing DB keeps many snapshots
+  # cheaply.
   retention:
-    hourly: 2      # Son: Last 2 hourly backups
-    daily: 2       # Father: Last 2 daily backups
-    monthly: 3     # Grandfather: Last 3 monthly backups
+    home:
+      last: 24
+      hourly: 48     # ~2 days of hourly
+      daily: 14
+      weekly: 8
+      monthly: 6
+    root:
+      last: 7
+      daily: 30      # daily backup → no hourly bucket
+      weekly: 12
+      monthly: 12
+    db:
+      last: 48
+      hourly: 72     # 3 days of hourly
+      daily: 30      # a month of dailies
+      weekly: 12
+      monthly: 12
 
   # SFTP connection settings via SSH config
   sftp:
