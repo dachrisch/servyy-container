@@ -1,0 +1,11 @@
+---
+# Defaults for ls_stage_restore role
+
+# Path to the prepared mariadb-backup set on the server (copy-back ready).
+ls_stage_restore_source_path: "/home/cda/ls-recovery-prewipe-c92db866/var/jail/home/leaguesphere/container/deployed/mysql-backup/current"
+
+# Temporary directory for the copy-back operation (must not overlap with live data)
+ls_stage_restore_tmp_data: "/tmp/ls-stage-restore-data"
+
+# Source database name inside the backup (prod DB name)
+ls_stage_restore_source_db: "web35_db8"

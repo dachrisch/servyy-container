@@ -107,5 +107,10 @@
     - role: ls_db_migrate
       tags:
         - ls.db.migrate
+
+    # DB restore to stage from a physical mariadb-backup (tag-only, not in default ls run)
+    - role: ls_stage_restore
+      tags:
+        - ls.stage.restore
   tags:
     - ls
