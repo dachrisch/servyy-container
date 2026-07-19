@@ -38,6 +38,9 @@ restic:
       - '**/*.swp'
       - '**/*~'
 
+      # Unreadable by unprivileged home backup (container-owned secret, uid 977)
+      - 'servyy-container/searxng/core-config/settings.yml'
+
   # Root filesystem backup (daily)
   root:
     enabled: true
