@@ -180,6 +180,9 @@
         service_dir: thore
         service_host: "thore.{{ inventory_hostname }}"
         service_name: thore
+        env_templates:
+          - src: thore/docker.env.j2
+            dest: .env
       tags: [user.docker, user.docker.sproutlings]
 
     # Job search — three env files
