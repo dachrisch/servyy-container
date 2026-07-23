@@ -96,10 +96,21 @@
         - ls.demo
         - ls.demo.env
 
-    # DB sync role (manual only)
+    # DB sync role - runs on staging deployment and on ls.db.sync
     - role: ls_db_sync
       tags:
         - ls.db.sync
-        - never
+        - ls.app.stage
+        - ls.app
+
+    # DB migrate role - on-demand seed of local prod db from external (tag-only, not in default ls run)
+    - role: ls_db_migrate
+      tags:
+        - ls.db.migrate
+
+    # DB restore to stage from a physical mariadb-backup (tag-only, not in default ls run)
+    - role: ls_stage_restore
+      tags:
+        - ls.stage.restore
   tags:
     - ls

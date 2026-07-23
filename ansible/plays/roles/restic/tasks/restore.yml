@@ -118,9 +118,65 @@
   tags:
     - restic.restore
 
+- name: Stop containers for force restore
+  shell: |
+    set -e
+    cd "{{ restore_path | dirname }}"
+    docker compose down
+  become: true
+  become_user: root
+  register: stop_result
+  when:
+    - (force_restore | default(false)) | bool
+    - containers_running
+  tags:
+    - restic.restore
+
+- name: Verify containers stopped after force
+  shell: |
+    set -o pipefail
+    cd "{{ restore_path | dirname }}"
+    if [ -f "docker-compose.yml" ]; then
+      docker compose ps -q 2>/dev/null | wc -l
+    else
+      echo "0"
+    fi
+  register: running_containers_count_after
+  when:
+    - (force_restore | default(false)) | bool
+    - containers_running
+  changed_when: false
+  become: true
+  become_user: root
+  failed_when: false
+  tags:
+    - restic.restore
+
+- name: Update container status after stop
+  set_fact:
+    containers_running: "{{ running_containers_count_after.stdout | default('0') | int > 0 }}"
+  when:
+    - (force_restore | default(false)) | bool
+    - running_containers_count_after is defined
+  tags:
+    - restic.restore
+
 - name: Determine if restore should proceed
   set_fact:
-    should_restore: "{{ (snapshot_count | int > 0) and target_is_empty and not containers_running }}"
+    should_restore: "{{ (snapshot_count | int > 0) and (force_restore | default(false) | bool or target_is_empty) and not containers_running }}"
+  tags:
+    - restic.restore
+
+- name: LOG force restore override - directory non-empty
+  debug:
+    msg: |
+      ⚠️  FORCING RESTORE: Target directory is not empty (force_restore=true)
+      Path: {{ restore_path }}
+  when:
+    - snapshot_count | int > 0
+    - not target_is_empty
+    - (force_restore | default(false)) | bool
+    - not containers_running
   tags:
     - restic.restore
 
@@ -132,6 +188,7 @@
   when:
     - snapshot_count | int > 0
     - not target_is_empty
+    - not (force_restore | default(false)) | bool
     - not containers_running
   tags:
     - restic.restore
@@ -184,6 +241,20 @@
       ⏭️  SKIPPED: Restore not needed for {{ restore_path }}
       {% endif %}
   when: snapshot_count | int > 0
+  tags:
+    - restic.restore
+
+# Loud operator reminder for restores that need a manual follow-up step
+# (e.g. the LeagueSphere DB: restic restores the files, copy-back is manual).
+# Fires ONLY when this restore actually changed something AND the caller
+# supplied a notice, so healthy/skip runs stay quiet.
+- name: Operator notice — manual follow-up required after restore
+  debug:
+    msg: "{{ post_restore_notice.split('\n') }}"
+  when:
+    - post_restore_notice is defined
+    - restic_restored is defined
+    - restic_restored.changed | default(false) | bool
   tags:
     - restic.restore
 

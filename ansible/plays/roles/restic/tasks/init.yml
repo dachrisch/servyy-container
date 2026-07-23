@@ -29,6 +29,7 @@
   loop:
     - {name: 'home'}
     - {name: 'root'}
+    - {name: 'db'}
   register: restic_env_stats
   become: true
   become_user: root
@@ -59,7 +60,7 @@
   vars:
     existing_content: "{{ item.content | b64decode }}"
     existing_pass: "{{ existing_content | regex_findall('export RESTIC_PASSWORD=\"(.*)\"') | first | default('') }}"
-    expected_pass: "{{ (item.item.item.name == 'home') | ternary(restic.home.password, restic.root.password) }}"
+    expected_pass: "{{ (item.item.item.name == 'home') | ternary(restic.home.password, (item.item.item.name == 'root') | ternary(restic.root.password, restic.db.password)) }}"
   loop: "{{ slurped_restic_envs.results }}"
   when:
     - item.skipped is not defined
@@ -88,9 +89,14 @@
       repository: "{{ restic.root.repository }}"
       password: "{{ restic.root.password }}"
       env_name: "root"
+    - name: db
+      repository: "{{ restic.db.repository }}"
+      password: "{{ restic.db.password }}"
+      env_name: "db"
   register: restic_env_files
   become: true
   become_user: root
+  notify: Push restic passwords to Vaultwarden
   tags:
     - restic.init
 
@@ -192,6 +198,7 @@
     sftp {{ restic.sftp.host_alias }} <<'EOF' 2>&1
     -mkdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-home
     -mkdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-root
+    -mkdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-ls-db
     EOF
   register: sftp_mkdir
   failed_when: false
@@ -211,10 +218,58 @@
   loop:
     - "{{ restic.home }}"
     - "{{ restic.root }}"
+    - "{{ restic.db }}"
   register: restic_init
   when: restic_env_files.changed or sftp_mkdir.changed
   changed_when: "'created restic repository' in restic_init.stdout"
   failed_when: false
+  tags:
+    - restic.init
+
+- name: Verify each restic repository opens with the configured password
+  shell: |
+    export RESTIC_REPOSITORY="{{ item.repository }}"
+    export RESTIC_PASSWORD="{{ item.password }}"
+    restic cat config
+  loop:
+    - "{{ restic.home }}"
+    - "{{ restic.root }}"
+    - "{{ restic.db }}"
+  loop_control:
+    label: "{{ item.repository }}"
+  register: restic_access_check
+  changed_when: false
+  failed_when: false
+  no_log: true
+  when: item.enabled | default(true)
+  become: true
+  become_user: root
+  tags:
+    - restic.init
+
+# The "Verify restic password integrity" task above only compares env-file vs Ansible
+# password; it cannot detect a repo whose stored key no longer matches that password
+# (e.g. a repo restored/recreated under a different password). That class of failure is
+# silent: backups and checks fail every run but nothing aborts the playbook. This guard
+# actually opens each repo and aborts loudly so the mismatch is caught immediately.
+- name: Fail loudly if any restic repository rejects the configured password
+  vars:
+    inaccessible: >-
+      {{ restic_access_check.results
+         | selectattr('stderr', 'defined')
+         | selectattr('stderr', 'search', 'wrong password or no key found')
+         | map(attribute='item.repository') | list }}
+  fail:
+    msg: |
+      CRITICAL: the configured RESTIC_PASSWORD does not open these repositories:
+        {{ inaccessible | join('\n  ') }}
+      Backups and integrity checks will silently fail until this is resolved. Either:
+        1. Restore the correct password in plays/vars/.restic_password_<name>, or
+        2. If the repository key is unrecoverable, move it aside and re-init (loses old
+           snapshots; preserve them as .stale):
+             ssh <host> "sudo mv <repo-path> <repo-path>.stale.$(date +%Y%m%d) \
+               && sudo bash -c 'source /etc/restic/env.<name> && restic init'"
+  when: inaccessible | length > 0
   tags:
     - restic.init
 

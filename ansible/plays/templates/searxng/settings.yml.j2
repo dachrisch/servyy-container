@@ -1,0 +1,32 @@
+# Searxng Settings Configuration
+# https://docs.searxng.org/admin/settings/settings.html
+# Managed by Ansible - do not edit manually
+
+use_default_settings:
+  engines:
+    keep_only:
+      - google
+      - duckduckgo lite
+      - brave
+
+server:
+  secret_key: "{{ vault_searxng_secret_key }}"
+  bind_address: 0.0.0.0
+  port: 8080
+  image_proxy: true
+
+search:
+  formats:
+    - html
+    - json
+
+engines:
+  - name: google
+    tokens:
+      - "{{ vault_searxng_google_token }}"
+  - name: duckduckgo lite
+    tokens:
+      - "{{ vault_searxng_duckduckgo_token }}"
+  - name: brave
+    tokens:
+      - "{{ vault_searxng_brave_token }}"

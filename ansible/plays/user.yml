@@ -1,3 +1,4 @@
+---
 - name: Setup user specific options
   hosts: all
   strategy: free
@@ -12,3 +13,261 @@
     - user
   tags:
     - user
+
+- name: Deploy Docker services
+  hosts: all
+  strategy: free
+  remote_user: "{{ create_user }}"
+  become: true
+  become_user: "{{ create_user }}"
+  vars_files:
+    - vars/default.yml
+    - vars/restic.yml
+    - vars/secrets.yml
+  tags:
+    - user
+    - user.docker
+  pre_tasks:
+    - name: Read and encode Enable Banking PEM key
+      ansible.builtin.slurp:
+        src: "{{ docker.local_dir }}/finance/import/eb.pem"
+      register: pem_file
+      delegate_to: localhost
+      tags:
+        - user.docker.env
+        - user.docker.env.finance
+
+    - name: Set Enable Banking private key fact
+      ansible.builtin.set_fact:
+        enable_banking_private_key_b64: >-
+          {{ pem_file['content'] | regex_replace('-----BEGIN PRIVATE KEY-----\n|-----END PRIVATE KEY-----\n', '')
+          | regex_replace('\n', '') }}
+      tags:
+        - user.docker.env
+        - user.docker.env.finance
+
+    - name: Stop searxng before config update
+      community.docker.docker_compose_v2:
+        project_src: "{{ docker.remote_dir }}/searxng"
+        state: absent
+      ignore_errors: true
+      tags:
+        - user.docker.searxng
+        - molecule-notest
+
+    - name: Fix searxng core-config directory ownership
+      ansible.builtin.file:
+        path: "{{ docker.remote_dir }}/searxng/core-config"
+        state: directory
+        owner: "{{ ansible_facts['user_id'] }}"
+        group: "{{ ansible_facts['user_id'] }}"
+        recurse: true
+      become: true
+      become_user: root
+      tags:
+        - user.docker.searxng
+
+    - name: Deploy searxng settings.yml
+      ansible.builtin.template:
+        src: searxng/settings.yml.j2
+        dest: "{{ docker.remote_dir }}/searxng/core-config/settings.yml"
+        mode: "0600"
+      tags:
+        - user.docker.searxng
+
+  roles:
+    # Simple services — generic .env only
+    - role: docker_service
+      vars:
+        service_dir: traefik
+      tags: [user.docker, user.docker.traefik]
+
+    - role: docker_service
+      vars:
+        service_dir: git
+      tags: [user.docker, user.docker.git]
+
+    - role: docker_service
+      vars:
+        service_dir: photoprism
+      tags: [user.docker, user.docker.photoprism]
+
+    - role: docker_service
+      vars:
+        service_dir: bumbleflies
+      tags: [user.docker, user.docker.bumbleflies]
+
+    - role: docker_service
+      vars:
+        service_dir: achim-hoefer
+      tags: [user.docker, user.docker.achim-hoefer]
+
+    - role: docker_service
+      vars:
+        service_dir: portainer
+      tags: [user.docker, user.docker.portainer]
+
+    - role: docker_service
+      vars:
+        service_dir: pass
+      tags: [user.docker, user.docker.pass]
+
+    # Services with additional env templates
+    - role: docker_service
+      vars:
+        service_dir: opencode
+        env_templates:
+          - src: docker.env.j2
+            dest: .env
+          - src: opencode/.env.j2
+            dest: opencode.env
+      tags: [user.docker, user.docker.opencode]
+
+    - role: docker_service
+      vars:
+        service_dir: energy
+        env_templates:
+          - src: docker.env.j2
+            dest: .env
+          - src: energy/.env.j2
+            dest: energy.env
+      tags: [user.docker, user.docker.energy]
+
+    - role: docker_service
+      vars:
+        service_dir: groceries
+        env_templates:
+          - src: docker.env.j2
+            dest: .env
+          - src: groceries/.env.j2
+            dest: groceries.env
+      tags: [user.docker, user.docker.groceries]
+
+    - role: docker_service
+      vars:
+        service_dir: leagues-finance
+        env_templates:
+          - src: docker.env.j2
+            dest: .env
+          - src: leagues-finance/.env.j2
+            dest: leagues-finance.env
+      tags: [user.docker, user.docker.leagues-finance]
+
+    - role: docker_service
+      vars:
+        service_dir: finance
+        env_templates:
+          - src: finance/docker.env.j2
+            dest: .env
+          - src: finance/.env.j2
+            dest: finance.env
+      tags: [user.docker, user.docker.finance]
+
+    # Searxng — custom service_host (search.* not searxng.*)
+    - role: docker_service
+      vars:
+        service_dir: searxng
+        service_host: "search.{{ inventory_hostname }}"
+        service_name: searxng
+        env_templates:
+          - src: searxng/.env.j2
+            dest: .env
+      tags: [user.docker, user.docker.searxng]
+
+    # Sproutlings — custom service_host (thore.* not sproutlings.*)
+    - role: docker_service
+      vars:
+        service_dir: thore
+        service_host: "thore.{{ inventory_hostname }}"
+        service_name: thore
+        env_templates:
+          - src: thore/docker.env.j2
+            dest: .env
+      tags: [user.docker, user.docker.sproutlings]
+
+    # Job search — three env files
+    - role: docker_service
+      vars:
+        service_dir: job-search
+        service_host: "jobs.{{ inventory_hostname }}"
+        job_search_jwt_secret: "{{ vault_job_search_jwt_secret }}"
+        job_search_searxng_token: "{{ vault_searxng_brave_token }}"
+        job_search_searxng_url: https://search.lehel.xyz
+        env_templates:
+          - src: job-search/.env.j2
+            dest: .env
+          - src: job-search/api.env.j2
+            dest: api.env
+          - src: job-search/crawler.env.j2
+            dest: crawler.env
+      tags: [user.docker, user.docker.job-search]
+
+    # Manual services — env rendered, compose not started
+    - role: docker_service
+      vars:
+        service_dir: dns
+        manual: true
+      tags: [user.docker, user.docker.dns]
+
+    - role: docker_service
+      vars:
+        service_dir: me
+        manual: true
+      tags: [user.docker, user.docker.me]
+
+    - role: docker_service
+      vars:
+        service_dir: monitor
+        manual: true
+      tags: [user.docker, user.docker.monitor]
+
+  post_tasks:
+    - name: Wait for leagues-finance mongo to become healthy
+      community.docker.docker_container_info:
+        name: "leagues-finance.mongo"
+      register: lf_mongo_info
+      until: >
+        lf_mongo_info.container is not none and
+        lf_mongo_info.container.State.Health.Status is defined and
+        lf_mongo_info.container.State.Health.Status == 'healthy'
+      retries: 15
+      delay: 2
+      failed_when: false
+      tags:
+        - user.docker.leagues-finance
+        - user.docker
+
+    - name: Remove corrupted mongo volume and restart if unhealthy
+      when: >
+        lf_mongo_info.container is none or
+        lf_mongo_info.container.State.Health.Status != 'healthy'
+      block:
+        - name: Remove leagues-finance containers
+          community.docker.docker_compose_v2:
+            project_src: "{{ (docker.remote_dir, 'leagues-finance') | path_join }}"
+            project_name: leagues-finance
+            state: absent
+
+        - name: Remove leagues-finance mongo_data volume
+          community.docker.docker_volume:
+            name: leagues-finance_mongo_data
+            state: absent
+
+        - name: Restart leagues-finance containers
+          community.docker.docker_compose_v2:
+            project_src: "{{ (docker.remote_dir, 'leagues-finance') | path_join }}"
+            project_name: leagues-finance
+            state: present
+
+        - name: Wait for mongo after volume reset
+          community.docker.docker_container_info:
+            name: "leagues-finance.mongo"
+          register: lf_mongo_retry
+          until: >
+            lf_mongo_retry.container is not none and
+            lf_mongo_retry.container.State.Health.Status == 'healthy'
+          retries: 15
+          delay: 2
+      tags:
+        - user.docker.leagues-finance
+        - user.docker

@@ -1,0 +1,27 @@
+---
+# Vaultwarden backup-copy target for the restic repository passwords.
+# Used by tasks/vaultwarden_push.yml (invoked by the restic env-file handler).
+vw_server: "https://pass.lehel.xyz"
+
+# Password-FREE mapping of VW item name <-> controller seed file path.
+# Used by tasks/seed_guard.yml. MUST NOT reference restic_password_* here:
+# iterating this list must never trigger the lookup() that generates a seed.
+# Keep the `name` values in sync with restic_vaultwarden_items below.
+restic_seeds:
+  - name: "restic - home (lehel.xyz)"
+    seed: "vars/.restic_password_home"
+  - name: "restic - root (lehel.xyz)"
+    seed: "vars/.restic_password_root"
+  - name: "restic - ls_db (lehel.xyz)"
+    seed: "vars/.restic_password_ls_db"
+
+restic_vaultwarden_items:
+  - name: "restic - home (lehel.xyz)"
+    password: "{{ restic_password_home }}"
+    notes: "RESTIC_PASSWORD for /etc/restic/env.home (copy of Ansible seed vars/.restic_password_home)"
+  - name: "restic - root (lehel.xyz)"
+    password: "{{ restic_password_root }}"
+    notes: "RESTIC_PASSWORD for /etc/restic/env.root (copy of Ansible seed vars/.restic_password_root)"
+  - name: "restic - ls_db (lehel.xyz)"
+    password: "{{ restic_password_ls_db }}"
+    notes: "RESTIC_PASSWORD for /etc/restic/env.ls_db (copy of Ansible seed vars/.restic_password_ls_db)"

@@ -6,3 +6,11 @@ test:
       with_containers: true
       with_docker: false
       skip_storagebox: true
+      searxng_service_host: search.servyy-test.lxd
+      searxng_traefik_entrypoint: web
+      searxng_traefik_tls: "false"
+      searxng_traefik_certresolver: ""
+      job_search_service_host: job-search.servyy-test.lxd
+      job_search_traefik_entrypoint: web
+      job_search_traefik_tls: "false"
+      job_search_traefik_certresolver: ""

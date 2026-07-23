@@ -1,0 +1,106 @@
+---
+- name: Install mysql client for export
+  apt: { name: default-mysql-client, state: present, update_cache: false }
+
+- name: Load production variables
+  include_vars:
+    file: "{{ playbook_dir }}/roles/ls_app/vars/secret_main.yaml"
+    name: prod_app
+
+- name: Load staging variables (only needed for the stage source)
+  include_vars:
+    file: "{{ playbook_dir }}/roles/ls_app/vars/secret_stage.yaml"
+    name: stage_app
+  when: ls_migrate_source == 'stage'
+
+- name: Set dump file path
+  set_fact:
+    ls_migrate_dump: "/tmp/ls_prod_seed_{{ ansible_facts['date_time']['epoch'] }}.sql"
+
+# --------------------------------------------------------------------------
+# Export (one of two sources) — NOTHING destructive happens here.
+# --------------------------------------------------------------------------
+
+- name: Export prod DB from EXTERNAL host (ignore views)
+  when: ls_migrate_source == 'external'
+  shell: |
+    IGNORE=$(mysql -h {{ ls_migrate_external_host }} -u {{ prod_app.app.db_user }} \
+      -p'{{ prod_app.app.db_password }}' -N \
+      -e "SELECT CONCAT('--ignore-table={{ prod_app.app.db_name }}.', table_name) \
+          FROM information_schema.views WHERE table_schema='{{ prod_app.app.db_name }}'")
+    mysqldump -h {{ ls_migrate_external_host }} -u {{ prod_app.app.db_user }} \
+      -p'{{ prod_app.app.db_password }}' --single-transaction --quick --lock-tables=false \
+      $IGNORE {{ prod_app.app.db_name }} > "{{ ls_migrate_dump }}"
+  changed_when: true
+
+- name: Export STAGE DB from the local stage container (ignore views)
+  when: ls_migrate_source == 'stage'
+  shell: |
+    IGNORE=$(docker exec {{ stage_app.app.name }}.mysql mariadb -u root \
+      -p'{{ stage_app.app.db_root_password }}' -N \
+      -e "SELECT CONCAT('--ignore-table={{ stage_app.app.db_name }}.', table_name) \
+          FROM information_schema.views WHERE table_schema='{{ stage_app.app.db_name }}'")
+    docker exec {{ stage_app.app.name }}.mysql mariadb-dump -u root \
+      -p'{{ stage_app.app.db_root_password }}' --single-transaction --quick --lock-tables=false \
+      $IGNORE {{ stage_app.app.db_name }} > "{{ ls_migrate_dump }}"
+  changed_when: true
+
+# --------------------------------------------------------------------------
+# SAFETY GUARD — verify the dump is complete BEFORE any DROP.
+# This mirrors the manual cutover: "verify complete (size + '-- Dump completed'
+# marker) BEFORE any DROP". A truncated/empty dump must never reach the reseed.
+# --------------------------------------------------------------------------
+
+- name: Verify the dump is complete before any destructive DROP
+  shell: |
+    SIZE=$(stat -c%s "{{ ls_migrate_dump }}" 2>/dev/null || echo 0)
+    if [ "$SIZE" -lt {{ ls_migrate_min_dump_bytes }} ]; then
+      echo "REFUSING TO RESEED: dump too small ($SIZE bytes < {{ ls_migrate_min_dump_bytes }})"
+      exit 1
+    fi
+    if ! tail -c 500 "{{ ls_migrate_dump }}" | grep -q 'Dump completed'; then
+      echo "REFUSING TO RESEED: missing '-- Dump completed' marker (dump truncated?)"
+      exit 1
+    fi
+    echo "Dump verified complete: $SIZE bytes, completed marker present"
+  register: ls_migrate_dump_check
+  changed_when: false
+
+# --------------------------------------------------------------------------
+# Reseed prod — only reached once the guard above has passed.
+# --------------------------------------------------------------------------
+
+- name: Wait for local DB health
+  shell: docker inspect {{ ls_migrate_local_container }} --format='{{ "{{.State.Health.Status}}" }}'
+  register: db_health
+  until: db_health.stdout == 'healthy'
+  retries: 30
+  delay: 2
+  changed_when: false
+
+- name: Drop & recreate local prod database
+  shell: |
+    docker exec {{ ls_migrate_local_container }} \
+      mariadb -h localhost -u root -p'{{ prod_app.app.db_root_password }}' \
+      -e "DROP DATABASE IF EXISTS {{ prod_app.app.db_name }}; \
+          CREATE DATABASE {{ prod_app.app.db_name }} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+  changed_when: true
+
+- name: Import dump into local prod database
+  shell: |
+    cat "{{ ls_migrate_dump }}" | docker exec -i {{ ls_migrate_local_container }} \
+      mariadb -h localhost -u root -p'{{ prod_app.app.db_root_password }}' {{ prod_app.app.db_name }}
+  changed_when: true
+
+- name: Sanity-check target has tables after import
+  shell: |
+    docker exec {{ ls_migrate_local_container }} \
+      mariadb -h localhost -u root -p'{{ prod_app.app.db_root_password }}' -N \
+      -e "SELECT COUNT(*) FROM information_schema.tables \
+          WHERE table_schema='{{ prod_app.app.db_name }}'"
+  register: ls_migrate_table_count
+  changed_when: false
+  failed_when: (ls_migrate_table_count.stdout | trim | int) < 1
+
+- name: Remove dump
+  file: { path: "{{ ls_migrate_dump }}", state: absent }

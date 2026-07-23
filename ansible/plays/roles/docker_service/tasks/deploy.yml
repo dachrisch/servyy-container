@@ -1,0 +1,9 @@
+---
+- name: Deploy {{ service_dir }}
+  community.docker.docker_compose_v2:
+    project_src: "{{ docker.remote_dir }}/{{ service_dir }}"
+    project_name: "{{ service_name }}"
+    files:
+      - "{{ compose_file }}"
+    state: present
+  tags: [molecule-notest]

@@ -1,0 +1,21 @@
+#!/bin/zsh
+# mariadb-backup for leaguesphere prod db -> prepared 'current' set
+set -euo pipefail
+source "/home/{{ create_user }}/.zprezto/custom/functions/logdy" 2>/dev/null || true
+
+CONTAINER="leaguesphere.db"
+BACKUP_ROOT="{{ ls_backup_host_dir }}"   # /var/jail/home/leaguesphere/container/deployed/mysql-backup
+NEW="$BACKUP_ROOT/new"
+CUR="$BACKUP_ROOT/current"
+
+sudo rm -rf "$NEW"
+docker exec "$CONTAINER" sh -c 'rm -rf /backup/new && mkdir -p /backup/new'
+docker exec "$CONTAINER" mariadb-backup --backup --target-dir=/backup/new \
+  --user='{{ ls_backup_user }}' --password='{{ ls_backup_password }}'
+docker exec "$CONTAINER" mariadb-backup --prepare --target-dir=/backup/new
+# atomic-ish swap on host (paths are bind-mounted, same fs)
+sudo rm -rf "$CUR.old" 2>/dev/null || true
+[ -d "$CUR" ] && sudo mv "$CUR" "$CUR.old"
+sudo mv "$NEW" "$CUR"
+sudo rm -rf "$CUR.old"
+echo "mariadb-backup current set refreshed at $CUR"

@@ -38,6 +38,9 @@ restic:
       - '**/*.swp'
       - '**/*~'
 
+      # Unreadable by unprivileged home backup (container-owned secret, uid 977)
+      - 'servyy-container/searxng/core-config/settings.yml'
+
   # Root filesystem backup (daily)
   root:
     enabled: true
@@ -57,40 +60,69 @@ restic:
       - /mnt
       - /media
 
-      # Docker (NEVER backup Docker library)
+      # Container runtime layers (NEVER backup - rebuildable)
       - /var/lib/docker
+      - /var/lib/containerd
 
       # Caches
       - /var/cache
       - /var/tmp
+      - /var/lib/snapd/cache
 
-      # Old logs (keep recent logs only)
-      - '/var/log/*.gz'
-      - '/var/log/*.1'
-      - '/var/log/*.2'
-      - '/var/log/*.3'
-      - '/var/log/*.old'
+      # Logs (rebuildable / handled by journald retention)
+      - /var/log
 
-      # Journal logs (handled by journald retention)
-      - /var/log/journal
+      # LXD runtime namespace pseudo-files (unreadable, cause restic exit 3)
+      - /var/snap/lxd/common/ns
 
       # Sockets and swap
       - '*.sock'
       - 'swap.img'
       - '*.swap'
 
+  # LeagueSphere prod DB backup (hourly)
+  db:
+    enabled: true
+    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-ls-db"
+    password: "{{ restic_password_ls_db }}"
+    source_path: "/var/jail/home/leaguesphere/container/deployed/mysql-backup/current"
+
   # Backup schedules
   schedules:
     backup_home: 'hourly'                      # Home: every hour at :00
     backup_root: 'daily'                       # Root: once per day at 00:00
+    backup_ls_db: 'hourly'                     # DB: every hour at :00
+    backup_ls_db_dump: '*-*-* *:40:00'        # mariadb-backup dump: :40 past every hour
     forget_daily: '*-*-* 05:00:00'            # Daily at 05:00 UTC
     check_weekly: 'Sun 06:00'                 # Weekly integrity check
 
-  # GFS retention policy
+  # GFS retention policy — PER REPOSITORY.
+  #
+  # A single aggressive policy (keep-hourly 2 / keep-daily 2 / keep-monthly 3) was
+  # previously applied to every repo, including the HOURLY `db` repo. That pruned
+  # every DB snapshot within ~2 days, so a problem noticed days later had no
+  # recoverable backup (LeagueSphere gd874 data-loss, 2026-07). Retention is now
+  # sized per repo, with the production DB kept generously in both the short and
+  # long term. restic de-duplicates, so a slowly-changing DB keeps many snapshots
+  # cheaply.
   retention:
-    hourly: 2      # Son: Last 2 hourly backups
-    daily: 2       # Father: Last 2 daily backups
-    monthly: 3     # Grandfather: Last 3 monthly backups
+    home:
+      last: 24
+      hourly: 48     # ~2 days of hourly
+      daily: 14
+      weekly: 8
+      monthly: 6
+    root:
+      last: 7
+      daily: 30      # daily backup → no hourly bucket
+      weekly: 12
+      monthly: 12
+    db:
+      last: 48
+      hourly: 72     # 3 days of hourly
+      daily: 30      # a month of dailies
+      weekly: 12
+      monthly: 12
 
   # SFTP connection settings via SSH config
   sftp:
@@ -107,6 +139,7 @@ restic:
   logs:
     backup_home: '/var/log/restic/backup-home.log'
     backup_root: '/var/log/restic/backup-root.log'
+    backup_ls_db: '/var/log/restic/backup-ls-db.log'
     forget: '/var/log/restic/forget.log'
     check: '/var/log/restic/check.log'
 

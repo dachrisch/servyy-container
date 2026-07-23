@@ -1,12 +1,36 @@
-# Docker Services
+---
 - name: Create docker script for services
   template:
     src: docker_command.sh.j2
-    dest: "{{(remote_user_home, 'forall_docker_services.sh') | path_join}}"
+    dest: "{{ (remote_user_home, 'forall_docker_services.sh') | path_join }}"
     mode: 0770
-    owner: "{{create_user}}"
+    owner: "{{ create_user }}"
   vars:
-    services: "{{ docker.services }}"
+    services:
+      - dir: traefik
+      - dir: git
+        depends: traefik
+      - dir: photoprism
+        depends: traefik
+      - dir: bumbleflies
+        depends: traefik
+      - dir: achim-hoefer
+        depends: traefik
+      - dir: portainer
+      - dir: pass
+      - dir: opencode
+      - dir: energy
+      - dir: groceries
+      - dir: leagues-finance
+      - dir: finance
+      - dir: searxng
+      - dir: job-search
+      - dir: dns
+        manual: {}
+      - dir: me
+        manual: {}
+      - dir: monitor
+        manual: {}
     services_root: "{{ docker.remote_dir }}"
   tags:
     - user.docker.services.script
@@ -54,21 +78,17 @@
   tags:
     - user.docker.opencode
 
-- name: Start docker services
-  community.docker.docker_compose_v2:
-    project_src: "{{ (docker.remote_dir, item.dir ) | path_join }}"
+- name: Authorize OpenCode container SSH key (scoped to local docker networks)
+  ansible.posix.authorized_key:
+    user: "{{ create_user }}"
+    key: "{{ opencode.servy_ssh_pubkey }}"
+    key_options: 'from="172.16.0.0/12,127.0.0.1"'
+    comment: "opencode-container-servy"
     state: present
-    env_files: "{{ finance_env_files if item.dir == 'finance' else default_env_files }}"
-  with_items:
-    - "{{ docker.services }}"
-  when: not ('manual' in item)
-  vars:
-    finance_env_files:
-      - "{{ (docker.remote_dir, 'finance', 'finance.env') | path_join }}"
-      - "{{ (docker.remote_dir, 'finance', '.env') | path_join }}"
-    default_env_files: []
   tags:
-    - user.docker.services.start
+    - user.docker.opencode
+    - user.ssh.opencode
+
 
 - name: Ensure lingering enabled
   command: "loginctl enable-linger {{ create_user }}"

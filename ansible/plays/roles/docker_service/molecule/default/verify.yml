@@ -1,0 +1,111 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Check simple service .env exists
+      ansible.builtin.stat:
+        path: /home/molecule/simple-svc/.env
+      register: simple_env
+      failed_when: not simple_env.stat.exists
+
+    - name: Check simple service .env has correct permissions
+      ansible.builtin.stat:
+        path: /home/molecule/simple-svc/.env
+      register: simple_env_perms
+      failed_when: simple_env_perms.stat.mode != '0600'
+
+    - name: Verify simple service .env contains SERVICE_HOST
+      ansible.builtin.command:
+        cmd: grep -q 'SERVICE_HOST=simple-svc\.' /home/molecule/simple-svc/.env
+      changed_when: false
+
+    - name: Verify simple service .env contains SERVICE_NAME
+      ansible.builtin.command:
+        cmd: grep -q 'SERVICE_NAME=simple-svc' /home/molecule/simple-svc/.env
+      changed_when: false
+
+    - name: Check job-search .env exists
+      ansible.builtin.stat:
+        path: /home/molecule/job-search/.env
+      register: js_env
+      failed_when: not js_env.stat.exists
+
+    - name: Check job-search api.env exists
+      ansible.builtin.stat:
+        path: /home/molecule/job-search/api.env
+      register: js_api_env
+      failed_when: not js_api_env.stat.exists
+
+    - name: Check job-search crawler.env exists
+      ansible.builtin.stat:
+        path: /home/molecule/job-search/crawler.env
+      register: js_crawler_env
+      failed_when: not js_crawler_env.stat.exists
+
+    - name: Verify job-search api.env has JWT_SECRET
+      ansible.builtin.command:
+        cmd: grep -q 'JWT_SECRET=test-jwt-secret' /home/molecule/job-search/api.env
+      changed_when: false
+
+    - name: Verify job-search api.env has SEARXNG_TOKEN
+      ansible.builtin.command:
+        cmd: grep -q 'SEARXNG_TOKEN=test-searxng-token' /home/molecule/job-search/api.env
+      changed_when: false
+
+    - name: Verify job-search crawler.env has SEARXNG_URL
+      ansible.builtin.command:
+        cmd: grep -q 'SEARXNG_URL=https://search.lehel.xyz' /home/molecule/job-search/crawler.env
+      changed_when: false
+
+    - name: Verify all env files have mode 0600
+      ansible.builtin.stat:
+        path: "/home/molecule/{{ item }}"
+      register: env_stat
+      failed_when: env_stat.stat.mode != '0600'
+      loop:
+        - simple-svc/.env
+        - job-search/.env
+        - job-search/api.env
+        - job-search/crawler.env
+
+    - name: Check manual service .env exists (env IS rendered even for manual)
+      ansible.builtin.stat:
+        path: /home/molecule/manual-svc/.env
+      register: manual_env
+      failed_when: not manual_env.stat.exists
+
+    - name: Verify SERVICE_HOST in manual service .env
+      ansible.builtin.command:
+        cmd: grep -q 'SERVICE_HOST=manual-svc\.' /home/molecule/manual-svc/.env
+      changed_when: false
+
+    - name: Check opencode.env exists
+      ansible.builtin.stat:
+        path: /home/molecule/opencode/opencode.env
+      register: oc_env
+      failed_when: not oc_env.stat.exists
+
+    - name: Verify opencode.env carries GITHUB_PAT
+      ansible.builtin.command:
+        cmd: grep -q '^GITHUB_PAT=test-github-pat$' /home/molecule/opencode/opencode.env
+      changed_when: false
+
+    - name: Verify opencode.env carries OPENCODE_AUTH_GOOGLE_B64
+      ansible.builtin.command:
+        cmd: grep -q '^OPENCODE_AUTH_GOOGLE_B64=.\+$' /home/molecule/opencode/opencode.env
+      changed_when: false
+
+    - name: Verify opencode.env DEV_REPOS_B64 decodes to JSON with servyy-container
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          grep '^DEV_REPOS_B64=' /home/molecule/opencode/opencode.env | cut -d= -f2- | base64 -d | grep -q '"dir": "servyy-container"'
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Verify opencode.env has mode 0600
+      ansible.builtin.stat:
+        path: /home/molecule/opencode/opencode.env
+      register: oc_env_perms
+      failed_when: oc_env_perms.stat.mode != '0600'

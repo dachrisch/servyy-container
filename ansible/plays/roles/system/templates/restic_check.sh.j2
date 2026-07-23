@@ -35,6 +35,9 @@ check_repo() {
 FAILED=0
 check_repo "/etc/restic/env.home" "home" || FAILED=1
 check_repo "/etc/restic/env.root" "root" || FAILED=1
+{% if restic.db.enabled | default(false) %}
+check_repo "/etc/restic/env.db" "db" || FAILED=1
+{% endif %}
 
 if [ $FAILED -eq 0 ]; then
     logdy info "All repository checks passed"

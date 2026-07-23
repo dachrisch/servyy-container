@@ -1,0 +1,106 @@
+---
+# Shared: authenticate + unlock the `bw` (Bitwarden) CLI on the Ansible
+# controller and expose the session token as the `bw_session` fact.
+# Included by tasks/seed_guard.yml (probe) and tasks/vaultwarden_push.yml (push).
+# Requires: vaultwarden_api.client_id/secret (secrets.yml), vw_master_password
+# (vars_prompt in plays/restic.yml), vw_server (defaults).
+# The CALLER is responsible for running `bw lock` when finished.
+
+- name: Check that the bw CLI is installed on the controller
+  ansible.builtin.command:
+    cmd: bw --version
+  delegate_to: localhost
+  run_once: true
+  become: false
+  register: bw_version
+  changed_when: false
+  failed_when: false
+
+- name: Fail clearly when the bw CLI is missing
+  ansible.builtin.fail:
+    msg: >-
+      The `bw` (Bitwarden) CLI is not installed on the Ansible controller, but a
+      Vaultwarden operation was requested. Install it (e.g. `npm i -g @bitwarden/cli`)
+      or restore the restic seed files (vars/.restic_password_*) from your offline copy.
+  delegate_to: localhost
+  run_once: true
+  become: false
+  when: bw_version.rc != 0
+
+- name: Check bw authentication status
+  ansible.builtin.command:
+    cmd: bw status
+  delegate_to: localhost
+  run_once: true
+  become: false
+  register: bw_status
+  changed_when: false
+  failed_when: false
+
+- name: Point bw at the self-hosted Vaultwarden (only while logged out)
+  ansible.builtin.command:
+    cmd: "bw config server {{ vw_server }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  changed_when: true
+  when: "'unauthenticated' in (bw_status.stdout | lower)"
+
+- name: Assert bw already targets the expected server (when logged in)
+  ansible.builtin.assert:
+    that:
+      - (bw_status.stdout | from_json).serverUrl | default('') == vw_server
+    fail_msg: >-
+      bw is logged in to '{{ (bw_status.stdout | from_json).serverUrl | default('(none)') }}'
+      but this operation expects '{{ vw_server }}'. Run `bw logout` on the controller and retry.
+  delegate_to: localhost
+  run_once: true
+  become: false
+  when: "'unauthenticated' not in (bw_status.stdout | lower)"
+
+- name: Authenticate with API key (no 2FA prompt)
+  ansible.builtin.command:
+    cmd: bw login --apikey
+  environment:
+    BW_CLIENTID: "{{ vaultwarden_api.client_id }}"
+    BW_CLIENTSECRET: "{{ vaultwarden_api.client_secret }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  register: bw_login
+  changed_when: "'logged in' in (bw_login.stdout | lower)"
+  failed_when:
+    - bw_login.rc != 0
+    - "'already logged in' not in (bw_login.stderr | lower)"
+  no_log: true
+
+- name: Unlock vault with the prompted master password
+  ansible.builtin.command:
+    cmd: bw unlock --passwordenv BW_MASTER --raw
+  environment:
+    BW_MASTER: "{{ vw_master_password }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  register: bw_unlock
+  changed_when: false
+  no_log: true
+
+- name: Expose the unlocked session as bw_session
+  ansible.builtin.set_fact:
+    bw_session: "{{ bw_unlock.stdout }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  no_log: true
+
+- name: Sync vault
+  ansible.builtin.command:
+    cmd: bw sync
+  environment:
+    BW_SESSION: "{{ bw_session }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  changed_when: false
+  no_log: true

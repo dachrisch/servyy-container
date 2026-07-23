@@ -1,7 +1,7 @@
 # CLAUDE.md - servyy-container Infrastructure
 
 > Self-hosted microservices platform (15+ Docker services) automated with Ansible
-> **Last Updated:** 2026-05-31 (Added Common Issues & Solutions, Deployment Verification Checklist)
+> **Last Updated:** 2026-06-29 (restic→Vaultwarden password backup playbook)
 
 ## Quick Commands
 
@@ -154,7 +154,7 @@ ssh lehel.xyz "docker restart monitor.grafana"
 5. DOCUMENT: Update history/YYYY-MM-DD_*.md
 ```
 
-**Current Coverage**: 7 scenarios across system/testing/user roles
+**Current Coverage**: 8 scenarios across system/testing/user/docker_service roles
 **Test Environment**: servyy-test.lxd (validates before CI)
 **CI Platform**: GitHub Actions (runs all scenarios in parallel)
 
@@ -173,8 +173,9 @@ ssh lehel.xyz "docker restart monitor.grafana"
 
 **3. Use include_role Pattern**
 - Templates need proper resolution
-- Pattern: `include_role` with `playbook_dir` variable
-- Never use `import_tasks` for tasks using templates
+- Pattern: `include_role` with role name (not path) — set `ANSIBLE_ROLES_PATH` in molecule.yml provisioner env
+- Never use path-based role names (`{{ playbook_dir }}/../../`) — ansible-lint flags these and they break in CI
+- Set `ANSIBLE_ROLES_PATH: "${MOLECULE_PROJECT_DIRECTORY}/.."` so the role is discoverable by name
 
 **4. Verify What Was Actually Configured**
 - Don't test skipped tasks
@@ -187,6 +188,7 @@ ssh lehel.xyz "docker restart monitor.grafana"
 - `ansible/plays/roles/system/molecule/` - System configuration
 - `ansible/plays/roles/testing/molecule/` - Development utilities
 - `ansible/plays/roles/user/molecule/` - User environment setup
+- `ansible/plays/roles/docker_service/molecule/` - Generic Docker service role
 
 **Reference documentation**:
 - `history/2026-01-05_molecule-testing-validation.md` - Complete validation report
@@ -249,6 +251,10 @@ This prevents DNS ambiguity where `getent hosts app` returns wrong service IP.
 | git | git.gitea | git.lehel.xyz | Git hosting |
 | leaguesphere-demo | leaguesphere-demo.{www,demo-app,mysql} | demo.leaguesphere.app | LeagueSphere demo (auto-resets nightly) |
 
+> **LeagueSphere prod/stage/demo/test environments, setup, logs, and the
+> "investigate-on-prod / reproduce-with-prod-data-on-stage" workflows:** see
+> **[docs/leaguesphere-environments.md](docs/leaguesphere-environments.md)**.
+
 **Logging Flow:**
 - All Docker containers → stdout/stderr
 - Promtail scrapes Docker logs + system logs (`/var/log/syslog`, `/var/log/auth.log`)
@@ -265,7 +271,7 @@ ansible/
 └── plays/
     ├── system.yml          # OS, fail2ban, monit, backups
     ├── user.yml            # Docker services, containers
-    └── roles/{system,user,testing,ls_*}/
+    └── roles/{system,user,testing,docker_service,ls_*}/
 ```
 
 **Common Tags:**
@@ -551,12 +557,34 @@ networks:
 ```
 ⚠️ **NEVER use "app" as service name** - causes DNS conflicts with other services
 
-2. Deploy: `cd ansible && ./servyy.sh --tags "docker" --limit lehel.xyz`
+2. Add a role invocation to `ansible/plays/user.yml` using the `docker_service` role:
+```yaml
+# Simple service (single .env from docker.env.j2)
+- role: docker_service
+  vars:
+    service_dir: my-service
+  tags: [user.docker, user.docker.my-service]
 
-3. Verify:
+# Service with extra env templates
+- role: docker_service
+  vars:
+    service_dir: my-service
+    env_templates:
+      - src: docker.env.j2
+        dest: .env
+      - src: my-service/.env.j2
+        dest: service.env
+  tags: [user.docker, user.docker.my-service]
+```
+
+3. Add the service to the script list in `ansible/plays/roles/user/tasks/docker_extras.yml`.
+
+4. Deploy: `cd ansible && ./servyy.sh --tags "docker" --limit lehel.xyz`
+
+5. Verify:
 ```bash
 ssh lehel.xyz "docker ps | grep {service}"
-ssh lehel.xyz "docker logs {service}.app"
+ssh lehel.xyz "docker logs {service}.api --tail 20"
 curl -I https://{service}.lehel.xyz
 ```
 
@@ -578,8 +606,11 @@ curl -I https://{service}.lehel.xyz
 | `/mnt/storagebox/backup/` | Backup storage |
 | `/usr/local/bin/blocklist/update-from-loki.sh` | fail2ban Loki integration |
 | `/var/log/fail2ban-loki.log` | fail2ban blocklist log |
-| `ansible/plays/vars/secrets.yml` | Encrypted Ansible secrets |
-| `ansible/plays/roles/user/templates/docker.env.j2` | Service .env template |
+| `ansible/plays/vars/secrets.yml` | Encrypted Ansible secrets (incl. `vaultwarden_api` API key) |
+| `ansible/plays/vars/.restic_password_{home,root,ls_db}` | Restic password seed files (**source of truth**) |
+| `ansible/plays/roles/restic/tasks/vaultwarden_push.yml` | Push restic passwords into Vaultwarden (handler-driven backup copy) |
+| `ansible/plays/roles/docker_service/templates/docker.env.j2` | Default service .env template |
+| `ansible/plays/roles/docker_service/templates/{service}/` | Per-service env templates |
 | `monitor/provisioning/dashboards/` | Grafana dashboard JSON files |
 | `monitor/provisioning/datasources/` | Grafana datasource configs |
 
@@ -627,6 +658,31 @@ ssh lehel.xyz "docker exec leaguesphere-demo.demo-app /bin/bash -c 'rm -f /app/.
 3. **Repository Lockout Recovery**
    - **Manual Only:** Use `ansible-playbook restic_recreate.yml` to wipe and re-init locked repos
    - **Verification:** The playbook automatically verifies lockouts and requires explicit confirmation
+
+4. **Off-host Password Backup (Vaultwarden)**
+   - The restic passwords are mirrored into Vaultwarden (`pass.lehel.xyz`) as a human-readable backup copy
+   - **Source of truth stays the seed files** `ansible/plays/vars/.restic_password_*` — Vaultwarden is a *copy*, not the master
+   - **Automatic, handler-driven:** the restic play (`plays/restic.yml`) prompts for the Vaultwarden master password at the start of every run (press enter to skip). The push fires only when `init.yml` actually writes/updates an `/etc/restic/env.*` file, and only on production (`lehel.xyz`). Idempotent — creates missing Login items only. API key from `secrets.yml` (`vaultwarden_api`).
+   - To force a push when nothing changed, re-run with the env files dirty (or temporarily touch them) — there is no standalone playbook.
+   - ⚠️ Do **not** make Vaultwarden the source restic reads from at deploy time — restic backs up Vaultwarden, so a bare-metal restore must not depend on it. Keep an offline copy of the master + restic passwords.
+   - Reference: `history/2026-06-29_restic-vaultwarden-copy.md`
+
+5. **Seed-Password Recovery Guard (prevents silent generation)**
+   - The restic role runs `tasks/seed_guard.yml` FIRST (before any `restic_password_*`
+     is dereferenced). If a seed file `ansible/plays/vars/.restic_password_*` is missing
+     (fresh/re-cloned controller), it refuses to let Ansible silently generate a new
+     password. Recovery precedence: **seed file → Vaultwarden (auto) → operator prompt → generate**.
+   - Missing seed + blank Vaultwarden master password (or `bw` unreachable) → **hard-fail**.
+     Provide the VW master password at the prompt to pull the password from Vaultwarden,
+     or restore the seed files from your offline copy first.
+   - A new password is generated ONLY when the operator leaves the prompt blank after
+     Vaultwarden was actually probed and had no matching item — i.e. a never-initialized repo.
+   - Guards init AND the destructive `restic.recreate` path (so recreate's wipe/re-init
+     decision uses the real password, not a wrong-password artifact).
+   - Reference: `history/2026-06-29_restic-seed-guard.md`
+
+> **Note:** CLAUDE.md elsewhere references a standalone `ansible-playbook restic_recreate.yml`
+> — no such file exists; recreate runs via `--tags restic.recreate` through the restic role.
 
 ## Cleanup Automation
 
