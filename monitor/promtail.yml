@@ -79,6 +79,31 @@ scrape_configs:
           host:
           program:
 
+  # fail2ban actions log (ban/unban events)
+  # Labeled job=system so the Security dashboard's
+  # {job="system"} |~ "fail2ban.*Ban" queries match. fail2ban writes bans to
+  # its own logfile (logtarget=/var/log/fail2ban.log) which is NOT part of
+  # syslog, so it must be scraped explicitly or the dashboard stays empty.
+  - job_name: fail2ban
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: system
+          __path__: /var/log/fail2ban.log
+    pipeline_stages:
+      # Drop entries older than 4h to prevent retry storms when monitoring is paused
+      - drop:
+          older_than: 4h
+      # Native format: "2026-08-04 19:00:31,878 fail2ban.actions [1317]: NOTICE  [sshd] Ban 1.2.3.4"
+      - regex:
+          expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+\s+(?P<program>\S+)'
+      - timestamp:
+          source: timestamp
+          format: '2006-01-02 15:04:05'
+      - labels:
+          program:
+
   # Auth logs
   - job_name: auth
     static_configs:
