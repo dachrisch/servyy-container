@@ -101,6 +101,10 @@ scrape_configs:
       - timestamp:
           source: timestamp
           format: '2006-01-02 15:04:05'
+          # fail2ban writes local wall-clock time with no offset; without a
+          # location promtail reads it as UTC and Loki rejects the entries as
+          # "timestamp too new" (2h in the future during CEST).
+          location: Europe/Berlin
       - labels:
           program:
 
