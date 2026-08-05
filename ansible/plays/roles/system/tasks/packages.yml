@@ -7,7 +7,13 @@
 - name: Upgrade the OS (apt-get dist-upgrade)
   apt:
     upgrade: dist
+    update_cache: yes
   register: upgrade
+  # Ubuntu mirrors can transiently 404 pruned .debs (e.g. old kernel
+  # linux-libc-dev) right after index refresh; refresh and retry before failing.
+  until: upgrade is successful
+  retries: 3
+  delay: 10
   tags:
     - system.packages.dist-upgrade
 
