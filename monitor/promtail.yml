@@ -108,6 +108,29 @@ scrape_configs:
       - labels:
           program:
 
+  # fail2ban Loki-blocklist ban events (traefik bot/rate-limit/crawler reasons).
+  # These reasons live only here, not in fail2ban.log — feeds the Security
+  # dashboard Traefik ban panels. Drop the [blocklist] diagnostic lines; keep
+  # the "<ts> <ip> <reason>" ban-add lines.
+  - job_name: fail2ban_blocklist
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: system
+          __path__: /var/log/fail2ban-loki.log
+    pipeline_stages:
+      - drop:
+          older_than: 4h
+      - drop:
+          expression: '\[blocklist\]'
+      - regex:
+          expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) '
+      - timestamp:
+          source: timestamp
+          format: '2006-01-02 15:04:05'
+          location: Europe/Berlin
+
   # Auth logs
   - job_name: auth
     static_configs:

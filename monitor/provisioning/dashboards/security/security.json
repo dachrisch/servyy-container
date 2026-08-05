@@ -78,7 +78,7 @@
           "datasource": {
             "type": "loki"
           },
-          "expr": "sum(count_over_time({job=\"docker\", container=~\"traefik.*\"} |= \"select\" | path =~ \"(?i)(sql.*injection|union.*select|<script|javascript:|eval|exec)\"[$__range]))",
+          "expr": "sum(count_over_time({job=\"docker\", container=~\"traefik.*\"} |~ \"(?i)(union.*select|<script|javascript:|/etc/passwd|%2e%2e|\\\\.\\\\./)\"[$__range]))",
           "legendFormat": "Attacks",
           "refId": "A"
         }
@@ -761,7 +761,7 @@
           "datasource": {
             "type": "loki"
           },
-          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban.*traefik-malicious-bot\"[$__range]))",
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"traefik-malicious-bot attempts=\"[$__range]))",
           "legendFormat": "Traefik Bots",
           "refId": "A"
         }
@@ -830,7 +830,7 @@
           "datasource": {
             "type": "loki"
           },
-          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban.*traefik-rate-limit\"[$__range]))",
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"traefik-rate-limit attempts=\"[$__range]))",
           "legendFormat": "Traefik Access",
           "refId": "A"
         }
@@ -899,7 +899,7 @@
           "datasource": {
             "type": "loki"
           },
-          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban.*traefik-aggressive-crawler\"[$__range]))",
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"traefik-aggressive-crawler attempts=\"[$__range]))",
           "legendFormat": "Crawler Soft",
           "refId": "A"
         }
@@ -1162,7 +1162,7 @@
           "datasource": {
             "type": "loki"
           },
-          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban.*traefik-malicious-bot\"[5m]))",
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"traefik-malicious-bot attempts=\"[5m]))",
           "legendFormat": "traefik-bots",
           "refId": "D"
         },
@@ -1170,7 +1170,7 @@
           "datasource": {
             "type": "loki"
           },
-          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban.*traefik-rate-limit\"[5m]))",
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"traefik-rate-limit attempts=\"[5m]))",
           "legendFormat": "traefik-access",
           "refId": "E"
         },
@@ -1178,7 +1178,7 @@
           "datasource": {
             "type": "loki"
           },
-          "expr": "sum(count_over_time({job=\"system\"} |~ \"fail2ban.*\\\\[loki-blocklist\\\\].*Ban.*traefik-aggressive-crawler\"[5m]))",
+          "expr": "sum(count_over_time({job=\"system\"} |~ \"traefik-aggressive-crawler attempts=\"[5m]))",
           "legendFormat": "traefik-crawler-soft",
           "refId": "F"
         }
@@ -1212,7 +1212,7 @@
           "datasource": {
             "type": "loki"
           },
-          "expr": "{job=\"system\"} |~ \"fail2ban.*(Ban|Unban)\"",
+          "expr": "{job=\"system\"} |= \"fail2ban\" |~ \"Ban|Unban\"",
           "refId": "A"
         }
       ],
@@ -1357,7 +1357,7 @@
           "datasource": {
             "type": "loki"
           },
-          "expr": "sum(count_over_time({job=\"docker\", container=~\"traefik.*\"} |= \"select\" | path =~ \"(?i)(sql.*injection|union.*select|<script|javascript:|eval|exec)\"[5m]))",
+          "expr": "sum(count_over_time({job=\"docker\", container=~\"traefik.*\"} |~ \"(?i)(union.*select|<script|javascript:|/etc/passwd|%2e%2e|\\\\.\\\\./)\"[5m]))",
           "legendFormat": "Injection",
           "refId": "A"
         },
@@ -1460,7 +1460,7 @@
           "datasource": {
             "type": "loki"
           },
-          "expr": "sum(count_over_time({job=\"docker\", container=~\"traefik.*\"} | path =~ \"(?i)\\\\.php\"[5m]))",
+          "expr": "sum(count_over_time({job=\"docker\", container=~\"traefik.*\"} |~ \"(?i)\\\\.php\"[5m]))",
           "legendFormat": ".php",
           "refId": "A"
         },
@@ -1518,7 +1518,7 @@
           "datasource": {
             "type": "loki"
           },
-          "expr": "{job=\"docker\", container=~\"traefik.*\"} |= \"select\" | path =~ \"(?i)(sql.*injection|union.*select|<script|javascript:|eval|exec|\\\\./|%2e%2e|etc/passwd|nikto|sqlmap|nmap)\"",
+          "expr": "{job=\"docker\", container=~\"traefik.*\"} |~ \"(?i)(union.*select|<script|javascript:|/etc/passwd|%2e%2e|\\\\.\\\\./|nikto|sqlmap|nmap)\"",
           "refId": "A"
         }
       ],
