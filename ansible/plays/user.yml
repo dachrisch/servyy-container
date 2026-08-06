@@ -72,6 +72,10 @@
         src: searxng/settings.yml.j2
         dest: "{{ docker.remote_dir }}/searxng/core-config/settings.yml"
         mode: "0600"
+      # core-config is root-owned (searxng runs as root and owns the dir/files);
+      # write as root so the deploy doesn't depend on the dir being chowned to the deploy user.
+      become: true
+      become_user: root
       tags:
         - user.docker.searxng
 
