@@ -42,9 +42,24 @@ cd ansible && ./servyy.sh --tags user.docker.searxng --limit lehel.xyz
    from `user.yml`. It chowned `core-config` to the deploy user so the (non-`become`)
    template could write — now unnecessary since the template writes as root. It was
    also a no-op that always reported `changed` without actually changing ownership.
+5. **Enabled mojeek/qwant**: they ship `disabled: true` by default; `keep_only` does
+   not override that, so added `disabled: false` to the override blocks.
+6. **Added + enabled bing**: `disabled: false` + shared token. Bing tolerates the
+   server's datacenter IP and reliably returns results (google/ddg/qwant/startpage
+   get CAPTCHA'd — see below).
+
+## Root cause of the throttling (IP reputation)
+Per-engine functional test (query from the server with the token) showed the real
+issue: SearXNG's outbound engine requests come from lehel.xyz's datacenter IP, which
+Google/DuckDuckGo/Qwant/Startpage/Brave increasingly CAPTCHA or rate-limit
+(intermittent). **Bing and Mojeek tolerate the server IP; Bing returns results
+reliably.** Durable fixes (not done here): route outbound through a residential/rotating
+proxy, use Brave/Google API keys, or lean on Bing/Mojeek + valkey caching.
 
 ## Commits (master)
 - `feat(searxng): add startpage, mojeek, qwant engines`
 - `fix(searxng): write settings.yml as root in deploy task`
 - `fix(searxng): rename dead 'duckduckgo lite' engine to 'duckduckgo'`
 - `chore(searxng): remove redundant core-config ownership fix task`
+- `fix(searxng): enable mojeek/qwant (disabled by default)`
+- `feat(searxng): add and enable bing engine`
