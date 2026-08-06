@@ -8,6 +8,9 @@ use_default_settings:
       - google
       - duckduckgo lite
       - brave
+      - startpage
+      - mojeek
+      - qwant
 
 server:
   secret_key: "{{ vault_searxng_secret_key }}"
@@ -28,5 +31,16 @@ engines:
     tokens:
       - "{{ vault_searxng_duckduckgo_token }}"
   - name: brave
+    tokens:
+      - "{{ vault_searxng_brave_token }}"
+  # New engines share the same token value as the existing ones
+  # (vault_searxng_*_token are all identical) to spread load off Brave.
+  - name: startpage
+    tokens:
+      - "{{ vault_searxng_brave_token }}"
+  - name: mojeek
+    tokens:
+      - "{{ vault_searxng_brave_token }}"
+  - name: qwant
     tokens:
       - "{{ vault_searxng_brave_token }}"
