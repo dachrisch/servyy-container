@@ -72,14 +72,10 @@
   tags:
     - system.fail2ban.config
 
-- name: Create custom action to sync with Loki blocklist
-  template:
-    src: fail2ban/action.d/loki-sync.conf.j2
-    dest: /etc/fail2ban/action.d/loki-sync.conf
-    owner: root
-    group: root
-    mode: '0644'
-  notify: restart fail2ban
+- name: Remove obsolete loki-sync fail2ban action (dead code - wired to no jail)
+  file:
+    path: /etc/fail2ban/action.d/loki-sync.conf
+    state: absent
   tags:
     - system.fail2ban.config
 
