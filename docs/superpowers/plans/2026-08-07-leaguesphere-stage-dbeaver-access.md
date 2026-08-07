@@ -775,6 +775,15 @@ Note `$=IGNORE` (not `$IGNORE`): this is zsh's explicit word-splitting flag. zsh
   tags:
     - ls.db.sync.timer
 
+- name: Ensure backup scripts directory exists
+  file:
+    path: "{{ remote_user_home }}/.backup-scripts"
+    state: directory
+    mode: '0755'
+  become_user: "{{ create_user }}"
+  tags:
+    - ls.db.sync.timer
+
 - name: Deploy nightly stage DB sync script
   template:
     src: ls_db_sync.sh.j2
@@ -807,6 +816,8 @@ Note `$=IGNORE` (not `$IGNORE`): this is zsh's explicit word-splitting flag. zsh
 ```
 
 `become_user: "{{ create_user }}"` is explicit here (not inherited from the play) because `leaguesphere.yml` (where `ls_db_sync` is invoked from) runs as root by default — the systemd user-timer and its backing script must be owned by `create_user` to be manageable via `systemctl --user`, matching how the existing `mariadb-backup-ls`/`restic-backup-ls-db` timers are owned (those run under the separate `restic.yml` playbook, which already sets `become_user: create_user` at the play level).
+
+The `~/.backup-scripts/` directory this task deploys into already gets created by `restic/tasks/backup.yml`'s own first task — but that task runs under the *separate* `restic.yml` playbook. A full `servyy.yml`/`servyy-test.sh` run always imports `plays/restic.yml` before `plays/leaguesphere.yml` (see `ansible/servyy.yml`), so in practice the directory always exists by the time this task runs — but a `--tags ls.db.sync.timer` scoped run in isolation (exactly what this task's own Step 5 verification does, and exactly the kind of targeted deploy this repo's tagging is built for) would hit the same directory unless this task creates it itself too. Hence the explicit, idempotent `file: state=directory` task above, mirroring `restic/tasks/backup.yml:3-9`'s own pattern for the same directory.
 
 - [ ] **Step 4: Wire the timer into the role's existing task list**
 
