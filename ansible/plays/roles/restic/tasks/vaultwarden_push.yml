@@ -1,74 +1,29 @@
 ---
-# Push a backup copy of the restic repository passwords into Vaultwarden.
-# Runs on the Ansible CONTROLLER via the `bw` CLI (not the remote host).
-# Idempotent: only creates missing Login items. Invoked by the restic role
-# handler (when /etc/restic/env.* changes).
+# restic/handlers/main.yml reaches this via include_tasks (handlers cannot
+# use include_role/import_role anywhere in their execution chain, even
+# transitively through an intermediate include_tasks — verified by direct
+# reproduction, not just the "not written directly in a handler" case).
+# So this includes the shared role's task file directly by path rather
+# than via include_role. Its own further include_tasks: unlock.yml (inside
+# push_items.yml) still resolves correctly, relative to push_items.yml's
+# own directory once Ansible is executing it — that resolution doesn't
+# depend on how push_items.yml itself was reached.
 #
-# Requires (from vars/secrets.yml): vaultwarden_api.client_id/secret,
-# restic_password_{home,root,ls_db}; and vw_master_password (vars_prompt).
-
-- name: Unlock the bw vault (shared)
-  ansible.builtin.include_tasks: bw_unlock.yml
-
-- name: List existing vault item names
-  ansible.builtin.command:
-    cmd: bw list items
-  environment:
-    BW_SESSION: "{{ bw_session }}"
-  delegate_to: localhost
-  run_once: true
-  become: false
-  register: bw_items_raw
-  changed_when: false
-  no_log: true
-
-- name: Compute set of item names already present
-  ansible.builtin.set_fact:
-    existing_item_names: "{{ bw_items_raw.stdout | from_json | map(attribute='name') | list }}"
-  delegate_to: localhost
-  run_once: true
-  become: false
-
-- name: Create missing restic items in Vaultwarden
-  ansible.builtin.shell:
-    cmd: "set -o pipefail; printf '%s' {{ item_json | quote }} | bw encode | bw create item"
-    executable: /bin/bash
-  environment:
-    BW_SESSION: "{{ bw_session }}"
-  delegate_to: localhost
-  run_once: true
-  become: false
+# Requires (unchanged from before the vaultwarden extraction):
+# vaultwarden_api.client_id/secret (vars/secrets.yml), restic_password_*
+# (vars/secrets.yml), vw_master_password (vars_prompt in restic.yml).
+#
+# Plain relative path (not {{ playbook_dir }}) on purpose: ansible-lint's
+# static analyzer resolves {{ playbook_dir }} relative to this task file's
+# own directory when linting a role in isolation, not the real playbook
+# directory - it computed the wrong path and reported a fatal load-failure
+# that a # noqa comment can't suppress (the violation is anchored to the
+# synthetic wrong path, not this line). A plain relative path needs no
+# Jinja evaluation, so ansible-lint resolves it correctly, and Ansible's
+# own include_tasks path resolution (relative to this file's directory)
+# handles ../.. the same way at runtime - verified live on servyy-test.lxd.
+- name: Push restic passwords to Vaultwarden
+  ansible.builtin.include_tasks: ../../vaultwarden/tasks/push_items.yml
   vars:
-    item_json: >-
-      {{ {'type': 1,
-          'name': item.name,
-          'notes': item.notes,
-          'login': {'username': 'restic', 'password': item.password, 'uris': []}}
-         | to_json }}
-  loop: "{{ restic_vaultwarden_items }}"
-  loop_control:
-    label: "{{ item.name }}"
-  when: item.name not in existing_item_names
-  changed_when: true
-  no_log: true
-
-- name: Report which restic items were created vs already present
-  ansible.builtin.debug:
-    msg: >-
-      {{ item.name }}:
-      {{ 'already present (skipped)' if item.name in existing_item_names else 'created' }}
-  delegate_to: localhost
-  run_once: true
-  become: false
-  loop: "{{ restic_vaultwarden_items }}"
-  loop_control:
-    label: "{{ item.name }}"
-
-- name: Lock the vault again
-  ansible.builtin.command:
-    cmd: bw lock
-  delegate_to: localhost
-  run_once: true
-  become: false
-  changed_when: false
-  failed_when: false
+    vaultwarden_items: "{{ restic_vaultwarden_items }}"
+    vaultwarden_item_username: "restic"

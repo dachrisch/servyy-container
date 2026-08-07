@@ -1,9 +1,8 @@
 ---
-# Shared: authenticate + unlock the `bw` (Bitwarden) CLI on the Ansible
-# controller and expose the session token as the `bw_session` fact.
-# Included by tasks/seed_guard.yml (probe) and tasks/vaultwarden_push.yml (push).
-# Requires: vaultwarden_api.client_id/secret (secrets.yml), vw_master_password
-# (vars_prompt in plays/restic.yml), vw_server (defaults).
+# Authenticate + unlock the `bw` (Bitwarden) CLI on the Ansible controller and
+# expose the session token as the `bw_session` fact.
+# Requires: vaultwarden_api.client_id/secret (vars/secrets.yml), vw_master_password
+# (vars_prompt in the calling playbook), vw_server (this role's defaults).
 # The CALLER is responsible for running `bw lock` when finished.
 
 - name: Check that the bw CLI is installed on the controller
@@ -20,8 +19,7 @@
   ansible.builtin.fail:
     msg: >-
       The `bw` (Bitwarden) CLI is not installed on the Ansible controller, but a
-      Vaultwarden operation was requested. Install it (e.g. `npm i -g @bitwarden/cli`)
-      or restore the restic seed files (vars/.restic_password_*) from your offline copy.
+      Vaultwarden operation was requested. Install it (e.g. `npm i -g @bitwarden/cli`).
   delegate_to: localhost
   run_once: true
   become: false

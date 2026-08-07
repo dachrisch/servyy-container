@@ -1,0 +1,4 @@
+---
+dbeaver_stage_user: dbeaver_stage
+dbeaver_stage_ssh_key_filename: "dbeaver_stage_key_{{ inventory_hostname_short }}"
+dbeaver_stage_local_port: "33062"
