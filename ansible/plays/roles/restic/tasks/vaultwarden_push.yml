@@ -1,14 +1,19 @@
 ---
-# Thin wrapper: restic/handlers/main.yml reaches this via include_tasks
-# (handlers cannot use include_role directly — ansible.builtin.include_role
-# is documented as not working inside a handler). The actual push logic now
-# lives in the shared vaultwarden role; this file exists only so the
-# handler's existing include_tasks: vaultwarden_push.yml keeps working
-# unchanged.
+# restic/handlers/main.yml reaches this via include_tasks (handlers cannot
+# use include_role/import_role anywhere in their execution chain, even
+# transitively through an intermediate include_tasks — verified by direct
+# reproduction, not just the "not written directly in a handler" case).
+# So this includes the shared role's task file directly by path rather
+# than via include_role. Its own further include_tasks: unlock.yml (inside
+# push_items.yml) still resolves correctly, relative to push_items.yml's
+# own directory once Ansible is executing it — that resolution doesn't
+# depend on how push_items.yml itself was reached.
+#
+# Requires (unchanged from before the vaultwarden extraction):
+# vaultwarden_api.client_id/secret (vars/secrets.yml), restic_password_*
+# (vars/secrets.yml), vw_master_password (vars_prompt in restic.yml).
 - name: Push restic passwords to Vaultwarden
-  ansible.builtin.include_role:
-    name: vaultwarden
-    tasks_from: push_items.yml
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/roles/vaultwarden/tasks/push_items.yml"
   vars:
     vaultwarden_items: "{{ restic_vaultwarden_items }}"
     vaultwarden_item_username: "restic"

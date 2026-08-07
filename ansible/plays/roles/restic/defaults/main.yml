@@ -1,11 +1,16 @@
 ---
 # Vaultwarden backup-copy target for the restic repository passwords.
-# Also defined in vaultwarden/defaults/main.yml (the role that now does the
-# actual push/unlock work). Duplicated here deliberately: seed_guard.yml's
-# early fail message below references {{ vw_server }} before it dynamically
-# include_role's the vaultwarden role, and dynamic include_role defaults are
-# not guaranteed loaded that early — so this role keeps its own copy of the
-# single value rather than relying on load-order.
+# Also defined in vaultwarden/defaults/main.yml. Duplicated here on purpose,
+# for two independent reasons:
+#  1. seed_guard.yml's early fail message references {{ vw_server }} before
+#     it dynamically include_role's the vaultwarden role for the *unlock*
+#     path, and dynamic include_role defaults aren't guaranteed loaded that
+#     early.
+#  2. The *push* path (vaultwarden_push.yml) reaches the vaultwarden role via
+#     plain include_tasks, not include_role (required — see that file's
+#     comment) — which means the vaultwarden role's own defaults/main.yml is
+#     never loaded on this path at all. This role's own copy isn't optional
+#     here, it's the only one that exists on that path.
 vw_server: "https://pass.lehel.xyz"
 
 # Password-FREE mapping of VW item name <-> controller seed file path.
