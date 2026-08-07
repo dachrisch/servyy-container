@@ -25,3 +25,5 @@ bumbleflies/site
 *.log
 .worktrees/
 key
+# subagent-driven-development scratch workspace
+.superpowers/
