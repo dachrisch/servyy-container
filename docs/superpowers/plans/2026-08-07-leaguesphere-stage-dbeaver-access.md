@@ -116,7 +116,7 @@ Do **not** push yet — hold until Task 6 passes on `servyy-test.lxd`, since thi
 - Create: `ansible/plays/roles/vaultwarden/tasks/unlock.yml`
 - Create: `ansible/plays/roles/vaultwarden/tasks/push_items.yml`
 - Delete: `ansible/plays/roles/restic/tasks/bw_unlock.yml` (moved into the new role)
-- Modify (not delete): `ansible/plays/roles/restic/tasks/vaultwarden_push.yml` — becomes a thin wrapper (see Step 4 — `ansible.builtin.include_role` is documented as not working inside a handler, so `restic/handlers/main.yml`'s existing `include_tasks: vaultwarden_push.yml` must keep calling a task *file*, which itself does the `include_role`)
+- Modify (not delete): `ansible/plays/roles/restic/tasks/vaultwarden_push.yml` — becomes a thin `include_tasks` (not `include_role`) pointed at the shared role by path (see Step 4 — `include_role`/`import_role` don't work anywhere in a handler's execution chain, even transitively; only `include_tasks`/`import_tasks` do)
 - Modify: `ansible/plays/roles/restic/tasks/seed_guard.yml:61-62`
 - Modify: `ansible/plays/roles/restic/defaults/main.yml`
 
@@ -128,7 +128,7 @@ Do **not** push yet — hold until Task 6 passes on `servyy-test.lxd`, since thi
   - `vaultwarden_api.client_id` / `.client_secret` (from `vars/secrets.yml`, already exists)
 - Produces: idempotent creation of Bitwarden Login-type items in Vaultwarden (`type: 1`, `login.username`/`login.password`, `notes`) — one per entry in `vaultwarden_items`, skipping any `name` that already exists.
 
-This **does** consolidate `restic`'s existing usage onto the new role rather than leaving a parallel duplicate — `restic/tasks/bw_unlock.yml` is deleted outright; `vaultwarden_push.yml` is gutted down to a thin `include_role` wrapper rather than deleted, because `ansible.builtin.include_role` is documented ("Does not work in handlers") as unusable directly from a handler, and `restic/handlers/main.yml` calls it via `include_tasks: vaultwarden_push.yml` — that filename and mechanism stay, only its *contents* change. `seed_guard.yml`'s call site (not a handler) uses `include_role` directly with no such restriction. The one exception is `vw_server`: it stays defined in **both** `restic/defaults/main.yml` and the new role's defaults (Step 6 explains why — it's a single config value, not logic, and `restic`'s only reference to the new role is via dynamic `include_role`, whose defaults aren't guaranteed loaded before `seed_guard.yml`'s own early fail-message that also uses `{{ vw_server }}`).
+This **does** consolidate `restic`'s existing usage onto the new role rather than leaving a parallel duplicate — `restic/tasks/bw_unlock.yml` is deleted outright; `vaultwarden_push.yml` is gutted down to a thin `include_tasks` (pointed at the shared role by path) rather than deleted, because `include_role`/`import_role` don't work anywhere in a handler's execution chain — not just when written directly in a handler, but at any depth reached from one — and `restic/handlers/main.yml` calls it via `include_tasks: vaultwarden_push.yml`; that filename and mechanism stay, only its *contents* change. `seed_guard.yml`'s call site (not a handler) uses `include_role` directly with no such restriction. The `vw_server` duplication (both `restic/defaults/main.yml` and the new role's defaults) is now required on both paths for independent reasons — see Step 4's file-level comments.
 
 - [ ] **Step 1: Create the role's defaults**
 
@@ -356,26 +356,35 @@ git rm ansible/plays/roles/restic/tasks/bw_unlock.yml
     - (vw_master_password | default('')) | length > 0
 ```
 
-Leave every line of this file exactly as-is. `ansible.builtin.include_role` is documented as **not working inside a handler** (`ansible-doc ansible.builtin.include_role` → "Does not work in handlers"; confirmed against the actual `ansible-core` installed in this environment) — only `include_tasks`/`import_tasks` are valid there. So instead of pointing the handler at `include_role` directly, **replace the contents of `ansible/plays/roles/restic/tasks/vaultwarden_push.yml`** (same filename, same `include_tasks` target the handler already calls) with a thin wrapper that does the `include_role` from a normal task context, where it's fully supported:
+Leave every line of this file exactly as-is. **Revision (the first version of this step was still wrong — caught in final whole-branch review, not by either task-scoped review):** `ansible.builtin.include_role` is documented as **not working inside a handler**, and — verified by direct reproduction against the `ansible-core` installed in this environment — that restriction follows the *entire* execution chain reached from a handler, not just literal top-level handler content. A wrapper task file that itself does `include_role`, reached via the handler's `include_tasks:`, still fails with `Using 'include_role' as a handler is not supported`, with the error's `Origin:` pointing at the wrapper file itself. `include_role`/`import_role` are unusable anywhere in a call chain that originates from a handler; only `include_tasks`/`import_tasks` work there, at any depth.
+
+So instead of a wrapper that does `include_role`, **replace the contents of `ansible/plays/roles/restic/tasks/vaultwarden_push.yml`** (same filename, same `include_tasks` target the handler already calls) with a plain `include_tasks` pointed directly at the shared role's task file by path — no `include_role` anywhere in this chain:
 
 ```yaml
 ---
-# Thin wrapper: restic/handlers/main.yml reaches this via include_tasks
-# (handlers cannot use include_role directly — ansible.builtin.include_role
-# is documented as not working inside a handler). The actual push logic now
-# lives in the shared vaultwarden role; this file exists only so the
-# handler's existing include_tasks: vaultwarden_push.yml keeps working
-# unchanged.
+# restic/handlers/main.yml reaches this via include_tasks (handlers cannot
+# use include_role/import_role anywhere in their execution chain, even
+# transitively through an intermediate include_tasks — verified by direct
+# reproduction, not just the "not written directly in a handler" case).
+# So this includes the shared role's task file directly by path rather
+# than via include_role. Its own further include_tasks: unlock.yml (inside
+# push_items.yml) still resolves correctly, relative to push_items.yml's
+# own directory once Ansible is executing it — that resolution doesn't
+# depend on how push_items.yml itself was reached.
+#
+# Requires (unchanged from before the vaultwarden extraction):
+# vaultwarden_api.client_id/secret (vars/secrets.yml), restic_password_*
+# (vars/secrets.yml), vw_master_password (vars_prompt in restic.yml).
 - name: Push restic passwords to Vaultwarden
-  ansible.builtin.include_role:
-    name: vaultwarden
-    tasks_from: push_items.yml
+  ansible.builtin.include_tasks: "{{ playbook_dir }}/roles/vaultwarden/tasks/push_items.yml"
   vars:
     vaultwarden_items: "{{ restic_vaultwarden_items }}"
     vaultwarden_item_username: "restic"
 ```
 
-(This file goes from ~75 lines — the full unlock+push logic it had before — down to these 12. That's expected: everything it used to do now lives in `vaultwarden/tasks/{unlock,push_items}.yml`, reached transitively through this wrapper's `include_role`.)
+(This file goes from ~75 lines — the full unlock+push logic it had before — down to these ~20. That's expected: everything it used to do now lives in `vaultwarden/tasks/{unlock,push_items}.yml`, reached transitively through this file's `include_tasks`.)
+
+One consequence of this revision: the `vw_server` duplication below (already adjudicated as intentional) changes from *defensive* to *strictly required*. Because this path now reaches the vaultwarden role via `include_tasks` (never `include_role`), the vaultwarden role's own `defaults/main.yml` is never loaded on this path at all — `restic`'s own copy of `vw_server` isn't just a hedge against load-order timing anymore, it's the only copy that exists on this path. The comment below reflects this.
 
 `ansible/plays/roles/restic/tasks/seed_guard.yml:61-62` currently reads:
 
@@ -430,12 +439,17 @@ Replace it with (two changes: the `vw_server` comment, and `password:` → `secr
 ```yaml
 ---
 # Vaultwarden backup-copy target for the restic repository passwords.
-# Also defined in vaultwarden/defaults/main.yml (the role that now does the
-# actual push/unlock work). Duplicated here deliberately: seed_guard.yml's
-# early fail message below references {{ vw_server }} before it dynamically
-# include_role's the vaultwarden role, and dynamic include_role defaults are
-# not guaranteed loaded that early — so this role keeps its own copy of the
-# single value rather than relying on load-order.
+# Also defined in vaultwarden/defaults/main.yml. Duplicated here on purpose,
+# for two independent reasons:
+#  1. seed_guard.yml's early fail message references {{ vw_server }} before
+#     it dynamically include_role's the vaultwarden role for the *unlock*
+#     path, and dynamic include_role defaults aren't guaranteed loaded that
+#     early.
+#  2. The *push* path (vaultwarden_push.yml) reaches the vaultwarden role via
+#     plain include_tasks, not include_role (required — see that file's
+#     comment) — which means the vaultwarden role's own defaults/main.yml is
+#     never loaded on this path at all. This role's own copy isn't optional
+#     here, it's the only one that exists on that path.
 vw_server: "https://pass.lehel.xyz"
 
 # Password-FREE mapping of VW item name <-> controller seed file path.
