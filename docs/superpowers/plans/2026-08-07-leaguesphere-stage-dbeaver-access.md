@@ -16,6 +16,29 @@
 - Never commit private key material or plaintext DB passwords to git. `~/.ssh/*` stays on the operator's machine (matches the existing `ls_ssh_key_*` convention).
 - The `leaguesphere` app repo (`~/dev/leaguesphere`, `github.com/dachrisch/league-manager`) is a **separate git repository** with its own workflow — Task 1 touches it, everything else touches this repo.
 
+## Stack Structure (`gh stack`, this repo only)
+
+Tasks 2–5 touch this repo (`dachrisch/servyy-container`, `gh-stack` extension confirmed installed and authenticated) and are genuinely ordered: Task 3 calls `include_role: vaultwarden` (from Task 2), and Task 5 references the `ls_dbeaver_access` role (from Task 3). Task 4 doesn't strictly depend on 2/3, but it's the same feature/story, so it's kept in the same linear stack rather than split into a second one (`gh-stack` only supports strictly linear stacks — see "One stack, one story" in the gh-stack skill). Branches, bottom to top:
+
+```
+master (trunk)
+ └── vaultwarden-shared-role        → Task 2
+  └── ls-dbeaver-access-role        → Task 3
+   └── ls-db-sync-nightly-timer     → Task 4
+    └── ls-dbeaver-leaguesphere-wiring → Task 5
+```
+
+`gh stack init`/`gh stack add` replace plain `git checkout -b` for branch creation in each task below; `git add`/`git commit` stay exactly as written (the skill's recommended approach, for deliberate per-branch staging). Task 1 (the separate `leaguesphere` repo) is **not** part of this stack — `gh stack` operates within a single repository, and that repo keeps its own normal branch/PR flow.
+
+Before starting Task 2, run once:
+```bash
+cd /home/cda/dev/infrastructure/container
+git config rerere.enabled true
+git config remote.pushDefault origin
+gh stack init vaultwarden-shared-role
+```
+This creates and checks out `vaultwarden-shared-role` off `master`.
+
 ---
 
 ### Task 1: Stage DB stable loopback port (`leaguesphere` app repo)
@@ -77,22 +100,27 @@ Do **not** push yet — hold until Task 6 passes on `servyy-test.lxd`, since thi
 
 ---
 
-### Task 2: Generalize the Vaultwarden push mechanism into a shared role
+### Task 2: Extract the Vaultwarden push mechanism into a shared role, and migrate `restic` onto it
 
 **Files:**
 - Create: `ansible/plays/roles/vaultwarden/defaults/main.yml`
 - Create: `ansible/plays/roles/vaultwarden/tasks/unlock.yml`
 - Create: `ansible/plays/roles/vaultwarden/tasks/push_items.yml`
+- Delete: `ansible/plays/roles/restic/tasks/bw_unlock.yml` (moved into the new role)
+- Delete: `ansible/plays/roles/restic/tasks/vaultwarden_push.yml` (moved into the new role, generalized)
+- Modify: `ansible/plays/roles/restic/handlers/main.yml`
+- Modify: `ansible/plays/roles/restic/tasks/seed_guard.yml:61-62`
+- Modify: `ansible/plays/roles/restic/defaults/main.yml`
 
 **Interfaces:**
 - Consumes (caller must set before `include_role: {name: vaultwarden, tasks_from: push_items.yml}`):
   - `vaultwarden_items`: list of `{name: str, secret: str, notes: str}`
-  - `vaultwarden_item_username`: str (login-item username field; e.g. `"ansible"`)
+  - `vaultwarden_item_username`: str (login-item username field; e.g. `"ansible"`, `"restic"`)
   - `vw_master_password`: str (from the calling playbook's `vars_prompt`)
   - `vaultwarden_api.client_id` / `.client_secret` (from `vars/secrets.yml`, already exists)
 - Produces: idempotent creation of Bitwarden Login-type items in Vaultwarden (`type: 1`, `login.username`/`login.password`, `notes`) — one per entry in `vaultwarden_items`, skipping any `name` that already exists.
 
-This does **not** modify `restic`'s existing `bw_unlock.yml` / `vaultwarden_push.yml` — those stay exactly as they are (they gate a disaster-recovery-critical path; rewiring them is unnecessary risk for this feature). This is a parallel, equivalent implementation for the new consumer.
+This **does** consolidate `restic`'s existing usage onto the new role rather than leaving a parallel duplicate — `restic/tasks/bw_unlock.yml` and `vaultwarden_push.yml` are deleted, and both of restic's call sites (the env-file-change handler, and the seed-recovery guard) are repointed at the new role via `include_role`. The one exception is `vw_server`: it stays defined in **both** `restic/defaults/main.yml` and the new role's defaults (Step 6 explains why — it's a single config value, not logic, and `restic`'s only reference to the new role is via dynamic `include_role`, whose defaults aren't guaranteed loaded before `seed_guard.yml`'s own early fail-message that also uses `{{ vw_server }}`).
 
 - [ ] **Step 1: Create the role's defaults**
 
@@ -298,24 +326,159 @@ vw_server: "https://pass.lehel.xyz"
   failed_when: false
 ```
 
-- [ ] **Step 4: Syntax-check**
+- [ ] **Step 4: Migrate `restic` onto the shared role**
 
-Run: `cd ansible && ansible-playbook servyy.yml --syntax-check`
-Expected: `playbook: servyy.yml` printed, exit code 0. (The new role isn't referenced by any playbook yet, so this only confirms the new YAML files themselves parse — full wiring is verified in Task 5's syntax-check.)
+Delete the two files now superseded by the `vaultwarden` role:
 
-Run: `cd ansible && yamllint plays/roles/vaultwarden/`
-Expected: no errors (matches this repo's existing lint expectations for role YAML).
+```bash
+git rm ansible/plays/roles/restic/tasks/bw_unlock.yml
+git rm ansible/plays/roles/restic/tasks/vaultwarden_push.yml
+```
 
-- [ ] **Step 5: Commit**
+`ansible/plays/roles/restic/handlers/main.yml` currently reads:
+
+```yaml
+---
+# Fires only when init.yml actually writes/updates an /etc/restic/env.* file.
+# Skips silently unless this is the production host AND a master password was
+# entered at the vars_prompt (empty = user chose to skip the backup copy).
+- name: Push restic passwords to Vaultwarden
+  ansible.builtin.include_tasks: vaultwarden_push.yml
+  when:
+    - inventory_hostname == 'lehel.xyz'
+    - (vw_master_password | default('')) | length > 0
+```
+
+Change the `include_tasks` line to `include_role`, with the item list/username now passed explicitly:
+
+```yaml
+---
+# Fires only when init.yml actually writes/updates an /etc/restic/env.* file.
+# Skips silently unless this is the production host AND a master password was
+# entered at the vars_prompt (empty = user chose to skip the backup copy).
+- name: Push restic passwords to Vaultwarden
+  ansible.builtin.include_role:
+    name: vaultwarden
+    tasks_from: push_items.yml
+  vars:
+    vaultwarden_items: "{{ restic_vaultwarden_items }}"
+    vaultwarden_item_username: "restic"
+  when:
+    - inventory_hostname == 'lehel.xyz'
+    - (vw_master_password | default('')) | length > 0
+```
+
+`ansible/plays/roles/restic/tasks/seed_guard.yml:61-62` currently reads:
+
+```yaml
+    - name: Unlock the bw vault (shared)
+      ansible.builtin.include_tasks: bw_unlock.yml
+```
+
+Change to:
+
+```yaml
+    - name: Unlock the bw vault (shared)
+      ansible.builtin.include_role:
+        name: vaultwarden
+        tasks_from: unlock.yml
+```
+
+`ansible/plays/roles/restic/defaults/main.yml` currently reads (in full):
+
+```yaml
+---
+# Vaultwarden backup-copy target for the restic repository passwords.
+# Used by tasks/vaultwarden_push.yml (invoked by the restic env-file handler).
+vw_server: "https://pass.lehel.xyz"
+
+# Password-FREE mapping of VW item name <-> controller seed file path.
+# Used by tasks/seed_guard.yml. MUST NOT reference restic_password_* here:
+# iterating this list must never trigger the lookup() that generates a seed.
+# Keep the `name` values in sync with restic_vaultwarden_items below.
+restic_seeds:
+  - name: "restic - home (lehel.xyz)"
+    seed: "vars/.restic_password_home"
+  - name: "restic - root (lehel.xyz)"
+    seed: "vars/.restic_password_root"
+  - name: "restic - ls_db (lehel.xyz)"
+    seed: "vars/.restic_password_ls_db"
+
+restic_vaultwarden_items:
+  - name: "restic - home (lehel.xyz)"
+    password: "{{ restic_password_home }}"
+    notes: "RESTIC_PASSWORD for /etc/restic/env.home (copy of Ansible seed vars/.restic_password_home)"
+  - name: "restic - root (lehel.xyz)"
+    password: "{{ restic_password_root }}"
+    notes: "RESTIC_PASSWORD for /etc/restic/env.root (copy of Ansible seed vars/.restic_password_root)"
+  - name: "restic - ls_db (lehel.xyz)"
+    password: "{{ restic_password_ls_db }}"
+    notes: "RESTIC_PASSWORD for /etc/restic/env.ls_db (copy of Ansible seed vars/.restic_password_ls_db)"
+```
+
+Replace it with (two changes: the `vw_server` comment, and `password:` → `secret:` in `restic_vaultwarden_items` to match the shared role's `push_items.yml` interface, which reads `item.secret` — this is the one real behavior-affecting edit in this step, not just a rename: without it, restic's push would silently create items with an **empty** password field):
+
+```yaml
+---
+# Vaultwarden backup-copy target for the restic repository passwords.
+# Also defined in vaultwarden/defaults/main.yml (the role that now does the
+# actual push/unlock work). Duplicated here deliberately: seed_guard.yml's
+# early fail message below references {{ vw_server }} before it dynamically
+# include_role's the vaultwarden role, and dynamic include_role defaults are
+# not guaranteed loaded that early — so this role keeps its own copy of the
+# single value rather than relying on load-order.
+vw_server: "https://pass.lehel.xyz"
+
+# Password-FREE mapping of VW item name <-> controller seed file path.
+# Used by tasks/seed_guard.yml. MUST NOT reference restic_password_* here:
+# iterating this list must never trigger the lookup() that generates a seed.
+# Keep the `name` values in sync with restic_vaultwarden_items below.
+restic_seeds:
+  - name: "restic - home (lehel.xyz)"
+    seed: "vars/.restic_password_home"
+  - name: "restic - root (lehel.xyz)"
+    seed: "vars/.restic_password_root"
+  - name: "restic - ls_db (lehel.xyz)"
+    seed: "vars/.restic_password_ls_db"
+
+# Field is `secret` (not `password`) to match vaultwarden/tasks/push_items.yml's
+# generic item shape {name, secret, notes}.
+restic_vaultwarden_items:
+  - name: "restic - home (lehel.xyz)"
+    secret: "{{ restic_password_home }}"
+    notes: "RESTIC_PASSWORD for /etc/restic/env.home (copy of Ansible seed vars/.restic_password_home)"
+  - name: "restic - root (lehel.xyz)"
+    secret: "{{ restic_password_root }}"
+    notes: "RESTIC_PASSWORD for /etc/restic/env.root (copy of Ansible seed vars/.restic_password_root)"
+  - name: "restic - ls_db (lehel.xyz)"
+    secret: "{{ restic_password_ls_db }}"
+    notes: "RESTIC_PASSWORD for /etc/restic/env.ls_db (copy of Ansible seed vars/.restic_password_ls_db)"
+```
+
+- [ ] **Step 5: Syntax-check and verify `restic`'s behavior is unaffected**
+
+Run: `cd ansible && ansible-playbook servyy.yml --syntax-check && ansible-playbook restic.yml --syntax-check`
+Expected: both print their playbook name, exit code 0.
+
+Run: `cd ansible && yamllint plays/roles/vaultwarden/ plays/roles/restic/`
+Expected: no errors.
+
+Run: `cd ansible && ansible-playbook restic.yml -i testing --tags restic.init --check --diff 2>&1 | tail -40` against `servyy-test.lxd`, with all seed files present (the normal case). (`seed_guard.yml`'s tasks have no tags of their own — they're reached only via `main.yml`'s `include_tasks: {file: seed_guard.yml, apply: {tags: [restic, restic.init, restic.recreate]}}`, so `--tags restic.init` is the right filter to exercise them, matching the existing code comment at `restic/tasks/main.yml:8-11` explaining why `apply` is required there.)
+Expected: the play reaches "Restic seed guard: 0 missing" and does **not** enter the `Recover missing restic seeds` block (since nothing is missing) — confirming the guard's early logic still runs without an undefined-`vw_server` or broken-include error. This is a check-mode dry run; full confirmation that a *triggered* recovery still works (missing-seed path, `bw_unlock` via the new role, `bw get password`) happens in Task 6, which already deploys to `servyy-test.lxd`.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 cd /home/cda/dev/infrastructure/container
-git add ansible/plays/roles/vaultwarden/
-git commit -m "feat: extract generalized Vaultwarden push mechanism into shared role
+git add ansible/plays/roles/vaultwarden/ ansible/plays/roles/restic/
+git commit -m "feat: extract Vaultwarden push mechanism into a shared role
 
-Parallel implementation of restic's bw_unlock/vaultwarden_push, parameterized
-by an item list, for reuse by the upcoming DBeaver-tunnel SSH key backup.
-restic's own bw_unlock.yml/vaultwarden_push.yml are left untouched."
+Generalizes restic's bw_unlock/vaultwarden_push into vaultwarden/tasks/
+{unlock,push_items}.yml, parameterized by an item list, for reuse by the
+upcoming DBeaver-tunnel SSH key backup. restic's handler and seed_guard.yml
+are repointed at the new role via include_role; restic_vaultwarden_items'
+password field is renamed to secret to match the shared interface.
+vw_server stays duplicated in both roles' defaults on purpose (see comment)."
 ```
 
 ---
@@ -330,7 +493,15 @@ restic's own bw_unlock.yml/vaultwarden_push.yml are left untouched."
 - Consumes: `local_user` (existing, `vars/default.yml`), `inventory_hostname_short` (Ansible fact), `vw_master_password` (from the `leaguesphere.yml` vars_prompt added in Task 5), `ls.user`/`ls.ssh_key_filename` (existing, `vars/secret_leaguesphere.yaml` — used to locate the existing LeagueSphere deploy key for its Vaultwarden backup), `vaultwarden` role's `push_items.yml` (Task 2).
 - Produces: Linux account `dbeaver_stage` on the target host; local file `~/.ssh/dbeaver_stage_key_{{ inventory_hostname_short }}` (+ `.pub`) on the controller; that key restricted in the account's `authorized_keys` to `permitopen="127.0.0.1:33062"` only.
 
-- [ ] **Step 1: Create the role's defaults**
+- [ ] **Step 1: Create and check out the next stack branch**
+
+```bash
+cd /home/cda/dev/infrastructure/container
+gh stack add ls-dbeaver-access-role
+```
+(Must be run from the top of the stack — i.e., right after Task 2's commit, still on `vaultwarden-shared-role`.)
+
+- [ ] **Step 2: Create the role's defaults**
 
 `ansible/plays/roles/ls_dbeaver_access/defaults/main.yml`:
 
@@ -341,7 +512,7 @@ dbeaver_stage_ssh_key_filename: "dbeaver_stage_key_{{ inventory_hostname_short }
 dbeaver_stage_local_port: "33062"
 ```
 
-- [ ] **Step 2: Create the role's tasks**
+- [ ] **Step 3: Create the role's tasks**
 
 `ansible/plays/roles/ls_dbeaver_access/tasks/main.yml`:
 
@@ -382,6 +553,9 @@ dbeaver_stage_local_port: "33062"
   include_role:
     name: vaultwarden
     tasks_from: push_items.yml
+    apply:
+      tags:
+        - ls.dbeaver
   vars:
     vaultwarden_item_username: "ansible"
     vaultwarden_items:
@@ -402,9 +576,11 @@ dbeaver_stage_local_port: "33062"
     - ls.dbeaver
 ```
 
+**On the `apply: tags:` block:** `include_role` is a *dynamic* include — per the existing, already-solved instance of this exact problem at `restic/tasks/main.yml:8-11`, tags placed directly on a dynamic include only gate whether the include itself runs; they do **not** propagate into the tasks it pulls in (here, `vaultwarden/tasks/push_items.yml` and, transitively, its own nested `include_tasks: unlock.yml`) unless `apply` is used. Without it, running this role under a selective `--tags ls.dbeaver` deploy (exactly what Task 6/7 do) would silently no-op the Vaultwarden push — the include step would run, but every task inside it would be skipped as untagged. `restic`'s existing handler-based path doesn't need this (`notify`-triggered handlers aren't gated by `--tags` selection the same way), which is why it wasn't already a pattern to copy from there — but `seed_guard.yml`'s modification in Task 2 Step 4 is covered already, since it inherits its tags from `main.yml`'s pre-existing `apply` on the include that reaches it.
+
 **Note on `ls.ssh_key_filename`:** this already resolves to `ls_ssh_key_{{ inventory_hostname_short }}` via `vars/secret_leaguesphere.yaml` (loaded by `leaguesphere.yml`'s `vars_files`), so no new variable is needed to locate the existing deploy key.
 
-- [ ] **Step 3: Syntax-check**
+- [ ] **Step 4: Syntax-check**
 
 Run: `cd ansible && ansible-playbook servyy.yml --syntax-check`
 Expected: exit code 0 (role isn't wired into a playbook yet — this just confirms the YAML parses; full wiring verified in Task 5).
@@ -412,7 +588,7 @@ Expected: exit code 0 (role isn't wired into a playbook yet — this just confir
 Run: `cd ansible && yamllint plays/roles/ls_dbeaver_access/`
 Expected: no errors.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add ansible/plays/roles/ls_dbeaver_access/
@@ -439,7 +615,15 @@ leaguesphere deploy key get backed up to Vaultwarden."
 
 Not implemented as a literal `ansible-playbook` invocation from cron — this repo has no precedent for a target host running Ansible against itself, and none of the existing nightly jobs (`mariadb-backup-ls`, `restic-backup-*`) work that way. Instead this mirrors the *shell command sequence* `ls_db_sync/tasks/main.yml` already runs (dump prod via `docker exec`, wait for stage health, drop/recreate/import, restart stage app), as a standalone script deployed the same way the existing backup scripts are.
 
-- [ ] **Step 1: Create the sync script template**
+- [ ] **Step 1: Create and check out the next stack branch**
+
+```bash
+cd /home/cda/dev/infrastructure/container
+gh stack add ls-db-sync-nightly-timer
+```
+(Run from the top of the stack — right after Task 3's commit, still on `ls-dbeaver-access-role`.)
+
+- [ ] **Step 2: Create the sync script template**
 
 `ansible/plays/roles/ls_db_sync/templates/ls_db_sync.sh.j2`:
 
@@ -492,7 +676,7 @@ echo "Nightly stage DB sync completed: $PROD_DB -> $STAGE_DB"
 
 Note `$=IGNORE` (not `$IGNORE`): this is zsh's explicit word-splitting flag. zsh does not word-split unquoted variables by default (unlike the `shell:`-module's `/bin/sh` that `ls_db_sync/tasks/main.yml` runs under) — `$=IGNORE` is required so each `--ignore-table=...` entry becomes its own argument to `mariadb-dump`, and correctly yields zero arguments when there are no views to ignore.
 
-- [ ] **Step 2: Create the timer deployment task**
+- [ ] **Step 3: Create the timer deployment task**
 
 `ansible/plays/roles/ls_db_sync/tasks/timer.yml`:
 
@@ -545,7 +729,7 @@ Note `$=IGNORE` (not `$IGNORE`): this is zsh's explicit word-splitting flag. zsh
 
 `become_user: "{{ create_user }}"` is explicit here (not inherited from the play) because `leaguesphere.yml` (where `ls_db_sync` is invoked from) runs as root by default — the systemd user-timer and its backing script must be owned by `create_user` to be manageable via `systemctl --user`, matching how the existing `mariadb-backup-ls`/`restic-backup-ls-db` timers are owned (those run under the separate `restic.yml` playbook, which already sets `become_user: create_user` at the play level).
 
-- [ ] **Step 3: Wire the timer into the role's existing task list**
+- [ ] **Step 4: Wire the timer into the role's existing task list**
 
 In `ansible/plays/roles/ls_db_sync/tasks/main.yml`, append at the very end (after the existing `Cleanup dumps` task):
 
@@ -556,7 +740,7 @@ In `ansible/plays/roles/ls_db_sync/tasks/main.yml`, append at the very end (afte
     - ls.db.sync.timer
 ```
 
-- [ ] **Step 4: Syntax-check and tag-listing verification**
+- [ ] **Step 5: Syntax-check and tag-listing verification**
 
 Run: `cd ansible && ansible-playbook servyy.yml --syntax-check`
 Expected: exit code 0.
@@ -564,7 +748,7 @@ Expected: exit code 0.
 Run: `cd ansible && ansible-playbook servyy.yml --list-tasks --tags ls.db.sync.timer 2>&1 | grep -A5 "ls_db_sync"`
 Expected: shows `Load production variables (for nightly sync script)`, `Load staging variables (for nightly sync script)`, `Deploy nightly stage DB sync script`, and the tasks inside `oneshot_include.yml` (`Create the systemd directory...`, `Create ls-db-sync-nightly service`, `Create timer for ls-db-sync-nightly`, `Start timer for ls-db-sync-nightly`) — and does **not** show the on-demand sync tasks (`Export prod DB...`, `Drop and recreate staging database`, etc.), confirming the tag correctly isolates the timer-only path.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add ansible/plays/roles/ls_db_sync/
@@ -587,7 +771,15 @@ independently via the ls.db.sync.timer tag."
 - Consumes: `ls_dbeaver_access` role (Task 3).
 - Produces: running `./servyy.sh --tags ls.dbeaver --limit <host>` (or `./servyy-test.sh --tags ls.dbeaver`) deploys the dedicated tunnel account end-to-end, including the Vaultwarden push when a master password is supplied.
 
-- [ ] **Step 1: Add the `vw_master_password` prompt**
+- [ ] **Step 1: Create and check out the next stack branch**
+
+```bash
+cd /home/cda/dev/infrastructure/container
+gh stack add ls-dbeaver-leaguesphere-wiring
+```
+(Run from the top of the stack — right after Task 4's commit, still on `ls-db-sync-nightly-timer`.)
+
+- [ ] **Step 2: Add the `vw_master_password` prompt**
 
 In `ansible/plays/leaguesphere.yml`, insert a `vars_prompt` block after `vars_files` and before `roles:` (currently lines 6–12):
 
@@ -606,7 +798,7 @@ In `ansible/plays/leaguesphere.yml`, insert a `vars_prompt` block after `vars_fi
   roles:
 ```
 
-- [ ] **Step 2: Add the `ls_dbeaver_access` role invocation**
+- [ ] **Step 3: Add the `ls_dbeaver_access` role invocation**
 
 Immediately after the existing `- ls_access` line (currently line 26), add:
 
@@ -618,15 +810,15 @@ Immediately after the existing `- ls_access` line (currently line 26), add:
         - ls.dbeaver
 ```
 
-- [ ] **Step 3: Syntax-check and tag-listing verification**
+- [ ] **Step 4: Syntax-check and tag-listing verification**
 
 Run: `cd ansible && ansible-playbook servyy.yml --syntax-check`
 Expected: exit code 0.
 
 Run: `cd ansible && ansible-playbook servyy.yml --list-tasks --tags ls.dbeaver`
-Expected: lists the four `ls_dbeaver_access` tasks (`Create dedicated dbeaver_stage account...`, `Generate dedicated SSH keypair...`, `Restrict the DBeaver tunnel key...`, `Push operator SSH keys to Vaultwarden...`) and nothing from `ls_app`/`ls_demo`/`ls_db_sync`.
+Expected: lists the four `ls_dbeaver_access` tasks (`Create dedicated dbeaver_stage account...`, `Generate dedicated SSH keypair...`, `Restrict the DBeaver tunnel key...`, `Push operator SSH keys to Vaultwarden...`) and nothing from `ls_app`/`ls_demo`/`ls_db_sync`. Note: `--list-tasks` shows the `include_role` line itself but does not reliably expand what's *inside* a dynamic include (that's resolved at runtime, not at this static-preview stage) — so this confirms the four tasks are reached under this tag, but not yet that the `apply` fix from Task 3 correctly threads down into `vaultwarden`'s nested tasks. That's confirmed for real in Task 6 Step 2 (deploying with exactly this tag) + Step 6 (the Vaultwarden items existing afterward) — the only way to prove a dynamic include's *contents* actually ran.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add ansible/plays/leaguesphere.yml
@@ -636,6 +828,15 @@ Adds the vw_master_password prompt (mirrors restic.yml's UX — press enter
 to skip) and the ls.dbeaver-tagged role invocation."
 ```
 
+- [ ] **Step 6: Submit the stack (draft PRs)**
+
+```bash
+gh stack submit --auto
+```
+Expected (stderr): `Created PR #N for vaultwarden-shared-role`, `Created PR #N for ls-dbeaver-access-role`, `Created PR #N for ls-db-sync-nightly-timer`, `Created PR #N for ls-dbeaver-leaguesphere-wiring`, each chained to the one below it, plus a stack-linking confirmation. PRs are created as **drafts** (no `--open`) — deliberately, since Task 6's validation hasn't run yet.
+
+If this exits with code 9 ("Stacked PRs unavailable"), stacked PRs aren't enabled on `dachrisch/servyy-container` yet — stop and tell the user, since enabling it is a repo-settings change outside this plan's scope, not something to work around silently.
+
 ---
 
 ### Task 6: Validate end-to-end on `servyy-test.lxd`
@@ -643,6 +844,8 @@ to skip) and the ls.dbeaver-tagged role invocation."
 **Files:** none (verification only).
 
 **Interfaces:** none — this task exercises Tasks 1–5 together.
+
+Run this task from the **top of the stack** (`ls-dbeaver-leaguesphere-wiring`, already checked out at the end of Task 5 — confirm with `gh stack view --json | jq -r '.currentBranch'`). Testing the top layer exercises everything below it too, since each branch's diff is cumulative on top of its base.
 
 - [ ] **Step 1: Ensure the test box has the stage stack with the new port**
 
@@ -690,9 +893,21 @@ Expected: `Active: inactive (dead)` with the last run showing success (exit code
 - [ ] **Step 6: Verify Vaultwarden items (only if a master password was supplied in Step 2)**
 
 Run: `bw list items --search "servyy-test" | jq -r '.[].name'`
-Expected: includes `dbeaver stage tunnel key (servyy-test)` and `leaguesphere deploy key (servyy-test)`.
+Expected: includes `dbeaver stage tunnel key (servyy-test)`, `leaguesphere deploy key (servyy-test)`, and — proving Task 2's `restic` migration wasn't broken by this stack — the existing `restic - home (servyy-test.lxd)` / `restic - root (servyy-test.lxd)` / `restic - ls_db (servyy-test.lxd)` items (already present from prior runs, or created now if this is the first run with a master password supplied).
+
+- [ ] **Step 7: Verify `restic`'s init path still runs cleanly through the migrated code**
+
+Run: `cd ansible && ./servyy-test.sh --tags restic.init`
+Expected: `PLAY RECAP` shows `failed=0 unreachable=0` — exercises `seed_guard.yml`'s now-`include_role`-based unlock path (Task 2 Step 4) for real, on a host where no seeds are actually missing, confirming the swap from `include_tasks: bw_unlock.yml` didn't break the guard's normal (non-recovery) path.
 
 If any step fails, fix the root cause in the relevant task's files (do not patch servyy-test by hand — see repo policy) and re-run from Step 2.
+
+- [ ] **Step 8: Mark the stack ready for review**
+
+```bash
+gh stack submit --auto --open
+```
+Expected (stderr): `PR #N for <branch> is up to date` for all four, now flipped from draft to ready-for-review. Share the PR chain with the user for review before Task 7's merge.
 
 ---
 
@@ -710,18 +925,29 @@ git push origin <branch used for the Task 1 commit>
 ```
 (Follow that repo's own PR/merge process before this is deployable to `lehel.xyz`.)
 
-- [ ] **Step 2: Push this repo**
+- [ ] **Step 2: Get PR review, then merge the stack**
+
+The four PRs were opened ready-for-review at the end of Task 6. Wait for review/approval on each (or on the stack as a whole, per however this repo's reviewers work), then merge the entire stack atomically, bottom to top:
 
 ```bash
 cd /home/cda/dev/infrastructure/container
-git push origin master
+gh stack merge --yes
 ```
+Expected (stderr): each PR reported merged in order (`vaultwarden-shared-role` → `ls-dbeaver-access-role` → `ls-db-sync-nightly-timer` → `ls-dbeaver-leaguesphere-wiring`). This repo has no branch-protection/merge-method preference recorded in this plan — if `gh stack merge` prompts for a method the first time, confirm with the user which of `--squash`/`--rebase`/`--merge` matches how this repo normally merges (check recent merged PRs with `gh pr list --state merged --limit 5` if unsure) rather than guessing. The merge is all-or-nothing: if any PR can't merge (e.g. a failed required check), none do, and `gh stack merge` reports why — fix that PR and retry rather than merging around it.
 
-- [ ] **Step 3: Ask for explicit production-deploy approval**
+- [ ] **Step 3: Sync local `master`**
+
+```bash
+git checkout master
+git pull origin master
+```
+Expected: fast-forwards to the merged commits from all four PRs; `git log --oneline -6` shows them. This repo's own policy (CLAUDE.md: "branch on prod must always be master after rollout") is why production deploys from `master`, not from the stack's branches directly, even though `./servyy.sh` would technically work from any local checkout.
+
+- [ ] **Step 4: Ask for explicit production-deploy approval**
 
 Show the user exactly which tags will run and confirm before proceeding — per this repo's CRITICAL DEPLOYMENT RULES, production deployment is never automatic.
 
-- [ ] **Step 4: Deploy to `lehel.xyz`**
+- [ ] **Step 5: Deploy to `lehel.xyz`**
 
 Run: `cd ansible && ./servyy.sh --tags ls.app.stage --limit lehel.xyz` (rolls the stage stack with the new port mapping)
 Run: `cd ansible && ./servyy.sh --tags ls.dbeaver --limit lehel.xyz` (creates the account, supply the Vaultwarden master password when prompted)
@@ -729,11 +955,11 @@ Run: `cd ansible && ./servyy.sh --tags ls.db.sync.timer --limit lehel.xyz`
 
 Expected: each `PLAY RECAP` shows `failed=0 unreachable=0`.
 
-- [ ] **Step 5: Repeat the Task 6 verification steps against `lehel.xyz`**
+- [ ] **Step 6: Repeat the Task 6 verification steps against `lehel.xyz`**
 
-Same commands as Task 6 Steps 3–6, with `servyy-test.lxd` replaced by `lehel.xyz` and the key filename `dbeaver_stage_key_lehel`.
+Same commands as Task 6 Steps 3–7, with `servyy-test.lxd` replaced by `lehel.xyz` and the key filename `dbeaver_stage_key_lehel`.
 
-- [ ] **Step 6: Configure the operator's DBeaver connection**
+- [ ] **Step 7: Configure the operator's DBeaver connection**
 
 | Tab | Field | Value |
 |---|---|---|
@@ -744,6 +970,6 @@ Same commands as Task 6 Steps 3–6, with `servyy-test.lxd` replaced by `lehel.x
 | Main | Port | `33062` |
 | Main | Database / User | `leaguesphere_stage` / `leaguesphere_stage` (password from `ansible/plays/roles/ls_app/vars/secret_stage.yaml`) |
 
-- [ ] **Step 7: Write the history log**
+- [ ] **Step 8: Write the history log**
 
 Create `history/2026-08-07_leaguesphere-stage-dbeaver-access.md` documenting: problem, solution, files changed, deployment results, verification commands run, and the Vaultwarden item names — per this repo's CLAUDE.md documentation convention.
