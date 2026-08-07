@@ -1,0 +1,57 @@
+---
+- name: Create dedicated dbeaver_stage account (no shell, no extra groups)
+  user:
+    name: "{{ dbeaver_stage_user }}"
+    state: present
+    shell: /usr/sbin/nologin
+    create_home: true
+  tags:
+    - ls.dbeaver
+
+- name: Generate dedicated SSH keypair for the DBeaver stage tunnel
+  openssh_keypair:
+    path: "~/.ssh/{{ dbeaver_stage_ssh_key_filename }}"
+    type: rsa
+    size: 4096
+    state: present
+    force: no
+  delegate_to: localhost
+  become_user: "{{ local_user }}"
+  tags:
+    - ls.dbeaver
+
+- name: Restrict the DBeaver tunnel key to stage-only port forwarding
+  authorized_key:
+    user: "{{ dbeaver_stage_user }}"
+    state: present
+    key: "{{ lookup('file', '~/.ssh/' + dbeaver_stage_ssh_key_filename + '.pub') }}"
+    key_options: >-
+      command="/bin/false",no-pty,no-agent-forwarding,no-X11-forwarding,permitopen="127.0.0.1:{{ dbeaver_stage_local_port }}"
+  tags:
+    - ls.dbeaver
+
+- name: Push operator SSH keys to Vaultwarden (dbeaver tunnel key + leaguesphere deploy key)
+  include_role:
+    name: vaultwarden
+    tasks_from: push_items.yml
+    apply:
+      tags:
+        - ls.dbeaver
+  vars:
+    vaultwarden_item_username: "ansible"
+    vaultwarden_items:
+      - name: "dbeaver stage tunnel key ({{ inventory_hostname_short }})"
+        secret: "{{ lookup('file', '~/.ssh/' + dbeaver_stage_ssh_key_filename) }}"
+        notes: >-
+          Private key for the dbeaver_stage account on {{ inventory_hostname }}.
+          authorized_keys restricts it to permitopen=127.0.0.1:{{ dbeaver_stage_local_port }}
+          (LeagueSphere stage DB only) and command="/bin/false" (no shell access).
+      - name: "leaguesphere deploy key ({{ inventory_hostname_short }})"
+        secret: "{{ lookup('file', '~/.ssh/' + ls.ssh_key_filename) }}"
+        notes: >-
+          Private key for the jailed leaguesphere deploy account on {{ inventory_hostname }}.
+          Used by ls_access/jail_ssh.yaml for app deployment (SSH chroot jail;
+          AllowTcpForwarding disabled for this account's group).
+  when: vw_master_password | default('') | length > 0
+  tags:
+    - ls.dbeaver
