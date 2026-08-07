@@ -1,0 +1,9 @@
+# Managed by Ansible (ls_dbeaver_access role) - do not edit by hand.
+# authorized_keys already restricts this key to local forwarding only
+# (restrict,port-forwarding + permitopen) - this block is the enforcement
+# layer that actually closes remote (-R) forwarding, which authorized_keys
+# options alone cannot do (there is no per-key "local-only" option, only
+# the blanket sshd AllowTcpForwarding local/remote/yes/no).
+Match User {{ dbeaver_stage_user }}
+    AllowTcpForwarding local
+    X11Forwarding no
