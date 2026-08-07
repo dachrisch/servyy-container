@@ -530,11 +530,12 @@ on purpose (see comment)."
 
 **Interfaces:**
 - Consumes: `local_user` (existing, `vars/default.yml`), `inventory_hostname_short` (Ansible fact), `vw_master_password` (from the `leaguesphere.yml` vars_prompt added in Task 5), `ls.user`/`ls.ssh_key_filename` (existing, `vars/secret_leaguesphere.yaml` — used to locate the existing LeagueSphere deploy key for its Vaultwarden backup), `vaultwarden` role's `push_items.yml` (Task 2).
-- Produces: Linux account `dbeaver_stage`, created only on `lehel.xyz`; local file `~/.ssh/dbeaver_stage_key_{{ inventory_hostname_short }}` (+ `.pub`) on the controller; that key restricted in the account's `authorized_keys` to `permitopen="127.0.0.1:33062"` and local-only forwarding, enforced at both the `authorized_keys` and sshd-config layers.
+- Produces: Linux account `dbeaver_stage`, created only on `lehel.xyz` and `servyy-test.lxd`; local file `~/.ssh/dbeaver_stage_key_{{ inventory_hostname_short }}` (+ `.pub`) on the controller; that key restricted in the account's `authorized_keys` to `permitopen="127.0.0.1:33062"` and local-only forwarding, enforced at both the `authorized_keys` and sshd-config layers.
 
-**Two fixes below came from the plan's final whole-branch review, after this task's own task-scoped review had already approved the original version:**
-- **Host guard (was missing entirely):** the original version had no `when:` at all — a full `./servyy.sh` (not `--limit lehel.xyz`) would have created this account and pushed its key to Vaultwarden on *every* inventory host, including the unrelated dev box (`aqui.fritz.box`), since `leaguesphere.yml` is `hosts: all`. Fixed by wrapping all tasks in a `block:` gated to `lehel.xyz`, matching `restic`'s own existing precedent for its Vaultwarden push (`inventory_hostname == 'lehel.xyz'`).
+**Three fixes below — the first two from the plan's final whole-branch review, the third caught while actually running Task 6 (the reviewer's own suggested fix already had this right; the plan mistranscribed it — see below):**
+- **Host guard (was missing entirely):** the original version had no `when:` at all — a full `./servyy.sh` (not `--limit lehel.xyz`) would have created this account and pushed its key to Vaultwarden on *every* inventory host, including the unrelated dev box (`aqui.fritz.box`), since `leaguesphere.yml` is `hosts: all`. Fixed by wrapping all tasks in a `block:` gated to a host allowlist, matching `restic`'s own existing precedent for its Vaultwarden push (`inventory_hostname == 'lehel.xyz'`) — see the third fix below for why the allowlist isn't `lehel.xyz` alone.
 - **`permitopen` doesn't constrain remote (`-R`) forwarding:** `permitopen` is an allowlist for `direct-tcpip` (`-L`/`-D`) only. Since this account is deliberately outside the SSH chroot jail (so it inherits sshd's default `AllowTcpForwarding yes`, both directions), the key could also request *remote* forwards — a real, if bounded, gap in the "this key does exactly one thing" design goal. Fixed two ways together: (1) the `authorized_keys` line now starts with `restrict` (opt-in to whatever restrictions OpenSSH adds in future versions, not just the ones enumerated today) plus explicit `port-forwarding` to re-enable forwarding at all (there is no authorized_keys-level way to allow *only* local forwarding — that granularity only exists in `sshd_config`); (2) a new `Match User dbeaver_stage` block in `/etc/ssh/sshd_config.d/` sets `AllowTcpForwarding local`, which is the only mechanism that actually closes the remote-forwarding gap.
+- **Host allowlist mistranscribed as `lehel.xyz` only (found by actually running Task 6, not by either review):** the final reviewer's own suggested fix for the host-guard finding above was `when: inventory_hostname in ['lehel.xyz', 'servyy-test.lxd']` — deliberately including the test box, precisely so this role could be validated on `servyy-test.lxd` before touching production. When translating that finding into this plan, the fix was written as `lehel.xyz` alone, silently dropping the test host. The task-scoped review of that fix (and the scoped re-review of the whole finding wave) both checked that the guard *worked*, not that its host list matched what the finding actually asked for — so nothing caught the narrowing until Task 6 ran and every `ls_dbeaver_access` task showed `skipping` on `servyy-test.lxd`. Fixed below to the two-host list.
 
 - [ ] **Step 1: Create and check out the next stack branch**
 
@@ -627,7 +628,7 @@ dbeaver_stage_local_port: "33062"
               Used by ls_access/jail_ssh.yaml for app deployment (SSH chroot jail;
               AllowTcpForwarding disabled for this account's group).
       when: vw_master_password | default('') | length > 0
-  when: inventory_hostname == 'lehel.xyz'
+  when: inventory_hostname in ['lehel.xyz', 'servyy-test.lxd']
   tags:
     - ls.dbeaver
 ```
@@ -646,7 +647,7 @@ Match User {{ dbeaver_stage_user }}
     X11Forwarding no
 ```
 
-**On the `when: inventory_hostname == 'lehel.xyz'` block guard:** wrapping every task in a `block:` (rather than repeating the `when:` on each task) keeps the host restriction in one place and impossible to miss when adding a future task to this role. It mirrors `restic`'s own precedent of gating its Vaultwarden push to `lehel.xyz` specifically, rather than letting `leaguesphere.yml`'s `hosts: all` reach every inventory host.
+**On the `when: inventory_hostname in ['lehel.xyz', 'servyy-test.lxd']` block guard:** wrapping every task in a `block:` (rather than repeating the `when:` on each task) keeps the host restriction in one place and impossible to miss when adding a future task to this role. Both hosts are intentional: `lehel.xyz` is where this actually needs to run in production; `servyy-test.lxd` is included specifically so this role — account creation, key restriction, sshd Match block — can be validated for real before touching production, which is the entire point of Task 6. This mirrors `restic`'s own precedent of gating its Vaultwarden push to specific hosts rather than letting `leaguesphere.yml`'s `hosts: all` reach every inventory host, just with a two-host allowlist instead of one.
 
 **On `exclusive: true`:** without it, if this key is ever regenerated or the role re-run with a changed `dbeaver_stage_ssh_key_filename`, the *old* public key would stay authorized forever with the same `permitopen` grant — this account exists for, and is fully owned by, this one role, so enforcing "this is the only key on this account" is safe and correct here (unlike, say, `create_user`'s own `authorized_key` task elsewhere in this repo, which deliberately isn't exclusive because that account legitimately accumulates keys from multiple sources).
 
