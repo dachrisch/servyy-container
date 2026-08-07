@@ -1,0 +1,44 @@
+#!/bin/zsh
+# Nightly prod -> stage DB sync (mirrors ls_db_sync role's 'local' source path)
+set -euo pipefail
+source "/home/{{ create_user }}/.zprezto/custom/functions/logdy" 2>/dev/null || true
+
+PROD_CONTAINER="{{ prod_container }}"
+PROD_DB="{{ prod_db_name }}"
+PROD_ROOT_PASSWORD="{{ prod_root_password }}"
+STAGE_CONTAINER="{{ stage_container }}"
+STAGE_DB="{{ stage_db_name }}"
+STAGE_ROOT_PASSWORD="{{ stage_root_password }}"
+STAGE_APP_CONTAINER="{{ stage_app_container }}"
+
+DUMP_FILE="/tmp/leaguesphere_prod_$(date +%s).sql"
+cleanup() { rm -f "$DUMP_FILE"; }
+trap cleanup EXIT
+
+IGNORE=$(docker exec "$PROD_CONTAINER" mariadb -h 127.0.0.1 -u root -p"$PROD_ROOT_PASSWORD" -N \
+  -e "SELECT CONCAT('--ignore-table=$PROD_DB.', table_name) FROM information_schema.views WHERE table_schema='$PROD_DB'")
+docker exec "$PROD_CONTAINER" mariadb-dump -h 127.0.0.1 -u root -p"$PROD_ROOT_PASSWORD" \
+  --single-transaction --quick --lock-tables=false $=IGNORE "$PROD_DB" > "$DUMP_FILE"
+
+STATUS=""
+for i in $(seq 1 30); do
+  STATUS=$(docker inspect "$STAGE_CONTAINER" --format={% raw %}'{{.State.Health.Status}}'{% endraw %})
+  [ "$STATUS" = "healthy" ] && break
+  sleep 2
+done
+
+if [ "$STATUS" != "healthy" ]; then
+  echo "ERROR: $STAGE_CONTAINER did not become healthy in time" >&2
+  exit 1
+fi
+
+docker exec "$STAGE_CONTAINER" mariadb -h 127.0.0.1 -u root -p"$STAGE_ROOT_PASSWORD" \
+  -e "DROP DATABASE IF EXISTS $STAGE_DB; CREATE DATABASE $STAGE_DB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+
+docker cp "$DUMP_FILE" "$STAGE_CONTAINER:/tmp/dump.sql"
+docker exec -i "$STAGE_CONTAINER" mariadb -h 127.0.0.1 -u root -p"$STAGE_ROOT_PASSWORD" "$STAGE_DB" < "$DUMP_FILE"
+docker exec "$STAGE_CONTAINER" rm -f /tmp/dump.sql
+
+docker restart "$STAGE_APP_CONTAINER"
+
+echo "Nightly stage DB sync completed: $PROD_DB -> $STAGE_DB"

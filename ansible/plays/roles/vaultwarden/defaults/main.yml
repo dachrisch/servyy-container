@@ -1,0 +1,5 @@
+---
+# Shared Vaultwarden (self-hosted Bitwarden) push mechanism.
+# Mirrors restic/tasks/{bw_unlock,vaultwarden_push}.yml but generalized for
+# any caller with a list of secrets to mirror as Login items.
+vw_server: "https://pass.lehel.xyz"

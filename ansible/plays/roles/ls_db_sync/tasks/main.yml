@@ -90,3 +90,7 @@
   file:
     path: "{{ sql_dump_file }}"
     state: absent
+
+- import_tasks: timer.yml
+  tags:
+    - ls.db.sync.timer
