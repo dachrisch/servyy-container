@@ -15,9 +15,9 @@ DUMP_FILE="/tmp/leaguesphere_prod_$(date +%s).sql"
 cleanup() { rm -f "$DUMP_FILE"; }
 trap cleanup EXIT
 
-IGNORE=$(docker exec "$PROD_CONTAINER" mariadb -u root -p"$PROD_ROOT_PASSWORD" -N \
+IGNORE=$(docker exec "$PROD_CONTAINER" mariadb -h 127.0.0.1 -u root -p"$PROD_ROOT_PASSWORD" -N \
   -e "SELECT CONCAT('--ignore-table=$PROD_DB.', table_name) FROM information_schema.views WHERE table_schema='$PROD_DB'")
-docker exec "$PROD_CONTAINER" mariadb-dump -u root -p"$PROD_ROOT_PASSWORD" \
+docker exec "$PROD_CONTAINER" mariadb-dump -h 127.0.0.1 -u root -p"$PROD_ROOT_PASSWORD" \
   --single-transaction --quick --lock-tables=false $=IGNORE "$PROD_DB" > "$DUMP_FILE"
 
 STATUS=""
@@ -32,11 +32,11 @@ if [ "$STATUS" != "healthy" ]; then
   exit 1
 fi
 
-docker exec "$STAGE_CONTAINER" mariadb -u root -p"$STAGE_ROOT_PASSWORD" \
+docker exec "$STAGE_CONTAINER" mariadb -h 127.0.0.1 -u root -p"$STAGE_ROOT_PASSWORD" \
   -e "DROP DATABASE IF EXISTS $STAGE_DB; CREATE DATABASE $STAGE_DB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
 docker cp "$DUMP_FILE" "$STAGE_CONTAINER:/tmp/dump.sql"
-docker exec -i "$STAGE_CONTAINER" mariadb -u root -p"$STAGE_ROOT_PASSWORD" "$STAGE_DB" < "$DUMP_FILE"
+docker exec -i "$STAGE_CONTAINER" mariadb -h 127.0.0.1 -u root -p"$STAGE_ROOT_PASSWORD" "$STAGE_DB" < "$DUMP_FILE"
 docker exec "$STAGE_CONTAINER" rm -f /tmp/dump.sql
 
 docker restart "$STAGE_APP_CONTAINER"
