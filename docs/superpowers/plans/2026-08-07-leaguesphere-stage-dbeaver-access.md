@@ -457,13 +457,13 @@ restic_vaultwarden_items:
 
 - [ ] **Step 5: Syntax-check and verify `restic`'s behavior is unaffected**
 
-Run: `cd ansible && ansible-playbook servyy.yml --syntax-check && ansible-playbook restic.yml --syntax-check`
+Run: `cd ansible && ansible-playbook servyy.yml --syntax-check && ansible-playbook plays/restic.yml --syntax-check` (note: `restic.yml` lives at `ansible/plays/restic.yml`, not `ansible/restic.yml` — there's no shell wrapper for it alone, unlike `servyy.yml`/`servyy-test.sh`)
 Expected: both print their playbook name, exit code 0.
 
 Run: `cd ansible && yamllint plays/roles/vaultwarden/ plays/roles/restic/`
 Expected: no errors.
 
-Run: `cd ansible && ansible-playbook restic.yml -i testing --tags restic.init --check --diff 2>&1 | tail -40` against `servyy-test.lxd`, with all seed files present (the normal case). (`seed_guard.yml`'s tasks have no tags of their own — they're reached only via `main.yml`'s `include_tasks: {file: seed_guard.yml, apply: {tags: [restic, restic.init, restic.recreate]}}`, so `--tags restic.init` is the right filter to exercise them, matching the existing code comment at `restic/tasks/main.yml:8-11` explaining why `apply` is required there.)
+Run: `cd ansible && ansible-playbook plays/restic.yml -i testing --tags restic.init --check --diff 2>&1 | tail -40` against `servyy-test.lxd`, with all seed files present (the normal case). (`seed_guard.yml`'s tasks have no tags of their own — they're reached only via `main.yml`'s `include_tasks: {file: seed_guard.yml, apply: {tags: [restic, restic.init, restic.recreate]}}`, so `--tags restic.init` is the right filter to exercise them, matching the existing code comment at `restic/tasks/main.yml:8-11` explaining why `apply` is required there.)
 Expected: the play reaches "Restic seed guard: 0 missing" and does **not** enter the `Recover missing restic seeds` block (since nothing is missing) — confirming the guard's early logic still runs without an undefined-`vw_server` or broken-include error. This is a check-mode dry run; full confirmation that a *triggered* recovery still works (missing-seed path, `bw_unlock` via the new role, `bw get password`) happens in Task 6, which already deploys to `servyy-test.lxd`.
 
 - [ ] **Step 6: Commit**
