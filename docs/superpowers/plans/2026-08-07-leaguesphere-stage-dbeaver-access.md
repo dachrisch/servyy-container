@@ -526,10 +526,15 @@ on purpose (see comment)."
 **Files:**
 - Create: `ansible/plays/roles/ls_dbeaver_access/defaults/main.yml`
 - Create: `ansible/plays/roles/ls_dbeaver_access/tasks/main.yml`
+- Create: `ansible/plays/roles/ls_dbeaver_access/templates/dbeaver_stage_sshd.conf.j2`
 
 **Interfaces:**
 - Consumes: `local_user` (existing, `vars/default.yml`), `inventory_hostname_short` (Ansible fact), `vw_master_password` (from the `leaguesphere.yml` vars_prompt added in Task 5), `ls.user`/`ls.ssh_key_filename` (existing, `vars/secret_leaguesphere.yaml` — used to locate the existing LeagueSphere deploy key for its Vaultwarden backup), `vaultwarden` role's `push_items.yml` (Task 2).
-- Produces: Linux account `dbeaver_stage` on the target host; local file `~/.ssh/dbeaver_stage_key_{{ inventory_hostname_short }}` (+ `.pub`) on the controller; that key restricted in the account's `authorized_keys` to `permitopen="127.0.0.1:33062"` only.
+- Produces: Linux account `dbeaver_stage`, created only on `lehel.xyz`; local file `~/.ssh/dbeaver_stage_key_{{ inventory_hostname_short }}` (+ `.pub`) on the controller; that key restricted in the account's `authorized_keys` to `permitopen="127.0.0.1:33062"` and local-only forwarding, enforced at both the `authorized_keys` and sshd-config layers.
+
+**Two fixes below came from the plan's final whole-branch review, after this task's own task-scoped review had already approved the original version:**
+- **Host guard (was missing entirely):** the original version had no `when:` at all — a full `./servyy.sh` (not `--limit lehel.xyz`) would have created this account and pushed its key to Vaultwarden on *every* inventory host, including the unrelated dev box (`aqui.fritz.box`), since `leaguesphere.yml` is `hosts: all`. Fixed by wrapping all tasks in a `block:` gated to `lehel.xyz`, matching `restic`'s own existing precedent for its Vaultwarden push (`inventory_hostname == 'lehel.xyz'`).
+- **`permitopen` doesn't constrain remote (`-R`) forwarding:** `permitopen` is an allowlist for `direct-tcpip` (`-L`/`-D`) only. Since this account is deliberately outside the SSH chroot jail (so it inherits sshd's default `AllowTcpForwarding yes`, both directions), the key could also request *remote* forwards — a real, if bounded, gap in the "this key does exactly one thing" design goal. Fixed two ways together: (1) the `authorized_keys` line now starts with `restrict` (opt-in to whatever restrictions OpenSSH adds in future versions, not just the ones enumerated today) plus explicit `port-forwarding` to re-enable forwarding at all (there is no authorized_keys-level way to allow *only* local forwarding — that granularity only exists in `sshd_config`); (2) a new `Match User dbeaver_stage` block in `/etc/ssh/sshd_config.d/` sets `AllowTcpForwarding local`, which is the only mechanism that actually closes the remote-forwarding gap.
 
 - [ ] **Step 1: Create and check out the next stack branch**
 
@@ -556,63 +561,94 @@ dbeaver_stage_local_port: "33062"
 
 ```yaml
 ---
-- name: Create dedicated dbeaver_stage account (no shell, no extra groups)
-  user:
-    name: "{{ dbeaver_stage_user }}"
-    state: present
-    shell: /usr/sbin/nologin
-    create_home: true
-  tags:
-    - ls.dbeaver
+- name: Set up the dedicated, restricted DBeaver stage tunnel account
+  block:
+    - name: Create dedicated dbeaver_stage account (no shell, no extra groups)
+      user:
+        name: "{{ dbeaver_stage_user }}"
+        state: present
+        shell: /usr/sbin/nologin
+        create_home: true
 
-- name: Generate dedicated SSH keypair for the DBeaver stage tunnel
-  openssh_keypair:
-    path: "~/.ssh/{{ dbeaver_stage_ssh_key_filename }}"
-    type: rsa
-    size: 4096
-    state: present
-    force: no
-  delegate_to: localhost
-  become_user: "{{ local_user }}"
-  tags:
-    - ls.dbeaver
+    - name: Generate dedicated SSH keypair for the DBeaver stage tunnel
+      openssh_keypair:
+        path: "~/.ssh/{{ dbeaver_stage_ssh_key_filename }}"
+        type: rsa
+        size: 4096
+        state: present
+        force: no
+      delegate_to: localhost
+      become_user: "{{ local_user }}"
 
-- name: Restrict the DBeaver tunnel key to stage-only port forwarding
-  authorized_key:
-    user: "{{ dbeaver_stage_user }}"
-    state: present
-    key: "{{ lookup('file', '~/.ssh/' + dbeaver_stage_ssh_key_filename + '.pub') }}"
-    key_options: >-
-      command="/bin/false",no-pty,no-agent-forwarding,no-X11-forwarding,permitopen="127.0.0.1:{{ dbeaver_stage_local_port }}"
-  tags:
-    - ls.dbeaver
+    - name: Restrict the DBeaver tunnel key to stage-only, local-only port forwarding
+      authorized_key:
+        user: "{{ dbeaver_stage_user }}"
+        state: present
+        exclusive: true
+        key: "{{ lookup('file', '~/.ssh/' + dbeaver_stage_ssh_key_filename + '.pub') }}"
+        key_options: >-
+          restrict,port-forwarding,permitopen="127.0.0.1:{{ dbeaver_stage_local_port }}",command="/bin/false"
 
-- name: Push operator SSH keys to Vaultwarden (dbeaver tunnel key + leaguesphere deploy key)
-  include_role:
-    name: vaultwarden
-    tasks_from: push_items.yml
-    apply:
-      tags:
-        - ls.dbeaver
-  vars:
-    vaultwarden_item_username: "ansible"
-    vaultwarden_items:
-      - name: "dbeaver stage tunnel key ({{ inventory_hostname_short }})"
-        secret: "{{ lookup('file', '~/.ssh/' + dbeaver_stage_ssh_key_filename) }}"
-        notes: >-
-          Private key for the dbeaver_stage account on {{ inventory_hostname }}.
-          authorized_keys restricts it to permitopen=127.0.0.1:{{ dbeaver_stage_local_port }}
-          (LeagueSphere stage DB only) and command="/bin/false" (no shell access).
-      - name: "leaguesphere deploy key ({{ inventory_hostname_short }})"
-        secret: "{{ lookup('file', '~/.ssh/' + ls.ssh_key_filename) }}"
-        notes: >-
-          Private key for the jailed leaguesphere deploy account on {{ inventory_hostname }}.
-          Used by ls_access/jail_ssh.yaml for app deployment (SSH chroot jail;
-          AllowTcpForwarding disabled for this account's group).
-  when: vw_master_password | default('') | length > 0
+    - name: Deploy sshd Match block to close remote (-R) forwarding for this account
+      template:
+        src: dbeaver_stage_sshd.conf.j2
+        dest: /etc/ssh/sshd_config.d/dbeaver-stage.conf
+        mode: '0644'
+        validate: 'sshd -t -f %s'
+      register: dbeaver_stage_sshd_conf
+
+    - name: Restart sshd if the Match block changed
+      systemd:
+        name: ssh
+        state: restarted
+      when: dbeaver_stage_sshd_conf.changed
+
+    - name: Push operator SSH keys to Vaultwarden (dbeaver tunnel key + leaguesphere deploy key)
+      include_role:
+        name: vaultwarden
+        tasks_from: push_items.yml
+        apply:
+          tags:
+            - ls.dbeaver
+      vars:
+        vaultwarden_item_username: "ansible"
+        vaultwarden_items:
+          - name: "dbeaver stage tunnel key ({{ inventory_hostname_short }})"
+            secret: "{{ lookup('file', '~/.ssh/' + dbeaver_stage_ssh_key_filename) }}"
+            notes: >-
+              Private key for the dbeaver_stage account on {{ inventory_hostname }}.
+              authorized_keys restricts it to permitopen=127.0.0.1:{{ dbeaver_stage_local_port }}
+              (LeagueSphere stage DB only), local-only forwarding (restrict,port-forwarding +
+              sshd Match block), and command="/bin/false" (no shell access).
+          - name: "leaguesphere deploy key ({{ inventory_hostname_short }})"
+            secret: "{{ lookup('file', '~/.ssh/' + ls.ssh_key_filename) }}"
+            notes: >-
+              Private key for the jailed leaguesphere deploy account on {{ inventory_hostname }}.
+              Used by ls_access/jail_ssh.yaml for app deployment (SSH chroot jail;
+              AllowTcpForwarding disabled for this account's group).
+      when: vw_master_password | default('') | length > 0
+  when: inventory_hostname == 'lehel.xyz'
   tags:
     - ls.dbeaver
 ```
+
+`ansible/plays/roles/ls_dbeaver_access/templates/dbeaver_stage_sshd.conf.j2`:
+
+```
+# Managed by Ansible (ls_dbeaver_access role) - do not edit by hand.
+# authorized_keys already restricts this key to local forwarding only
+# (restrict,port-forwarding + permitopen) - this block is the enforcement
+# layer that actually closes remote (-R) forwarding, which authorized_keys
+# options alone cannot do (there is no per-key "local-only" option, only
+# the blanket sshd AllowTcpForwarding local/remote/yes/no).
+Match User {{ dbeaver_stage_user }}
+    AllowTcpForwarding local
+    X11Forwarding no
+```
+
+**On the `when: inventory_hostname == 'lehel.xyz'` block guard:** wrapping every task in a `block:` (rather than repeating the `when:` on each task) keeps the host restriction in one place and impossible to miss when adding a future task to this role. It mirrors `restic`'s own precedent of gating its Vaultwarden push to `lehel.xyz` specifically, rather than letting `leaguesphere.yml`'s `hosts: all` reach every inventory host.
+
+**On `exclusive: true`:** without it, if this key is ever regenerated or the role re-run with a changed `dbeaver_stage_ssh_key_filename`, the *old* public key would stay authorized forever with the same `permitopen` grant — this account exists for, and is fully owned by, this one role, so enforcing "this is the only key on this account" is safe and correct here (unlike, say, `create_user`'s own `authorized_key` task elsewhere in this repo, which deliberately isn't exclusive because that account legitimately accumulates keys from multiple sources).
 
 **On the `apply: tags:` block:** `include_role` is a *dynamic* include — per the existing, already-solved instance of this exact problem at `restic/tasks/main.yml:8-11`, tags placed directly on a dynamic include only gate whether the include itself runs; they do **not** propagate into the tasks it pulls in (here, `vaultwarden/tasks/push_items.yml` and, transitively, its own nested `include_tasks: unlock.yml`) unless `apply` is used. Without it, running this role under a selective `--tags ls.dbeaver` deploy (exactly what Task 6/7 do) would silently no-op the Vaultwarden push — the include step would run, but every task inside it would be skipped as untagged. `restic`'s existing handler-based path doesn't need this (`notify`-triggered handlers aren't gated by `--tags` selection the same way), which is why it wasn't already a pattern to copy from there — but `seed_guard.yml`'s modification in Task 2 Step 4 is covered already, since it inherits its tags from `main.yml`'s pre-existing `apply` on the include that reaches it.
 
@@ -626,16 +662,20 @@ Expected: exit code 0 (role isn't wired into a playbook yet — this just confir
 Run: `cd ansible && yamllint plays/roles/ls_dbeaver_access/`
 Expected: no errors.
 
+(The sshd `Match` block's own validation — `validate: 'sshd -t -f %s'` on the template task — only runs at actual deploy time, not here; Task 6 exercises it for real.)
+
 - [ ] **Step 5: Commit**
 
 ```bash
 git add ansible/plays/roles/ls_dbeaver_access/
 git commit -m "feat: add ls_dbeaver_access role for restricted stage DB tunnel
 
-Dedicated, unprivileged Linux account whose sole SSH key is restricted via
-authorized_keys permitopen to the stage DB's loopback port only, plus
-command=/bin/false to block shell access. Both this key and the existing
-leaguesphere deploy key get backed up to Vaultwarden."
+Dedicated, unprivileged Linux account (lehel.xyz only) whose sole SSH key
+is restricted via authorized_keys (restrict,port-forwarding,permitopen,
+command=/bin/false, exclusive) plus an sshd Match block (AllowTcpForwarding
+local) to local-only forwarding into the stage DB's loopback port. Both
+this key and the existing leaguesphere deploy key get backed up to
+Vaultwarden."
 ```
 
 ---
