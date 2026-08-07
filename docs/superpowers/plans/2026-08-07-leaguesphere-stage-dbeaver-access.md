@@ -731,9 +731,9 @@ DUMP_FILE="/tmp/leaguesphere_prod_$(date +%s).sql"
 cleanup() { rm -f "$DUMP_FILE"; }
 trap cleanup EXIT
 
-IGNORE=$(docker exec "$PROD_CONTAINER" mariadb -u root -p"$PROD_ROOT_PASSWORD" -N \
+IGNORE=$(docker exec "$PROD_CONTAINER" mariadb -h 127.0.0.1 -u root -p"$PROD_ROOT_PASSWORD" -N \
   -e "SELECT CONCAT('--ignore-table=$PROD_DB.', table_name) FROM information_schema.views WHERE table_schema='$PROD_DB'")
-docker exec "$PROD_CONTAINER" mariadb-dump -u root -p"$PROD_ROOT_PASSWORD" \
+docker exec "$PROD_CONTAINER" mariadb-dump -h 127.0.0.1 -u root -p"$PROD_ROOT_PASSWORD" \
   --single-transaction --quick --lock-tables=false $=IGNORE "$PROD_DB" > "$DUMP_FILE"
 
 STATUS=""
@@ -748,11 +748,11 @@ if [ "$STATUS" != "healthy" ]; then
   exit 1
 fi
 
-docker exec "$STAGE_CONTAINER" mariadb -u root -p"$STAGE_ROOT_PASSWORD" \
+docker exec "$STAGE_CONTAINER" mariadb -h 127.0.0.1 -u root -p"$STAGE_ROOT_PASSWORD" \
   -e "DROP DATABASE IF EXISTS $STAGE_DB; CREATE DATABASE $STAGE_DB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
 docker cp "$DUMP_FILE" "$STAGE_CONTAINER:/tmp/dump.sql"
-docker exec -i "$STAGE_CONTAINER" mariadb -u root -p"$STAGE_ROOT_PASSWORD" "$STAGE_DB" < "$DUMP_FILE"
+docker exec -i "$STAGE_CONTAINER" mariadb -h 127.0.0.1 -u root -p"$STAGE_ROOT_PASSWORD" "$STAGE_DB" < "$DUMP_FILE"
 docker exec "$STAGE_CONTAINER" rm -f /tmp/dump.sql
 
 docker restart "$STAGE_APP_CONTAINER"
@@ -761,6 +761,8 @@ echo "Nightly stage DB sync completed: $PROD_DB -> $STAGE_DB"
 ```
 
 Note `$=IGNORE` (not `$IGNORE`): this is zsh's explicit word-splitting flag. zsh does not word-split unquoted variables by default (unlike the `shell:`-module's `/bin/sh` that `ls_db_sync/tasks/main.yml` runs under) — `$=IGNORE` is required so each `--ignore-table=...` entry becomes its own argument to `mariadb-dump`, and correctly yields zero arguments when there are no views to ignore.
+
+**`-h 127.0.0.1` on every `mariadb`/`mariadb-dump` call (found by actually running the script, not by either review):** without an explicit `-h`, the MariaDB client library falls back to a `MYSQL_HOST` environment variable if one happens to be set *inside* the container process's own environment — and on the `servyy-test.lxd` box, a pre-existing, unrelated `leaguesphere.db` container (leftover from earlier, unrelated testing) has a stale `MYSQL_HOST=s207.goserver.host` (the legacy pre-cutover external host) baked into its env, which is *not* something `mariadb:latest`'s own entrypoint uses — it's inert leftover from a shared env file, invisible until something inside the container runs the client without `-h`. The script failed with `ERROR 2005 (HY000): Unknown server host 's207.goserver.host'` as a direct result. The pre-existing, unrelated on-demand sync in `ls_db_sync/tasks/main.yml` has this exact same gap (no `-h` there either) — out of scope to fix as part of this task, but worth flagging: it's a latent fragility that would only surface if a real `leaguesphere.db` container's env ever ended up with a stray `MYSQL_HOST`, which is plausible after any deploy that reuses an older env file. This script, built for unattended overnight execution, shouldn't depend on that never happening — hence the explicit `-h 127.0.0.1` here, regardless of what the sibling code does.
 
 - [ ] **Step 3: Create role-local oneshot-timer deployment files**
 
