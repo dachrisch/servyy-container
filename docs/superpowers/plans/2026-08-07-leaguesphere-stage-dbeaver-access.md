@@ -685,14 +685,21 @@ Vaultwarden."
 
 **Files:**
 - Create: `ansible/plays/roles/ls_db_sync/templates/ls_db_sync.sh.j2`
+- Create: `ansible/plays/roles/ls_db_sync/templates/oneshot.service.j2`
+- Create: `ansible/plays/roles/ls_db_sync/templates/oneshot.timer.j2`
+- Create: `ansible/plays/roles/ls_db_sync/tasks/oneshot_include.yml`
 - Create: `ansible/plays/roles/ls_db_sync/tasks/timer.yml`
 - Modify: `ansible/plays/roles/ls_db_sync/tasks/main.yml` (append one import)
 
 **Interfaces:**
-- Consumes: `remote_user_home`/`remote_user_systemd` (existing, `vars/default.yml`), `create_user` (existing, `vars/secrets.yml`), `ls_db_sync_local_container` (existing role default, `leaguesphere.db`), `restic` role's `oneshot_include.yml` (existing, reused as-is — takes a `service: {name, description, schedule, command}` var and deploys a systemd user timer).
+- Consumes: `remote_user_home`/`remote_user_systemd` (existing, `vars/default.yml`), `create_user` (existing, `vars/secrets.yml`), `ls_db_sync_local_container` (existing role default, `leaguesphere.db`).
 - Produces: `~/.backup-scripts/ls-db-sync-nightly.sh` and a `ls-db-sync-nightly.timer`/`.service` systemd user unit pair on the target host, firing daily at 02:00 UTC.
 
 Not implemented as a literal `ansible-playbook` invocation from cron — this repo has no precedent for a target host running Ansible against itself, and none of the existing nightly jobs (`mariadb-backup-ls`, `restic-backup-*`) work that way. Instead this mirrors the *shell command sequence* `ls_db_sync/tasks/main.yml` already runs (dump prod via `docker exec`, wait for stage health, drop/recreate/import, restart stage app), as a standalone script deployed the same way the existing backup scripts are.
+
+**Revision — this task no longer reuses `restic`'s `oneshot_include.yml` by cross-role path reference (final whole-branch review found the original version deterministically fails).** `import_tasks: "{{ playbook_dir }}/roles/restic/tasks/oneshot_include.yml"` executes those tasks in the *importing* role's context (`ls_db_sync`), not `restic`'s — and Ansible's `template:` task resolves a bare `src:` filename by searching the **currently executing role's** own `templates/` directory, never the role that merely happens to own the task file being imported. Reproduced directly: the search path Ansible reports on failure is `ls_db_sync/templates/`, `restic/tasks/templates/` (doesn't exist), `ansible/templates/` (doesn't exist) — `restic/templates/oneshot.service.j2` is never searched at all. "Create ls-db-sync-nightly service" would hard-fail, deterministically, on the very first real deploy — invisible to this task's own `--syntax-check`/`--list-tasks` verification, since neither renders templates.
+
+**Fix:** this repo already has the answer to "a role needs its own scheduled timer without depending on `restic`'s templates" — `roles/user/templates/oneshot.{service,timer}.j2` + `roles/user/tasks/includes/oneshot.yml` are a role-local copy of exactly this pattern, for exactly this reason. `ls_db_sync` gets its own copies the same way (Steps 2a/3 below), and its local `oneshot_include.yml`'s tasks carry `tags: [ls.db.sync.timer]` only — this also resolves a second finding (tag leakage): the original design, by importing restic's task file with its hardcoded `restic.backup`/`restic.systemd` tags, meant a routine `--tags restic.backup` run would *also* create and start the `ls-db-sync-nightly` timer without ever having deployed the script it points at — arming a unit that fails every night. A role-local copy with its own tag has no such cross-talk.
 
 - [ ] **Step 1: Create and check out the next stack branch**
 
@@ -755,7 +762,96 @@ echo "Nightly stage DB sync completed: $PROD_DB -> $STAGE_DB"
 
 Note `$=IGNORE` (not `$IGNORE`): this is zsh's explicit word-splitting flag. zsh does not word-split unquoted variables by default (unlike the `shell:`-module's `/bin/sh` that `ls_db_sync/tasks/main.yml` runs under) — `$=IGNORE` is required so each `--ignore-table=...` entry becomes its own argument to `mariadb-dump`, and correctly yields zero arguments when there are no views to ignore.
 
-- [ ] **Step 3: Create the timer deployment task**
+- [ ] **Step 3: Create role-local oneshot-timer deployment files**
+
+These three files are `ls_db_sync`'s own copies of `restic/templates/oneshot.{service,timer}.j2` and `restic/tasks/oneshot_include.yml` — identical shape, but living in `ls_db_sync` so its `template:` task's `src:` lookup actually finds them (see the revision note above for why the cross-role reference this originally used doesn't work).
+
+`ansible/plays/roles/ls_db_sync/templates/oneshot.service.j2`:
+
+```
+[Unit]
+Description={{ service.description }}
+{% if service.depends is defined %}
+Requires={{ service.depends }}.service
+{% endif %}
+
+[Service]
+Type=oneshot
+ExecStart={{ service.command }}
+
+[Install]
+WantedBy=default.target
+```
+
+`ansible/plays/roles/ls_db_sync/templates/oneshot.timer.j2`:
+
+```
+[Unit]
+Description={{ timer.description }}
+
+[Timer]
+OnCalendar={{ timer.schedule }}
+RandomizedDelaySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+`ansible/plays/roles/ls_db_sync/tasks/oneshot_include.yml`:
+
+```yaml
+---
+- name: Check mandatory variables are defined
+  assert:
+    that:
+      - service is defined
+      - service.name is defined
+      - service.schedule is defined
+      - service.description is defined
+      - service.command is defined
+    quiet: true
+  tags:
+    - ls.db.sync.timer
+
+- name: Create the systemd directory if it does not exist
+  ansible.builtin.file:
+    path: "{{ remote_user_systemd }}"
+    state: directory
+  tags:
+    - ls.db.sync.timer
+
+- name: Create {{ service.name }} service
+  template:
+    src: oneshot.service.j2
+    dest: "{{ (remote_user_systemd, service.name) | path_join }}.service"
+  tags:
+    - ls.db.sync.timer
+
+- name: Create timer for {{ service.name }}
+  template:
+    src: oneshot.timer.j2
+    dest: "{{ (remote_user_systemd, service.name) | path_join }}.timer"
+  vars:
+    timer:
+      description: 'Trigger for {{ service.name }}'
+      schedule: '{{ service.schedule }}'
+  tags:
+    - ls.db.sync.timer
+
+- name: Start timer for {{ service.name }}
+  systemd:
+    scope: user
+    name: '{{ service.name }}.timer'
+    state: started
+    enabled: yes
+  tags:
+    - ls.db.sync.timer
+```
+
+(The `assert:` up front isn't in `restic`'s version — it's copied from `roles/user/tasks/includes/oneshot.yml`'s own version of this same pattern, which already includes it.)
+
+- [ ] **Step 4: Create the timer deployment task**
 
 `ansible/plays/roles/ls_db_sync/tasks/timer.yml`:
 
@@ -803,7 +899,7 @@ Note `$=IGNORE` (not `$IGNORE`): this is zsh's explicit word-splitting flag. zsh
     - ls.db.sync.timer
 
 - name: Deploy nightly timer for stage DB sync
-  import_tasks: "{{ playbook_dir }}/roles/restic/tasks/oneshot_include.yml"
+  import_tasks: oneshot_include.yml
   become_user: "{{ create_user }}"
   vars:
     service:
@@ -815,11 +911,13 @@ Note `$=IGNORE` (not `$IGNORE`): this is zsh's explicit word-splitting flag. zsh
     - ls.db.sync.timer
 ```
 
+`import_tasks: oneshot_include.yml` (a bare filename, not the old `{{ playbook_dir }}/roles/restic/tasks/oneshot_include.yml` cross-role path) resolves to `ls_db_sync/tasks/oneshot_include.yml` — the role-local copy from Step 3 — so its own `template:` tasks' `src:` lookups correctly find `ls_db_sync/templates/oneshot.*.j2` alongside it.
+
 `become_user: "{{ create_user }}"` is explicit here (not inherited from the play) because `leaguesphere.yml` (where `ls_db_sync` is invoked from) runs as root by default — the systemd user-timer and its backing script must be owned by `create_user` to be manageable via `systemctl --user`, matching how the existing `mariadb-backup-ls`/`restic-backup-ls-db` timers are owned (those run under the separate `restic.yml` playbook, which already sets `become_user: create_user` at the play level).
 
-The `~/.backup-scripts/` directory this task deploys into already gets created by `restic/tasks/backup.yml`'s own first task — but that task runs under the *separate* `restic.yml` playbook. A full `servyy.yml`/`servyy-test.sh` run always imports `plays/restic.yml` before `plays/leaguesphere.yml` (see `ansible/servyy.yml`), so in practice the directory always exists by the time this task runs — but a `--tags ls.db.sync.timer` scoped run in isolation (exactly what this task's own Step 5 verification does, and exactly the kind of targeted deploy this repo's tagging is built for) would hit the same directory unless this task creates it itself too. Hence the explicit, idempotent `file: state=directory` task above, mirroring `restic/tasks/backup.yml:3-9`'s own pattern for the same directory.
+The `~/.backup-scripts/` directory this task deploys into already gets created by `restic/tasks/backup.yml`'s own first task — but that task runs under the *separate* `restic.yml` playbook. A full `servyy.yml`/`servyy-test.sh` run always imports `plays/restic.yml` before `plays/leaguesphere.yml` (see `ansible/servyy.yml`), so in practice the directory always exists by the time this task runs — but a `--tags ls.db.sync.timer` scoped run in isolation (exactly what this task's own Step 6 verification does, and exactly the kind of targeted deploy this repo's tagging is built for) would hit the same directory unless this task creates it itself too. Hence the explicit, idempotent `file: state=directory` task above, mirroring `restic/tasks/backup.yml:3-9`'s own pattern for the same directory.
 
-- [ ] **Step 4: Wire the timer into the role's existing task list**
+- [ ] **Step 5: Wire the timer into the role's existing task list**
 
 In `ansible/plays/roles/ls_db_sync/tasks/main.yml`, append at the very end (after the existing `Cleanup dumps` task):
 
@@ -830,24 +928,25 @@ In `ansible/plays/roles/ls_db_sync/tasks/main.yml`, append at the very end (afte
     - ls.db.sync.timer
 ```
 
-- [ ] **Step 5: Syntax-check and tag-listing verification**
+- [ ] **Step 6: Syntax-check and tag-listing verification**
 
 Run: `cd ansible && ansible-playbook servyy.yml --syntax-check`
 Expected: exit code 0.
 
-Run: `cd ansible && ansible-playbook servyy.yml --list-tasks --tags ls.db.sync.timer 2>&1 | grep -A5 "ls_db_sync"`
-Expected: shows `Load production variables (for nightly sync script)`, `Load staging variables (for nightly sync script)`, `Deploy nightly stage DB sync script`, and the tasks inside `oneshot_include.yml` (`Create the systemd directory...`, `Create ls-db-sync-nightly service`, `Create timer for ls-db-sync-nightly`, `Start timer for ls-db-sync-nightly`) — and does **not** show the on-demand sync tasks (`Export prod DB...`, `Drop and recreate staging database`, etc.), confirming the tag correctly isolates the timer-only path.
+Run: `cd ansible && ansible-playbook servyy.yml --list-tasks --tags ls.db.sync.timer 2>&1 | grep -A9 "ls_db_sync"`
+Expected: shows `Load production variables (for nightly sync script)`, `Load staging variables (for nightly sync script)`, `Ensure backup scripts directory exists`, `Deploy nightly stage DB sync script`, and the 5 tasks inside the now-role-local `oneshot_include.yml` (`Check mandatory variables are defined`, `Create the systemd directory...`, `Create ls-db-sync-nightly service`, `Create timer for ls-db-sync-nightly`, `Start timer for ls-db-sync-nightly`) — 9 tasks total — and does **not** show the on-demand sync tasks (`Export prod DB...`, `Drop and recreate staging database`, etc.) or anything tagged `restic.backup`/`restic.systemd`, confirming the tag correctly isolates the timer-only path with no cross-talk into `restic`'s own tags.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add ansible/plays/roles/ls_db_sync/
 git commit -m "feat: add nightly systemd timer for prod -> stage DB sync
 
 Deploys a standalone script mirroring the existing local-source sync logic,
-scheduled at 02:00 UTC via the same oneshot systemd-timer pattern already
-used for the mariadb-backup-ls/restic-backup-ls-db timers. Reachable
-independently via the ls.db.sync.timer tag."
+scheduled at 02:00 UTC via a role-local oneshot systemd-timer pattern
+(own templates/tasks copy, not a cross-role reference to restic's - that
+doesn't resolve templates correctly and leaks restic.backup/restic.systemd
+tags into this role). Reachable independently via the ls.db.sync.timer tag."
 ```
 
 ---
