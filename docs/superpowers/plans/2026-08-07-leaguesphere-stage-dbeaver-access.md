@@ -49,7 +49,16 @@ This creates and checks out `vaultwarden-shared-role` off `master`.
 **Interfaces:**
 - Produces: a host-loopback endpoint `127.0.0.1:33062` → stage `mysql` container's `3306`, additive to its existing `backend`-network reachability.
 
-- [ ] **Step 1: Add the port mapping**
+- [ ] **Step 1: Create a feature branch**
+
+`~/dev/leaguesphere/CLAUDE.md` § "Git & Branching Protocol" requires this explicitly: "Create a feature branch; never commit directly to `master`." That repo's `master` currently has unrelated untracked files from other in-progress work — leave those alone, touch nothing but the one file below.
+
+```bash
+cd ~/dev/leaguesphere
+git checkout -b feat/stage-db-loopback-port
+```
+
+- [ ] **Step 2: Add the port mapping**
 
 In `~/dev/leaguesphere/deployed/docker-compose.staging.yaml`, the `mysql` service currently reads (lines 3–26 today):
 
@@ -79,12 +88,12 @@ Add a `ports:` key right after `env_file: ls.env.staging`:
       - backend
 ```
 
-- [ ] **Step 2: Validate compose syntax locally**
+- [ ] **Step 3: Validate compose syntax locally**
 
 Run: `cd ~/dev/leaguesphere/deployed && docker compose -f docker-compose.staging.yaml config --quiet`
 Expected: no output, exit code 0 (fails loudly on any YAML/compose schema error).
 
-- [ ] **Step 3: Commit in the `leaguesphere` repo**
+- [ ] **Step 4: Commit in the `leaguesphere` repo**
 
 ```bash
 cd ~/dev/leaguesphere
@@ -921,7 +930,10 @@ Expected (stderr): `PR #N for <branch> is up to date` for all four, now flipped 
 
 ```bash
 cd ~/dev/leaguesphere
-git push origin <branch used for the Task 1 commit>
+git push origin feat/stage-db-loopback-port
+gh pr create --repo dachrisch/leaguesphere --base master \
+  --title "feat: publish stage mysql on loopback-only 127.0.0.1:33062" \
+  --body "Stable endpoint for an SSH-tunneled DBeaver connection to stage; not reachable from the network."
 ```
 (Follow that repo's own PR/merge process before this is deployable to `lehel.xyz`.)
 
