@@ -13,6 +13,15 @@
   tags:
     - ls.db.sync.timer
 
+- name: Ensure backup scripts directory exists
+  file:
+    path: "{{ remote_user_home }}/.backup-scripts"
+    state: directory
+    mode: '0755'
+  become_user: "{{ create_user }}"
+  tags:
+    - ls.db.sync.timer
+
 - name: Deploy nightly stage DB sync script
   template:
     src: ls_db_sync.sh.j2
