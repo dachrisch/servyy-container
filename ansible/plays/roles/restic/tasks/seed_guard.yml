@@ -59,7 +59,9 @@
       when: vw_master_password | default('') | length == 0
 
     - name: Unlock the bw vault (shared)
-      ansible.builtin.include_tasks: bw_unlock.yml
+      ansible.builtin.include_role:
+        name: vaultwarden
+        tasks_from: unlock.yml
 
     - name: Probe Vaultwarden for each missing seed
       ansible.builtin.command:

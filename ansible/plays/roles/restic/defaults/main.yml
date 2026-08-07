@@ -1,6 +1,11 @@
 ---
 # Vaultwarden backup-copy target for the restic repository passwords.
-# Used by tasks/vaultwarden_push.yml (invoked by the restic env-file handler).
+# Also defined in vaultwarden/defaults/main.yml (the role that now does the
+# actual push/unlock work). Duplicated here deliberately: seed_guard.yml's
+# early fail message below references {{ vw_server }} before it dynamically
+# include_role's the vaultwarden role, and dynamic include_role defaults are
+# not guaranteed loaded that early — so this role keeps its own copy of the
+# single value rather than relying on load-order.
 vw_server: "https://pass.lehel.xyz"
 
 # Password-FREE mapping of VW item name <-> controller seed file path.
@@ -15,13 +20,15 @@ restic_seeds:
   - name: "restic - ls_db (lehel.xyz)"
     seed: "vars/.restic_password_ls_db"
 
+# Field is `secret` (not `password`) to match vaultwarden/tasks/push_items.yml's
+# generic item shape {name, secret, notes}.
 restic_vaultwarden_items:
   - name: "restic - home (lehel.xyz)"
-    password: "{{ restic_password_home }}"
+    secret: "{{ restic_password_home }}"
     notes: "RESTIC_PASSWORD for /etc/restic/env.home (copy of Ansible seed vars/.restic_password_home)"
   - name: "restic - root (lehel.xyz)"
-    password: "{{ restic_password_root }}"
+    secret: "{{ restic_password_root }}"
     notes: "RESTIC_PASSWORD for /etc/restic/env.root (copy of Ansible seed vars/.restic_password_root)"
   - name: "restic - ls_db (lehel.xyz)"
-    password: "{{ restic_password_ls_db }}"
+    secret: "{{ restic_password_ls_db }}"
     notes: "RESTIC_PASSWORD for /etc/restic/env.ls_db (copy of Ansible seed vars/.restic_password_ls_db)"

@@ -1,0 +1,74 @@
+---
+# Push a list of secrets into Vaultwarden as Login items.
+# Runs on the Ansible CONTROLLER via the `bw` CLI (not the remote host).
+# Idempotent: only creates missing Login items.
+#
+# Caller must set before including this file:
+#   vaultwarden_items: list of {name, secret, notes}
+#   vaultwarden_item_username: string
+
+- name: Unlock the bw vault (shared)
+  ansible.builtin.include_tasks: unlock.yml
+
+- name: List existing vault item names
+  ansible.builtin.command:
+    cmd: bw list items
+  environment:
+    BW_SESSION: "{{ bw_session }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  register: bw_items_raw
+  changed_when: false
+  no_log: true
+
+- name: Compute set of item names already present
+  ansible.builtin.set_fact:
+    existing_item_names: "{{ bw_items_raw.stdout | from_json | map(attribute='name') | list }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+
+- name: Create missing items in Vaultwarden
+  ansible.builtin.shell:
+    cmd: "set -o pipefail; printf '%s' {{ item_json | quote }} | bw encode | bw create item"
+    executable: /bin/bash
+  environment:
+    BW_SESSION: "{{ bw_session }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    item_json: >-
+      {{ {'type': 1,
+          'name': item.name,
+          'notes': item.notes,
+          'login': {'username': vaultwarden_item_username | default('ansible'), 'password': item.secret, 'uris': []}}
+         | to_json }}
+  loop: "{{ vaultwarden_items }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.name not in existing_item_names
+  changed_when: true
+  no_log: true
+
+- name: Report which items were created vs already present
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.name }}:
+      {{ 'already present (skipped)' if item.name in existing_item_names else 'created' }}
+  delegate_to: localhost
+  run_once: true
+  become: false
+  loop: "{{ vaultwarden_items }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Lock the vault again
+  ansible.builtin.command:
+    cmd: bw lock
+  delegate_to: localhost
+  run_once: true
+  become: false
+  changed_when: false
+  failed_when: false
