@@ -1042,8 +1042,10 @@ Run this task from the **top of the stack** (`ls-dbeaver-leaguesphere-wiring`, a
 
 The `leaguesphere` repo's Task 1 commit must be reachable from `servyy-test.lxd`'s checkout (push the `leaguesphere` branch used for testing, or point the test deploy at your local branch per that repo's own workflow — this is that repo's deploy mechanism, not this one).
 
-Run: `cd ansible && ./servyy-test.sh --tags ls.app.stage`
+Run: `cd ansible && ./servyy-test.sh --tags ls.app.stage --skip-tags ls.db.sync`
 Expected: `PLAY RECAP` shows `failed=0 unreachable=0`; deploys/refreshes the stage stack including the new `ports: ["127.0.0.1:33062:3306"]` mapping.
+
+**`--skip-tags ls.db.sync` is required here, and this is pre-existing, unrelated to this feature** (discovered by actually running this step, not a static review finding): `ls_db_sync`'s role invocation in `leaguesphere.yml` shares the `ls.app.stage` tag with `ls_app` (`tags: [ls.db.sync, ls.app.stage, ls.app]`), so plain `--tags ls.app.stage` also triggers the *on-demand* prod→stage sync — which, with `ls_db_sync_source` defaulting to `local`, tries `docker exec leaguesphere.db ...` **on whatever host Ansible is targeting**. On `lehel.xyz` (prod) that container genuinely exists; on the isolated `servyy-test.lxd` it never will (there's no local prod replica there), so that task fails with `No such container: leaguesphere.db` — unrelated to anything in this stack, and failing before writing anything (clean failure, no partial state). Skipping `ls.db.sync` here deploys just the stage app/db, which is all this step needs.
 
 - [ ] **Step 2: Deploy the new tunnel account and nightly timer**
 
