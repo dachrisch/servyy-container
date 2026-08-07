@@ -1,0 +1,44 @@
+---
+- name: Load production variables (for nightly sync script)
+  include_vars:
+    file: "{{ playbook_dir }}/roles/ls_app/vars/secret_main.yaml"
+    name: prod_app
+  tags:
+    - ls.db.sync.timer
+
+- name: Load staging variables (for nightly sync script)
+  include_vars:
+    file: "{{ playbook_dir }}/roles/ls_app/vars/secret_stage.yaml"
+    name: stage_app
+  tags:
+    - ls.db.sync.timer
+
+- name: Deploy nightly stage DB sync script
+  template:
+    src: ls_db_sync.sh.j2
+    dest: "{{ remote_user_home }}/.backup-scripts/ls-db-sync-nightly.sh"
+    mode: '0750'
+  become_user: "{{ create_user }}"
+  vars:
+    prod_container: "{{ ls_db_sync_local_container }}"
+    prod_db_name: "{{ prod_app.app.db_name }}"
+    prod_root_password: "{{ prod_app.app.db_root_password }}"
+    stage_container: "{{ stage_app.app.name }}.mysql"
+    stage_db_name: "{{ stage_app.app.db_name }}"
+    stage_root_password: "{{ stage_app.app.db_root_password }}"
+    stage_app_container: "{{ (stage_app.app.name ~ '.staging-app') if stage_app.app.name == 'leaguesphere_stage' else (stage_app.app.name ~ '.app') }}"
+  no_log: true
+  tags:
+    - ls.db.sync.timer
+
+- name: Deploy nightly timer for stage DB sync
+  import_tasks: "{{ playbook_dir }}/roles/restic/tasks/oneshot_include.yml"
+  become_user: "{{ create_user }}"
+  vars:
+    service:
+      name: ls-db-sync-nightly
+      description: 'Nightly LeagueSphere prod -> stage DB sync'
+      schedule: '*-*-* 02:00:00'
+      command: "{{ remote_user_home }}/.backup-scripts/ls-db-sync-nightly.sh"
+  tags:
+    - ls.db.sync.timer
