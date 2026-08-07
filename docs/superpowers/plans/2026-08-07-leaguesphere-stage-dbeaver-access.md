@@ -358,7 +358,7 @@ git rm ansible/plays/roles/restic/tasks/bw_unlock.yml
 
 Leave every line of this file exactly as-is. **Revision (the first version of this step was still wrong — caught in final whole-branch review, not by either task-scoped review):** `ansible.builtin.include_role` is documented as **not working inside a handler**, and — verified by direct reproduction against the `ansible-core` installed in this environment — that restriction follows the *entire* execution chain reached from a handler, not just literal top-level handler content. A wrapper task file that itself does `include_role`, reached via the handler's `include_tasks:`, still fails with `Using 'include_role' as a handler is not supported`, with the error's `Origin:` pointing at the wrapper file itself. `include_role`/`import_role` are unusable anywhere in a call chain that originates from a handler; only `include_tasks`/`import_tasks` work there, at any depth.
 
-So instead of a wrapper that does `include_role`, **replace the contents of `ansible/plays/roles/restic/tasks/vaultwarden_push.yml`** (same filename, same `include_tasks` target the handler already calls) with a plain `include_tasks` pointed directly at the shared role's task file by path — no `include_role` anywhere in this chain:
+So instead of a wrapper that does `include_role`, **replace the contents of `ansible/plays/roles/restic/tasks/vaultwarden_push.yml`** (same filename, same `include_tasks` target the handler already calls) with a plain `include_tasks` pointed directly at the shared role's task file — via a **plain relative path, not `{{ playbook_dir }}`** (see the addendum below for why) — no `include_role` anywhere in this chain:
 
 ```yaml
 ---
@@ -372,17 +372,29 @@ So instead of a wrapper that does `include_role`, **replace the contents of `ans
 # own directory once Ansible is executing it — that resolution doesn't
 # depend on how push_items.yml itself was reached.
 #
+# Plain relative path (not {{ playbook_dir }}) on purpose: ansible-lint's
+# static analyzer resolves {{ playbook_dir }} relative to this task file's
+# own directory when linting a role in isolation, not the real playbook
+# directory - it computes the wrong path and reports a fatal load-failure
+# that a # noqa comment can't suppress (the violation is anchored to the
+# synthetic wrong path, not this line). A plain relative path needs no
+# Jinja evaluation, so ansible-lint resolves it correctly, and Ansible's
+# own include_tasks path resolution (relative to this file's directory)
+# handles ../.. the same way at runtime.
+#
 # Requires (unchanged from before the vaultwarden extraction):
 # vaultwarden_api.client_id/secret (vars/secrets.yml), restic_password_*
 # (vars/secrets.yml), vw_master_password (vars_prompt in restic.yml).
 - name: Push restic passwords to Vaultwarden
-  ansible.builtin.include_tasks: "{{ playbook_dir }}/roles/vaultwarden/tasks/push_items.yml"
+  ansible.builtin.include_tasks: ../../vaultwarden/tasks/push_items.yml
   vars:
     vaultwarden_items: "{{ restic_vaultwarden_items }}"
     vaultwarden_item_username: "restic"
 ```
 
 (This file goes from ~75 lines — the full unlock+push logic it had before — down to these ~20. That's expected: everything it used to do now lives in `vaultwarden/tasks/{unlock,push_items}.yml`, reached transitively through this file's `include_tasks`.)
+
+**Addendum — the first version of this used `{{ playbook_dir }}/roles/vaultwarden/tasks/push_items.yml` (found broken by CI, not by any review or by Task 6's live testing):** it works correctly at real Ansible runtime — confirmed repeatedly, including a full `restic.init` run against `servyy-test.lxd` — but `ansible-lint`'s `load-failure` rule (`profile: production`, unskippable) can't evaluate the Jinja expression when statically analyzing the `restic` role in isolation, and resolves `playbook_dir` as this task file's own directory instead of the real playbook directory. It reports a fatal, CI-blocking violation anchored to the resulting (nonexistent) synthetic path — which also means an inline `# noqa` comment can't suppress it, since ansible-lint checks for a matching comment at the *reported* location, not the task's real source line. Switched to the plain relative path shown above, which needs no Jinja evaluation at all and lints cleanly (`ansible-lint --force-color --show-relpath` → `Passed: 0 failure(s)`), while resolving identically at runtime (Ansible's own `include_tasks` path resolution is relative-to-current-file regardless of whether the path came from a literal string or a rendered template).
 
 One consequence of this revision: the `vw_server` duplication below (already adjudicated as intentional) changes from *defensive* to *strictly required*. Because this path now reaches the vaultwarden role via `include_tasks` (never `include_role`), the vaultwarden role's own `defaults/main.yml` is never loaded on this path at all — `restic`'s own copy of `vw_server` isn't just a hedge against load-order timing anymore, it's the only copy that exists on this path. The comment below reflects this.
 
