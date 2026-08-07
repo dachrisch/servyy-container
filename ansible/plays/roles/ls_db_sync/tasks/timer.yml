@@ -41,7 +41,7 @@
     - ls.db.sync.timer
 
 - name: Deploy nightly timer for stage DB sync
-  import_tasks: "{{ playbook_dir }}/roles/restic/tasks/oneshot_include.yml"
+  import_tasks: oneshot_include.yml
   become_user: "{{ create_user }}"
   vars:
     service:
