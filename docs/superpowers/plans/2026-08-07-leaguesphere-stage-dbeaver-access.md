@@ -107,6 +107,25 @@ backend-network reachability."
 
 Do **not** push yet — hold until Task 6 passes on `servyy-test.lxd`, since this repo's own deploy (next tasks) is what actually rolls the stage container.
 
+**Addendum — Step 2's `ports:` mapping alone does not actually work (discovered during Task 6, fixed as a follow-up PR after Task 1 had already merged):** Docker Compose 2.40.3 does not activate a published host port for a service whose *only* network is `internal: true` — the binding is accepted into the container's config but never wired up at the OS level. Reproduced with a minimal, unrelated test case (plain nginx, generic `internal: true` network) — independent of MariaDB or anything else in this feature. Fix, verified working: give `mysql` a *second* network, dedicated solely to it and marked `internal: false`:
+
+```yaml
+  mysql:
+    ports:
+      - "127.0.0.1:33062:3306"
+    networks:
+      - backend
+      - db_access        # new — nothing else joins it
+
+networks:
+  backend:
+    internal: true
+  db_access:              # new
+    internal: false
+```
+
+This doesn't loosen anything: `db_access` has no other members, `staging-app`'s existing path via `backend` is untouched, and the port is still bound to `127.0.0.1` only — it purely fixes the mechanism Compose needs to actually apply the publish. Landed as `leaguesphere` PR #1795 (follow-up to #1792).
+
 ---
 
 ### Task 2: Extract the Vaultwarden push mechanism into a shared role, and migrate `restic` onto it
