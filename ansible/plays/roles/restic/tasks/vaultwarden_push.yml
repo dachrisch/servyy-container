@@ -12,8 +12,18 @@
 # Requires (unchanged from before the vaultwarden extraction):
 # vaultwarden_api.client_id/secret (vars/secrets.yml), restic_password_*
 # (vars/secrets.yml), vw_master_password (vars_prompt in restic.yml).
+#
+# Plain relative path (not {{ playbook_dir }}) on purpose: ansible-lint's
+# static analyzer resolves {{ playbook_dir }} relative to this task file's
+# own directory when linting a role in isolation, not the real playbook
+# directory - it computed the wrong path and reported a fatal load-failure
+# that a # noqa comment can't suppress (the violation is anchored to the
+# synthetic wrong path, not this line). A plain relative path needs no
+# Jinja evaluation, so ansible-lint resolves it correctly, and Ansible's
+# own include_tasks path resolution (relative to this file's directory)
+# handles ../.. the same way at runtime - verified live on servyy-test.lxd.
 - name: Push restic passwords to Vaultwarden
-  ansible.builtin.include_tasks: "{{ playbook_dir }}/roles/vaultwarden/tasks/push_items.yml"
+  ansible.builtin.include_tasks: ../../vaultwarden/tasks/push_items.yml
   vars:
     vaultwarden_items: "{{ restic_vaultwarden_items }}"
     vaultwarden_item_username: "restic"
