@@ -19,6 +19,7 @@
       - dir: portainer
       - dir: pass
       - dir: opencode
+      - dir: opencode-authgate
       - dir: energy
       - dir: groceries
       - dir: leagues-finance
