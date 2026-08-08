@@ -211,10 +211,13 @@ it's verified functionally instead:
 
 ## Risks & decisions
 
-- **Traefik rule complexity:** the compound path/method scoping rule is the crux of the whole
-  security boundary; it lives in one file (`traefik/dynamic.yaml`) specifically so it stays easy
-  to review, and is verified with explicit curl checks (including a negative check against
-  `/api/fs/list`) rather than trusted by inspection alone.
+- **Traefik rule complexity:** the compound path/method/header scoping rule is the crux of the
+  whole security boundary; it lives in one label block on `opencode/docker-compose.yml` (only the
+  `forwardAuth` middleware definition lives separately, in `traefik/dynamic.yaml`) specifically so
+  the rule stays easy to review, and is verified with explicit curl checks (including a negative
+  check against `/api/fs/list` and — after a review found the original rule matched regardless of
+  which auth header was present — a check that Basic-Auth-only browser traffic is unaffected)
+  rather than trusted by inspection alone.
 - **Vaultwarden dependency:** requires the `bw` CLI and master password on the Ansible controller
   — the same operational dependency the existing restic and DBeaver-key pushes already carry.
 - **Single static key:** no per-client revocation or rotation tooling beyond replacing the value
