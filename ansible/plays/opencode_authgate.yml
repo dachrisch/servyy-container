@@ -30,8 +30,11 @@
             notes: >-
               X-Api-Key value for opencode's scoped ForwardAuth gate (opencode-authgate) on
               {{ inventory_hostname }}. Grants session-create + session-scoped chat access to
-              /api/session/* only, via https://opencode.{{ inventory_hostname }} — no
-              filesystem, shell/PTY, VCS, project, or credential-management access. See
+              https://opencode.{{ inventory_hostname }}/api/session/* only. No direct HTTP
+              access to opencode's filesystem/shell/VCS/credential endpoints — but the agent
+              this drives runs with real credentials (GitHub PAT, git-crypt key, CircleCI
+              token, SSH key) and can act on them via prompted tool calls, so treat this key
+              as broad access to what the agent can do, not merely "read-only chat". See
               docs/superpowers/specs/2026-08-08-opencode-api-key-forwardauth-design.md.
       when:
         - vw_master_password | default('') | length > 0
