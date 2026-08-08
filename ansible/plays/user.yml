@@ -117,6 +117,16 @@
 
     - role: docker_service
       vars:
+        service_dir: opencode-authgate
+        env_templates:
+          - src: docker.env.j2
+            dest: .env
+          - src: opencode-authgate/.env.j2
+            dest: authgate.env
+      tags: [user.docker, user.docker.opencode-authgate]
+
+    - role: docker_service
+      vars:
         service_dir: energy
         env_templates:
           - src: docker.env.j2
