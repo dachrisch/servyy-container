@@ -26,6 +26,7 @@
       - dir: finance
       - dir: searxng
       - dir: job-search
+      - dir: dontforget
       - dir: dns
         manual: {}
       - dir: me
