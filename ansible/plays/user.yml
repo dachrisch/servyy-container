@@ -204,6 +204,18 @@
             dest: crawler.env
       tags: [user.docker, user.docker.job-search]
 
+    # dontforget — one app container (serves the API and the built
+    # frontend from a single image) + an internal-only mongo container
+    - role: docker_service
+      vars:
+        service_dir: dontforget
+        env_templates:
+          - src: dontforget/.env.j2
+            dest: .env
+          - src: dontforget/web.env.j2
+            dest: web.env
+      tags: [user.docker, user.docker.dontforget]
+
     # Manual services — env rendered, compose not started
     - role: docker_service
       vars:
