@@ -21,7 +21,7 @@ if [ -f "/scripts/opencode.json.template" ]; then
     
     # We only substitute specific variables to avoid breaking $schema
     echo "⚙️ [Startup] Generating opencode.json from template..."
-    envsubst '$CIRCLECI_TOKEN $CIRCLECI_BASE_URL' < /scripts/opencode.json.template > "$CONFIG_DIR/opencode.json"
+    envsubst '$CIRCLECI_TOKEN $CIRCLECI_BASE_URL $DASHSCOPE_API_KEY' < /scripts/opencode.json.template > "$CONFIG_DIR/opencode.json"
 fi
 
 # 3. Extensions (Placeholder)
