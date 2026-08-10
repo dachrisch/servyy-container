@@ -18,10 +18,10 @@
   },
   "provider": {
     "bailian-payg": {
-      "npm": "@ai-sdk/anthropic",
+      "npm": "openai",
       "name": "Alibaba Cloud Model Studio",
       "options": {
-        "baseURL": "https://dashscope.aliyuncs.com/apps/anthropic/v1",
+        "baseURL": "https://H.YXDDYY.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
         "apiKey": "$DASHSCOPE_API_KEY"
       },
       "models": {
