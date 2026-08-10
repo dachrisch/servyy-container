@@ -17,6 +17,43 @@
     }
   },
   "provider": {
+    "bailian-payg": {
+      "npm": "@ai-sdk/anthropic",
+      "name": "Alibaba Cloud Model Studio",
+      "options": {
+        "baseURL": "https://dashscope.aliyuncs.com/apps/anthropic/v1",
+        "apiKey": "$DASHSCOPE_API_KEY"
+      },
+      "models": {
+        "qwen3.7-max": {
+          "name": "Qwen3.7 Max",
+          "options": {
+            "thinking": {
+              "type": "enabled",
+              "budgetTokens": 8192
+            }
+          }
+        },
+        "qwen3.7-flash": {
+          "name": "Qwen3.7 Flash",
+          "options": {
+            "thinking": {
+              "type": "enabled",
+              "budgetTokens": 8192
+            }
+          }
+        },
+        "qwen3.6-plus": {
+          "name": "Qwen3.6 Plus",
+          "options": {
+            "thinking": {
+              "type": "enabled",
+              "budgetTokens": 8192
+            }
+          }
+        }
+      }
+    },
     "google": {
       "models": {
         "antigravity-gemini-3-flash": {
