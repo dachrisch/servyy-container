@@ -21,7 +21,7 @@
       "npm": "@ai-sdk/openai-compatible",
       "name": "Alibaba Cloud Model Studio",
       "options": {
-        "baseURL": "https://H.YXDDYY.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+        "baseURL": "https://h.yxddyy.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
         "apiKey": "$DASHSCOPE_API_KEY"
       },
       "models": {
