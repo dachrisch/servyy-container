@@ -10,7 +10,7 @@ JOB_NAME="leaguesphere_maintenance_probe"
 
 probe_success=1
 
-# 1. Maintenance-mode detection via the health endpoint (league-manager#968)
+# 1. Maintenance-mode detection via the health endpoint (leaguesphere#1821)
 maintenance_active=0
 health_response=$(curl -A ls-maintenance-probe -s "${BASE_URL}/health/")
 if [ -z "$health_response" ] || ! echo "$health_response" | jq -e . >/dev/null 2>&1; then

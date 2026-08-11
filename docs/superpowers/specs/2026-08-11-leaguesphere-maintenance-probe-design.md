@@ -61,7 +61,7 @@ checking a redirect on some gated write path was also the wrong shape of signal 
 depends on an admin-editable list never dropping the one path this probe happens to poll).
 Instead, `/health/` now reports `maintenance_mode` directly as a JSON boolean — see
 `league_manager/urls.py`'s `HealthCheckView` in the `leaguesphere` repo, added in
-[chris0chris/league-manager#968](https://github.com/chris0chris/league-manager/pull/968). This
+[dachrisch/leaguesphere#1821](https://github.com/dachrisch/leaguesphere/pull/1821). This
 probe now depends on that PR merging and deploying to whichever environment it targets before
 maintenance-mode detection actually works; the games-detection half is unaffected.
 
@@ -102,7 +102,7 @@ JOB_NAME="leaguesphere_maintenance_probe"
 
 probe_success=1
 
-# 1. Maintenance-mode detection via the health endpoint (league-manager#968)
+# 1. Maintenance-mode detection via the health endpoint (leaguesphere#1821)
 maintenance_active=0
 health_response=$(curl -A ls-maintenance-probe -s "${BASE_URL}/health/")
 if [ -z "$health_response" ] || ! echo "$health_response" | jq -e . >/dev/null 2>&1; then
@@ -219,7 +219,7 @@ splits into two independent, both-safe halves instead of one end-to-end run on t
    toggle stage's own `SiteConfiguration.maintenance_mode` via the documented admin toggle
    (`/admin/league_manager/siteconfiguration/toggle-maintenance/`), and confirm the script
    produces the right gauge values in both states. Stage is safe to flip — it's not seen by real
-   users. **Blocked on league-manager#968 deploying to stage** — until `/health/` reports
+   users. **Blocked on leaguesphere#1821 deploying to stage** — until `/health/` reports
    `maintenance_mode`, this half of validation can't run for real; the games-detection half is
    independent and already validated.
 2. **Alert pipeline** (Pushgateway → Prometheus → Grafana rule → email) — validated by pushing a
@@ -237,7 +237,7 @@ approval before that final production run — per this repo's standing test-firs
 
 - No remediation (the probe never toggles maintenance mode itself).
 - No change to `MaintenanceModeMiddleware`'s redirect behavior or `SiteConfiguration`'s schema —
-  the one app-side change (league-manager#968) only adds a read-only field to an existing,
+  the one app-side change (leaguesphere#1821) only adds a read-only field to an existing,
   already-public health endpoint; it doesn't alter what maintenance mode actually does.
 - The 4 follow-on Monit-replacement sub-projects (system resources, log-freshness, storagebox,
   container health) are out of scope here — each gets its own spec later, reusing the probe →
