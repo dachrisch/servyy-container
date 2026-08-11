@@ -1,0 +1,4 @@
+---
+# Defaults for ls_maintenance_probe role
+# Overridden with -e ls_maintenance_probe_url=... to point the probe at stage during testing.
+ls_maintenance_probe_url: "https://leaguesphere.app"
