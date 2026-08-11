@@ -118,6 +118,12 @@
       tags:
         - ls.db.migrate
 
+    # Hourly maintenance-mode / active-games probe - tag-only, not in default ls run
+    # (mirrors ls_db_migrate above). Pushes metrics to Pushgateway; Grafana alerts on them.
+    - role: ls_maintenance_probe
+      tags:
+        - ls.maintenance.probe
+
     # DB restore to stage from a physical mariadb-backup (tag-only, not in default ls run)
     - role: ls_stage_restore
       tags:
