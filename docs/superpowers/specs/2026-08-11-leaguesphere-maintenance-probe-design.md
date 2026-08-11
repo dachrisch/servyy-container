@@ -184,8 +184,13 @@ ls_maintenance_probe/
   `sys_packages` on every host — no new package installs.
 - Wired into `ansible/plays/leaguesphere.yml` as its own role entry, tag `ls.maintenance.probe`
   only — not bundled into `ls.app`/`ls.app.prod`, matching how `ls_db_migrate` is deliberately
-  kept "tag-only, not in default ls run" (there is no umbrella `ls` tag in this playbook; a full
-  untagged run still includes it, same as every other role).
+  kept "tag-only, not in default ls run." Correction (caught in task review): the play itself
+  *does* carry a play-level `tags: [ls]` at the bottom of `leaguesphere.yml`, which Ansible's
+  tag-inheritance rule applies to every task in the play — including this role's, and every
+  other "tag-only" role's. In practice this is dormant: nothing in this repo (scripts, docs, or
+  runbooks) ever runs bare `--tags ls`, every real deploy path uses granular tags
+  (`ls.app.prod`, `ls.db.sync`, etc.), and it predates this change. A full untagged run still
+  includes this role too, same as every other role.
 - The Grafana alert-rules.yml change ships through the normal `monitor` service sync. Because
   "Monitor" is a `manual: true` service (`container/ansible/plays/user.yml`), applying it
   requires an explicit deploy: `./servyy.sh --tags user.docker.monitor -e manual=false`
