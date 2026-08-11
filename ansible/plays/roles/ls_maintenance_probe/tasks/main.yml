@@ -1,0 +1,30 @@
+---
+- name: Ensure operational scripts directory exists
+  file:
+    path: "{{ remote_user_home }}/.backup-scripts"
+    state: directory
+    mode: '0755'
+  become_user: "{{ create_user }}"
+  tags:
+    - ls.maintenance.probe
+
+- name: Deploy LeagueSphere maintenance/games probe script
+  template:
+    src: ls_maintenance_probe.sh.j2
+    dest: "{{ remote_user_home }}/.backup-scripts/ls-maintenance-probe.sh"
+    mode: '0750'
+  become_user: "{{ create_user }}"
+  tags:
+    - ls.maintenance.probe
+
+- name: Deploy hourly timer for maintenance/games probe
+  import_tasks: oneshot_include.yml
+  become_user: "{{ create_user }}"
+  vars:
+    service:
+      name: ls-maintenance-probe
+      description: 'Hourly LeagueSphere maintenance-mode / active-games probe'
+      schedule: '*-*-* *:00:00'
+      command: "{{ remote_user_home }}/.backup-scripts/ls-maintenance-probe.sh"
+  tags:
+    - ls.maintenance.probe
