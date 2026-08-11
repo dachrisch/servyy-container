@@ -181,8 +181,10 @@ ls_maintenance_probe/
   baked into the shared `oneshot.timer.j2` template) staggers it slightly.
 - No secrets: both endpoints are public and unauthenticated. `curl`/`jq` are already in
   `sys_packages` on every host — no new package installs.
-- Wired into `ansible/plays/leaguesphere.yml` under a new tag `ls.maintenance.probe`, included
-  under the umbrella `ls` tag.
+- Wired into `ansible/plays/leaguesphere.yml` as its own role entry, tag `ls.maintenance.probe`
+  only — not bundled into `ls.app`/`ls.app.prod`, matching how `ls_db_migrate` is deliberately
+  kept "tag-only, not in default ls run" (there is no umbrella `ls` tag in this playbook; a full
+  untagged run still includes it, same as every other role).
 - The Grafana alert-rules.yml change ships through the normal `monitor` service sync. Because
   "Monitor" is a `manual: true` service (`container/ansible/plays/user.yml`), applying it
   requires an explicit deploy: `./servyy.sh --tags user.docker.monitor -e manual=false`
