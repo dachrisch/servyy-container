@@ -342,3 +342,144 @@ groups:
         labels:
           severity: medium
         isPaused: false
+
+  # LeagueSphere maintenance/games monitoring
+  - orgId: 1
+    name: leaguesphere-alerts
+    folder: LeagueSphere
+    interval: 1m
+    rules:
+      # CRITICAL: maintenance mode is blocking real, in-progress games
+      - uid: leaguesphere_maintenance_blocking_games
+        title: Maintenance Mode Blocking Live Games
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: leaguesphere_maintenance_blocking_games
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'LeagueSphere maintenance mode is blocking live games'
+          description: 'Maintenance mode is active while games are in progress today - real users are locked out during a live game. Disable maintenance mode or confirm this is intentional immediately.'
+        labels:
+          severity: critical
+        isPaused: false
+
+      # MEDIUM: the probe itself can't reach prod / parse its response
+      - uid: leaguesphere_maintenance_probe_success
+        title: LeagueSphere Maintenance Probe Failing
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: leaguesphere_probe_success
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: lt
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: 'LeagueSphere maintenance/games probe is failing'
+          description: 'The hourly maintenance-mode/games probe could not reach or parse a response from LeagueSphere for 10+ minutes - check ls-maintenance-probe.service on lehel.xyz.'
+        labels:
+          severity: medium
+        isPaused: false
+
+      # MEDIUM: the probe has stopped running entirely (timer dead, not just failing)
+      - uid: leaguesphere_maintenance_probe_stale
+        title: LeagueSphere Maintenance Probe Stale
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: time() - push_time_seconds{job="leaguesphere_maintenance_probe"}
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [5400]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: 'LeagueSphere maintenance probe has not pushed metrics recently'
+          description: 'No successful push from ls-maintenance-probe.timer in over 90 minutes - the hourly timer on lehel.xyz may have stopped running.'
+        labels:
+          severity: medium
+        isPaused: false
