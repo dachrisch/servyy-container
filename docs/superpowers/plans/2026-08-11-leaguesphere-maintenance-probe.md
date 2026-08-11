@@ -17,6 +17,13 @@ the contact points that already deliver mail today.
 **Tech Stack:** Ansible (roles, systemd templates), bash, curl, jq, Prometheus Pushgateway text
 exposition format, Grafana unified alerting (YAML provisioning).
 
+**Note (post-implementation):** this plan's Task 3 and its `/login/`-based detection were
+superseded during execution — see the design doc's "Revision note" sections for what actually
+shipped. The pushgateway networking assumption in the Task 6/Deployment sections was also
+corrected (a new `pushgateway_publish` Docker network was required for the published port to
+work at all). Both are superseded by the design doc's revision notes, which are authoritative;
+the design doc is authoritative where the two differ.
+
 ## Global Constraints
 
 - Test-first, no manual production edits: validate on `servyy-test.lxd` / `stage.leaguesphere.app`
