@@ -73,8 +73,23 @@ maintenance-mode detection actually works; the games-detection half is unaffecte
   "unrestricted public API"), filtered to today's date (`Europe/Berlin`) with
   `status != "beendet" and status != "Geplant"`.
 - **Metrics delivery** — the `pushgateway-bridge` container (`container/monitor/docker-compose.yml`)
-  already exposes Pushgateway on `localhost:9091` on the host specifically for host-level
-  scripts to push to (the same path the k6 load-test tooling uses), no new networking needed.
+  exposes Pushgateway on `localhost:9091` on the host specifically for host-level scripts to
+  push to (the same path the k6 load-test tooling uses). See the revision note below — making
+  that publish actually reach the container required new networking.
+
+**Revision note (found while validating the alert pipeline):** exercising the synthetic-payload
+half of the testing strategy below (pushing to production's Pushgateway) surfaced that
+`pushgateway-bridge`'s `ports: ["9091:9091"]` never actually worked — the port was never
+listening on the host at all. Confirmed by direct reproduction on `servyy-test.lxd`:
+`HostConfig.PortBindings` shows the requested mapping, but `NetworkSettings.Ports` stays `null`
+and nothing accepts connections on 9091. Root cause: Docker silently no-ops `ports:` publishing
+for a container whose *only* network is `internal: true` (`backend`, here). Fixed by giving
+`pushgateway-bridge` a second, non-internal network (`pushgateway_publish`, added in
+`monitor/docker-compose.yml`) purely so its port publish takes effect — `backend` stays
+`internal: true` for every other service in this stack, unchanged. The host binding was also
+tightened to `127.0.0.1:9091:9091` once the publish started working for real, since the only
+intended consumer is host-local scripts and an unauthenticated Pushgateway (accepts POST and
+DELETE) has no business listening on every interface.
 
 ## Metrics pushed
 
@@ -104,8 +119,8 @@ probe_success=1
 
 # 1. Maintenance-mode detection via the health endpoint (leaguesphere#1821)
 maintenance_active=0
-health_response=$(curl -A ls-maintenance-probe -s "${BASE_URL}/health/")
-if [ -z "$health_response" ] || ! echo "$health_response" | jq -e . >/dev/null 2>&1; then
+health_response=$(curl -A ls-maintenance-probe -s --max-time 15 --connect-timeout 5 "${BASE_URL}/health/")
+if [ -z "$health_response" ] || ! echo "$health_response" | jq -e 'has("maintenance_mode")' >/dev/null 2>&1; then
   probe_success=0
 else
   maintenance_active=$(echo "$health_response" | jq -r 'if .maintenance_mode then 1 else 0 end')
@@ -118,8 +133,8 @@ fi
 # relying on this script to route around it.
 active_games=0
 games_known=1
-response=$(curl -A ls-maintenance-probe -s "${BASE_URL}/api/game-progress/?page_size=100")
-if [ -z "$response" ] || ! echo "$response" | jq -e . >/dev/null 2>&1; then
+response=$(curl -A ls-maintenance-probe -sf --max-time 15 --connect-timeout 5 "${BASE_URL}/api/game-progress/?page_size=100")
+if [ -z "$response" ] || ! echo "$response" | jq -e '.results | type == "array"' >/dev/null 2>&1; then
   probe_success=0
   games_known=0
 else
@@ -136,7 +151,7 @@ if [ "$maintenance_active" = "1" ] && { [ "$games_known" = "0" ] || [ "$active_g
   blocking=1
 fi
 
-cat <<EOF | curl -sf --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}"
+cat <<EOF | curl -sf --max-time 15 --connect-timeout 5 --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}"
 # TYPE leaguesphere_maintenance_mode_active gauge
 leaguesphere_maintenance_mode_active ${maintenance_active}
 # TYPE leaguesphere_active_games gauge
