@@ -10,16 +10,13 @@ JOB_NAME="leaguesphere_maintenance_probe"
 
 probe_success=1
 
-# 1. Maintenance-mode detection (mirrors container/healthcheck.sh)
+# 1. Maintenance-mode detection via the health endpoint (league-manager#968)
 maintenance_active=0
-http_code=$(curl -A ls-maintenance-probe -s -o /dev/null -w "%{http_code}" "${BASE_URL}/login/") || http_code="000"
-if [ "$http_code" = "302" ]; then
-  redirect=$(curl -A ls-maintenance-probe -s -o /dev/null -w "%{redirect_url}" "${BASE_URL}/login/")
-  case "$redirect" in
-    */maintenance/*) maintenance_active=1 ;;
-  esac
-elif [ "$http_code" != "200" ]; then
+health_response=$(curl -A ls-maintenance-probe -s "${BASE_URL}/health/")
+if [ -z "$health_response" ] || ! echo "$health_response" | jq -e . >/dev/null 2>&1; then
   probe_success=0
+else
+  maintenance_active=$(echo "$health_response" | jq -r 'if .maintenance_mode then 1 else 0 end')
 fi
 
 # 2. Active-games detection (mirrors .circleci/config.yml auto_approve_hold_production).
