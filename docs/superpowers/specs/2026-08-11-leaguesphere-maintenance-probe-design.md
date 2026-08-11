@@ -151,13 +151,14 @@ threshold) as every existing rule:
    medium` → routes to `email-admin`. Catches the timer firing but the HTTP calls failing (prod
    unreachable, API shape changed, DNS issue).
 3. **`leaguesphere_maintenance_probe_stale`** — `time() -
-   leaguesphere_maintenance_probe_push_time_seconds{job="leaguesphere_maintenance_probe"} >
-   5400` (90 min, giving headroom over the hourly cadence + `RandomizedDelaySec`), `severity:
-   medium` → routes to `email-admin`. `push_time_seconds` is a metric Pushgateway automatically
-   maintains per job; this catches the timer stopping entirely (disabled unit, host down, script
-   crashing before it can push), which rule 2 alone would miss since a dead timer just leaves
-   the last-pushed values in place. This mirrors Monit's own two-tier approach (its container
-   check alerts on a bad exit status; its log checks separately alert on file staleness).
+   push_time_seconds{job="leaguesphere_maintenance_probe"} > 5400` (90 min, giving headroom over
+   the hourly cadence + `RandomizedDelaySec`), `severity: medium` → routes to `email-admin`.
+   `push_time_seconds` is a metric Pushgateway automatically maintains per job (generic metric
+   name, distinguished by the `job` label — not prefixed per-job); this catches the timer
+   stopping entirely (disabled unit, host down, script crashing before it can push), which rule
+   2 alone would miss since a dead timer just leaves the last-pushed values in place. This
+   mirrors Monit's own two-tier approach (its container check alerts on a bad exit status; its
+   log checks separately alert on file staleness).
 
 ## Deployment
 
