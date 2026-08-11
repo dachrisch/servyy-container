@@ -40,7 +40,7 @@ brainstormed and planned separately when picked up.
 ```
 systemd user timer (hourly, lehel.xyz)
    -> ls-maintenance-probe.sh
-        -> GET https://leaguesphere.app/login/            (maintenance-mode check)
+        -> GET https://leaguesphere.app/health/            (maintenance-mode check)
         -> GET https://www.leaguesphere.app/api/game-progress/?page_size=100  (games check)
         -> POST http://localhost:9091/metrics/job/leaguesphere_maintenance_probe  (Pushgateway)
    -> Prometheus scrapes Pushgateway (already configured, job "pushgateway")
@@ -48,12 +48,26 @@ systemd user timer (hourly, lehel.xyz)
    -> email via existing "email-critical" / "email-admin" contact points
 ```
 
-No application code changes. Both HTTP calls reuse detection mechanisms that already exist and
-are already proven in production:
+**Revision note (caught during Task 7's validation on stage):** the design originally proposed
+detecting maintenance mode via `GET /login/`, on the assumption — copied from
+`container/healthcheck.sh`'s comment — that maintenance mode blocks broad site access, so any
+gated path would 302 to `/maintenance/`. That assumption is wrong in practice: inspecting
+stage's live `SiteConfiguration.maintenance_pages` (which mirrors prod's, since `ls_db_sync`
+clones the full prod DB into stage) showed it's scoped to specific *write* endpoints
+(`/gamedays/gameday/new/`, passcheck transfers, officials sign-up, gameday design/update, …) —
+`/login/` is never in that list, so `healthcheck.sh`'s redirect-handling branch is effectively
+dead code today. Since maintenance is meant to block writes while leaving the site browsable,
+checking a redirect on some gated write path was also the wrong shape of signal generally (it
+depends on an admin-editable list never dropping the one path this probe happens to poll).
+Instead, `/health/` now reports `maintenance_mode` directly as a JSON boolean — see
+`league_manager/urls.py`'s `HealthCheckView` in the `leaguesphere` repo, added in
+[chris0chris/league-manager#968](https://github.com/chris0chris/league-manager/pull/968). This
+probe now depends on that PR merging and deploying to whichever environment it targets before
+maintenance-mode detection actually works; the games-detection half is unaffected.
 
-- **Maintenance-mode detection** — identical to `container/healthcheck.sh`: a plain `GET
-  /login/` 302-redirects to `/maintenance/` when `MaintenanceModeMiddleware` is active. No auth
-  needed.
+- **Maintenance-mode detection** — `GET /health/`, parse the `maintenance_mode` boolean from the
+  JSON response. Sourced from the same cache-then-DB-fallback `MaintenanceModeMiddleware` already
+  uses, so it can never disagree with the middleware's own behavior. No auth needed.
 - **Games-happening detection** — identical to `.circleci/config.yml`'s
   `auto_approve_hold_production` job: `GET /api/game-progress/?page_size=100` (documented as an
   "unrestricted public API"), filtered to today's date (`Europe/Berlin`) with
@@ -68,7 +82,7 @@ Job name: `leaguesphere_maintenance_probe`. All gauges, overwritten on every pus
 
 | Metric | Meaning |
 |---|---|
-| `leaguesphere_maintenance_mode_active` | 0/1 — result of the redirect check |
+| `leaguesphere_maintenance_mode_active` | 0/1 — the `maintenance_mode` field from `GET /health/` |
 | `leaguesphere_active_games` | integer — count of today's non-finished, non-scheduled games |
 | `leaguesphere_maintenance_blocking_games` | 0/1 — precomputed `maintenance_active AND active_games>0`. Computed in the script (not in the Grafana rule) so the alert stays a plain single-query threshold, matching every existing rule's shape in `alert-rules.yml` |
 | `leaguesphere_probe_success` | 0/1 — whether both HTTP calls completed (distinguishes "prod is fine" from "the probe itself is broken") |
@@ -88,16 +102,13 @@ JOB_NAME="leaguesphere_maintenance_probe"
 
 probe_success=1
 
-# 1. Maintenance-mode detection (mirrors container/healthcheck.sh)
+# 1. Maintenance-mode detection via the health endpoint (league-manager#968)
 maintenance_active=0
-http_code=$(curl -A ls-maintenance-probe -s -o /dev/null -w "%{http_code}" "${BASE_URL}/login/") || http_code="000"
-if [ "$http_code" = "302" ]; then
-  redirect=$(curl -A ls-maintenance-probe -s -o /dev/null -w "%{redirect_url}" "${BASE_URL}/login/")
-  case "$redirect" in
-    */maintenance/*) maintenance_active=1 ;;
-  esac
-elif [ "$http_code" != "200" ]; then
+health_response=$(curl -A ls-maintenance-probe -s "${BASE_URL}/health/")
+if [ -z "$health_response" ] || ! echo "$health_response" | jq -e . >/dev/null 2>&1; then
   probe_success=0
+else
+  maintenance_active=$(echo "$health_response" | jq -r 'if .maintenance_mode then 1 else 0 end')
 fi
 
 # 2. Active-games detection (mirrors .circleci/config.yml auto_approve_hold_production).
@@ -208,7 +219,9 @@ splits into two independent, both-safe halves instead of one end-to-end run on t
    toggle stage's own `SiteConfiguration.maintenance_mode` via the documented admin toggle
    (`/admin/league_manager/siteconfiguration/toggle-maintenance/`), and confirm the script
    produces the right gauge values in both states. Stage is safe to flip — it's not seen by real
-   users.
+   users. **Blocked on league-manager#968 deploying to stage** — until `/health/` reports
+   `maintenance_mode`, this half of validation can't run for real; the games-detection half is
+   independent and already validated.
 2. **Alert pipeline** (Pushgateway → Prometheus → Grafana rule → email) — validated by pushing a
    **synthetic** test payload directly to production's Pushgateway under a distinct job name
    (e.g. `leaguesphere_maintenance_probe_test`), confirming the rule fires and the email lands,
@@ -223,7 +236,9 @@ approval before that final production run — per this repo's standing test-firs
 ## Non-goals
 
 - No remediation (the probe never toggles maintenance mode itself).
-- No change to `MaintenanceModeMiddleware`, `SiteConfiguration`, or any app code.
+- No change to `MaintenanceModeMiddleware`'s redirect behavior or `SiteConfiguration`'s schema —
+  the one app-side change (league-manager#968) only adds a read-only field to an existing,
+  already-public health endpoint; it doesn't alter what maintenance mode actually does.
 - The 4 follow-on Monit-replacement sub-projects (system resources, log-freshness, storagebox,
   container health) are out of scope here — each gets its own spec later, reusing the probe →
   Pushgateway → Grafana pattern this design introduces.
