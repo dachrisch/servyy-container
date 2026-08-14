@@ -1,0 +1,43 @@
+---
+# Defaults for the system_probe role.
+#
+# Migrates Monit's system checks (monit.system.check.j2, monit.storagebox.check.j2,
+# monit.container.check.j2, check_docker_compose.sh.j2) to the probe -> Pushgateway ->
+# Grafana alert pattern established by ls_maintenance_probe.
+
+# Where probe scripts are deployed (mirrors ls_maintenance_probe / docker_cleanup layout).
+system_probe_scripts_dir: "{{ remote_user_home }}/.system-probes"
+system_probe_pushgateway_url: "http://localhost:9091"
+
+# --- Log-freshness probe -----------------------------------------------------
+# Each entry: name (metric label), path (log file), threshold_seconds.
+# Thresholds mirrored from monit.system.check.j2.
+system_probe_log_checks:
+  - name: docker-cleanup
+    path: /var/log/docker-cleanup.log
+    threshold_seconds: 691200        # 8 days
+  - name: kernel-cleanup
+    path: /var/log/kernel-cleanup.log
+    threshold_seconds: 2764800       # 32 days
+  - name: restic-backup-home
+    path: "{{ restic.logs.backup_home | default('/var/log/restic/backup-home.log') }}"
+    threshold_seconds: 7200          # 2 hours
+  - name: restic-backup-root
+    path: "{{ restic.logs.backup_root | default('/var/log/restic/backup-root.log') }}"
+    threshold_seconds: 90000         # 25 hours
+  - name: restic-forget
+    path: "{{ restic.logs.forget | default('/var/log/restic/forget.log') }}"
+    threshold_seconds: 90000         # 25 hours
+  - name: restic-check
+    path: "{{ restic.logs.check | default('/var/log/restic/check.log') }}"
+    threshold_seconds: 691200        # 8 days
+
+# --- Storagebox probe --------------------------------------------------------
+system_probe_storagebox_mount: "{{ storagebox.mount | default('') }}"
+system_probe_storagebox_threshold_pct: 50
+
+# --- Container-health probe --------------------------------------------------
+# List of docker-compose service dirs to check (mirrors monit.yml's container check,
+# which skips services tagged `manual`). Container names are resolved at deploy time
+# from each service's docker-compose.yml, mirroring check_docker_compose.sh.j2.
+system_probe_docker_local_dir: "{{ docker.local_dir }}"

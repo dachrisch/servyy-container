@@ -217,6 +217,237 @@ groups:
           severity: high
         isPaused: false
 
+  # System resource monitoring alert rules (migrated from Monit monit.system.check.j2)
+  - orgId: 1
+    name: system-resources-alerts
+    folder: Infrastructure
+    interval: 1m
+    rules:
+      # HIGH: 5-minute load average too high
+      - uid: high_load_average_5m
+        title: High System Load (5 min)
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: node_load5
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [6]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'System load average (5 min) is critically high'
+          description: 'Load average (5 min) is {{ if $values.B }}{{ printf "%.2f" $values.B.Value }}{{ else }}high{{ end }} - check for runaway processes or resource contention'
+        labels:
+          severity: high
+        isPaused: false
+
+      # HIGH: 15-minute load average too high
+      - uid: high_load_average_15m
+        title: High System Load (15 min)
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: node_load15
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [3]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'System load average (15 min) is elevated'
+          description: 'Load average (15 min) is {{ if $values.B }}{{ printf "%.2f" $values.B.Value }}{{ else }}elevated{{ end }} - sustained load above expected baseline'
+        labels:
+          severity: high
+        isPaused: false
+
+      # CRITICAL: Memory usage above 80% (matches Monit threshold)
+      - uid: high_memory_usage
+        title: High Memory Usage
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: '(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100'
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [80]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: 'System memory usage is critically high'
+          description: 'Memory usage is {{ if $values.B }}{{ printf "%.1f" $values.B.Value }}%{{ else }}above 80%{{ end }} - possible OOM risk, investigate running services'
+        labels:
+          severity: critical
+        isPaused: false
+
+      # MEDIUM: Swap usage above 50% (matches Monit threshold)
+      - uid: high_swap_usage
+        title: High Swap Usage
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: '(1 - node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes) * 100'
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [50]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: 'System swap usage is high'
+          description: 'Swap usage is {{ if $values.B }}{{ printf "%.1f" $values.B.Value }}%{{ else }}above 50%{{ end }} - indicates memory pressure'
+        labels:
+          severity: medium
+        isPaused: false
+
+      # MEDIUM: Root filesystem usage above 90% (matches Monit threshold)
+      - uid: high_root_disk_usage
+        title: High Root Disk Usage
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: '(1 - node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|fuse.lxcfs"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|fuse.lxcfs"}) * 100'
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [90]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: 'Root filesystem usage is critically high'
+          description: 'Root filesystem usage is {{ if $values.B }}{{ printf "%.1f" $values.B.Value }}%{{ else }}above 90%{{ end }} - cleanup needed to avoid disk full'
+        labels:
+          severity: medium
+        isPaused: false
+
   # Infrastructure monitoring alert rules
   - orgId: 1
     name: infrastructure-alerts
@@ -480,6 +711,482 @@ groups:
         annotations:
           summary: 'LeagueSphere maintenance probe has not pushed metrics recently'
           description: 'No successful push from ls-maintenance-probe.timer in over 90 minutes - the hourly timer on lehel.xyz may have stopped running.'
+        labels:
+          severity: medium
+        isPaused: false
+
+  # Backup/maintenance log-freshness monitoring (migrated from Monit monit.system.check.j2)
+  - orgId: 1
+    name: log-freshness-alerts
+    folder: Infrastructure
+    interval: 1m
+    rules:
+      # MEDIUM: a maintenance/backup log is stale. The staleness thresholds per log
+      # (8d docker-cleanup, 32d kernel-cleanup, 2h restic home, 25h restic root/forget,
+      # 8d restic check) are evaluated here, matching Monit's per-file timestamps.
+      - uid: stale_maintenance_log
+        title: Stale Maintenance/Backup Log
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: >-
+                system_log_freshness_seconds{log="docker-cleanup"} > 691200 or
+                system_log_freshness_seconds{log="kernel-cleanup"} > 2764800 or
+                system_log_freshness_seconds{log="restic-backup-home"} > 7200 or
+                system_log_freshness_seconds{log="restic-backup-root"} > 90000 or
+                system_log_freshness_seconds{log="restic-forget"} > 90000 or
+                system_log_freshness_seconds{log="restic-check"} > 691200
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: 'A maintenance or backup log is stale'
+          description: '{{ if $labels.log }}The {{ $labels.log }} log has not been written recently{{ else }}A maintenance/backup log has not been written within its threshold - backup or cleanup job may have stopped{{ end }}. Check system-log-freshness.sh on the host.'
+        labels:
+          severity: medium
+        isPaused: false
+
+      # MEDIUM: the log-freshness probe itself failed
+      - uid: log_freshness_probe_failure
+        title: Log-Freshness Probe Failing
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: system_log_freshness_probe_success
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: lt
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: 'Log-freshness probe is failing'
+          description: 'The log-freshness probe could not read all monitored log files for 10+ minutes.'
+        labels:
+          severity: medium
+        isPaused: false
+
+      # MEDIUM: the log-freshness probe has stopped running entirely
+      - uid: log_freshness_probe_stale
+        title: Log-Freshness Probe Stale
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: time() - push_time_seconds{job="system_log_freshness"}
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [5400]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: 'Log-freshness probe has not pushed metrics recently'
+          description: 'No successful push from system-log-freshness.timer in over 90 minutes - the timer may have stopped running.'
+        labels:
+          severity: medium
+        isPaused: false
+
+  # Storagebox monitoring (migrated from Monit monit.storagebox.check.j2)
+  - orgId: 1
+    name: storagebox-alerts
+    folder: Infrastructure
+    interval: 1m
+    rules:
+      # CRITICAL: the storagebox mount is not present
+      - uid: storagebox_unmounted
+        title: Storagebox Not Mounted
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: system_storagebox_mounted
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: lt
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'Storagebox is not mounted'
+          description: 'The storagebox at {{ system_probe_storagebox_mount }} is not mounted - restic backups and restore targets will fail. Investigate immediately.'
+        labels:
+          severity: critical
+        isPaused: false
+
+      # MEDIUM: storagebox space usage above 50% (matches Monit threshold)
+      - uid: storagebox_high_usage
+        title: Storagebox Space High
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: system_storagebox_usage_pct
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [50]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'Storagebox space usage is high'
+          description: 'Storagebox usage is {{ if $values.B }}{{ printf "%.1f" $values.B.Value }}%{{ else }}above 50%{{ end }} - check retention/pruning or add storage.'
+        labels:
+          severity: medium
+        isPaused: false
+
+      # MEDIUM: the storagebox probe failed to run
+      - uid: storagebox_probe_failure
+        title: Storagebox Probe Failing
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: system_storagebox_probe_success
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: lt
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: 'Storagebox probe is failing'
+          description: 'The storagebox probe could not determine mount/usage state for 10+ minutes.'
+        labels:
+          severity: medium
+        isPaused: false
+
+      # MEDIUM: the storagebox probe has stopped running entirely
+      - uid: storagebox_probe_stale
+        title: Storagebox Probe Stale
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: time() - push_time_seconds{job="system_storagebox"}
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [5400]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: 'Storagebox probe has not pushed metrics recently'
+          description: 'No successful push from system-storagebox.timer in over 90 minutes - the timer may have stopped running.'
+        labels:
+          severity: medium
+        isPaused: false
+
+  # Per-service container health monitoring (migrated from Monit monit.container.check.j2)
+  - orgId: 1
+    name: container-health-alerts
+    folder: Infrastructure
+    interval: 1m
+    rules:
+      # MEDIUM: a docker-compose container is not running
+      - uid: container_not_running
+        title: Container Not Running
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: system_container_running == 0
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: 'Docker container is not running'
+          description: 'Container {{ $labels.name }} (service {{ $labels.service }}) is not running - the service may have crashed or exited.'
+        labels:
+          severity: medium
+        isPaused: false
+
+      # MEDIUM: all containers down at once (broader signal than individual)
+      - uid: containers_all_down
+        title: All Containers Down
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: system_container_all_running
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: lt
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'All monitored containers are down'
+          description: 'No monitored container is running - Docker daemon may be down or the host is under stress.'
+        labels:
+          severity: critical
+        isPaused: false
+
+      # MEDIUM: the container-health probe has stopped running entirely
+      - uid: container_health_probe_stale
+        title: Container-Health Probe Stale
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: time() - push_time_seconds{job="system_container_health"}
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [5400]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: 'Container-health probe has not pushed metrics recently'
+          description: 'No successful push from system-container-health.timer in over 90 minutes - the timer may have stopped running.'
         labels:
           severity: medium
         isPaused: false
