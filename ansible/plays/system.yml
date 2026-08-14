@@ -10,5 +10,7 @@
     - vars/secrets.yml
   roles:
     - system
+    - role: system_probe
+      tags: ['system.probe']
     - role: sebthebert.ubuntu_pro
       tags: ['ubuntu_pro']
