@@ -1,8 +1,5 @@
 [Unit]
 Description={{ service.description }}
-{% if service.depends is defined %}
-Requires={{ service.depends }}.service
-{% endif %}
 
 [Service]
 Type=oneshot

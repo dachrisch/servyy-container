@@ -17,6 +17,11 @@ This design migrates the remaining 4 Monit sub-projects using the same pattern. 
 All three probes live in a single role `system_probe` (three systemd user timers), reusing the
 same `oneshot.service.j2` / `oneshot.timer.j2` templates as `ls_maintenance_probe`.
 
+> **Debounce parity note:** Monit's default cycle is ~2 minutes (OS package default; never
+> declared in-repo). Grafana's `for:` windows in this migration assume that value: "1 cycle"
+> ≈ `for: 2m`, "2 cycles" ≈ `for: 5m`, "4 cycles" ≈ `for: 10m`. If the Monit cycle is ever
+> changed, these debounce values should be revisited.
+
 ## 1. System Resources — node-exporter Grafana alerts
 
 Already scraped via `monitor/docker-compose.yml` node-exporter service. Monit thresholds (`monit.system.check.j2`):
@@ -47,17 +52,24 @@ Monit: if cpu usage (user) > 80% for 2 cycles then alert
        if cpu usage (wait) > 80% for 2 cycles then alert
        if cpu usage > 200% for 4 cycles then alert
 ```
-→ `rate(node_cpu_seconds_total{mode="..."}[5m])` → Grafana alerts.
+→ `sum by (instance) (rate(node_cpu_seconds_total{mode="user|system|iowait"}[5m])) * 100` →
+Grafana alerts. Rules: `high_cpu_user` (>80%, 5m), `high_cpu_system` (>20%, 5m),
+`high_cpu_iowait` (>80%, 5m), `high_cpu_total` (user+system+iowait >200%, 10m). Total mirrors
+Monit's "including user, system and wait" semantics.
 
 ### Disk
 ```
 Monit: root if space usage > 90% then alert / > 95% for 2 cycles then alert
        extension volume if has_10g_volume: > 80% / > 85% for 2 cycles
 ```
-→ Existing `high_disk_usage` alert already covers `(node_filesystem_avail_bytes / node_filesystem_size_bytes) * 100 < 15` (equivalent to > 85% usage).
-For stricter root >90% threshold, add new alert. Extension volume is conditional — handled by Monit only
-but Grafana can alert on all mounted filesystems matching a device pattern. The existing rule is sufficient
-for the migration scope.
+→ `high_root_disk_usage` (`>90%`, `for: 2m` ≈ 1 cycle) plus escalation tier
+`critical_root_disk_usage` (`>95%`, `for: 5m` ≈ 2 cycles, critical).
+For the extension volume: the existing `high_disk_usage` alert (infrastructure-alerts) already
+covers every mounted filesystem at <15% free (≈ >85% used). Monit's stricter `has_10g_volume`
+>80% tier is preserved as a **dormant** rule `extension_disk_high_usage` (`isPaused: true`,
+`mountpoint!="/"`, >80%) — a host with a secondary physical volume should unpause it. Dormant
+because `alert-rules.yml` is provisioned statically (not templated per-host) and lehel.xyz has
+`has_10g_volume: false`.
 
 ## 2. Log-Freshness — `system_log_freshness` probe (part of `system_probe` role)
 
@@ -162,8 +174,9 @@ Monit script). The script runs `docker container inspect --format '{{.State.Runn
 
 | Rule | Condition | for | severity |
 |---|---|---|---|
-| `container_not_running` | container_running == 0 | 2m | medium |
+| `container_not_running` | container_running < 0.5 (unfiltered gauge) | 2m | medium |
 | `containers_all_down` | container_all_running == 0 | 5m | critical |
+| `container_health_probe_failure` | container_health_probe_success == 0 (e.g. Docker daemon unreachable) | 10m | medium |
 | `container_health_probe_stale` | time() - push_time_seconds > 5400 | 1m | medium |
 
 Schedule: every 5 minutes.

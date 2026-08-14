@@ -403,6 +403,187 @@ groups:
           severity: medium
         isPaused: false
 
+      # HIGH: user CPU usage above 80% (matches Monit monit.system.check.j2)
+      - uid: high_cpu_user
+        title: High CPU Usage (user)
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'sum by (instance) (rate(node_cpu_seconds_total{mode="user"}[5m])) * 100'
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [80]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'High user CPU usage'
+          description: 'User CPU usage is {{ if $values.B }}{{ printf "%.2f" $values.B.Value }}%{{ else }}above 80%{{ end }} - compute-heavy workload or runaway process'
+        labels:
+          severity: high
+        isPaused: false
+
+      # HIGH: system CPU usage above 20% (matches Monit monit.system.check.j2)
+      - uid: high_cpu_system
+        title: High CPU Usage (system)
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'sum by (instance) (rate(node_cpu_seconds_total{mode="system"}[5m])) * 100'
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [20]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'High system CPU usage'
+          description: 'System (kernel) CPU usage is {{ if $values.B }}{{ printf "%.2f" $values.B.Value }}%{{ else }}above 20%{{ end }} - possible kernel-level issue'
+        labels:
+          severity: high
+        isPaused: false
+
+      # HIGH: I/O wait CPU above 80% (matches Monit monit.system.check.j2)
+      - uid: high_cpu_iowait
+        title: High CPU I/O Wait
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'sum by (instance) (rate(node_cpu_seconds_total{mode="iowait"}[5m])) * 100'
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [80]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'High CPU I/O wait'
+          description: 'CPU I/O wait is {{ if $values.B }}{{ printf "%.2f" $values.B.Value }}%{{ else }}above 80%{{ end }} - storage subsystem may be saturated'
+        labels:
+          severity: high
+        isPaused: false
+
+      # HIGH: total CPU usage (user + system + iowait) above 200% (matches Monit
+      # monit.system.check.j2; multi-core hosts can exceed 100%)
+      - uid: high_cpu_total
+        title: High Total CPU Usage
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'sum by (instance) (rate(node_cpu_seconds_total{mode=~"user|system|iowait"}[5m])) * 100'
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [200]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: 'High total CPU usage'
+          description: 'Total CPU usage (user+system+iowait) is {{ if $values.B }}{{ printf "%.2f" $values.B.Value }}%{{ else }}above 200%{{ end }} - system is heavily loaded'
+        labels:
+          severity: high
+        isPaused: false
+
       # MEDIUM: Root filesystem usage above 90% (matches Monit threshold)
       - uid: high_root_disk_usage
         title: High Root Disk Usage
@@ -440,13 +621,107 @@ groups:
                     type: gt
         noDataState: OK
         execErrState: Error
-        for: 10m
+        for: 2m
         annotations:
           summary: 'Root filesystem usage is critically high'
           description: 'Root filesystem usage is {{ if $values.B }}{{ printf "%.1f" $values.B.Value }}%{{ else }}above 90%{{ end }} - cleanup needed to avoid disk full'
         labels:
           severity: medium
         isPaused: false
+
+      # CRITICAL: Root filesystem usage above 95% (escalation tier, matches Monit
+      # "> 95% for 2 cycles"; fires before the disk fills completely)
+      - uid: critical_root_disk_usage
+        title: Root Disk Almost Full
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: '(1 - node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|fuse.lxcfs"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|fuse.lxcfs"}) * 100'
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [95]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'Root filesystem is almost full'
+          description: 'Root filesystem usage is {{ if $values.B }}{{ printf "%.1f" $values.B.Value }}%{{ else }}above 95%{{ end }} - immediate cleanup required to avoid disk full'
+        labels:
+          severity: critical
+        isPaused: false
+
+      # HIGH: extension volume usage above 80% (replaces Monit's has_10g_volume
+      # check filesystem 10g_volume > 80% then alert). DORMANT: paused by default
+      # because lehel.xyz has has_10g_volume=false. A host with a secondary
+      # physical volume should unpause this rule (and tune the mount filter).
+      - uid: extension_disk_high_usage
+        title: High Extension Drive Usage
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: '(1 - node_filesystem_avail_bytes{mountpoint!="/",fstype!~"tmpfs|fuse.lxcfs"} / node_filesystem_size_bytes{mountpoint!="/",fstype!~"tmpfs|fuse.lxcfs"}) * 100'
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [80]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'Extension drive usage is high'
+          description: 'A non-root filesystem (e.g. extension volume) is {{ if $values.B }}{{ printf "%.1f" $values.B.Value }}%{{ else }}above 80%{{ end }} - check disk usage and retention'
+        labels:
+          severity: high
+        isPaused: true
 
   # Infrastructure monitoring alert rules
   - orgId: 1
@@ -1068,7 +1343,7 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
-              expr: system_container_running == 0
+              expr: system_container_running
               intervalMs: 1000
               maxDataPoints: 43200
               refId: A
@@ -1090,7 +1365,7 @@ groups:
               conditions:
                 - evaluator:
                     params: [0.5]
-                    type: gt
+                    type: lt
         noDataState: OK
         execErrState: Error
         for: 2m
@@ -1144,6 +1419,52 @@ groups:
           description: 'No monitored container is running - Docker daemon may be down or the host is under stress.'
         labels:
           severity: critical
+        isPaused: false
+
+      # MEDIUM: the container-health probe itself is broken (e.g. Docker daemon
+      # unreachable) - distinct from individual containers being down
+      - uid: container_health_probe_failure
+        title: Container-Health Probe Failing
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: system_container_health_probe_success
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: lt
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: 'Container-health probe is failing'
+          description: 'The container-health probe could not reach the Docker daemon for 10+ minutes - container-down alerts may be unreliable.'
+        labels:
+          severity: medium
         isPaused: false
 
       # MEDIUM: the container-health probe has stopped running entirely

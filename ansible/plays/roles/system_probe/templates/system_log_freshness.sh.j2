@@ -3,7 +3,7 @@
 # Replaces the `check file ... if timestamp > N then alert` blocks from
 # monit.system.check.j2. Pushes to Pushgateway; Grafana alert rules evaluate the
 # age_seconds gauge against per-log thresholds.
-set -uo pipefail
+set -euo pipefail
 
 PUSHGATEWAY_URL="{{ system_probe_pushgateway_url }}"
 JOB_NAME="system_log_freshness"
@@ -13,9 +13,16 @@ probe_success=1
 
 collect() {
   local name="$1" path="$2"
-  local age
+  local age mtime
   if [ -f "$path" ]; then
-    age=$(( now - $(stat -c %Y "$path") ))
+    if mtime=$(stat -c %Y "$path" 2>/dev/null); then
+      age=$(( now - mtime ))
+    else
+      # stat failed (log-rotation race, permission issue, symlink edge case):
+      # report -1 so Grafana does not misjudge the file as fresh
+      age=-1
+      probe_success=0
+    fi
   else
     age=-1
     probe_success=0
