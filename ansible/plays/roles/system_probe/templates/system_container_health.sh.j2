@@ -3,7 +3,9 @@
 # Replaces monit.container.check.j2 + check_docker_compose.sh.j2. Container names
 # are resolved from each service's docker-compose.yml at deploy time.
 # Pushes to Pushgateway; Grafana alert rules evaluate container_running == 0.
-set -uo pipefail
+# If the Docker daemon itself is unreachable, probe_success is pushed as 0 so
+# Grafana can distinguish "probe broken" from "containers down".
+set -euo pipefail
 
 PUSHGATEWAY_URL="{{ system_probe_pushgateway_url }}"
 JOB_NAME="system_container_health"
@@ -11,10 +13,20 @@ JOB_NAME="system_container_health"
 probe_success=1
 all_running=1
 
+if ! docker info >/dev/null 2>&1; then
+  probe_success=0
+  {
+    echo "# TYPE system_container_health_probe_success gauge"
+    echo "system_container_health_probe_success ${probe_success}"
+  } | curl -sf --max-time 15 --connect-timeout 5 --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}"
+  echo "container-health probe_success=0 (docker unreachable)"
+  exit 0
+fi
+
 check_container() {
   local container_name="$1" service_dir="$2"
   local running
-  running=$(docker container inspect "$container_name" --format={% raw %}'{{.State.Running}}'{% endraw %} 2>/dev/null || echo "false")
+  running=$(docker container inspect "$container_name" --format={% raw %}'{{.State.Running}}'{% endraw %} 2>/dev/null) || running="false"
   if [ "$running" = "true" ]; then
     printf 'system_container_running{name="%s",service="%s"} 1\n' "$container_name" "$service_dir"
   else

@@ -80,3 +80,59 @@
   tags:
     - system.probe
     - system.probe.container
+
+# Clean up probes whose precondition has flipped false since a previous run
+# (mirrors the old monit.yml `state: absent` tasks for manual/missing services).
+- name: Clean up container-health probe when with_containers is false
+  when: not (with_containers | default(false) | bool)
+  block:
+    - name: Stop container-health timer
+      systemd:
+        scope: user
+        name: system-container-health.timer
+        state: stopped
+        enabled: no
+      become_user: "{{ create_user }}"
+      ignore_errors: true
+      tags:
+        - system.probe
+        - system.probe.container
+    - name: Remove container-health units and script
+      file:
+        path: "{{ item }}"
+        state: absent
+      become_user: "{{ create_user }}"
+      loop:
+        - "{{ (remote_user_systemd, 'system-container-health.service') | path_join }}"
+        - "{{ (remote_user_systemd, 'system-container-health.timer') | path_join }}"
+        - "{{ (system_probe_scripts_dir, 'system-container-health.sh') | path_join }}"
+      tags:
+        - system.probe
+        - system.probe.container
+
+- name: Clean up storagebox probe when no mount is configured
+  when: system_probe_storagebox_mount | length == 0
+  block:
+    - name: Stop storagebox timer
+      systemd:
+        scope: user
+        name: system-storagebox.timer
+        state: stopped
+        enabled: no
+      become_user: "{{ create_user }}"
+      ignore_errors: true
+      tags:
+        - system.probe
+        - system.probe.storagebox
+    - name: Remove storagebox units and script
+      file:
+        path: "{{ item }}"
+        state: absent
+      become_user: "{{ create_user }}"
+      loop:
+        - "{{ (remote_user_systemd, 'system-storagebox.service') | path_join }}"
+        - "{{ (remote_user_systemd, 'system-storagebox.timer') | path_join }}"
+        - "{{ (system_probe_scripts_dir, 'system-storagebox.sh') | path_join }}"
+      tags:
+        - system.probe
+        - system.probe.storagebox

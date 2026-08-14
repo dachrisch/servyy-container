@@ -2,7 +2,7 @@
 # Storagebox probe: reports mount presence and disk usage.
 # Replaces monit.storagebox.check.j2 (mountpoint check + > 50% space alert).
 # Pushes to Pushgateway; Grafana alert rules evaluate the gauges.
-set -uo pipefail
+set -euo pipefail
 
 PUSHGATEWAY_URL="{{ system_probe_pushgateway_url }}"
 JOB_NAME="system_storagebox"
@@ -15,7 +15,7 @@ usage_pct=-1
 
 if [ -n "$MOUNT" ] && /bin/mountpoint -q "$MOUNT"; then
   mounted=1
-  usage_pct=$(df --output=pcent "$MOUNT" | tail -n1 | tr -dc '0-9')
+  usage_pct=$(df --output=pcent "$MOUNT" 2>/dev/null | tail -n1 | tr -dc '0-9') || true
   if [ -z "$usage_pct" ]; then
     usage_pct=-1
     probe_success=0

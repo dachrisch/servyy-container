@@ -20,16 +20,16 @@ system_probe_log_checks:
     path: /var/log/kernel-cleanup.log
     threshold_seconds: 2764800       # 32 days
   - name: restic-backup-home
-    path: "{{ restic.logs.backup_home | default('/var/log/restic/backup-home.log') }}"
+    path: "{{ restic.logs.backup_home }}"
     threshold_seconds: 7200          # 2 hours
   - name: restic-backup-root
-    path: "{{ restic.logs.backup_root | default('/var/log/restic/backup-root.log') }}"
+    path: "{{ restic.logs.backup_root }}"
     threshold_seconds: 90000         # 25 hours
   - name: restic-forget
-    path: "{{ restic.logs.forget | default('/var/log/restic/forget.log') }}"
+    path: "{{ restic.logs.forget }}"
     threshold_seconds: 90000         # 25 hours
   - name: restic-check
-    path: "{{ restic.logs.check | default('/var/log/restic/check.log') }}"
+    path: "{{ restic.logs.check }}"
     threshold_seconds: 691200        # 8 days
 
 # --- Storagebox probe --------------------------------------------------------
