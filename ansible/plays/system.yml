@@ -12,5 +12,7 @@
     - system
     - role: system_probe
       tags: ['system.probe']
+    - role: monit_cleanup
+      tags: ['monit.cleanup', 'never']
     - role: sebthebert.ubuntu_pro
       tags: ['ubuntu_pro']
