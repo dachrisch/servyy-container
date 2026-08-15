@@ -1,0 +1,42 @@
+#!/bin/bash
+# Log-freshness probe: reports staleness (age) of maintenance/backup log files.
+# Replaces the `check file ... if timestamp > N then alert` blocks from
+# monit.system.check.j2. Pushes to Pushgateway; Grafana alert rules evaluate the
+# age_seconds gauge against per-log thresholds.
+set -euo pipefail
+
+PUSHGATEWAY_URL="{{ system_probe_pushgateway_url }}"
+JOB_NAME="system_log_freshness"
+
+now=$(date +%s)
+probe_success=1
+
+collect() {
+  local name="$1" path="$2"
+  local age mtime
+  if [ -f "$path" ]; then
+    if mtime=$(stat -c %Y "$path" 2>/dev/null); then
+      age=$(( now - mtime ))
+    else
+      # stat failed (log-rotation race, permission issue, symlink edge case):
+      # report -1 so Grafana does not misjudge the file as fresh
+      age=-1
+      probe_success=0
+    fi
+  else
+    age=-1
+    probe_success=0
+  fi
+  printf 'system_log_freshness_seconds{log="%s"} %s\n' "$name" "$age"
+}
+
+{
+  echo "# TYPE system_log_freshness_seconds gauge"
+{% for check in system_probe_log_checks %}
+  collect "{{ check.name }}" "{{ check.path }}"
+{% endfor %}
+  echo "# TYPE system_log_freshness_probe_success gauge"
+  echo "system_log_freshness_probe_success ${probe_success}"
+} | curl -sf --max-time 15 --connect-timeout 5 --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}"
+
+echo "log-freshness probe_success=${probe_success}"
