@@ -2,7 +2,9 @@
 # Storagebox probe: reports mount presence and disk usage.
 # Replaces monit.storagebox.check.j2 (mountpoint check + > 50% space alert).
 # Pushes to Pushgateway; Grafana alert rules evaluate the gauges.
-set -euo pipefail
+set -uo pipefail
+# Deliberately no `set -e`: each step below handles its own failure explicitly so a
+# problem in one check can't abort the script before it pushes anything.
 
 PUSHGATEWAY_URL="{{ system_probe_pushgateway_url }}"
 JOB_NAME="system_storagebox"

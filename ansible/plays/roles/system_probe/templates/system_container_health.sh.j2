@@ -5,7 +5,9 @@
 # Pushes to Pushgateway; Grafana alert rules evaluate container_running == 0.
 # If the Docker daemon itself is unreachable, probe_success is pushed as 0 so
 # Grafana can distinguish "probe broken" from "containers down".
-set -euo pipefail
+set -uo pipefail
+# Deliberately no `set -e`: each step below handles its own failure explicitly so a
+# problem in one check can't abort the script before it pushes anything.
 
 PUSHGATEWAY_URL="{{ system_probe_pushgateway_url }}"
 JOB_NAME="system_container_health"
