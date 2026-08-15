@@ -780,7 +780,7 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
-              expr: '(node_filesystem_avail_bytes{fstype!~"tmpfs|fuse.lxcfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|fuse.lxcfs"}) * 100 < 15'
+              expr: '(node_filesystem_avail_bytes{fstype!~"tmpfs|fuse.lxcfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|fuse.lxcfs"}) * 100 < 10'
               refId: A
           - refId: B
             datasourceUid: __expr__
@@ -797,11 +797,11 @@ groups:
               type: threshold
               conditions:
                 - evaluator:
-                    params: [15]
+                    params: [10]
                     type: lt
         noDataState: OK
         execErrState: Error
-        for: 5m
+        for: 15m
         annotations:
           summary: 'Disk space running low'
           description: '{{ if $values.B }}Only {{ printf "%.1f" $values.B.Value }}% disk space remaining{{ else }}Low disk space{{ end }} on {{ $labels.mountpoint }} - cleanup needed'
@@ -1185,7 +1185,7 @@ groups:
         for: 5m
         annotations:
           summary: 'Storagebox is not mounted'
-          description: 'The storagebox at {{ system_probe_storagebox_mount }} is not mounted - restic backups and restore targets will fail. Investigate immediately.'
+          description: 'The storagebox mount (/mnt/storagebox) is not mounted - restic backups and restore targets will fail. Investigate immediately.'
         labels:
           severity: critical
         isPaused: false
