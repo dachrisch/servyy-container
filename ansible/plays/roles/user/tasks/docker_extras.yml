@@ -32,7 +32,6 @@
       - dir: me
         manual: {}
       - dir: monitor
-        manual: {}
     services_root: "{{ docker.remote_dir }}"
   tags:
     - user.docker.services.script
