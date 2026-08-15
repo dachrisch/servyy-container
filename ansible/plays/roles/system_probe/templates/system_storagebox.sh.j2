@@ -1,0 +1,38 @@
+#!/bin/bash
+# Storagebox probe: reports mount presence and disk usage.
+# Replaces monit.storagebox.check.j2 (mountpoint check + > 50% space alert).
+# Pushes to Pushgateway; Grafana alert rules evaluate the gauges.
+set -euo pipefail
+
+PUSHGATEWAY_URL="{{ system_probe_pushgateway_url }}"
+JOB_NAME="system_storagebox"
+MOUNT="{{ system_probe_storagebox_mount }}"
+THRESHOLD_PCT="{{ system_probe_storagebox_threshold_pct }}"
+
+probe_success=1
+mounted=0
+usage_pct=-1
+
+if [ -n "$MOUNT" ] && /bin/mountpoint -q "$MOUNT"; then
+  mounted=1
+  usage_pct=$(df --output=pcent "$MOUNT" 2>/dev/null | tail -n1 | tr -dc '0-9') || true
+  if [ -z "$usage_pct" ]; then
+    usage_pct=-1
+    probe_success=0
+  fi
+else
+  probe_success=0
+fi
+
+cat <<EOF | curl -sf --max-time 15 --connect-timeout 5 --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}"
+# TYPE system_storagebox_mounted gauge
+system_storagebox_mounted ${mounted}
+# TYPE system_storagebox_usage_pct gauge
+system_storagebox_usage_pct ${usage_pct}
+# TYPE system_storagebox_threshold_pct gauge
+system_storagebox_threshold_pct ${THRESHOLD_PCT}
+# TYPE system_storagebox_probe_success gauge
+system_storagebox_probe_success ${probe_success}
+EOF
+
+echo "storagebox mounted=${mounted} usage_pct=${usage_pct} probe_success=${probe_success}"

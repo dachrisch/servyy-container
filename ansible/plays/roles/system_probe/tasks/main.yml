@@ -1,0 +1,138 @@
+---
+- name: Ensure probe scripts directory exists
+  file:
+    path: "{{ system_probe_scripts_dir }}"
+    state: directory
+    mode: '0755'
+  become_user: "{{ create_user }}"
+  tags:
+    - system.probe
+
+- name: Deploy log-freshness probe script
+  template:
+    src: system_log_freshness.sh.j2
+    dest: "{{ (system_probe_scripts_dir, 'system-log-freshness.sh') | path_join }}"
+    mode: '0750'
+  become_user: "{{ create_user }}"
+  tags:
+    - system.probe
+    - system.probe.log
+
+- name: Deploy log-freshness timer
+  import_tasks: oneshot_include.yml
+  become_user: "{{ create_user }}"
+  vars:
+    service:
+      name: system-log-freshness
+      description: 'Check staleness of maintenance/backup log files'
+      schedule: '*-*-* *:*/30:00'
+      command: "{{ (system_probe_scripts_dir, 'system-log-freshness.sh') | path_join }}"
+  tags:
+    - system.probe
+    - system.probe.log
+
+- name: Deploy storagebox probe script
+  template:
+    src: system_storagebox.sh.j2
+    dest: "{{ (system_probe_scripts_dir, 'system-storagebox.sh') | path_join }}"
+    mode: '0750'
+  become_user: "{{ create_user }}"
+  when: system_probe_storagebox_mount | length > 0
+  tags:
+    - system.probe
+    - system.probe.storagebox
+
+- name: Deploy storagebox timer
+  import_tasks: oneshot_include.yml
+  become_user: "{{ create_user }}"
+  vars:
+    service:
+      name: system-storagebox
+      description: 'Check storagebox mount presence and disk usage'
+      schedule: '*-*-* *:00:00'
+      command: "{{ (system_probe_scripts_dir, 'system-storagebox.sh') | path_join }}"
+  when: system_probe_storagebox_mount | length > 0
+  tags:
+    - system.probe
+    - system.probe.storagebox
+
+- name: Deploy container-health probe script
+  template:
+    src: system_container_health.sh.j2
+    dest: "{{ (system_probe_scripts_dir, 'system-container-health.sh') | path_join }}"
+    mode: '0750'
+  become_user: "{{ create_user }}"
+  when: with_containers | default(false)
+  tags:
+    - system.probe
+    - system.probe.container
+
+- name: Deploy container-health timer
+  import_tasks: oneshot_include.yml
+  become_user: "{{ create_user }}"
+  vars:
+    service:
+      name: system-container-health
+      description: 'Check running state of docker-compose containers'
+      schedule: '*-*-* *:*/5:00'
+      command: "{{ (system_probe_scripts_dir, 'system-container-health.sh') | path_join }}"
+  when: with_containers | default(false)
+  tags:
+    - system.probe
+    - system.probe.container
+
+# Clean up probes whose precondition has flipped false since a previous run
+# (mirrors the old monit.yml `state: absent` tasks for manual/missing services).
+- name: Clean up container-health probe when with_containers is false
+  when: not (with_containers | default(false) | bool)
+  block:
+    - name: Stop container-health timer
+      systemd:
+        scope: user
+        name: system-container-health.timer
+        state: stopped
+        enabled: no
+      become_user: "{{ create_user }}"
+      ignore_errors: true
+      tags:
+        - system.probe
+        - system.probe.container
+    - name: Remove container-health units and script
+      file:
+        path: "{{ item }}"
+        state: absent
+      become_user: "{{ create_user }}"
+      loop:
+        - "{{ (remote_user_systemd, 'system-container-health.service') | path_join }}"
+        - "{{ (remote_user_systemd, 'system-container-health.timer') | path_join }}"
+        - "{{ (system_probe_scripts_dir, 'system-container-health.sh') | path_join }}"
+      tags:
+        - system.probe
+        - system.probe.container
+
+- name: Clean up storagebox probe when no mount is configured
+  when: system_probe_storagebox_mount | length == 0
+  block:
+    - name: Stop storagebox timer
+      systemd:
+        scope: user
+        name: system-storagebox.timer
+        state: stopped
+        enabled: no
+      become_user: "{{ create_user }}"
+      ignore_errors: true
+      tags:
+        - system.probe
+        - system.probe.storagebox
+    - name: Remove storagebox units and script
+      file:
+        path: "{{ item }}"
+        state: absent
+      become_user: "{{ create_user }}"
+      loop:
+        - "{{ (remote_user_systemd, 'system-storagebox.service') | path_join }}"
+        - "{{ (remote_user_systemd, 'system-storagebox.timer') | path_join }}"
+        - "{{ (system_probe_scripts_dir, 'system-storagebox.sh') | path_join }}"
+      tags:
+        - system.probe
+        - system.probe.storagebox

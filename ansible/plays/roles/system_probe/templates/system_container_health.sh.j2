@@ -1,0 +1,55 @@
+#!/bin/bash
+# Container-health probe: reports per-service container running state.
+# Replaces monit.container.check.j2 + check_docker_compose.sh.j2. Container names
+# are resolved from each service's docker-compose.yml at deploy time.
+# Pushes to Pushgateway; Grafana alert rules evaluate container_running == 0.
+# If the Docker daemon itself is unreachable, probe_success is pushed as 0 so
+# Grafana can distinguish "probe broken" from "containers down".
+set -euo pipefail
+
+PUSHGATEWAY_URL="{{ system_probe_pushgateway_url }}"
+JOB_NAME="system_container_health"
+
+probe_success=1
+all_running=1
+
+if ! docker info >/dev/null 2>&1; then
+  probe_success=0
+  {
+    echo "# TYPE system_container_health_probe_success gauge"
+    echo "system_container_health_probe_success ${probe_success}"
+  } | curl -sf --max-time 15 --connect-timeout 5 --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}"
+  echo "container-health probe_success=0 (docker unreachable)"
+  exit 0
+fi
+
+check_container() {
+  local container_name="$1" service_dir="$2"
+  local running
+  running=$(docker container inspect "$container_name" --format={% raw %}'{{.State.Running}}'{% endraw %} 2>/dev/null) || running="false"
+  if [ "$running" = "true" ]; then
+    printf 'system_container_running{name="%s",service="%s"} 1\n' "$container_name" "$service_dir"
+  else
+    printf 'system_container_running{name="%s",service="%s"} 0\n' "$container_name" "$service_dir"
+    all_running=0
+  fi
+}
+
+{
+  echo "# TYPE system_container_running gauge"
+{% for item in docker.services if not ('manual' in item) %}
+{%   set project = item.dir %}
+{%   set services = (lookup('file', (system_probe_docker_local_dir, item.dir, 'docker-compose.yml') | path_join ) | from_yaml)['services'] %}
+{%   for svc in services | dict2items %}
+{%     set raw_name = svc.value.container_name | default(project + '.' + svc.key) %}
+{%     set container_name = raw_name | replace('${COMPOSE_PROJECT_NAME}', project) %}
+  check_container "{{ container_name }}" "{{ item.dir }}"
+{%   endfor %}
+{% endfor %}
+  echo "# TYPE system_container_health_probe_success gauge"
+  echo "system_container_health_probe_success ${probe_success}"
+  echo "# TYPE system_container_all_running gauge"
+  echo "system_container_all_running ${all_running}"
+} | curl -sf --max-time 15 --connect-timeout 5 --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}"
+
+echo "container-health all_running=${all_running} probe_success=${probe_success}"
