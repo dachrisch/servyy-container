@@ -232,7 +232,6 @@
     - role: docker_service
       vars:
         service_dir: monitor
-        manual: true
       tags: [user.docker, user.docker.monitor]
 
   post_tasks:
