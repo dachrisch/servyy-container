@@ -1,0 +1,31 @@
+---
+# One-time cleanup: removes the old Monit check files superseded by the system_probe
+# migration (PR #63, Monit -> Grafana). `system/tasks/monit.yml` only manages the files
+# it currently generates (sshd/log/status/alert) - it has no `state: absent` task for the
+# templates it stopped generating, so hosts deployed before the migration keep running the
+# old system/storagebox/container checks in parallel with the new Grafana alert rules
+# forever unless removed here.
+#
+# Manual/on-demand only (see the `never` tag on this role in system.yml) - once the stale
+# files are gone on a given host there is nothing left to clean up, so this shouldn't run on
+# every deploy.
+#
+# Usage:
+#   ./servyy.sh --tags monit.cleanup --limit lehel.xyz
+
+- name: Find stale container-check files
+  find:
+    paths: /etc/monit/conf.d
+    patterns: "container-check-*"
+  register: monit_cleanup_stale_container_checks
+  become: true
+
+- name: Remove stale Monit checks superseded by system_probe
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop: >-
+    {{ (monit_cleanup_stale_container_checks.files | map(attribute='path') | list)
+       + ['/etc/monit/conf.d/system-check', '/etc/monit/conf.d/storagebox-check'] }}
+  become: true
+  notify: restart monit
