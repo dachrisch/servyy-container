@@ -3,7 +3,9 @@
 # Replaces the `check file ... if timestamp > N then alert` blocks from
 # monit.system.check.j2. Pushes to Pushgateway; Grafana alert rules evaluate the
 # age_seconds gauge against per-log thresholds.
-set -euo pipefail
+set -uo pipefail
+# Deliberately no `set -e`: each step below handles its own failure explicitly so a
+# problem in one check can't abort the script before it pushes anything.
 
 PUSHGATEWAY_URL="{{ system_probe_pushgateway_url }}"
 JOB_NAME="system_log_freshness"
