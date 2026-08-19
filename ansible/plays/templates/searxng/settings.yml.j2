@@ -6,6 +6,7 @@ use_default_settings:
   engines:
     keep_only:
       - google
+      - "google cse"
       - duckduckgo
       - brave
       - startpage
@@ -26,6 +27,13 @@ search:
 
 engines:
   - name: google
+    tokens:
+      - "{{ vault_searxng_google_token }}"
+  # google cse uses Google's CSE element API (JSONP), which is not JS-gated or
+  # CAPTCHA-walled from datacenter IPs, unlike scraped google.com — reliable
+  # web fallback for dontforget. No API key needed (public CSE, engine-internal).
+  - name: google cse
+    disabled: false
     tokens:
       - "{{ vault_searxng_google_token }}"
   - name: duckduckgo
