@@ -43,7 +43,19 @@ test host (`servyy-test.lxd`) was not resolvable from the deployment environment
 ## Verification (production)
 
 - `docker ps` — `platzler-heid.web` running/healthy.
-- `curl -s https://platzler-heid.lehel.xyz/health` → `{"status":"ok"}`.
+- `curl -s https://platzler-heid.lehel.xyz/health` → `{"status":"ok"}`, HTTP 200.
+- `curl -s https://platzler-heid.lehel.xyz/` → HTTP 200 (dashboard UI).
+- Let's Encrypt cert auto-issued via the `letsencryptdnsresolver` (Porkbun DNS-01) on first
+  HTTPS request; Traefik access logs confirm routing via `platzler-heid@docker`.
+
+## Deployment notes (environment specifics)
+
+- This deploy was run from a machine where `$USER` is empty and the repo lives at
+  `/root/dev/servyy-container` (not the `docker.local_dir` default of
+  `/home/{local_user}/dev/infrastructure/container`). The repo-sync task's
+  `lookup('pipe', 'git -C <local_dir> rev-parse --abbrev-ref HEAD')` therefore failed until a
+  symlink was created at `/home/root/dev/infrastructure/container` → the real repo. Also ran
+  with `--limit lehel.xyz` because `aqui.fritz.box` is not resolvable from this machine.
 
 ## Notes
 
