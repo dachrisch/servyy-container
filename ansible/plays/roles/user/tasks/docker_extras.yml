@@ -27,6 +27,7 @@
       - dir: searxng
       - dir: job-search
       - dir: dontforget
+      - dir: platzler-heid
       - dir: dns
         manual: {}
       - dir: me

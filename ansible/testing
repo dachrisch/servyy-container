@@ -17,3 +17,6 @@ test:
       dontforget_traefik_entrypoint: web
       dontforget_traefik_tls: "false"
       dontforget_traefik_certresolver: ""
+      platzler_heid_traefik_entrypoint: web
+      platzler_heid_traefik_tls: "false"
+      platzler_heid_traefik_certresolver: ""
