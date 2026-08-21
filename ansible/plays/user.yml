@@ -216,6 +216,15 @@
             dest: web.env
       tags: [user.docker, user.docker.dontforget]
 
+    # Platzler-Heid — Festzelt availability dashboard
+    - role: docker_service
+      vars:
+        service_dir: platzler-heid
+        env_templates:
+          - src: platzler-heid/.env.j2
+            dest: .env
+      tags: [user.docker, user.docker.platzler-heid]
+
     # Manual services — env rendered, compose not started
     - role: docker_service
       vars:
