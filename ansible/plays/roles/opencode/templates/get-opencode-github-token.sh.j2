@@ -40,15 +40,17 @@ const payload = '$PAYLOAD';
 const privateKey = \`$PRIVATE_KEY\`;
 
 const message = header + '.' + payload;
-const signature = crypto
+const sig = crypto
   .createSign('RSA-SHA256')
   .update(message)
-  .sign(privateKey, 'base64')
+  .sign(privateKey);
+
+const signature = Buffer.from(sig).toString('base64')
   .replace(/\+/g, '-')
   .replace(/\//g, '_')
   .replace(/=/g, '');
 
-console.log(message + '.' + signature);
+process.stdout.write(message + '.' + signature);
 ")
 
 # Exchange JWT for installation token
