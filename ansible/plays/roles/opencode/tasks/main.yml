@@ -67,13 +67,21 @@
   vars:
     opencode_known_hosts: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/known_hosts') | path_join }}"
 
+- name: Ensure OpenCode bin directory exists
+  ansible.builtin.file:
+    path: "{{ opencode_bin_dir }}"
+    state: directory
+    mode: '0755'
+  vars:
+    opencode_bin_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/bin') | path_join }}"
+
 - name: Deploy GitHub App token generator script
   ansible.builtin.template:
     src: get-opencode-github-token.sh.j2
-    dest: /usr/local/bin/get-opencode-github-token
+    dest: "{{ opencode_bin_dir }}/get-opencode-github-token"
     mode: '0755'
-  become: true
-  become_user: root
+  vars:
+    opencode_bin_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/bin') | path_join }}"
   tags: [user.docker.opencode]
 
 - name: Report SSH key info
