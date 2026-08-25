@@ -2,7 +2,4 @@
 - name: push opencode ssh key to vaultwarden
   ansible.builtin.include_tasks: vaultwarden_push.yml
   listen: push opencode ssh key to vaultwarden
-  vars:
-    # Pass the prompt password from the outer scope if it exists
-    vw_master_password: "{{ vw_master_password | default('') }}"
   when: inventory_hostname == 'lehel.xyz'
