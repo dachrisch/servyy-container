@@ -53,6 +53,16 @@
         cmd: grep -q 'SEARXNG_TOKEN=test-searxng-token' /home/molecule/job-search/api.env
       changed_when: false
 
+    - name: Verify job-search api.env has OPENCODE_BASE_URL
+      ansible.builtin.command:
+        cmd: grep -q 'OPENCODE_BASE_URL=https://opencode.lehel.xyz' /home/molecule/job-search/api.env
+      changed_when: false
+
+    - name: Verify job-search api.env has OPENCODE_API_KEY
+      ansible.builtin.command:
+        cmd: grep -q 'OPENCODE_API_KEY=test-opencode-api-key' /home/molecule/job-search/api.env
+      changed_when: false
+
     - name: Verify job-search crawler.env has SEARXNG_URL
       ansible.builtin.command:
         cmd: grep -q 'SEARXNG_URL=https://search.lehel.xyz' /home/molecule/job-search/crawler.env
