@@ -6,6 +6,7 @@
 # https://linuxize.com/post/how-to-add-user-to-sudoers-in-ubuntu/
 
 # Prompt for Vaultwarden master password once at the start (used by multiple plays)
+# Note: No tags here - this play always runs to ensure password is available
 - name: Prompt for Vaultwarden credentials
   hosts: all
   gather_facts: false
@@ -20,6 +21,7 @@
       ansible.builtin.set_fact:
         vw_master_password: "{{ vw_master_password }}"
       run_once: false  # Set on all hosts, not just first one
+  tags: []  # Explicitly no tags - always runs
 
 - import_playbook: plays/system.yml
 - import_playbook: plays/user.yml
