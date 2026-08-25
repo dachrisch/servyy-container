@@ -34,14 +34,10 @@
 
 - name: Determine which items need creation vs update
   ansible.builtin.set_fact:
-    items_to_create: "{{ vaultwarden_items | selectattr('name', 'not', 'in', existing_items_map.keys() | list) | list }}"
-    items_to_update: "{{ vaultwarden_items | selectattr('name', 'in', existing_items_map.keys() | list) | selectattr('secret', 'ne', existing_items_map[item.name].secret) | list }}"
+    items_to_create: "{{ vaultwarden_items | rejectattr('name', 'in', existing_items_map.keys() | list) | list }}"
   delegate_to: localhost
   run_once: true
   become: false
-  vars:
-    # For update check, we need to iterate and check each one
-    item: "{{ lookup('dict', existing_items_map) }}"
 
 - name: Recompute items to update (secret value changed)
   ansible.builtin.set_fact:
