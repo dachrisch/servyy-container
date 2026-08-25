@@ -13,7 +13,6 @@
     opencode:
       server_password: test-opencode-pass
       circleci_token: test-circleci-token
-      github_pat: test-github-pat
       git_crypt_key_b64: dGVzdC1jcnlwdC1rZXk=
       servy_ssh_key_b64: dGVzdC1zc2gta2V5
       auth_google_b64: eyJnb29nbGUiOiB7InR5cGUiOiAib2F1dGgifX0=
