@@ -12,6 +12,7 @@
     job_search_searxng_url: https://search.lehel.xyz
     opencode:
       server_password: test-opencode-pass
+      api_key: test-opencode-api-key
       circleci_token: test-circleci-token
       git_crypt_key_b64: dGVzdC1jcnlwdC1rZXk=
       servy_ssh_key_b64: dGVzdC1zc2gta2V5
