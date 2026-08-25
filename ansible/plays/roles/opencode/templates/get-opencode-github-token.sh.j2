@@ -21,8 +21,9 @@ if [ -z "$INSTALLATION_ID" ]; then
   exit 1
 fi
 
-# Decode private key
-PRIVATE_KEY=$(echo "$PRIVATE_KEY_B64" | base64 -d)
+# Decode private key to temp file
+TMP_KEY=$(mktemp)
+echo "$PRIVATE_KEY_B64" | base64 -d > "$TMP_KEY"
 
 # Create JWT header
 HEADER=$(echo -n '{"alg":"RS256","typ":"JWT"}' | base64 -w0 | tr '+/' '-_' | tr -d '=')
@@ -35,9 +36,10 @@ PAYLOAD=$(echo -n "{\"iat\":$NOW,\"exp\":$EXP,\"iss\":$APP_ID}" | base64 -w0 | t
 # Sign JWT using Node.js (openssl not available in Alpine)
 JWT=$(node -e "
 const crypto = require('crypto');
+const fs = require('fs');
 const header = '$HEADER';
 const payload = '$PAYLOAD';
-const privateKey = \`$PRIVATE_KEY\`;
+const privateKey = fs.readFileSync('$TMP_KEY', 'utf8');
 
 const message = header + '.' + payload;
 const sig = crypto
@@ -51,7 +53,9 @@ const signature = Buffer.from(sig).toString('base64')
   .replace(/=/g, '');
 
 process.stdout.write(message + '.' + signature);
-")
+") || { rm -f "$TMP_KEY"; echo "Error: JWT generation failed" >&2; exit 1; }
+
+rm -f "$TMP_KEY"
 
 # Exchange JWT for installation token
 RESPONSE=$(curl -s -X POST \
