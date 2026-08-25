@@ -67,6 +67,24 @@
   vars:
     opencode_known_hosts: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/known_hosts') | path_join }}"
 
+- name: Ensure lehel.xyz is in known_hosts
+  ansible.builtin.lineinfile:
+    path: "{{ opencode_known_hosts }}"
+    line: "lehel.xyz ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH5PEeIaPA1cj0lG1oBCj/JKO111UVewWkQVh09/QzCi"
+    create: true
+    mode: '0600'
+  vars:
+    opencode_known_hosts: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/known_hosts') | path_join }}"
+
+- name: Write lehel server SSH private key to container mount point
+  ansible.builtin.copy:
+    content: "{{ opencode.servy_ssh_key_b64 | b64decode }}"
+    dest: "{{ opencode_servy_key_path }}"
+    mode: '0600'
+    force: true
+  vars:
+    opencode_servy_key_path: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/id_servy') | path_join }}"
+
 - name: Deploy OpenCode docker-compose.yml
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../../opencode/docker-compose.yml"
