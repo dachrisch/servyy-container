@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Generate short-lived GitHub App installation token
 # Usage: export GH_TOKEN="$(get-opencode-github-token <installation_id>)"
 #        get-opencode-github-token 156532934  # for dachrisch
@@ -10,12 +10,12 @@ APP_ID="${OPENCODE_APP_ID}"
 PRIVATE_KEY_B64="${OPENCODE_APP_PRIVATE_KEY_B64}"
 INSTALLATION_ID="${1}"
 
-if [[ -z "$APP_ID" ]] || [[ -z "$PRIVATE_KEY_B64" ]]; then
+if [ -z "$APP_ID" ] || [ -z "$PRIVATE_KEY_B64" ]; then
   echo "Error: Missing OPENCODE_APP_ID or OPENCODE_APP_PRIVATE_KEY_B64" >&2
   exit 1
 fi
 
-if [[ -z "$INSTALLATION_ID" ]]; then
+if [ -z "$INSTALLATION_ID" ]; then
   echo "Error: Installation ID required as first argument" >&2
   echo "Usage: $0 <installation_id>" >&2
   exit 1
@@ -32,8 +32,11 @@ NOW=$(date +%s)
 EXP=$((NOW + 600))
 PAYLOAD=$(echo -n "{\"iat\":$NOW,\"exp\":$EXP,\"iss\":$APP_ID}" | base64 -w0 | tr '+/' '-_' | tr -d '=')
 
-# Sign JWT
-SIGNATURE=$(echo -n "$HEADER.$PAYLOAD" | openssl dgst -sha256 -sign <(echo "$PRIVATE_KEY") | base64 -w0 | tr '+/' '-_' | tr -d '=')
+# Sign JWT - write key to temp file for POSIX compatibility
+TMP_KEY=$(mktemp)
+echo "$PRIVATE_KEY" > "$TMP_KEY"
+SIGNATURE=$(echo -n "$HEADER.$PAYLOAD" | openssl dgst -sha256 -sign "$TMP_KEY" | base64 -w0 | tr '+/' '-_' | tr -d '=')
+rm -f "$TMP_KEY"
 JWT="$HEADER.$PAYLOAD.$SIGNATURE"
 
 # Exchange JWT for installation token
@@ -44,7 +47,7 @@ RESPONSE=$(curl -s -X POST \
 
 TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*' | cut -d'"' -f4)
 
-if [[ -z "$TOKEN" ]]; then
+if [ -z "$TOKEN" ]; then
   echo "Error: Failed to generate token. Response: $RESPONSE" >&2
   exit 1
 fi
