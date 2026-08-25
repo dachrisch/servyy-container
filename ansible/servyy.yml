@@ -17,10 +17,11 @@
       private: true
       default: ""
   tasks:
-    - name: Store vw_master_password as fact for all plays
+    - name: Store vw_master_password as cacheable fact for all plays
       ansible.builtin.set_fact:
         vw_master_password: "{{ vw_master_password }}"
-      run_once: false  # Set on all hosts, not just first one
+        cacheable: true
+      run_once: false  # Set on all hosts so fact is available everywhere
   tags: []  # Explicitly no tags - always runs
 
 - import_playbook: plays/system.yml
