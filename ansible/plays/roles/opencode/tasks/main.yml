@@ -72,6 +72,8 @@
     src: get-opencode-github-token.sh.j2
     dest: /usr/local/bin/get-opencode-github-token
     mode: '0755'
+  become: true
+  become_user: root
   tags: [user.docker.opencode]
 
 - name: Report SSH key info
