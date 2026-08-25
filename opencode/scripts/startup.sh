@@ -10,7 +10,12 @@ echo "📦 [Startup] Installing system packages..."
 apk update
 apk add git curl github-cli nodejs npm python3 py3-pip openssh git-crypt gettext
 
-# 2. GitHub CLI Wrapper Setup
+# 2. GitHub SSH Setup
+echo "🔑 [Startup] Updating GitHub SSH host key (GitHub rotates keys periodically)..."
+ssh-keygen -R github.com 2>/dev/null || true
+ssh-keyscan -t ed25519 github.com >> /root/.ssh/known_hosts 2>/dev/null || true
+
+# 3. GitHub CLI Wrapper Setup
 echo "🔐 [Startup] Setting up GitHub CLI PAT wrapper..."
 if [ -f "/usr/bin/gh" ]; then
     if [ -f "/usr/bin/gh.real" ]; then
