@@ -8,6 +8,18 @@
   vars_files:
     - vars/default.yml
     - vars/secrets.yml
+  pre_tasks:
+    - name: Load opencode SSH key from seed file
+      ansible.builtin.slurp:
+        src: "{{ playbook_dir }}/plays/vars/.opencode_github_ssh_key"
+      register: ssh_key_seed
+      delegate_to: localhost
+      run_once: true
+
+    - name: Set opencode SSH key fact
+      ansible.builtin.set_fact:
+        opencode_github_ssh_key: "{{ ssh_key_seed['content'] | b64decode }}"
+      run_once: false
   tasks:
     - name: Push opencode API key into Vaultwarden
       include_role:
