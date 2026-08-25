@@ -1,0 +1,52 @@
+#!/bin/bash
+# Generate short-lived GitHub App installation token
+# Usage: export GH_TOKEN="$(get-opencode-github-token <installation_id>)"
+#        get-opencode-github-token 156532934  # for dachrisch
+
+set -e
+
+# Load credentials from environment
+APP_ID="${OPENCODE_APP_ID}"
+PRIVATE_KEY_B64="${OPENCODE_APP_PRIVATE_KEY_B64}"
+INSTALLATION_ID="${1}"
+
+if [[ -z "$APP_ID" ]] || [[ -z "$PRIVATE_KEY_B64" ]]; then
+  echo "Error: Missing OPENCODE_APP_ID or OPENCODE_APP_PRIVATE_KEY_B64" >&2
+  exit 1
+fi
+
+if [[ -z "$INSTALLATION_ID" ]]; then
+  echo "Error: Installation ID required as first argument" >&2
+  echo "Usage: $0 <installation_id>" >&2
+  exit 1
+fi
+
+# Decode private key
+PRIVATE_KEY=$(echo "$PRIVATE_KEY_B64" | base64 -d)
+
+# Create JWT header
+HEADER=$(echo -n '{"alg":"RS256","typ":"JWT"}' | base64 -w0 | tr '+/' '-_' | tr -d '=')
+
+# Create JWT payload (expires in 10 minutes)
+NOW=$(date +%s)
+EXP=$((NOW + 600))
+PAYLOAD=$(echo -n "{\"iat\":$NOW,\"exp\":$EXP,\"iss\":$APP_ID}" | base64 -w0 | tr '+/' '-_' | tr -d '=')
+
+# Sign JWT
+SIGNATURE=$(echo -n "$HEADER.$PAYLOAD" | openssl dgst -sha256 -sign <(echo "$PRIVATE_KEY") | base64 -w0 | tr '+/' '-_' | tr -d '=')
+JWT="$HEADER.$PAYLOAD.$SIGNATURE"
+
+# Exchange JWT for installation token
+RESPONSE=$(curl -s -X POST \
+  -H "Authorization: Bearer $JWT" \
+  -H "Accept: application/vnd.github.v3+json" \
+  "https://api.github.com/app/installations/$INSTALLATION_ID/access_tokens")
+
+TOKEN=$(echo "$RESPONSE" | grep -o '"token":"[^"]*' | cut -d'"' -f4)
+
+if [[ -z "$TOKEN" ]]; then
+  echo "Error: Failed to generate token. Response: $RESPONSE" >&2
+  exit 1
+fi
+
+echo "$TOKEN"
