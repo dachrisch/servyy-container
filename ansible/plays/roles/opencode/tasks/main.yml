@@ -82,15 +82,6 @@
   vars:
     opencode_bin_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/bin') | path_join }}"
 
-- name: Deploy GitHub App token generator script
-  ansible.builtin.template:
-    src: get-opencode-github-token.sh.j2
-    dest: "{{ opencode_bin_dir }}/get-opencode-github-token"
-    mode: '0755'
-  vars:
-    opencode_bin_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/bin') | path_join }}"
-  tags: [user.docker.opencode]
-
 - name: Deploy GitHub CLI wrapper script
   ansible.builtin.template:
     src: bin/gh-wrapper.sh.j2
@@ -99,7 +90,6 @@
   vars:
     opencode_bin_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/bin') | path_join }}"
   tags: [user.docker.opencode]
-  notify: restart opencode
 
 - name: Create container initialization script for gh wrapper setup
   ansible.builtin.copy:

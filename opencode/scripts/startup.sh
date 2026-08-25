@@ -11,10 +11,14 @@ apk update
 apk add git curl github-cli nodejs npm python3 py3-pip openssh git-crypt gettext
 
 # 2. GitHub CLI Wrapper Setup
-echo "🔐 [Startup] Setting up GitHub CLI token wrapper..."
-if [ -f "/usr/bin/gh" ] && [ ! -f "/usr/bin/gh.real" ]; then
-    echo "📍 [Startup] Renaming real gh binary to gh.real..."
-    mv /usr/bin/gh /usr/bin/gh.real
+echo "🔐 [Startup] Setting up GitHub CLI PAT wrapper..."
+if [ -f "/usr/bin/gh" ]; then
+    if [ -f "/usr/bin/gh.real" ]; then
+        echo "📍 [Startup] gh binary already renamed to gh.real"
+    else
+        echo "📍 [Startup] Renaming real gh binary to gh.real..."
+        mv /usr/bin/gh /usr/bin/gh.real || echo "⚠️ [Startup] Failed to rename gh binary"
+    fi
 fi
 if [ ! -x "/opencode/bin/gh" ]; then
     echo "⚠️ [Startup] GitHub CLI wrapper not found at /opencode/bin/gh - wrapper will not function"

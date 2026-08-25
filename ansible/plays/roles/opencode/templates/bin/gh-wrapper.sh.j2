@@ -1,16 +1,6 @@
 #!/bin/sh
-# Wrapper for GitHub CLI that automatically sets the correct GitHub App token
+# Wrapper for GitHub CLI that automatically selects the correct PAT
 # based on the repository's owner (dachrisch vs bumbleflies)
-
-set -e
-
-# Token generator path
-TOKEN_GEN="/opencode/bin/get-opencode-github-token"
-
-if [ ! -x "$TOKEN_GEN" ]; then
-  echo "Error: Token generator not found at $TOKEN_GEN" >&2
-  exit 1
-fi
 
 # Find the real gh binary (should be /usr/bin/gh.real after setup)
 REAL_GH="/usr/bin/gh.real"
@@ -20,31 +10,31 @@ if [ ! -x "$REAL_GH" ]; then
   exit 1
 fi
 
-# Determine which org/user this repo belongs to based on git remote
-determine_installation_id() {
+# Determine which PAT to use based on git remote
+determine_pat() {
   # Try to get the remote URL from git
   git_url=$(git config --get remote.origin.url 2>/dev/null || echo "")
 
   case "$git_url" in
     *"github.com:bumbleflies"* | *"github.com/bumbleflies"* | *"bumbleflies/")
-      echo "156533081"  # bumbleflies organization
+      echo "$GITHUB_PAT_BUMBLEFLIES"
       return 0
       ;;
     *"github.com:dachrisch"* | *"github.com/dachrisch"* | *"dachrisch/")
-      echo "156532934"  # dachrisch personal account
+      echo "$GITHUB_PAT_DACHRISCH"
       return 0
       ;;
   esac
 
-  # Default to dachrisch for personal repos / unknown contexts
-  echo "156532934"
+  # Default to dachrisch PAT for personal repos / unknown contexts
+  echo "$GITHUB_PAT_DACHRISCH"
 }
 
-# Generate token for this repository
-INSTALLATION_ID=$(determine_installation_id)
+# Select PAT for this repository
+GH_TOKEN=$(determine_pat)
 
-if ! GH_TOKEN=$("$TOKEN_GEN" "$INSTALLATION_ID" 2>/dev/null); then
-  echo "Error: Failed to generate GitHub token for installation $INSTALLATION_ID" >&2
+if [ -z "$GH_TOKEN" ]; then
+  echo "Error: No GitHub PAT found for this repository" >&2
   exit 1
 fi
 
