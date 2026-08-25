@@ -67,6 +67,13 @@
   vars:
     opencode_known_hosts: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/known_hosts') | path_join }}"
 
+- name: Deploy OpenCode docker-compose.yml
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../opencode/docker-compose.yml"
+    dest: "{{ ('/home/', create_user, 'servyy-container/opencode/docker-compose.yml') | path_join }}"
+    mode: '0644'
+  tags: [user.docker.opencode]
+
 - name: Ensure OpenCode bin directory exists
   ansible.builtin.file:
     path: "{{ opencode_bin_dir }}"
