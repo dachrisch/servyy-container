@@ -86,9 +86,14 @@
       register: oc_env
       failed_when: not oc_env.stat.exists
 
-    - name: Verify opencode.env carries GITHUB_PAT
+    - name: Verify opencode.env carries SSH_KEY_PATH
       ansible.builtin.command:
-        cmd: grep -q '^GITHUB_PAT=test-github-pat$' /home/molecule/opencode/opencode.env
+        cmd: grep -q '^SSH_KEY_PATH=/root/.ssh/id_github$' /home/molecule/opencode/opencode.env
+      changed_when: false
+
+    - name: Verify opencode.env carries GIT_SSH_COMMAND
+      ansible.builtin.command:
+        cmd: grep -q '^GIT_SSH_COMMAND=ssh -i /root/.ssh/id_github' /home/molecule/opencode/opencode.env
       changed_when: false
 
     - name: Verify opencode.env carries OPENCODE_AUTH_GOOGLE_B64
