@@ -2,7 +2,8 @@
 - name: restart opencode container
   community.docker.docker_container:
     name: opencode.web
-    state: restarted
+    state: started
+    restart: yes
   listen: restart opencode container
 
 - name: push opencode ssh key to vaultwarden
