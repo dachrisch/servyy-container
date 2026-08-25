@@ -10,7 +10,12 @@ echo "📦 [Startup] Installing system packages..."
 apk update
 apk add git curl github-cli nodejs npm python3 py3-pip openssh git-crypt gettext
 
-# 2. GitHub CLI Wrapper Setup
+# 2. GitHub SSH Setup
+echo "🔑 [Startup] Updating GitHub SSH host key (GitHub rotates keys periodically)..."
+ssh-keygen -R github.com 2>/dev/null || true
+ssh-keyscan -t ed25519 github.com >> /root/.ssh/known_hosts 2>/dev/null || true
+
+# 3. GitHub CLI Wrapper Setup
 echo "🔐 [Startup] Setting up GitHub CLI PAT wrapper..."
 if [ -f "/usr/bin/gh" ]; then
     if [ -f "/usr/bin/gh.real" ]; then
@@ -24,7 +29,7 @@ if [ ! -x "/opencode/bin/gh" ]; then
     echo "⚠️ [Startup] GitHub CLI wrapper not found at /opencode/bin/gh - wrapper will not function"
 fi
 
-# 3. Configuration Substitution
+# 4. Configuration Substitution
 echo "⚙️ [Startup] Configuring OpenCode..."
 CONFIG_DIR="/root/.config/opencode"
 mkdir -p "$CONFIG_DIR"
@@ -32,17 +37,17 @@ mkdir -p "$CONFIG_DIR"
 if [ -f "/scripts/opencode.json.template" ]; then
     # Set default if not provided
     export CIRCLECI_BASE_URL="${CIRCLECI_BASE_URL:-https://circleci.com}"
-    
+
     # We only substitute specific variables to avoid breaking $schema
     echo "⚙️ [Startup] Generating opencode.json from template..."
     envsubst '$CIRCLECI_TOKEN $CIRCLECI_BASE_URL $DASHSCOPE_API_KEY' < /scripts/opencode.json.template > "$CONFIG_DIR/opencode.json"
 fi
 
-# 4. Extensions (Placeholder)
+# 5. Extensions (Placeholder)
 # echo "🧩 [Startup] Installing extensions..."
 # code-server --install-extension <extension-id>
 
-# 5. Provision dev checkouts & credentials (idempotent, runs every boot)
+# 6. Provision dev checkouts & credentials (idempotent, runs every boot)
 if [ -f /scripts/provision-dev.sh ]; then
     echo "🌱 [Startup] Provisioning dev checkouts..."
     sh /scripts/provision-dev.sh || echo "⚠️ [Startup] provision-dev.sh reported issues (continuing)"
