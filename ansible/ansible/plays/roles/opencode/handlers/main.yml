@@ -1,0 +1,7 @@
+---
+- name: restart opencode
+  community.docker.docker_container:
+    name: opencode.web
+    state: started
+    restart: true
+  listen: restart opencode
