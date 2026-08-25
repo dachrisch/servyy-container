@@ -17,8 +17,10 @@
       servy_ssh_key_b64: dGVzdC1zc2gta2V5
       auth_google_b64: eyJnb29nbGUiOiB7InR5cGUiOiAib2F1dGgifX0=
       dashscope_api_key: test-dashscope-api-key
-      github_pat_dachrisch: test-github-pat-dachrisch
-      github_pat_bumbleflies: test-github-pat-bumbleflies
+      github_app_id: "12345"
+      github_app_private_key_b64: dGVzdC1wcml2YXRlLWtleQ==
+      github_app_installation_id_dachrisch: "11111"
+      github_app_installation_id_bumbleflies: "22222"
       servy_ssh_pubkey: "ssh-ed25519 AAAATESTKEY opencode@servy.lehel.xyz"
       dev_repos:
         - {dir: "leaguesphere", repo: "https://example.com/x.git", branch: "master", crypt: false}
