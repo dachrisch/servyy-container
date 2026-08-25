@@ -8,6 +8,8 @@
     - vars/default.yml
     - vars/restic.yml
     - vars/secrets.yml
+  vars:
+    vw_master_password: "{{ hostvars.get('localhost', {}).get('vw_master_password', '') }}"
   roles:
     - restic
   tags:

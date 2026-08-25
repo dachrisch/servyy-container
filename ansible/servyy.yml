@@ -7,9 +7,9 @@
 
 # Prompt for Vaultwarden master password once at the start (used by multiple plays)
 - name: Prompt for Vaultwarden credentials
-  hosts: all
+  hosts: localhost
   gather_facts: false
-  run_once: true
+  connection: local
   vars_prompt:
     - name: vw_master_password
       prompt: Vaultwarden master password (leave blank to skip backups to Vaultwarden)
@@ -19,6 +19,7 @@
     - name: Store vw_master_password as fact for all plays
       ansible.builtin.set_fact:
         vw_master_password: "{{ vw_master_password }}"
+        cacheable: true
 
 - import_playbook: plays/system.yml
 - import_playbook: plays/user.yml
