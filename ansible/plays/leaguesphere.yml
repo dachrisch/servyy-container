@@ -9,8 +9,6 @@
     - vars/ssh_jail.yaml
     - vars/secrets.yml
     - vars/default.yml
-  vars:
-    vw_master_password: "{{ hostvars.get('localhost', {}).get('vw_master_password', '') }}"
   roles:
     # Setup (shared, run once)
     - role: ls_setup

@@ -31,10 +31,8 @@
               as broad access to what the agent can do, not merely "read-only chat". See
               docs/superpowers/specs/2026-08-08-opencode-api-key-forwardauth-design.md.
       when:
-        - (vw_master_password | default(hostvars.get('localhost', {}).get('vw_master_password', ''))) | length > 0
+        - vw_master_password | default('') | length > 0
         - inventory_hostname in ['lehel.xyz', 'servyy-test.lxd']
-      vars:
-        vw_master_password: "{{ hostvars.get('localhost', {}).get('vw_master_password', '') }}"
       tags:
         - opencode.vaultwarden
   tags:
