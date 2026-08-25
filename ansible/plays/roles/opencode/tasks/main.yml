@@ -91,6 +91,30 @@
     opencode_bin_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/bin') | path_join }}"
   tags: [user.docker.opencode]
 
+- name: Deploy GitHub CLI wrapper script
+  ansible.builtin.template:
+    src: bin/gh-wrapper.sh.j2
+    dest: "{{ opencode_bin_dir }}/gh"
+    mode: '0755'
+  vars:
+    opencode_bin_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/bin') | path_join }}"
+  tags: [user.docker.opencode]
+  notify: restart opencode
+
+- name: Create container initialization script for gh wrapper setup
+  ansible.builtin.copy:
+    content: |
+      #!/bin/sh
+      # Initialize gh wrapper: rename real gh binary and ensure wrapper is first in PATH
+      if [ -f /usr/bin/gh ] && [ ! -f /usr/bin/gh.real ]; then
+        mv /usr/bin/gh /usr/bin/gh.real
+      fi
+      # Prepend /opencode/bin to PATH so wrapper is called first
+      export PATH=/opencode/bin:$PATH
+    dest: "{{ ('/home/', create_user, 'servyy-container/opencode/init-gh-wrapper.sh') | path_join }}"
+    mode: '0755'
+  tags: [user.docker.opencode]
+
 - name: Report SSH key info
   ansible.builtin.debug:
     msg: |

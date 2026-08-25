@@ -10,7 +10,17 @@ echo "📦 [Startup] Installing system packages..."
 apk update
 apk add git curl github-cli nodejs npm python3 py3-pip openssh git-crypt gettext
 
-# 2. Configuration Substitution
+# 2. GitHub CLI Wrapper Setup
+echo "🔐 [Startup] Setting up GitHub CLI token wrapper..."
+if [ -f "/usr/bin/gh" ] && [ ! -f "/usr/bin/gh.real" ]; then
+    echo "📍 [Startup] Renaming real gh binary to gh.real..."
+    mv /usr/bin/gh /usr/bin/gh.real
+fi
+if [ ! -x "/opencode/bin/gh" ]; then
+    echo "⚠️ [Startup] GitHub CLI wrapper not found at /opencode/bin/gh - wrapper will not function"
+fi
+
+# 3. Configuration Substitution
 echo "⚙️ [Startup] Configuring OpenCode..."
 CONFIG_DIR="/root/.config/opencode"
 mkdir -p "$CONFIG_DIR"
@@ -24,11 +34,11 @@ if [ -f "/scripts/opencode.json.template" ]; then
     envsubst '$CIRCLECI_TOKEN $CIRCLECI_BASE_URL $DASHSCOPE_API_KEY' < /scripts/opencode.json.template > "$CONFIG_DIR/opencode.json"
 fi
 
-# 3. Extensions (Placeholder)
+# 4. Extensions (Placeholder)
 # echo "🧩 [Startup] Installing extensions..."
 # code-server --install-extension <extension-id>
 
-# 4. Provision dev checkouts & credentials (idempotent, runs every boot)
+# 5. Provision dev checkouts & credentials (idempotent, runs every boot)
 if [ -f /scripts/provision-dev.sh ]; then
     echo "🌱 [Startup] Provisioning dev checkouts..."
     sh /scripts/provision-dev.sh || echo "⚠️ [Startup] provision-dev.sh reported issues (continuing)"

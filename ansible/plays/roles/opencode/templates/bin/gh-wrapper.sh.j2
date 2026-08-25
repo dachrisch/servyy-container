@@ -1,0 +1,53 @@
+#!/bin/sh
+# Wrapper for GitHub CLI that automatically sets the correct GitHub App token
+# based on the repository's owner (dachrisch vs bumbleflies)
+
+set -e
+
+# Token generator path
+TOKEN_GEN="/opencode/bin/get-opencode-github-token"
+
+if [ ! -x "$TOKEN_GEN" ]; then
+  echo "Error: Token generator not found at $TOKEN_GEN" >&2
+  exit 1
+fi
+
+# Find the real gh binary (should be /usr/bin/gh.real after setup)
+REAL_GH="/usr/bin/gh.real"
+if [ ! -x "$REAL_GH" ]; then
+  echo "Error: Real gh binary not found at $REAL_GH" >&2
+  echo "Please ensure the OpenCode container has been properly initialized" >&2
+  exit 1
+fi
+
+# Determine which org/user this repo belongs to based on git remote
+determine_installation_id() {
+  # Try to get the remote URL from git
+  git_url=$(git config --get remote.origin.url 2>/dev/null || echo "")
+
+  case "$git_url" in
+    *"github.com:bumbleflies"* | *"github.com/bumbleflies"* | *"bumbleflies/")
+      echo "156533081"  # bumbleflies organization
+      return 0
+      ;;
+    *"github.com:dachrisch"* | *"github.com/dachrisch"* | *"dachrisch/")
+      echo "156532934"  # dachrisch personal account
+      return 0
+      ;;
+  esac
+
+  # Default to dachrisch for personal repos / unknown contexts
+  echo "156532934"
+}
+
+# Generate token for this repository
+INSTALLATION_ID=$(determine_installation_id)
+
+if ! GH_TOKEN=$("$TOKEN_GEN" "$INSTALLATION_ID" 2>/dev/null); then
+  echo "Error: Failed to generate GitHub token for installation $INSTALLATION_ID" >&2
+  exit 1
+fi
+
+# Export token and execute real gh
+export GH_TOKEN
+exec "$REAL_GH" "$@"

@@ -31,7 +31,7 @@ HEADER=$(echo -n '{"alg":"RS256","typ":"JWT"}' | base64 -w0 | tr '+/' '-_' | tr 
 # Create JWT payload (expires in 10 minutes)
 NOW=$(date +%s)
 EXP=$((NOW + 600))
-PAYLOAD=$(echo -n "{\"iat\":$NOW,\"exp\":$EXP,\"iss\":$APP_ID}" | base64 -w0 | tr '+/' '-_' | tr -d '=')
+PAYLOAD=$(echo -n "{\"iat\":$NOW,\"exp\":$EXP,\"iss\":\"$APP_ID\"}" | base64 -w0 | tr '+/' '-_' | tr -d '=')
 
 # Sign JWT using Node.js (openssl not available in Alpine)
 JWT=$(node -e "
