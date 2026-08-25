@@ -19,6 +19,7 @@
     - name: Store vw_master_password as fact for all plays
       ansible.builtin.set_fact:
         vw_master_password: "{{ vw_master_password }}"
+      run_once: false  # Set on all hosts, not just first one
 
 - import_playbook: plays/system.yml
 - import_playbook: plays/user.yml
