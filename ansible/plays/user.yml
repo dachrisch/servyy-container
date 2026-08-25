@@ -29,11 +29,6 @@
     - user
     - user.opencode
     - user.docker.opencode
-  vars_prompt:
-    - name: vw_master_password
-      prompt: Vaultwarden master password (leave blank to skip pushing to Vaultwarden)
-      private: true
-      default: ""
 
 - name: Deploy Docker services
   hosts: all
