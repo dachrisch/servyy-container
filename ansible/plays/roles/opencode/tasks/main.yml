@@ -37,6 +37,7 @@
   ansible.builtin.set_fact:
     opencode_github_ssh_key: "{{ ssh_key_content['content'] | b64decode }}"
     opencode_github_ssh_pubkey: "{{ ssh_pubkey_content['content'] | b64decode | trim }}"
+    cacheable: true
   run_once: true
 
 - name: Create OpenCode .ssh directory
