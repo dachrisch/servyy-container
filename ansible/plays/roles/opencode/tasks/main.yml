@@ -1,0 +1,78 @@
+---
+# Guard: Check if SSH key seed exists, generate if missing
+- name: Stat OpenCode GitHub SSH key seed file
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/vars/.opencode_github_ssh_key"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  register: ssh_key_seed
+
+- name: Generate OpenCode GitHub SSH key (ed25519)
+  ansible.builtin.command:
+    cmd: ssh-keygen -t ed25519 -f "{{ playbook_dir }}/vars/.opencode_github_ssh_key" -N "" -C "opencode@{{ inventory_hostname }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  when: not ssh_key_seed.stat.exists
+  register: ssh_keygen_result
+
+- name: Read SSH private key from seed file
+  ansible.builtin.slurp:
+    src: "{{ playbook_dir }}/vars/.opencode_github_ssh_key"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  register: ssh_key_content
+
+- name: Read SSH public key from seed file
+  ansible.builtin.slurp:
+    src: "{{ playbook_dir }}/vars/.opencode_github_ssh_key.pub"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  register: ssh_pubkey_content
+
+- name: Set SSH key fact
+  ansible.builtin.set_fact:
+    opencode_github_ssh_key: "{{ ssh_key_content['content'] | b64decode }}"
+    opencode_github_ssh_pubkey: "{{ ssh_pubkey_content['content'] | b64decode | trim }}"
+  run_once: true
+
+- name: Create OpenCode .ssh directory
+  ansible.builtin.file:
+    path: "{{ opencode_ssh_dir }}"
+    state: directory
+    mode: '0700'
+  vars:
+    opencode_ssh_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh') | path_join }}"
+
+- name: Write GitHub SSH private key to container mount point
+  ansible.builtin.copy:
+    content: "{{ opencode_github_ssh_key }}"
+    dest: "{{ opencode_key_path }}"
+    mode: '0600'
+    force: true
+  vars:
+    opencode_key_path: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/id_github') | path_join }}"
+  notify: push opencode ssh key to vaultwarden
+
+- name: Ensure GitHub is in known_hosts
+  ansible.builtin.lineinfile:
+    path: "{{ opencode_known_hosts }}"
+    line: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWQcv7dMA3Z5D"
+    create: true
+    mode: '0600'
+  vars:
+    opencode_known_hosts: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/known_hosts') | path_join }}"
+
+- name: Report SSH key info
+  ansible.builtin.debug:
+    msg: |
+      OpenCode GitHub SSH key ready.
+      Public key:
+        {{ opencode_github_ssh_pubkey }}
+
+      To complete setup, add this public key to GitHub:
+      https://github.com/settings/keys
+  run_once: true

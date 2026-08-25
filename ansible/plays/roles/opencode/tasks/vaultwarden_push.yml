@@ -1,0 +1,13 @@
+---
+# Push OpenCode SSH key to Vaultwarden as a backup copy.
+# Called by the handler notification system to push only when the SSH key changes.
+# Plain relative path (not {{ playbook_dir }}) on purpose: ansible-lint resolves correctly this way.
+- name: Push OpenCode SSH key to Vaultwarden
+  ansible.builtin.include_tasks: ../../vaultwarden/tasks/push_items.yml
+  vars:
+    vaultwarden_items:
+      - name: "opencode - GitHub SSH key (lehel.xyz)"
+        secret: "{{ opencode_github_ssh_key }}"
+        notes: "SSH private key for git@github.com authentication in OpenCode (copy of Ansible seed vars/.opencode_github_ssh_key). Public key: {{ opencode_github_ssh_pubkey }}"
+    vaultwarden_item_username: "opencode"
+  when: inventory_hostname == 'lehel.xyz'

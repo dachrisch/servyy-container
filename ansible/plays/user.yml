@@ -14,6 +14,27 @@
   tags:
     - user
 
+- name: Setup OpenCode SSH key
+  hosts: all
+  remote_user: "{{ create_user }}"
+  become: true
+  become_user: "{{ create_user }}"
+  vars_files:
+    - vars/default.yml
+    - vars/restic.yml
+    - vars/secrets.yml
+  roles:
+    - opencode
+  tags:
+    - user
+    - user.opencode
+    - user.docker.opencode
+  vars_prompt:
+    - name: vw_master_password
+      prompt: Vaultwarden master password (leave blank to skip pushing to Vaultwarden)
+      private: true
+      default: ""
+
 - name: Deploy Docker services
   hosts: all
   strategy: free

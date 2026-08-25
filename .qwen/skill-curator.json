@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "skills": {
+    "auto-skill-infra-deploy": {
+      "skillName": "infra-deploy",
+      "firstSeenAt": "2026-08-10T22:42:01.525Z",
+      "lastActivityAt": "2026-08-10T22:42:01.525Z",
+      "useCount": 1,
+      "state": "active",
+      "pinned": false,
+      "lastUsedAt": "2026-08-10T22:42:01.525Z"
+    }
+  }
+}
