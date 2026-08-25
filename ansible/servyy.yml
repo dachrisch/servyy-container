@@ -5,6 +5,21 @@
 # > usermod -aG sudo username
 # https://linuxize.com/post/how-to-add-user-to-sudoers-in-ubuntu/
 
+# Prompt for Vaultwarden master password once at the start (used by multiple plays)
+- name: Prompt for Vaultwarden credentials
+  hosts: localhost
+  gather_facts: false
+  vars_prompt:
+    - name: vw_master_password
+      prompt: Vaultwarden master password (leave blank to skip backups to Vaultwarden)
+      private: true
+      default: ""
+  tasks:
+    - name: Store vw_master_password as fact for all plays
+      ansible.builtin.set_fact:
+        vw_master_password: "{{ vw_master_password }}"
+      delegate_facts: true
+
 - import_playbook: plays/system.yml
 - import_playbook: plays/user.yml
 - import_playbook: plays/opencode_authgate.yml
