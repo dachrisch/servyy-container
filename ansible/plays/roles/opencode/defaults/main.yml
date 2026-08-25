@@ -1,0 +1,4 @@
+---
+# Vaultwarden backup-copy for OpenCode GitHub SSH key.
+# Idempotently generated and stored in vars/.opencode_github_ssh_key seed file.
+vw_server: "https://pass.lehel.xyz"
