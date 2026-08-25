@@ -1,5 +1,6 @@
 #!/bin/sh
 # Idempotent provisioning of /root/dev checkouts + credentials for OpenCode.
+# Discovers repos tagged with 'opencode-dev' topic across dachrisch + bumbleflies orgs.
 # Runs on every container boot from startup.sh. Safe to re-run.
 set -eu
 
@@ -20,25 +21,28 @@ Host servy.lehel.xyz lehel.xyz
   User cda
   IdentityFile ~/.ssh/id_servy
   StrictHostKeyChecking accept-new
+
+Host github.com
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/id_github
+  StrictHostKeyChecking accept-new
 EOF
   chmod 600 "$SSH_DIR/config"
   log "ssh key + config written"
 fi
 
-# 2. GitHub HTTPS credentials (read+write via PAT)
-if [ -n "${GITHUB_PAT:-}" ]; then
-  git config --global credential.helper store
-  printf 'https://x-access-token:%s@github.com\n' "$GITHUB_PAT" > "$HOME/.git-credentials"
-  chmod 600 "$HOME/.git-credentials"
-  log "github credential helper configured"
+# 2. GitHub SSH setup (use SSH_KEY_PATH if provided, otherwise assume mounted)
+if [ -n "${SSH_KEY_PATH:-}" ]; then
+  export GIT_SSH_COMMAND="ssh -i ${SSH_KEY_PATH} -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$SSH_DIR/known_hosts"
+  log "GIT_SSH_COMMAND set to use $SSH_KEY_PATH"
 fi
+
 git config --global --add safe.directory '*'
 git config --global user.name  "${GIT_AUTHOR_NAME:-opencode}"
 git config --global user.email "${GIT_AUTHOR_EMAIL:-opencode@servy.lehel.xyz}"
 
 # 2b. Seed Antigravity (Google) OAuth credential for OpenCode.
-# Merge the baked-in {"google": {...}} into auth.json without clobbering a
-# credential opencode may have refreshed on a previous boot (persisted volume).
 if [ -n "${OPENCODE_AUTH_GOOGLE_B64:-}" ]; then
   AUTH_DIR="$HOME/.local/share/opencode"; export AUTH_DIR
   result="$(python3 "$(dirname "$0")/seed_auth.py")" \
@@ -53,7 +57,7 @@ if [ -n "${GIT_CRYPT_KEY_B64:-}" ]; then
   echo "$GIT_CRYPT_KEY_B64" | base64 -d > "$CRYPT_KEY"
 fi
 
-# 4. Clone/pull each declared repo
+# 4. Clone/pull repos from hardcoded DEV_REPOS_B64 (legacy support)
 mkdir -p "$DEV_DIR"
 if [ -n "${DEV_REPOS_B64:-}" ]; then
   echo "$DEV_REPOS_B64" | base64 -d | python3 -c '
@@ -83,6 +87,42 @@ for r in json.load(sys.stdin):
           || log "WARN: git-crypt unlock failed for $dir"
       fi
     fi
+  done
+fi
+
+# 5. Discovery-based provisioning: search for repos with 'opencode-dev' topic
+# Searches across dachrisch + bumbleflies orgs
+if command -v gh >/dev/null 2>&1; then
+  log "discovering repos with 'opencode-dev' topic..."
+
+  for target in dachrisch bumbleflies; do
+    log "  checking $target..."
+    repos=$(gh repo list "$target" --topic opencode-dev --json nameWithOwner,url,defaultBranchRef --limit 100 2>/dev/null || echo "[]")
+
+    echo "$repos" | python3 -c '
+import json,sys
+repos = json.load(sys.stdin)
+for r in repos:
+    owner_repo = r["nameWithOwner"]
+    branch = r.get("defaultBranchRef", {}).get("name", "master")
+    # Use SSH URL: git@github.com:owner/repo.git
+    ssh_url = f"git@github.com:{owner_repo}.git"
+    print("\t".join([owner_repo.split("/")[1], ssh_url, branch, "0"]))
+' | while IFS="$(printf '\t')" read -r dir repo branch crypt; do
+      dest="$DEV_DIR/$dir"
+      if [ -d "$dest/.git" ]; then
+        log "updating $dir"
+        git -C "$dest" remote set-url origin "$repo"
+        git -C "$dest" fetch --quiet origin "$branch" \
+          && git -C "$dest" checkout --quiet "$branch" \
+          && git -C "$dest" pull --quiet --ff-only origin "$branch" \
+          || log "WARN: update failed for $dir (continuing)"
+      else
+        log "cloning $dir from $repo"
+        git clone --quiet --branch "$branch" "$repo" "$dest" \
+          || { log "ERROR: clone failed for $dir"; continue; }
+      fi
+    done
   done
 fi
 

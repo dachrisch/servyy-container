@@ -52,6 +52,8 @@
   ansible.builtin.copy:
     content: "{{ opencode_github_ssh_key }}"
     dest: "{{ opencode_key_path }}"
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
     mode: '0600'
     force: true
   vars:
@@ -64,8 +66,32 @@
     line: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWQcv7dMA3Z5D"
     create: true
     mode: '0600'
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
   vars:
     opencode_known_hosts: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/known_hosts') | path_join }}"
+
+- name: Ensure lehel.xyz is in known_hosts
+  ansible.builtin.lineinfile:
+    path: "{{ opencode_known_hosts }}"
+    line: "lehel.xyz ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH5PEeIaPA1cj0lG1oBCj/JKO111UVewWkQVh09/QzCi"
+    create: true
+    mode: '0600'
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+  vars:
+    opencode_known_hosts: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/known_hosts') | path_join }}"
+
+- name: Write lehel server SSH private key to container mount point
+  ansible.builtin.copy:
+    content: "{{ opencode.servy_ssh_key_b64 | b64decode }}"
+    dest: "{{ opencode_servy_key_path }}"
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0600'
+    force: true
+  vars:
+    opencode_servy_key_path: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/id_servy') | path_join }}"
 
 - name: Deploy OpenCode docker-compose.yml
   ansible.builtin.copy:
@@ -103,6 +129,14 @@
       export PATH=/opencode/bin:$PATH
     dest: "{{ ('/home/', create_user, 'servyy-container/opencode/init-gh-wrapper.sh') | path_join }}"
     mode: '0755'
+  tags: [user.docker.opencode]
+
+- name: Deploy OpenCode startup script
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../opencode/scripts/startup.sh"
+    dest: "{{ ('/home/', create_user, 'servyy-container/opencode/scripts/startup.sh') | path_join }}"
+    mode: '0755'
+  notify: restart opencode container
   tags: [user.docker.opencode]
 
 - name: Report SSH key info

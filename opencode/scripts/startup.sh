@@ -29,7 +29,7 @@ if [ ! -x "/opencode/bin/gh" ]; then
     echo "⚠️ [Startup] GitHub CLI wrapper not found at /opencode/bin/gh - wrapper will not function"
 fi
 
-# 3. Configuration Substitution
+# 4. Configuration Substitution
 echo "⚙️ [Startup] Configuring OpenCode..."
 CONFIG_DIR="/root/.config/opencode"
 mkdir -p "$CONFIG_DIR"
@@ -37,17 +37,17 @@ mkdir -p "$CONFIG_DIR"
 if [ -f "/scripts/opencode.json.template" ]; then
     # Set default if not provided
     export CIRCLECI_BASE_URL="${CIRCLECI_BASE_URL:-https://circleci.com}"
-    
+
     # We only substitute specific variables to avoid breaking $schema
     echo "⚙️ [Startup] Generating opencode.json from template..."
     envsubst '$CIRCLECI_TOKEN $CIRCLECI_BASE_URL $DASHSCOPE_API_KEY' < /scripts/opencode.json.template > "$CONFIG_DIR/opencode.json"
 fi
 
-# 4. Extensions (Placeholder)
+# 5. Extensions (Placeholder)
 # echo "🧩 [Startup] Installing extensions..."
 # code-server --install-extension <extension-id>
 
-# 5. Provision dev checkouts & credentials (idempotent, runs every boot)
+# 6. Provision dev checkouts & credentials (idempotent, runs every boot)
 if [ -f /scripts/provision-dev.sh ]; then
     echo "🌱 [Startup] Provisioning dev checkouts..."
     sh /scripts/provision-dev.sh || echo "⚠️ [Startup] provision-dev.sh reported issues (continuing)"
