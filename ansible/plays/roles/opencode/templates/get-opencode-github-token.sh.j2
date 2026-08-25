@@ -32,12 +32,24 @@ NOW=$(date +%s)
 EXP=$((NOW + 600))
 PAYLOAD=$(echo -n "{\"iat\":$NOW,\"exp\":$EXP,\"iss\":$APP_ID}" | base64 -w0 | tr '+/' '-_' | tr -d '=')
 
-# Sign JWT - write key to temp file for POSIX compatibility
-TMP_KEY=$(mktemp)
-echo "$PRIVATE_KEY" > "$TMP_KEY"
-SIGNATURE=$(echo -n "$HEADER.$PAYLOAD" | openssl dgst -sha256 -sign "$TMP_KEY" | base64 -w0 | tr '+/' '-_' | tr -d '=')
-rm -f "$TMP_KEY"
-JWT="$HEADER.$PAYLOAD.$SIGNATURE"
+# Sign JWT using Node.js (openssl not available in Alpine)
+JWT=$(node -e "
+const crypto = require('crypto');
+const header = '$HEADER';
+const payload = '$PAYLOAD';
+const privateKey = \`$PRIVATE_KEY\`;
+
+const message = header + '.' + payload;
+const signature = crypto
+  .createSign('RSA-SHA256')
+  .update(message)
+  .sign(privateKey, 'base64')
+  .replace(/\+/g, '-')
+  .replace(/\//g, '_')
+  .replace(/=/g, '');
+
+console.log(message + '.' + signature);
+")
 
 # Exchange JWT for installation token
 RESPONSE=$(curl -s -X POST \
