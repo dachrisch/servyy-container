@@ -8,12 +8,6 @@
   vars_files:
     - vars/default.yml
     - vars/secrets.yml
-  vars_prompt:
-    - name: vw_master_password
-      prompt: "Vaultwarden master password (enter to skip opencode API key backup copy)"
-      private: true
-      default: ""
-      confirm: false
   tasks:
     - name: Push opencode API key into Vaultwarden
       include_role:
