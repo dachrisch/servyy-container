@@ -128,6 +128,50 @@ ssh-keygen -R github.com 2>/dev/null || true
 ssh-keyscan -t ed25519 github.com >> /root/.ssh/known_hosts 2>/dev/null || true
 ```
 
+## Specialized Agents Available
+
+This infrastructure provides specialized agents to help with service management:
+
+### @agent-service-master
+**When to use:**
+- Deploying, troubleshooting, or managing services
+- Making changes to running services
+- Investigating service health issues
+- Production deployments
+
+**Examples:**
+```
+"Deploy a new service called 'blog' using the ghost Docker image"
+"Troubleshoot why photoprism is returning 502 errors"
+"Restart the opencode service after config changes"
+```
+
+### @agent-service-tester
+**When to use:**
+- Pre-production testing before deploying to lehel.xyz
+- Validating Ansible playbooks on test environment
+- Testing new service configurations safely
+- Verifying deployment scripts before production rollout
+
+**Examples:**
+```
+"Test the updated photoprism docker-compose on servyy-test"
+"Deploy and validate the new webhook service configuration"
+"Check if the Traefik routing changes work on staging"
+```
+
+### @agent-service-requirements-analyst
+**When to use:**
+- Planning a new service deployment
+- Clarifying requirements before implementation
+- Understanding what infrastructure is needed
+
+**Examples:**
+```
+"I want to set up a service for managing RSS feeds"
+"Help me plan the requirements for a webhook handler"
+```
+
 ## Development Workflow
 
 ### 1. Create Service Structure
@@ -356,18 +400,32 @@ URL: https://myservice.lehel.xyz  (if exposed)
 - `something.app` ❌ (conflicts with other "app" services)
 - `service.service` ❌ (confusing)
 
+## When to Use Specialized Agents
+
+| Task | Agent | Why |
+|------|-------|-----|
+| Deploy service | @agent-service-master | Understands full deployment workflow |
+| Test on staging | @agent-service-tester | Specializes in safe pre-prod validation |
+| Troubleshoot issue | @agent-service-master | Knows infrastructure debugging patterns |
+| Plan requirements | @agent-service-requirements-analyst | Clarifies requirements before implementation |
+| Fix production incident | @agent-service-master | Has incident response expertise |
+
 ## Quick Reference
 
 ### Deploy to Test
 ```bash
 cd scripts && ./setup_test_container.sh
 cd ../ansible && ./servyy-test.sh --tags "user.docker.service-name"
+
+# Or use @agent-service-tester for validation
 ```
 
 ### Deploy to Production
 ```bash
 git push origin master
 cd ansible && ./servyy.sh --tags "user.docker.service-name"
+
+# Or delegate to @agent-service-master for end-to-end deployment
 ```
 
 ### Run Tests
