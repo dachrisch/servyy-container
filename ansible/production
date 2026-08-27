@@ -5,9 +5,11 @@ prod:
         with_containers: true
         has_10g_volume: false
         create_swap: true
-    aqui.fritz.box:
+        services: [traefik, git, photoprism, bumbleflies, achim-hoefer, portainer, pass, energy, groceries, leagues-finance, finance, searxng, thore, job-search, dontforget, platzler-heid, dns, me, monitor]
+    code.lehel.xyz:
         with_docker: true
-        backup_photos: true
-        ansible_user: cda
-        ansible_ssh_private_key_file: ~/.ssh/id_rsa
-        ansible_ssh_extra_args: "-o IdentitiesOnly=yes"
+        with_containers: true
+        has_10g_volume: false
+        create_swap: true
+        ansible_user: root
+        services: [opencode, opencode-authgate]

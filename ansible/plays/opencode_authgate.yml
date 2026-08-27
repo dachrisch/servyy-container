@@ -50,7 +50,7 @@
               Seed file: ansible/plays/vars/.opencode_github_ssh_key
       when:
         - vw_master_password | default('') | length > 0
-        - inventory_hostname in ['lehel.xyz', 'servyy-test.lxd']
+        - "'opencode-authgate' in (services | default([]))"
       tags:
         - opencode.vaultwarden
   tags:
