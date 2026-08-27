@@ -1,0 +1,356 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "panels": [],
+      "title": "Site Overview (prod: bumbleflies.de / www.bumbleflies.de)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum(count_over_time({container=\"traefik.traefik\"} | json | RequestHost=~\"^(www\\.)?bumbleflies\\.de$\" [$__range]))",
+          "legendFormat": "Requests",
+          "refId": "A"
+        }
+      ],
+      "title": "Total Requests",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 500 }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(increase(traefik_router_requests_total{router=~\"bumbleflies.*\",code=~\"4..\"}[$__range]))",
+          "legendFormat": "4xx Errors",
+          "refId": "A"
+        }
+      ],
+      "title": "4xx Errors",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 50 }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(increase(traefik_router_requests_total{router=~\"bumbleflies.*\",code=~\"5..\"}[$__range]))",
+          "legendFormat": "5xx Errors",
+          "refId": "A"
+        }
+      ],
+      "title": "5xx Errors",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }] },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "(sum(increase(traefik_router_requests_total{router=~\"bumbleflies.*\",code=~\"4..|5..\"}[$__range])) / sum(increase(traefik_router_requests_total{router=~\"bumbleflies.*\"}[$__range]))) * 100",
+          "legendFormat": "Error Rate",
+          "refId": "A"
+        }
+      ],
+      "title": "Error Rate %",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "req/s",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "/^4../" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": "/^5../" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 5 },
+      "id": 6,
+      "options": {
+        "legend": { "calcs": ["sum", "mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (code) (rate(traefik_router_requests_total{router=~\"bumbleflies.*\"}[5m]))",
+          "legendFormat": "{{code}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Request Rate Over Time (by status)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 },
+      "id": 101,
+      "panels": [],
+      "title": "Blog Series ($blog_path.*)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto",
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 1000 }] }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Views" }, "properties": [{ "id": "custom.displayMode", "value": "gradient-gauge" }, { "id": "max", "value": 1000 }, { "id": "custom.width", "value": 120 }] },
+          { "matcher": { "id": "byName", "options": "Path" }, "properties": [{ "id": "custom.width", "value": 600 }] }
+        ]
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 14 },
+      "id": 8,
+      "options": {
+        "footer": { "fields": "", "reducer": ["sum"], "show": true },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "Views" }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "topk(20, sum by (RequestPath) (count_over_time({container=\"traefik.traefik\"} | json | RequestHost=~\"^(www\\.)?bumbleflies\\.de$\" | RequestPath=~\"$blog_path.*\" [$__range])))",
+          "legendFormat": "{{RequestPath}}",
+          "refId": "A",
+          "queryType": "instant"
+        }
+      ],
+      "title": "Top Blog Posts by Path",
+      "transformations": [
+        { "id": "labelsToFields", "options": { "mode": "columns" } },
+        { "id": "merge", "options": {} },
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value #A": "Views", "RequestPath": "Path" } } },
+        { "id": "sortBy", "options": { "fields": {}, "sort": [{ "desc": true, "field": "Views" }] } }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "views",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "id": 9,
+      "options": {
+        "legend": { "displayMode": "hidden", "showLegend": false },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum(count_over_time({container=\"traefik.traefik\"} | json | RequestHost=~\"^(www\\.)?bumbleflies\\.de$\" | RequestPath=~\"$blog_path.*\" | __error__=\"\" [$__interval]))",
+          "legendFormat": "Blog views",
+          "refId": "A"
+        }
+      ],
+      "title": "Blog Views Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "id": 10,
+      "options": {
+        "displayLabels": ["percent"],
+        "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"] },
+        "pieType": "donut",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum(count_over_time({container=\"traefik.traefik\"} | json | RequestHost=~\"^(www\\.)?bumbleflies\\.de$\" | RequestPath=~\"$blog_path.*\" | DownstreamStatus=~\"4..\" [$__range]))",
+          "legendFormat": "Blog 4xx",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum(count_over_time({container=\"traefik.traefik\"} | json | RequestHost=~\"^(www\\.)?bumbleflies\\.de$\" | RequestPath=~\"$blog_path.*\" | DownstreamStatus=~\"5..\" [$__range]))",
+          "legendFormat": "Blog 5xx",
+          "refId": "B"
+        }
+      ],
+      "title": "Blog Error Breakdown",
+      "type": "piechart"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["bumbleflies", "web", "blog", "traffic"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": true, "text": "/blog", "value": "/blog" },
+        "hide": 0,
+        "label": "Blog Path",
+        "description": "URL path prefix for the blog series (e.g. /blog). Scopes all Blog Series panels.",
+        "name": "blog_path",
+        "type": "textbox",
+        "query": "/blog",
+        "datasource": { "type": "loki", "uid": "loki" }
+      }
+    ]
+  },
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Bumbleflies Web",
+  "uid": "bumbleflies-web-dashboard",
+  "version": 1,
+  "weekStart": ""
+}
