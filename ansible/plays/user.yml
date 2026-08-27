@@ -292,14 +292,16 @@
       retries: 15
       delay: 2
       failed_when: false
+      when: "'leagues-finance' in (services | default([]))"
       tags:
         - user.docker.leagues-finance
         - user.docker
 
     - name: Remove corrupted mongo volume and restart if unhealthy
       when: >
+        'leagues-finance' in (services | default([])) and (
         lf_mongo_info.container is none or
-        lf_mongo_info.container.State.Health.Status != 'healthy'
+        lf_mongo_info.container.State.Health.Status != 'healthy')
       block:
         - name: Remove leagues-finance containers
           community.docker.docker_compose_v2:
