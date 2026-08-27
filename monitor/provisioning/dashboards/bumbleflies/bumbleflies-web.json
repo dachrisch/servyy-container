@@ -102,7 +102,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum(increase(traefik_router_requests_total{router=~\"bumbleflies.*\",code=~\"5..\"}[$__range]))",
+          "expr": "sum(increase(traefik_router_requests_total{router=~\"bumbleflies.*\",router!=\"bumbleflies_webhook@docker\",code=~\"5..\"}[$__range]))",
           "legendFormat": "5xx Errors",
           "refId": "A"
         }
@@ -134,7 +134,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "(sum(increase(traefik_router_requests_total{router=~\"bumbleflies.*\",code=~\"4..|5..\"}[$__range])) / sum(increase(traefik_router_requests_total{router=~\"bumbleflies.*\"}[$__range]))) * 100",
+          "expr": "(sum(increase(traefik_router_requests_total{router=~\"bumbleflies.*\",router!=\"bumbleflies_webhook@docker\",code=~\"4..|5..\"}[$__range])) / sum(increase(traefik_router_requests_total{router=~\"bumbleflies.*\",router!=\"bumbleflies_webhook@docker\"}[$__range]))) * 100",
           "legendFormat": "Error Rate",
           "refId": "A"
         }
