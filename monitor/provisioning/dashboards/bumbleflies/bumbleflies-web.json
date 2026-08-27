@@ -170,10 +170,11 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "topk(10, sum by (RequestPath) (count_over_time({container=\"traefik.traefik\"} | json | RequestHost=~\"^(www\\.)?bumbleflies\\.de$\" [$__range])))",
+          "expr": "topk(10, sum by (RequestPath) (count_over_time({container=\"traefik.traefik\"} | json | RequestHost=~\"^(www\\\\.)?bumbleflies\\\\.de$\" [$__range])))",
           "legendFormat": "{{RequestPath}}",
           "refId": "A",
-          "queryType": "instant"
+          "instant": true,
+          "range": false
         }
       ],
       "title": "Top Sites",
