@@ -43,6 +43,12 @@ if [ -f "/scripts/opencode.json.template" ]; then
     envsubst '$CIRCLECI_TOKEN $CIRCLECI_BASE_URL $DASHSCOPE_API_KEY' < /scripts/opencode.json.template > "$CONFIG_DIR/opencode.json"
 fi
 
+# 4b. Configure git to prefer SSH over HTTPS for github.com
+git config --global --add safe.directory '*'
+git config --global user.name  "${GIT_AUTHOR_NAME:-opencode}"
+git config --global user.email "${GIT_AUTHOR_EMAIL:-opencode@servy.lehel.xyz}"
+git config --global url."git@github.com:".insteadOf "https://github.com/"
+
 # 5. Extensions (Placeholder)
 # echo "🧩 [Startup] Installing extensions..."
 # code-server --install-extension <extension-id>
