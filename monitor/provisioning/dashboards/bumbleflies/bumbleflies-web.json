@@ -25,7 +25,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "gridPos": { "h": 4, "w": 5, "x": 0, "y": 1 },
       "id": 1,
       "options": {
         "colorMode": "value",
@@ -57,7 +57,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "gridPos": { "h": 4, "w": 5, "x": 5, "y": 1 },
       "id": 2,
       "options": {
         "colorMode": "value",
@@ -89,7 +89,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "gridPos": { "h": 4, "w": 5, "x": 10, "y": 1 },
       "id": 3,
       "options": {
         "colorMode": "value",
@@ -121,7 +121,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "gridPos": { "h": 4, "w": 4, "x": 15, "y": 1 },
       "id": 4,
       "options": {
         "colorMode": "value",
@@ -141,6 +141,49 @@
       ],
       "title": "Error Rate %",
       "type": "stat"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto",
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Path" }, "properties": [{ "id": "custom.width", "value": 200 }] },
+          { "matcher": { "id": "byName", "options": "Requests" }, "properties": [{ "id": "custom.displayMode", "value": "gradient-gauge" }, { "id": "max", "value": 500 }] }
+        ]
+      },
+      "gridPos": { "h": 4, "w": 5, "x": 19, "y": 1 },
+      "id": 5,
+      "options": {
+        "footer": { "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "Requests" }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "topk(10, sum by (RequestPath) (count_over_time({container=\"traefik.traefik\"} | json | RequestHost=~\"^(www\\.)?bumbleflies\\.de$\" [$__range])))",
+          "legendFormat": "{{RequestPath}}",
+          "refId": "A",
+          "queryType": "instant"
+        }
+      ],
+      "title": "Top Sites",
+      "transformations": [
+        { "id": "labelsToFields", "options": { "mode": "columns" } },
+        { "id": "merge", "options": {} },
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value #A": "Requests", "RequestPath": "Path" } } },
+        { "id": "sortBy", "options": { "fields": {}, "sort": [{ "desc": true, "field": "Requests" }] } }
+      ],
+      "type": "table"
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
