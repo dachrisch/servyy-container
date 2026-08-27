@@ -27,6 +27,22 @@
     git_servyy_reachable: "yes"
   when: not (check_git_servyy_reachable | default(false))
 
+- name: "Check if {{ remote_dir }} is a valid git repository"
+  command: "git -C {{ remote_dir }} rev-parse --git-dir"
+  register: git_check
+  failed_when: false
+  changed_when: false
+  tags:
+    - user.repo.clone
+
+- name: "Remove {{ remote_dir }} if it exists but is not a git repository"
+  file:
+    path: "{{ remote_dir }}"
+    state: absent
+  when: git_check.rc != 0 and ansible_os_family != 'Docker'
+  tags:
+    - user.repo.clone
+
 - name: "Clone [ {{ repository_uri }} ] to [ {{remote_dir}} ] (branch: {{ branch | default('master') }} )"
   git:
     repo: "{{ repository_uri }}"
@@ -34,6 +50,16 @@
     force: true
     recursive: "{{ clone_submodules | default(true) and git_servyy_reachable == 'yes' }}"
     version: "{{ branch | default('master') }}"
+  tags:
+    - user.repo.clone
+
+- name: "Set correct ownership for {{ remote_dir }}"
+  file:
+    path: "{{ remote_dir }}"
+    owner: "{{ create_user }}"
+    group: "docker"
+    recurse: yes
+    state: directory
   tags:
     - user.repo.clone
 
