@@ -1,0 +1,64 @@
+---
+- name: Remove Docker Service
+  hosts: "{{ target_host }}"
+  gather_facts: true
+  vars_prompt:
+    - name: service_to_remove
+      prompt: "Service name to remove (e.g., 'opencode')"
+      private: false
+
+    - name: confirm_removal
+      prompt: "Remove {{ service_to_remove }} containers, volumes, and directory? (yes/no)"
+      private: false
+
+  pre_tasks:
+    - name: Validate confirmation
+      fail:
+        msg: "Removal cancelled by user"
+      when: confirm_removal != 'yes'
+
+  tasks:
+    - name: Report service removal starting
+      debug:
+        msg: "Starting removal of service '{{ service_to_remove }}' from {{ inventory_hostname }}"
+
+    - name: Stop and remove containers
+      community.docker.docker_compose_v2:
+        project_src: "{{ docker.remote_dir }}/{{ service_to_remove }}"
+        state: absent
+      ignore_errors: true
+      register: compose_result
+
+    - name: List volumes for service
+      shell: docker volume ls --filter "name={{ service_to_remove }}" -q
+      register: volumes_to_remove
+      changed_when: false
+
+    - name: Remove service volumes
+      community.docker.docker_volume:
+        name: "{{ item }}"
+        state: absent
+      loop: "{{ volumes_to_remove.stdout_lines }}"
+      when: volumes_to_remove.stdout_lines | length > 0
+      register: volume_removal
+
+    - name: Report volumes removed
+      debug:
+        msg: "Removed {{ volume_removal.results | length }} volume(s)"
+      when: volume_removal.changed
+
+    - name: Remove service directory
+      file:
+        path: "{{ docker.remote_dir }}/{{ service_to_remove }}"
+        state: absent
+      register: dir_removal
+
+    - name: Report removal complete
+      debug:
+        msg: |
+          ✅ Service '{{ service_to_remove }}' removed successfully from {{ inventory_hostname }}
+
+          Next steps:
+          1. Remove from git: git rm -r {{ service_to_remove }}/
+          2. Update inventory: Set services_enabled[{{ service_to_remove }}] = false
+          3. Deploy changes: ./servyy.sh --limit {{ inventory_hostname }}

@@ -62,6 +62,12 @@
         - user.docker.env
         - user.docker.env.finance
 
+    - name: Build enabled services list from services_enabled dict (compatibility layer)
+      ansible.builtin.set_fact:
+        services: "{{ services_enabled | default({}) | dict2items | selectattr('value', 'equalto', true) | map(attribute='key') | list }}"
+      tags:
+        - user.docker
+
     - name: Stop searxng before config update
       community.docker.docker_compose_v2:
         project_src: "{{ docker.remote_dir }}/searxng"

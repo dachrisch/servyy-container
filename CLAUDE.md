@@ -1,7 +1,7 @@
 # CLAUDE.md - servyy-container Infrastructure
 
 > Self-hosted microservices platform (15+ Docker services) automated with Ansible
-> **Last Updated:** 2026-06-29 (restic→Vaultwarden password backup playbook)
+> **Last Updated:** 2026-08-28 (service undeployment workflow)
 
 ## Quick Commands
 
@@ -14,6 +14,9 @@ cd scripts && ./setup_test_container.sh && cd ../ansible && ./servyy-test.sh
 
 # Targeted deployment
 cd ansible && ./servyy.sh --tags "docker" --limit lehel.xyz
+
+# Remove a service (interactive, with confirmation)
+cd ansible && ansible-playbook plays/remove_service.yml -e "target_host=lehel.xyz"
 
 # Recreate locked Restic repositories (DESTRUCTIVE)
 cd ansible && ansible-playbook restic_recreate.yml --limit lehel.xyz
@@ -131,6 +134,97 @@ ssh lehel.xyz "docker restart monitor.grafana"
 # 2. IMMEDIATELY replicate change in git repo
 # 3. Commit to git with explanation
 # 4. Deploy via Ansible to verify git state matches server state
+```
+
+## Removing a Service Permanently
+
+**Never remove services manually. Always use Ansible to decommission services.**
+
+### Step 1: Remove Service from Server
+
+Run the interactive removal playbook with confirmation prompt:
+
+```bash
+cd ansible
+ansible-playbook plays/remove_service.yml -e "target_host=lehel.xyz"
+
+# Prompts for:
+# 1. Service name (e.g., 'opencode')
+# 2. Confirmation ("Remove {service} containers, volumes, and directory? (yes/no)")
+#
+# Removes: containers, volumes, and service directory
+```
+
+### Step 2: Disable Service in Inventory
+
+Disable the service in version control to prevent re-deployment:
+
+```bash
+# Edit: ansible/production
+# Change the service flag from true to false:
+#   services_enabled:
+#     {service}: false    # ← Was 'true'
+
+# Example for removing 'opencode':
+git diff ansible/production
+# Should show: -          opencode: true
+#            +          opencode: false
+
+git add ansible/production
+git commit -m "chore: disable {service} service
+
+- Containers and volumes removed from [hostname]
+- Service marked as disabled in inventory
+"
+```
+
+### Step 3: Clean Up Git Repository
+
+Remove the service directory from version control:
+
+```bash
+# Remove service directory (if exists in git)
+git rm -r {service}/
+
+# Or if directory isn't in git:
+# Just remove from git index if tracked
+git status | grep "deleted:" # Verify removal
+
+# Re-commit with service directory removal if applicable
+git commit --amend -m "chore: remove {service} service
+
+- Removed service directory from git
+- Disabled in inventory (containers/volumes cleaned up on [hostname])
+"
+
+git push origin master
+```
+
+### Step 4: Deploy to Apply Inventory Changes
+
+Deploy to confirm service is no longer deployed on next run:
+
+```bash
+cd ansible && ./servyy.sh --limit lehel.xyz
+
+# Verify in output:
+# - Service role should be skipped (when condition: service not in enabled list)
+# - No "Deploy {service}" task should run
+```
+
+### Recovery (if needed)
+
+If you need to re-enable a service:
+
+```bash
+# Edit: ansible/production
+# Change:  {service}: false
+# To:      {service}: true
+
+# Then deploy:
+cd ansible && ./servyy.sh --limit lehel.xyz
+
+# Service will be redeployed (if directory exists in git)
 ```
 
 ## Molecule Testing (REQUIRED FOR NEW FEATURES)

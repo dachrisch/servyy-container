@@ -5,11 +5,33 @@ prod:
         with_containers: true
         has_10g_volume: false
         create_swap: true
-        services: [traefik, git, photoprism, bumbleflies, achim-hoefer, portainer, pass, energy, groceries, leagues-finance, finance, searxng, thore, job-search, dontforget, platzler-heid, dns, me, monitor]
+        services_enabled:
+          traefik: true
+          git: true
+          photoprism: true
+          bumbleflies: true
+          achim-hoefer: true
+          portainer: true
+          pass: true
+          energy: true
+          groceries: true
+          leagues-finance: true
+          finance: true
+          searxng: true
+          thore: true
+          job-search: true
+          dontforget: true
+          platzler-heid: true
+          dns: true
+          me: true
+          monitor: true
     code.lehel.xyz:
         with_docker: true
         with_containers: true
         has_10g_volume: false
         create_swap: true
         ansible_user: root
-        services: [traefik, opencode, opencode-authgate]
+        services_enabled:
+          traefik: true
+          opencode: true
+          opencode-authgate: true
