@@ -1,6 +1,6 @@
 ---
 - name: Remove Docker Service
-  hosts: "{{ target_host }}"
+  hosts: "{{ target_host | default('all') }}"
   gather_facts: true
   vars_prompt:
     - name: service_to_remove
