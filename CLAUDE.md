@@ -6,14 +6,19 @@
 ## Quick Commands
 
 ```bash
-# Production deployment
+# Production deployment (all servers with their enabled services)
 cd ansible && ./servyy.sh
 
 # Test deployment
 cd scripts && ./setup_test_container.sh && cd ../ansible && ./servyy-test.sh
 
-# Targeted deployment
-cd ansible && ./servyy.sh --tags "docker" --limit lehel.xyz
+# Deploy to specific server only
+cd ansible && ./servyy.sh --limit lehel.xyz      # Primary server
+cd ansible && ./servyy.sh --limit code.lehel     # Opencode server
+
+# Deploy specific service to its server
+cd ansible && ./servyy.sh --tags "user.docker.opencode" --limit code.lehel
+cd ansible && ./servyy.sh --tags "user.docker.monitor" --limit lehel.xyz
 
 # Remove a service (interactive, with confirmation)
 cd ansible && ansible-playbook plays/remove_service.yml -e "target_host=lehel.xyz"
@@ -21,11 +26,14 @@ cd ansible && ansible-playbook plays/remove_service.yml -e "target_host=lehel.xy
 # Recreate locked Restic repositories (DESTRUCTIVE)
 cd ansible && ansible-playbook restic_recreate.yml --limit lehel.xyz
 
-# Service management
-ssh lehel.xyz "docker ps"                          # Check running containers
-ssh lehel.xyz "docker logs {container} --tail 50"  # View logs
-ssh lehel.xyz "docker restart {container}"         # Restart service
+# Service management (know which server has the service!)
+ssh lehel.xyz "docker ps"                          # Check containers on lehel.xyz
+ssh code.lehel "docker ps"                         # Check containers on code.lehel
+ssh {server} "docker logs {container} --tail 50"   # View logs on specific server
+ssh {server} "docker restart {container}"          # Restart on specific server
 ```
+
+⚠️ **CRITICAL:** Always use `--limit {server}` to target the correct server!
 
 ## CRITICAL DEPLOYMENT RULES
 
@@ -43,10 +51,12 @@ ssh lehel.xyz "docker restart {container}"         # Restart service
    - ❌ **NEVER** deploy directly to production without testing
 
 3. **Production Deployment Requires Explicit Approval**
-   - ✅ **ALWAYS** ask user for explicit approval before deploying to `lehel.xyz`
-   - ✅ **ALWAYS** show what will be deployed and ask "Should I deploy to production?"
+   - ✅ **ALWAYS** ask user for explicit approval before deploying to production
+   - ✅ **ALWAYS** identify which server(s) will be affected (check inventory first!)
+   - ✅ **ALWAYS** show what will be deployed and ask "Should I deploy to {server}?"
    - ❌ **NEVER** assume production deployment is approved
    - ❌ **NEVER** deploy to production automatically
+   - ❌ **NEVER** deploy to the wrong server (verify inventory: which server has this service?)
 
 **Standard Git Workflow:**
 ```bash
@@ -335,6 +345,80 @@ Example:
 
 This prevents DNS ambiguity where `getent hosts app` returns wrong service IP.
 
+## Per-Server Service Deployment
+
+**IMPORTANT:** Services are now deployed **per-server**, not uniformly across all servers.
+
+Each server has its own set of enabled services defined in the ansible inventory. Before deploying or troubleshooting a service, **verify which server hosts that service**.
+
+### How to Determine Which Server Has Which Service
+
+**1. Check the Ansible Inventory**
+```bash
+cd ansible
+grep -A 100 "services_enabled:" plays/production
+
+# Output will show which services are enabled per server:
+# lehel.xyz:
+#   services_enabled:
+#     traefik: true
+#     monitor: true
+#     opencode: true
+#     photoprism: true
+#     ...
+#
+# code.lehel:
+#   services_enabled:
+#     opencode: true
+#     ...
+```
+
+**2. Query Running Services on a Server**
+```bash
+ssh {server} "docker ps --format '{{.Names}}'"
+
+# Example:
+ssh code.lehel "docker ps"  # Lists services on code.lehel
+ssh lehel.xyz "docker ps"   # Lists services on lehel.xyz
+```
+
+**3. Deployment by Server**
+When deploying a service, **always specify the correct server**:
+
+```bash
+# Deploy opencode to code.lehel ONLY
+cd ansible && ./servyy.sh --tags "user.docker.opencode" --limit code.lehel
+
+# Deploy all services to lehel.xyz
+cd ansible && ./servyy.sh --limit lehel.xyz
+
+# Deploy specific tag to all servers
+cd ansible && ./servyy.sh --tags "docker" --limit all
+```
+
+### Common Per-Server Configurations
+
+| Server | Role | Services |
+|--------|------|----------|
+| `lehel.xyz` | Primary production | traefik, monitor, photoprism, git, leaguesphere-*, etc. |
+| `code.lehel` | Secondary (opencode-only) | opencode |
+| `aqui.fritz.box` | Dev/testing | Various dev services |
+| `servyy-test.lxd` | Test environment | Mirrors production for validation |
+
+### Agent Responsibility: Know Your Server
+
+When responding to requests like "deploy X" or "fix error in X":
+
+1. **Identify the service**: What service is being referenced?
+2. **Find the host**: Which server runs this service? (check inventory or `docker ps`)
+3. **Connect to correct server**: `ssh {server}` before diagnosing or deploying
+4. **Deploy to correct server**: Always use `--limit {server}` in ansible commands
+
+**Example:**
+- Request: "Deploy opencode"
+- Action: Check inventory → opencode is on `code.lehel` → Deploy with `--limit code.lehel`
+- Not: ~~Deploy to lehel.xyz~~ (wrong server!)
+
 ## Key Services
 
 | Service | Container Name | URL | Purpose |
@@ -361,12 +445,18 @@ This prevents DNS ambiguity where `getent hosts app` returns wrong service IP.
 ansible/
 ├── servyy.yml              # Main playbook
 ├── servyy.sh / servyy-test.sh
-├── inventory/production    # lehel.xyz, aqui.fritz.box
+├── inventory/production    # Defines servers and their enabled services
 └── plays/
     ├── system.yml          # OS, fail2ban, monit, backups
     ├── user.yml            # Docker services, containers
     └── roles/{system,user,testing,docker_service,ls_*}/
 ```
+
+**Inventory File: `ansible/production`**
+- Defines all servers (lehel.xyz, code.lehel, aqui.fritz.box, etc.)
+- Each server has `services_enabled:` dict specifying which services run there
+- Services NOT in enabled list are skipped during deployment
+- Example: opencode only enabled on code.lehel, not on lehel.xyz
 
 **Common Tags:**
 - `system` - OS packages, fail2ban, monit
@@ -374,6 +464,7 @@ ansible/
 - `fail2ban` - fail2ban configuration
 - `backup` - Backup timers
 - `user.docker.env` - Regenerate .env files
+- `user.docker.{service}` - Deploy specific service (e.g., `user.docker.opencode`)
 
 ## Backup & Monitoring
 
