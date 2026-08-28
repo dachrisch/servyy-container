@@ -35,6 +35,123 @@ ssh {server} "docker restart {container}"          # Restart on specific server
 
 ⚠️ **CRITICAL:** Always use `--limit {server}` to target the correct server!
 
+## SSH Key-Based Access Setup
+
+**All servers are configured for SSH key-based authentication during Ansible deployment.**
+
+### How It Works
+
+The Ansible system role automatically:
+1. Creates the `cda` user on both production servers
+2. Copies your local SSH public key (`~/.ssh/id_rsa.pub`) to each server
+3. Disables password authentication for security
+
+### Initial Server Setup
+
+**First time connecting to a new server (before Ansible):**
+
+If a server is brand new and doesn't have SSH key access yet, you may need to use root access initially:
+
+```bash
+# Initial connection (password or provided credentials)
+ssh root@{new-server}
+
+# Then run Ansible to set up SSH keys:
+cd ansible && ./servyy.sh --limit {new-server}
+
+# After that, SSH key authentication is configured
+ssh cda@{server}
+ssh {server}  # Uses default remote_user if configured
+```
+
+### SSH Configuration
+
+**Servers in inventory:**
+- `lehel.xyz` - Primary production server (connects as `cda` user)
+- `code.lehel.xyz` - Secondary server for opencode (connects as `cda` user)
+
+**Authentication:**
+```bash
+# Both servers use SSH key from ~/.ssh/id_rsa.pub
+ssh lehel.xyz "whoami"           # Connects as cda@lehel.xyz
+ssh code.lehel.xyz "whoami"      # Connects as cda@code.lehel.xyz
+
+# Or directly
+ssh cda@lehel.xyz
+ssh cda@code.lehel.xyz
+```
+
+**Security:**
+- ✅ SSH public key authentication (key-based)
+- ✅ No password authentication (disabled after setup)
+- ✅ Consistent across all production servers
+
+### SSH Key Requirements
+
+Ensure you have a local SSH public key before deploying:
+
+```bash
+# Check if key exists
+ls -la ~/.ssh/id_rsa.pub
+
+# If missing, generate one
+ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
+
+# Verify the public key exists
+cat ~/.ssh/id_rsa.pub
+```
+
+The Ansible setup will use this key for all servers.
+
+### Cross-Server SSH Access (Service-to-Service)
+
+**Services running on code.lehel.xyz may need SSH access to lehel.xyz.** For example, opencode may need to pull repos or sync data from lehel.xyz.
+
+The Ansible system role automatically configures this:
+
+1. Both servers have the `cda` user with the same SSH public key
+2. Each server's `/home/cda/.ssh/authorized_keys` includes all server public keys
+3. Services can SSH between servers using the `cda` user
+
+**Testing cross-server access:**
+
+```bash
+# From your workstation, verify both servers can reach each other
+ssh lehel.xyz "ssh cda@code.lehel.xyz 'whoami'"      # lehel → code.lehel
+ssh code.lehel.xyz "ssh cda@lehel.xyz 'whoami'"      # code.lehel → lehel
+
+# Both should return: cda
+```
+
+**Service Configuration:**
+
+Services on code.lehel.xyz can connect to lehel.xyz using:
+```bash
+ssh cda@lehel.xyz {command}      # SSH access to primary server
+ssh lehel.xyz {command}          # Via SSH config shortcuts
+```
+
+**In Docker Compose services:**
+```yaml
+# Example for opencode service needing to reach lehel.xyz
+environment:
+  PRIMARY_SERVER: lehel.xyz
+  SSH_USER: cda
+  
+# The container needs:
+# - SSH client tools
+# - Mount or copy of ~/.ssh/id_rsa (private key)
+# - authorized_keys entries on lehel.xyz set up by Ansible
+```
+
+**Ansible Automation:**
+
+The system role's SSH key setup ensures:
+- ✅ All server SSH public keys are distributed to all servers
+- ✅ No additional manual SSH key setup needed
+- ✅ `cda` user on each server can SSH to any other server
+- ✅ Consistent authentication across all servers
+
 ## CRITICAL DEPLOYMENT RULES
 
 **MANDATORY WORKFLOW - NO EXCEPTIONS:**
