@@ -1,6 +1,6 @@
 #!/bin/sh
 # Idempotent provisioning of /root/dev checkouts + credentials for OpenCode.
-# Discovers repos tagged with 'opencode-dev' topic across dachrisch + bumbleflies orgs.
+# Discovers repos tagged with 'gh-dash' topic across dachrisch + bumbleflies orgs.
 # Runs on every container boot from startup.sh. Safe to re-run.
 set -eu
 
@@ -92,14 +92,14 @@ for r in json.load(sys.stdin):
   done
 fi
 
-# 5. Discovery-based provisioning: search for repos with 'opencode-dev' topic
+# 5. Discovery-based provisioning: search for repos with 'gh-dash' topic
 # Searches across dachrisch + bumbleflies orgs
 if command -v gh >/dev/null 2>&1; then
-  log "discovering repos with 'opencode-dev' topic..."
+  log "discovering repos with 'gh-dash' topic..."
 
   for target in dachrisch bumbleflies; do
     log "  checking $target..."
-    repos=$(gh repo list "$target" --topic opencode-dev --json nameWithOwner,url,defaultBranchRef --limit 100 2>/dev/null || echo "[]")
+    repos=$(gh repo list "$target" --topic gh-dash --json nameWithOwner,url,defaultBranchRef --limit 100 2>/dev/null || echo "[]")
 
     echo "$repos" | python3 -c '
 import json,sys
