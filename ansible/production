@@ -12,4 +12,4 @@ prod:
         has_10g_volume: false
         create_swap: true
         ansible_user: root
-        services: [opencode, opencode-authgate]
+        services: [traefik, opencode, opencode-authgate]
