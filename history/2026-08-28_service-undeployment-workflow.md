@@ -1,92 +1,131 @@
-# Service Undeployment Workflow Implementation
+# ADR-004: Service Undeployment via Inventory Control
+
 **Date:** 2026-08-28  
-**Status:** ✅ Complete & Tested
+**Status:** Accepted  
+**Relates to:** ADR-001 (Infrastructure as Code)
 
-## Summary
+## Context
 
-Implemented a production-ready service undeployment system following infrastructure-as-code principles. Services can now be safely decommissioned via Ansible with inventory-based control preventing accidental re-deployment.
+Previously, no dedicated undeployment workflow existed. Services could only be removed manually via SSH or reactively during troubleshooting, creating:
+- Inconsistent state between git and production servers
+- No audit trail of service removals
+- Risk of accidental re-deployment of removed services
+- Violation of infrastructure-as-code principles
+- Manual operations on production violate deployment policy
 
-## Problem Solved
+We needed a safe, repeatable, git-tracked way to decommission services while preventing accidental re-deployment.
 
-Previously, no dedicated undeployment workflow existed. Services could only be removed manually or reactively via ad-hoc SSH commands, creating inconsistency and git tracking issues.
+## Decision
 
-## Solution
+Implement a three-part Ansible-based service removal system:
 
-Three-part approach:
+1. **Interactive Removal Playbook** (`ansible/plays/remove_service.yml`)
+   - Prompts for service name and confirmation
+   - Removes containers, volumes, and service directories
+   - Uses pause task for safe variable handling
+   - Provides post-removal instructions
 
-### 1. Interactive Removal Playbook (`ansible/plays/remove_service.yml`)
-- Prompts for service name and confirmation
-- Removes: containers, volumes, service directory
-- Uses `pause` task for safe variable handling
-- Includes helpful post-removal instructions
+2. **Inventory-Based Service Control** 
+   - Restructure `ansible/production` from `services: [list]` to `services_enabled: {dict}`
+   - Enable/disable services with true/false flags
+   - All services default to true (current behavior)
 
-**Usage:**
-```bash
-ansible-playbook plays/remove_service.yml -e "target_host=lehel.xyz"
-```
+3. **Automatic Filtering**
+   - Add pre_task in `ansible/plays/user.yml` to convert dict → list
+   - Maintains 100% backward compatibility with existing when conditions
+   - Disabled services automatically skipped during deployment
 
-### 2. Inventory-Based Service Control
-Changed `ansible/production` from hardcoded service lists to enable/disable flags:
+This approach keeps all changes in version control and prevents services from being re-deployed after removal.
 
-```yaml
-services_enabled:
-  traefik: true       # Deployed
-  opencode: false     # Skipped
-  git: true           # Deployed
-```
+## Consequences
 
-### 3. Automatic Filtering
-Added pre_task in `ansible/plays/user.yml` that converts `services_enabled` dict → `services` list:
-- Maintains full backward compatibility
-- All existing `when` conditions work unchanged
-- Disabled services automatically skipped during deployment
+### Positive
+- ✅ All service removals tracked in git with full history
+- ✅ Prevents accidental re-deployment via inventory flags
+- ✅ Interactive confirmation prevents mistakes
+- ✅ Backward compatible (all services default to enabled)
+- ✅ No manual server operations needed
+- ✅ Reversible (re-enable by changing flag to true)
+- ✅ Works across all infrastructure environments (lehel.xyz, code.lehel.xyz, test)
+- ✅ Follows infrastructure-as-code principles
 
-## Files Modified
+### Negative / Tradeoffs
+- ⚠️ Added complexity to inventory structure (dict vs list)
+- ⚠️ Pause task doesn't work in non-interactive CI mode (must use `-e` variables)
+- ⚠️ Requires git workflow discipline (can't manually SSH to fix)
+- ⚠️ Pre-task adds minimal overhead to every deployment
 
-| File | Change | Commits |
-|------|--------|---------|
-| `ansible/plays/remove_service.yml` | CREATE | 4e7b6d8, 374a0c5 |
-| `ansible/production` | Inventory restructured | 4e7b6d8 |
-| `ansible/plays/user.yml` | Pre-task for filtering | 4e7b6d8 |
-| `CLAUDE.md` | Removal workflow docs | 4e7b6d8 |
-| `opencode/scripts/provision-dev.sh` | Topic changed to `gh-dash` | d6d865e |
+### Implementation Details
 
-## Testing & Verification
+**Files Modified:**
+- `ansible/plays/remove_service.yml` (NEW)
+- `ansible/production` (services → services_enabled dict)
+- `ansible/plays/user.yml` (+pre-task for filtering)
+- `CLAUDE.md` (+removal workflow section)
+- `opencode/scripts/provision-dev.sh` (unrelated: gh-dash topic change)
 
-### Test Environment
-✅ Manually removed `platzler-heid` service from servyy-test.lxd using docker compose  
-✅ Verified service directory cleanup  
+**Commits:**
+- 9c5edf8 docs: add history entry for service undeployment workflow
+- 374a0c5 fix: use pause task instead of vars_prompt for confirmation
+- 4e7b6d8 feat: implement service undeployment workflow via Ansible
+- d6d865e feat: use gh-dash topic for opencode repo discovery
 
-### Production Testing
-✅ Deployed opencode to code.lehel.xyz with docker tag filtering  
-✅ Verified container running and healthy  
-✅ Confirmed gh-dash topic discovery active in logs:
-```
-[provision-dev] discovering repos with 'gh-dash' topic...
-```
+**Testing & Verification:**
 
-### Inventory Control Testing
-✅ lehel.xyz: OpenCode NOT in services_enabled → correctly skipped  
-✅ code.lehel.xyz: OpenCode in services_enabled → correctly deployed  
-✅ Tag-based deployment working: only opencode tasks ran with `--tags "docker,user.docker.opencode"`
+✅ Playbook syntax verified with target_host parameter  
+✅ Manual removal tested on servyy-test.lxd (removed platzler-heid)  
+✅ Verified service directory cleanup on test  
+✅ Inventory control verified: opencode skipped on lehel.xyz (not in its services_enabled)  
+✅ Tag-based deployment tested: only opencode tasks ran with `--tags "docker,user.docker.opencode"`  
+✅ Production deployment successful on code.lehel.xyz  
+✅ Container running and healthy  
+✅ gh-dash topic discovery confirmed in logs: `[provision-dev] discovering repos with 'gh-dash' topic...`
 
-## Key Features
+**Key Learnings:**
 
-- **Ansible-Driven**: No manual server operations required
-- **Git-Tracked**: All removals recorded in version control
-- **Safe Confirmation**: Interactive prompts prevent accidents
-- **Backward Compatible**: Existing services unaffected, default to enabled
-- **Prevents Re-deployment**: Disabled services in inventory stay disabled
-- **Reversible**: Re-enable by setting flag to `true` in inventory
+1. **vars_prompt limitation** - Cannot reference undefined variables between prompts; switching to pause task for two-step confirmation avoids this
+2. **Permission handling** - Ansible-written files with root ownership need pre-cleanup on subsequent runs; resolved by deleting known_hosts before redeployment
+3. **Inventory as control layer** - Dict structure enables powerful conditional logic; dict2items filter with selectattr provides clean conversion to list
+4. **Role invocation filtering** - Tag filtering works at role inclusion level (when conditions), not just at task level; allows selective service deployment
+5. **Backward compatibility patterns** - Pre-task conversion maintains 100% compatibility with existing conditions without modifying role logic
+6. **Inventory clarity** - Services disabled in inventory stay disabled even when tagged; prevents accidental re-deployment to wrong hosts
 
-## Workflow
+### Known Issues & Limitations
+- Pause task doesn't work in non-interactive CI/CD pipelines (use `-e` variable passing instead)
+- SSH key file permissions need periodic cleanup when ansible user differs from file owner
+- Test environment (servyy-test.lxd) not in standard prod inventory (intentional design)
+
+## Related Decisions
+- ADR-001: All infrastructure changes must go through Ansible (no manual server edits)
+- ADR-003: Use gh-dash topic for repository discovery in opencode
+
+## Alternatives Considered
+
+### Alt A: Role-Based Removal (docker_remove_service role)
+**Pros:** Follows existing pattern; reusable pattern  
+**Cons:** More complex; adds abstraction for one-off operation  
+**Decision:** Rejected - playbook is simpler for one-off operations; roles better for recurring patterns
+
+### Alt B: Tag-Based Control (--skip-tags "service.{name}")
+**Pros:** No inventory changes needed; uses existing tag infrastructure  
+**Cons:** Harder to track in git; tags must be manually set per service; no single source of truth  
+**Decision:** Rejected - inventory flags are more maintainable and explicit; creates clear source of truth in git
+
+### Alt C: Separate undeploy.yml playbook
+**Pros:** Mirrors deployment pattern; separation of concerns  
+**Cons:** User must maintain two parallel playbooks; greater maintenance burden  
+**Decision:** Rejected - single remove_service.yml simpler; deployment doesn't need corresponding undeploy
+
+## Usage
 
 ### Remove a Service Permanently
 
 **Step 1:** Remove from server
 ```bash
+cd ansible
 ansible-playbook plays/remove_service.yml -e "target_host=lehel.xyz"
 # Prompts for service name and confirmation
+# Removes: containers, volumes, service directory
 ```
 
 **Step 2:** Disable in inventory & cleanup git
@@ -95,51 +134,22 @@ ansible-playbook plays/remove_service.yml -e "target_host=lehel.xyz"
 git rm -r {service}/
 git add ansible/production
 git commit -m "chore: remove {service} service"
+git push origin master
 ```
 
 **Step 3:** Deploy to apply changes
 ```bash
-./servyy.sh --limit lehel.xyz
+cd ansible && ./servyy.sh --limit lehel.xyz
 # Service role skipped, no re-deployment
 ```
 
-## Related Features
+### Recovery
 
-- **gh-dash Topic Discovery**: OpenCode now discovers repos tagged with `gh-dash` topic (not `opencode-dev`)
-- **Scoped Deployments**: Can now deploy only specific services with `--tags "docker,user.docker.{service}"`
-- **Service Filtering**: Pre-task converts services_enabled dict to services list automatically
-
-## Commits
-
+If service needs to be re-enabled:
+```bash
+# Edit ansible/production: service_name: false → service_name: true
+git add ansible/production
+git commit -m "chore: re-enable {service} service"
+./servyy.sh --limit lehel.xyz
+# Service will be redeployed
 ```
-374a0c5 fix: use pause task instead of vars_prompt for confirmation
-4e7b6d8 feat: implement service undeployment workflow via Ansible
-d6d865e feat: use gh-dash topic for opencode repo discovery
-```
-
-## Documentation
-
-Complete removal workflow documented in `CLAUDE.md` under "Removing a Service Permanently" section with:
-- Step-by-step instructions
-- Safety considerations  
-- Recovery procedures
-- Verification checks
-
-## Future Enhancements
-
-- Add confirmation in shell script (servyy.sh) before production deployments
-- Monitor disabled services in Grafana dashboard
-- Add service lifecycle tracking to git commit hooks
-- Integrate with CI to prevent deploying disabled services
-
-## Known Issues & Notes
-
-- Ansible pause task doesn't work in non-interactive CI mode (use `-e` variables instead)
-- Service SSH key permissions need periodic cleanup (normal Ansible idempotence issue)
-- Test environment (servyy-test.lxd) not in production inventory (by design)
-
----
-
-**Tested by:** Claude  
-**Production Ready:** Yes  
-**Rollback Plan:** Re-enable service in inventory and deploy
