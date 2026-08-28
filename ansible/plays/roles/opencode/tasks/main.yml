@@ -139,6 +139,27 @@
   notify: restart opencode container
   tags: [user.docker.opencode]
 
+- name: Ensure OpenCode skills directory exists
+  ansible.builtin.file:
+    path: "{{ opencode_skills_dir }}"
+    state: directory
+    mode: '0755'
+  vars:
+    opencode_skills_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/skills') | path_join }}"
+  tags: [user.docker.opencode]
+
+- name: Deploy OpenCode skills
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../opencode/skills/"
+    dest: "{{ opencode_skills_dir }}"
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0644'
+    directory_mode: '0755'
+  vars:
+    opencode_skills_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/skills') | path_join }}"
+  tags: [user.docker.opencode]
+
 - name: Report SSH key info
   ansible.builtin.debug:
     msg: |
