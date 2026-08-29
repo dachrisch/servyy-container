@@ -2,7 +2,7 @@
 # DNS Layout Viewer
 # Displays Porkbun domain configuration in user-friendly CLI format
 
-set -euo pipefail
+set -uo pipefail  # removed -e to allow validation failures without exiting
 
 # Colors
 RED='\033[0;31m'
@@ -36,15 +36,9 @@ if [[ -z "$PK" ]] || [[ -z "$SK" ]]; then
     exit 1
   fi
 
-  # Extract Porkbun keys using yq or grep
-  if command -v yq &> /dev/null; then
-    PK=$(yq eval '.porkbun_api.pk' "$REPO_ROOT/ansible/plays/vars/secrets.yml" 2>/dev/null || echo "")
-    SK=$(yq eval '.porkbun_api.sk' "$REPO_ROOT/ansible/plays/vars/secrets.yml" 2>/dev/null || echo "")
-  else
-    # Fallback to grep
-    PK=$(grep -A1 "porkbun_api:" "$REPO_ROOT/ansible/plays/vars/secrets.yml" | grep "pk:" | awk '{print $2}' | tr -d '"' || echo "")
-    SK=$(grep -A2 "porkbun_api:" "$REPO_ROOT/ansible/plays/vars/secrets.yml" | grep "sk:" | awk '{print $2}' | tr -d '"' || echo "")
-  fi
+  # Extract Porkbun keys using grep (yq parsing YAML is unreliable for this use case)
+  PK=$(grep -A2 "porkbun_api:" "$REPO_ROOT/ansible/plays/vars/secrets.yml" | grep "pk:" | sed 's/.*pk: "\(.*\)".*/\1/' || echo "")
+  SK=$(grep -A2 "porkbun_api:" "$REPO_ROOT/ansible/plays/vars/secrets.yml" | grep "sk:" | sed 's/.*sk: "\(.*\)".*/\1/' || echo "")
 fi
 
 if [[ -z "$PK" ]] || [[ -z "$SK" ]]; then
@@ -59,6 +53,50 @@ fetch_records() {
   curl -s -X GET "https://api.porkbun.com/api/json/v3/dns/retrieve/$domain" \
     -H "X-API-Key: $PK" \
     -H "X-Secret-API-Key: $SK"
+}
+
+# Validate server connectivity and ownership
+validate_server() {
+  local hostname="$1"
+
+  # Quick ping check
+  if ! ping -c 1 -W 1 "$hostname" &>/dev/null; then
+    echo -e "${RED}✗${NC} unreachable"
+    return 1
+  fi
+
+  # SSH access check (short timeout)
+  local ssh_ok=0
+  if timeout 2 ssh -o ConnectTimeout=1 -o BatchMode=yes -o StrictHostKeyChecking=accept-new cda@"$hostname" exit &>/dev/null 2>&1; then
+    ssh_ok=1
+  fi
+
+  # HTTP status check
+  local http_code
+  http_code=$(curl -s -o /dev/null -w "%{http_code}" -k --connect-timeout 1 "https://$hostname" 2>/dev/null || echo "000")
+
+  # Determine status
+  if [[ $ssh_ok -eq 1 ]]; then
+    if [[ "$http_code" =~ ^[23][0-9]{2}$ ]]; then
+      echo -e "${GREEN}✓${NC} owned (HTTP $http_code)"
+    else
+      echo -e "${GREEN}✓${NC} owned (HTTP $http_code)"
+    fi
+  else
+    echo -e "${RED}✗${NC} no SSH access"
+  fi
+}
+
+# Get hostname from IP (resolve CNAME or use direct hostname)
+get_hostname_for_record() {
+  local name="$1"
+  local type="$2"
+
+  # For A/AAAA records, validate the hostname itself
+  # For CNAME records, skip validation (they're aliases)
+  if [[ "$type" == "A" ]] || [[ "$type" == "AAAA" ]]; then
+    echo "$name"
+  fi
 }
 
 # Parse and display records
@@ -79,9 +117,9 @@ display_layout() {
     return 1
   fi
 
-  # Extract records
+  # Extract records sorted by type, then name
   local records
-  records=$(echo "$data" | jq -c '.records | sort_by(.name, .type)' 2>/dev/null)
+  records=$(echo "$data" | jq -c '.records | sort_by(.type, .name)' 2>/dev/null)
 
   echo
   echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -89,11 +127,14 @@ display_layout() {
   echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   echo
 
-  # Group by type
+  # Group by type - capture records data to avoid subshell issues
+  local records_data
+  records_data=$(echo "$records" | jq -r '.[] | "\(.name)\t\(.type)\t\(.content)\t\(.ttl)"')
+
   local current_type=""
   local count=0
 
-  echo "$records" | jq -r '.[] | "\(.name)\t\(.type)\t\(.content)\t\(.ttl)"' | while IFS=$'\t' read -r name type content ttl; do
+  while IFS=$'\t' read -r name type content ttl; do
     if [[ "$type" != "$current_type" ]]; then
       if [[ -n "$current_type" ]]; then
         echo
@@ -111,7 +152,7 @@ display_layout() {
         echo -e "  ${BLUE}$name${NC} ${BOLD}@${NC} $content (TTL: $ttl)"
         ;;
       AAAA)
-        echo -e "  ${BLUE}$name${NC} ${BOLD}@${NC} $content (TTL: $ttl)"
+        echo -e "  ${BLUE}$name${NC} ${BOLD}@${NC} $content (TTL: $ttl) [IPv6]"
         ;;
       ALIAS)
         echo -e "  ${BLUE}$name${NC} ${BOLD}⇒${NC} $content"
@@ -120,7 +161,7 @@ display_layout() {
         echo -e "  ${BLUE}$name${NC} ${BOLD}»${NC} $content"
         ;;
       TXT)
-        local short_content="${content:0:50}"
+        short_content="${content:0:50}"
         [[ ${#content} -gt 50 ]] && short_content="${short_content}..."
         echo -e "  ${BLUE}$name${NC} ${BOLD}≈${NC} $short_content"
         ;;
@@ -132,7 +173,7 @@ display_layout() {
         ;;
     esac
     count=$((count + 1))
-  done
+  done <<< "$records_data"
 
   echo
   echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -153,6 +194,14 @@ display_layout() {
   if ! $has_cnames; then
     echo -e "  ${YELLOW}(No CNAME records)${NC}"
   fi
+
+  # Server Validation
+  echo
+  echo -e "${BOLD}${YELLOW}Server Health:${NC}"
+  echo "$records" | jq -r '.[] | select(.type=="A") | .name' | sort -u | while read -r hostname; do
+    result=$(validate_server "$hostname" 2>/dev/null || echo -e "${RED}✗${NC} error")
+    echo -e "  ${BLUE}$hostname${NC} $result"
+  done
 }
 
 # Main
