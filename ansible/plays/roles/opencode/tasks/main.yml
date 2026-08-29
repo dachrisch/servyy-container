@@ -89,6 +89,23 @@
   vars:
     opencode_known_hosts: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/known_hosts') | path_join }}"
 
+- name: Ensure SERVICE_ROOT_HOST is set in OpenCode .env
+  ansible.builtin.lineinfile:
+    path: "{{ opencode_env_file }}"
+    regexp: '^SERVICE_ROOT_HOST='
+    line: "SERVICE_ROOT_HOST={{ service_root_host | default(inventory_hostname) }}"
+    create: true
+    mode: '0600'
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+  # The docker_service opencode task that renders .env from docker.env.j2 is
+  # skipped on prod because services_enabled.opencode is a dict, not `true`.
+  # This guarantees the variable (used by docker-compose.yml root-host routers)
+  # is always present, matching docker.env.j2's default.
+  tags: [user.docker.opencode]
+  vars:
+    opencode_env_file: "{{ ('/home/', create_user, 'servyy-container/opencode/.env') | path_join }}"
+
 - name: Write lehel server SSH private key to container mount point
   ansible.builtin.copy:
     content: "{{ opencode.servy_ssh_key_b64 | b64decode }}"
