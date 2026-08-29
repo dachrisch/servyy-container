@@ -1,44 +1,62 @@
-# Portainer Agent Architecture Implementation Plan
+# Portainer Master/Slave Architecture Implementation Plan
 
 > **For agentic workers:** Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Deploy Portainer Server on lehel.xyz with Portainer Agent on code.lehel, enabling secure remote container observability and restart capabilities for the leaguesphere team.
+**Goal:** Run Portainer **Server** on the master host `servy.lehel.xyz` and a Portainer **Agent** on the slave host `codey.lehel.xyz`, giving the leaguesphere team secure container observability and restart capability across both servers from a single UI.
 
-**Architecture:** Portainer Server runs on lehel.xyz exposed via Traefik (portainer.lehel.xyz) with SSL. Portainer Agent on code.lehel connects outbound via mTLS tunnel to the server's agent API. No inbound ports on code.lehel. All secrets (API tokens, TLS certs, passwords) encrypted via git-crypt.
+**Architecture:** Master/slave Portainer topology. The Portainer Server runs on `servy.lehel.xyz` (the primary server, 49.13.6.173) and is exposed via Traefik at `portainer.lehel.xyz` with Let's Encrypt SSL. The Portainer Agent runs on `codey.lehel.xyz` (the secondary server, 217.217.227.124) and listens on port 9001. The server connects to the agent using the shared `AGENT_SECRET`; the agent's Docker socket is never exposed to the public internet. All secrets are encrypted with git-crypt.
 
-**Tech Stack:** Portainer CE 2.x, Docker Compose, Ansible, Traefik, git-crypt, self-signed CA
+**Tech Stack:** Portainer CE 2.x, Docker Compose, Ansible (`docker_service` role), Traefik, git-crypt
 
-**Spec:** Design approved in brainstorming session 2026-08-28
+**Spec:** Design approved in brainstorming session 2026-08-28, updated for the master/slave server layout on 2026-08-29.
+
+## Server Layout (updated 2026-08-29)
+
+The DNS infrastructure now separates physical servers from public service names:
+
+| Role | Physical server | Public IP | Ansible inventory host | DNS record |
+|------|----------------|-----------|------------------------|------------|
+| **Master** | servy.lehel.xyz | 49.13.6.173 | `lehel.xyz` | `lehel.xyz` ALIAS → servy.lehel.xyz |
+| **Slave** | codey.lehel.xyz | 217.217.227.124 | `code.lehel.xyz` | `code.lehel.xyz` CNAME → codey.lehel.xyz |
+
+- `*.lehel.xyz` CNAME → `servy.lehel.xyz` (wildcard catches all service subdomains on the master, incl. `portainer.lehel.xyz`)
+- Ansible inventory hostnames are unchanged (`lehel.xyz`, `code.lehel.xyz`) — they resolve to the physical servers via ALIAS/CNAME, so `servyy.sh --limit lehel.xyz` / `--limit code.lehel.xyz` work as-is.
 
 ## Global Constraints
 
-- All services deployed via Ansible (plays/user.yml)
-- All secrets encrypted with git-crypt (docker-compose.yml, .env files)
+- **Portainer Server** → master: `servy.lehel.xyz` (inventory host `lehel.xyz`)
+- **Portainer Agent** → slave: `codey.lehel.xyz` (inventory host `code.lehel.xyz`)
+- All services deployed via Ansible (`plays/user.yml` → `docker_service` role)
+- All secrets encrypted with git-crypt (`.env` files, `secrets.yml`)
 - Portainer Server exposed via Traefik at `portainer.lehel.xyz` with Let's Encrypt SSL
-- Agent uses mTLS (self-signed CA cert + client cert) for server communication
+- Portainer Agent exposed via the slave's Traefik at `a.codey.lehel.xyz` with Let's Encrypt SSL (no raw host port published)
+- Agent auth uses the shared `AGENT_SECRET` (standard Portainer agent model — no mTLS/self-signed CA)
+- Traefik middleware `ipallowlist` on the agent router restricts access to the master's IP (`49.13.6.173`)
 - Container naming: `{directory}.{service}` (e.g., `portainer.server`, `portainer.agent`)
 - RBAC: christian (admin), leaguesphere team (operator: observe + restart)
 - Test on servyy-test.lxd before production deployment
+- Existing Portainer server on the master (port 9000 UI + watchtower + ofelia) is **kept**; this plan adds the agent on the slave and reconciles the server config only where needed
 
 ---
 
-### Task 1: Create Portainer Server Directory & docker-compose.yml
+### Task 1: Reconcile Portainer Server Directory (Master)
 
 **Files:**
-- Create: `portainer/docker-compose.yml`
-- Create: `portainer/.gitignore`
+- Review: `portainer/docker-compose.yml` (exists on master)
+- Create (if missing): `portainer/.gitignore`
 
-**Step 1: Create portainer directory structure**
+**Step 1: Review existing state**
+
+The master already runs Portainer Server via `docker_service` (`portainer: true` in `services_enabled`, UI on port 9000, Traefik at `portainer.lehel.xyz`). It also hosts watchtower (prod/dev) and ofelia-scheduler. **Do not replace this file wholesale** — only adjust what the agent needs.
+
+**Step 2: Confirm the server listens on the agent API port (8000) for future Edge support (optional)**
+
+Standard agent mode requires **no** inbound listener on the server (the server dials the agent on 9001). Only if the Edge agent model is chosen later would `8000:8000` be needed. For this plan, **no server port change is required**.
+
+**Step 3: Ensure `.gitignore` exists**
 
 ```bash
-mkdir -p portainer
-cd portainer
-```
-
-**Step 2: Create .gitignore**
-
-```bash
-cat > .gitignore << 'EOF'
+cat > portainer/.gitignore << 'EOF'
 .env
 .env.local
 *.key
@@ -47,62 +65,17 @@ portainer_data/
 EOF
 ```
 
-**Step 3: Create docker-compose.yml**
-
-```yaml
-# portainer/docker-compose.yml
-version: '3.8'
-
-services:
-  server:
-    image: portainer/portainer-ce:latest
-    container_name: ${COMPOSE_PROJECT_NAME}.server
-    restart: unless-stopped
-    ports:
-      - "8000:8000"  # Agent API (internal, will use TLS)
-      - "9443:9443"  # Web UI (internal, proxied via Traefik)
-    volumes:
-      - portainer_data:/data
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./certs:/certs:ro  # TLS certs for agent communication
-    environment:
-      PORTAINER_ADMIN_PASSWORD: ${PORTAINER_ADMIN_PASSWORD}
-      PORTAINER_EDGE_COMPUTE: "false"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.${SERVICE_NAME}.rule=Host(`${SERVICE_HOST}`)"
-      - "traefik.http.routers.${SERVICE_NAME}.entrypoints=websecure"
-      - "traefik.http.routers.${SERVICE_NAME}.tls.certresolver=letsencryptdnsresolver"
-      - "traefik.http.services.${SERVICE_NAME}.loadbalancer.server.port=9443"
-      - "traefik.http.services.${SERVICE_NAME}.loadbalancer.server.scheme=https"
-    networks:
-      - proxy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "https://localhost:9443", "--insecure"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-volumes:
-  portainer_data:
-    driver: local
-
-networks:
-  proxy:
-    external: true
-```
-
-**Step 4: Verify docker-compose syntax**
+**Step 4: Verify compose syntax**
 
 ```bash
-docker-compose config --resolve-image-digests > /dev/null && echo "✓ Syntax valid"
+docker-compose -f portainer/docker-compose.yml config --quiet && echo "✓ Syntax valid"
 ```
 
-**Step 5: Commit**
+**Step 5: Commit (if anything changed)**
 
 ```bash
-git add portainer/docker-compose.yml portainer/.gitignore
-git commit -m "feat: add portainer server docker-compose configuration"
+git add portainer/
+git commit -m "chore: reconcile portainer server config for master/slave layout"
 ```
 
 ---
@@ -110,26 +83,28 @@ git commit -m "feat: add portainer server docker-compose configuration"
 ### Task 2: Create Portainer Server .env Template
 
 **Files:**
-- Create: `ansible/plays/roles/docker_service/templates/portainer/docker.env.j2`
+- Create: `ansible/plays/roles/docker_service/templates/portainer/docker.env.j2` (only if the master needs env vars beyond the existing `.env`; the existing server already has an env template — review first)
 
-**Step 1: Create template directory**
+**Step 1: Check existing template**
 
 ```bash
-mkdir -p ansible/plays/roles/docker_service/templates/portainer
+ls ansible/plays/roles/docker_service/templates/portainer/
+# If docker.env.j2 exists, review and extend it; otherwise create it.
 ```
 
-**Step 2: Create .env template**
+**Step 2: Create/extend .env template**
 
 ```jinja2
 # ansible/plays/roles/docker_service/templates/portainer/docker.env.j2
 COMPOSE_PROJECT_NAME=portainer
 SERVICE_NAME=portainer
-SERVICE_HOST=portainer.{{ inventory_hostname }}
+SERVICE_HOST=portainer.{{ inventory_hostname }}   # portainer.lehel.xyz on the master
 
-# Admin user password (will be hashed by Portainer on first run)
-# Change this before first deployment and use Portainer UI to create additional users
+# Admin user password (bcrypt-hashed; Portainer rejects sha512)
 PORTAINER_ADMIN_PASSWORD={{ portainer_admin_password }}
 ```
+
+> Note: `inventory_hostname` on the master is `lehel.xyz`, so `SERVICE_HOST` becomes `portainer.lehel.xyz` — covered by the `*.lehel.xyz` wildcard to servy. No DNS change needed.
 
 **Step 3: Commit**
 
@@ -140,7 +115,7 @@ git commit -m "feat: add portainer server env template"
 
 ---
 
-### Task 3: Create Portainer Agent Directory & docker-compose.yml
+### Task 3: Create Portainer Agent Directory & docker-compose.yml (Slave)
 
 **Files:**
 - Create: `portainer-agent/docker-compose.yml`
@@ -150,13 +125,12 @@ git commit -m "feat: add portainer server env template"
 
 ```bash
 mkdir -p portainer-agent
-cd portainer-agent
 ```
 
 **Step 2: Create .gitignore**
 
 ```bash
-cat > .gitignore << 'EOF'
+cat > portainer-agent/.gitignore << 'EOF'
 .env
 .env.local
 *.key
@@ -164,48 +138,70 @@ cat > .gitignore << 'EOF'
 EOF
 ```
 
-**Step 3: Create docker-compose.yml for agent**
+**Step 3: Create docker-compose.yml for the agent**
+
+Standard Portainer agent: listens on `9001`, authenticated via shared `AGENT_SECRET`. The server (on servy) reaches it via the slave's Traefik at `a.codey.lehel.xyz` (TLS terminated by Traefik). **No host port is published** — Traefik routes on the `proxy` network.
 
 ```yaml
 # portainer-agent/docker-compose.yml
-version: '3.8'
-
 services:
   agent:
     image: portainer/agent:latest
     container_name: ${COMPOSE_PROJECT_NAME}.agent
     restart: unless-stopped
-    ports:
-      - "9001:9001"  # Internal communication only
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/volumes:/var/lib/docker/volumes
-      - ./certs:/certs:ro  # TLS certs for secure communication
     environment:
       AGENT_PORT: "9001"
       AGENT_SECRET: ${AGENT_SECRET}
-      # Server connection (outbound)
-      PORTAINER_SERVER: ${PORTAINER_SERVER}
-      PORTAINER_SERVER_CERT_PATH: /certs/server-cert.pem
     networks:
-      - default
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${SERVICE_NAME}.rule=Host(`${SERVICE_HOST}`)"
+      - "traefik.http.routers.${SERVICE_NAME}.entrypoints=websecure"
+      - "traefik.http.routers.${SERVICE_NAME}.tls.certresolver=letsencryptdnsresolver"
+      - "traefik.http.routers.${SERVICE_NAME}.middlewares=${SERVICE_NAME}-master-allow"
+      - "traefik.http.middlewares.${SERVICE_NAME}-master-allow.ipallowlist.sourcerange=49.13.6.173/32"
+      - "traefik.http.services.${SERVICE_NAME}.loadbalancer.server.port=9001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9001", "--insecure"]
       interval: 30s
       timeout: 10s
       retries: 3
+
+networks:
+  proxy:
+    external: true
 ```
 
-**Step 4: Verify syntax**
+> Security: the `ipallowlist` middleware restricts the agent route to the master IP (`49.13.6.173`), so the Docker API is not reachable from the public internet — only the Portainer Server on servy can connect. This replaces the raw-port + firewall approach.
 
-```bash
-docker-compose config > /dev/null && echo "✓ Syntax valid"
+**Step 4: Create the DNS entry `a.codey.lehel.xyz`**
+
+Add a DNS record so the agent has a public name:
+
+| Record | Type | Value | TTL |
+|--------|------|-------|-----|
+| a.codey.lehel.xyz | A | 217.217.227.124 | 600 |
+| a.codey.lehel.xyz | AAAA | 2a01:8740:1:fa3::54ad | 600 |
+
+Created via the `dns-master` agent (Porkbun API), e.g.:
+```
+dns-master: "Create A + AAAA records for a.codey.lehel.xyz pointing to codey.lehel.xyz"
 ```
 
-**Step 5: Commit**
+**Step 5: Verify syntax**
 
 ```bash
-git add portainer-agent/docker-compose.yml portainer-agent/.gitignore
+docker-compose -f portainer-agent/docker-compose.yml config --quiet && echo "✓ Syntax valid"
+```
+
+**Step 6: Commit**
+
+```bash
+git add portainer-agent/
 git commit -m "feat: add portainer agent docker-compose configuration"
 ```
 
@@ -228,13 +224,14 @@ mkdir -p ansible/plays/roles/docker_service/templates/portainer-agent
 # ansible/plays/roles/docker_service/templates/portainer-agent/docker.env.j2
 COMPOSE_PROJECT_NAME=portainer
 SERVICE_NAME=portainer-agent
+SERVICE_HOST=a.codey.lehel.xyz
 
-# Agent secret (must match on server side during environment add)
+# Agent secret — must match the value entered in the Portainer UI
+# when adding codey.lehel.xyz as an environment/endpoint.
 AGENT_SECRET={{ portainer_agent_secret }}
-
-# Portainer Server endpoint (server hostname/IP)
-PORTAINER_SERVER=portainer.lehel.xyz:8000
 ```
+
+> `SERVICE_HOST` is the public Traefik hostname for the agent (`a.codey.lehel.xyz`), substituted into the Traefik router labels. The agent does **not** need a server address in standard agent mode; the server reaches the agent. (An Edge agent would instead need `EDGE=1` + server URL — not used here.)
 
 **Step 3: Commit**
 
@@ -245,270 +242,72 @@ git commit -m "feat: add portainer agent env template"
 
 ---
 
-### Task 5: Create Portainer Server Ansible Role
+### Task 5: Integrate Portainer Agent into the Existing Docker Service Role
 
 **Files:**
-- Create: `ansible/plays/roles/portainer_server/tasks/main.yml`
-- Create: `ansible/plays/roles/portainer_server/tasks/init.yml`
-- Create: `ansible/plays/roles/portainer_server/templates/admin-init.json.j2`
-- Create: `ansible/plays/roles/portainer_server/defaults/main.yml`
+- Modify: `ansible/plays/roles/user/tasks/docker_extras.yml` (if extra setup needed for the agent host)
+- Modify: `ansible/plays/user.yml` (register the `portainer-agent` service with `docker_service`)
 
-**Step 1: Create role directory structure**
+**Step 1: Register `portainer-agent` in user.yml**
+
+Add a `docker_service` role entry for the agent (mirrors the existing `portainer` entry):
+
+```yaml
+    - role: docker_service
+      vars:
+        service_dir: portainer-agent
+        env_templates:
+          - src: docker.env.j2
+            dest: .env
+          - src: portainer-agent/docker.env.j2
+            dest: portainer-agent.env
+      when: "'portainer-agent' in (services | default([]))"
+      tags: [user.docker, user.docker.portainer-agent]
+```
+
+**Step 2: Verify the agent's Traefik labels are consistent with existing services**
+
+The `docker_service` role renders the generic `docker.env.j2` (which sets `SERVICE_HOST={{ service_host }}`), so the agent env template only needs to carry `AGENT_SECRET`. Ensure the compose uses `${SERVICE_NAME}` / `${SERVICE_HOST}` from the `.env` (as in the Task 3 compose) so `docker_service` fills them in automatically.
+
+**Step 3: Commit**
 
 ```bash
-mkdir -p ansible/plays/roles/portainer_server/{tasks,templates,defaults}
-```
-
-**Step 2: Create defaults/main.yml**
-
-```yaml
-# ansible/plays/roles/portainer_server/defaults/main.yml
----
-service_dir: portainer
-portainer_admin_username: admin
-portainer_admin_password: "{{ vault_portainer_admin_password }}"
-portainer_agent_secret: "{{ vault_portainer_agent_secret }}"
-```
-
-**Step 3: Create tasks/init.yml (certificate generation)**
-
-```yaml
-# ansible/plays/roles/portainer_server/tasks/init.yml
----
-- name: Create certs directory
-  file:
-    path: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}/certs"
-    state: directory
-    mode: '0700'
-  register: certs_dir
-
-- name: Generate self-signed CA key (for agent verification)
-  openssl_privatekey:
-    path: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}/certs/ca-key.pem"
-    size: 2048
-  when: certs_dir.changed
-
-- name: Generate self-signed CA cert
-  openssl_certificate:
-    path: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}/certs/ca-cert.pem"
-    privatekey_path: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}/certs/ca-key.pem"
-    provider: selfsigned
-    common_name: portainer-ca
-  when: certs_dir.changed
-
-- name: Generate server cert request
-  openssl_csr:
-    path: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}/certs/server.csr"
-    privatekey_path: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}/certs/ca-key.pem"
-    common_name: "portainer.{{ inventory_hostname }}"
-    subject_alt_name:
-      - "DNS:portainer.{{ inventory_hostname }}"
-      - "DNS:localhost"
-      - "IP:127.0.0.1"
-  when: certs_dir.changed
-
-- name: Sign server certificate with CA
-  openssl_certificate:
-    path: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}/certs/server-cert.pem"
-    csr_path: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}/certs/server.csr"
-    ownca_path: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}/certs/ca-cert.pem"
-    ownca_privatekey_path: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}/certs/ca-key.pem"
-    provider: ownca
-    mode: '0644'
-  when: certs_dir.changed
-
-- name: Copy CA cert to portainer container mount (for agents)
-  copy:
-    src: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}/certs/ca-cert.pem"
-    dest: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}/certs/ca-cert.pem"
-    mode: '0644'
-    remote_src: yes
-```
-
-**Step 4: Create tasks/main.yml**
-
-```yaml
-# ansible/plays/roles/portainer_server/tasks/main.yml
----
-- name: Initialize certificates if needed
-  include_tasks: init.yml
-  tags: [portainer.certs]
-
-- name: Ensure service directory exists
-  file:
-    path: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}"
-    state: directory
-    mode: '0755'
-
-- name: Deploy docker-compose.yml
-  copy:
-    src: "{{ playbook_dir }}/../../{{ service_dir }}/docker-compose.yml"
-    dest: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}/docker-compose.yml"
-    mode: '0644'
-
-- name: Template .env file (git-crypt encrypted)
-  template:
-    src: portainer/docker.env.j2
-    dest: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}/.env"
-    mode: '0600'
-  vars:
-    portainer_admin_password: "{{ portainer_admin_password }}"
-
-- name: Deploy Portainer Server
-  community.docker.docker_compose:
-    project_src: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}"
-    state: present
-    pull: yes
-  environment:
-    COMPOSE_PROJECT_NAME: portainer
-    SERVICE_NAME: portainer
-    SERVICE_HOST: "portainer.{{ inventory_hostname }}"
-  register: portainer_deploy
-
-- name: Wait for Portainer to be healthy
-  uri:
-    url: "https://localhost:9443/api/status"
-    validate_certs: no
-  retries: 10
-  delay: 5
-  until: result.status == 200
-  register: result
-```
-
-**Step 5: Create admin-init.json template (for future user setup)**
-
-```jinja2
-# ansible/plays/roles/portainer_server/templates/admin-init.json.j2
-{
-  "Username": "{{ portainer_admin_username }}",
-  "Password": "{{ portainer_admin_password }}"
-}
-```
-
-**Step 6: Commit**
-
-```bash
-git add ansible/plays/roles/portainer_server/
-git commit -m "feat: add portainer server ansible role"
+git add ansible/plays/user.yml
+git commit -m "feat: register portainer-agent service in docker_service role"
 ```
 
 ---
 
-### Task 6: Create Portainer Agent Ansible Role
-
-**Files:**
-- Create: `ansible/plays/roles/portainer_agent/tasks/main.yml`
-- Create: `ansible/plays/roles/portainer_agent/defaults/main.yml`
-
-**Step 1: Create role directory structure**
-
-```bash
-mkdir -p ansible/plays/roles/portainer_agent/{tasks,defaults}
-```
-
-**Step 2: Create defaults/main.yml**
-
-```yaml
-# ansible/plays/roles/portainer_agent/defaults/main.yml
----
-service_dir: portainer-agent
-portainer_server: "portainer.lehel.xyz:8000"
-portainer_agent_secret: "{{ vault_portainer_agent_secret }}"
-portainer_server_ca_cert: "{{ lookup('file', playbook_dir + '/../../portainer/certs/ca-cert.pem') }}"
-```
-
-**Step 3: Create tasks/main.yml**
-
-```yaml
-# ansible/plays/roles/portainer_agent/tasks/main.yml
----
-- name: Ensure service directory exists
-  file:
-    path: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}"
-    state: directory
-    mode: '0755'
-
-- name: Ensure certs directory exists
-  file:
-    path: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}/certs"
-    state: directory
-    mode: '0700'
-
-- name: Copy server CA certificate to agent (for TLS verification)
-  copy:
-    content: "{{ portainer_server_ca_cert }}"
-    dest: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}/certs/server-cert.pem"
-    mode: '0644'
-
-- name: Deploy docker-compose.yml
-  copy:
-    src: "{{ playbook_dir }}/../../{{ service_dir }}/docker-compose.yml"
-    dest: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}/docker-compose.yml"
-    mode: '0644'
-
-- name: Template .env file (git-crypt encrypted)
-  template:
-    src: portainer-agent/docker.env.j2
-    dest: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}/.env"
-    mode: '0600'
-  vars:
-    portainer_agent_secret: "{{ portainer_agent_secret }}"
-    portainer_server: "{{ portainer_server }}"
-
-- name: Deploy Portainer Agent
-  community.docker.docker_compose:
-    project_src: "{{ ansible_user_dir }}/servyy-container/{{ service_dir }}"
-    state: present
-    pull: yes
-  environment:
-    COMPOSE_PROJECT_NAME: portainer
-    SERVICE_NAME: portainer-agent
-
-- name: Wait for agent to be healthy
-  uri:
-    url: "http://localhost:9001"
-  retries: 10
-  delay: 5
-  until: result.status == 200
-  register: result
-```
-
-**Step 4: Commit**
-
-```bash
-git add ansible/plays/roles/portainer_agent/
-git commit -m "feat: add portainer agent ansible role"
-```
-
----
-
-### Task 7: Add Portainer Secrets to Ansible Vault
+### Task 6: Add Portainer Secrets to git-crypt Encrypted Vault
 
 **Files:**
 - Modify: `ansible/plays/vars/secrets.yml` (git-crypt encrypted)
 
-**Step 1: Check current secrets structure**
+**Step 1: Ensure the secrets file is unlocked**
 
 ```bash
-cd ansible/plays/vars && git-crypt status | grep secrets.yml
+cd ansible && git-crypt status | grep secrets.yml
+# If locked: git-crypt unlock
 ```
 
-**Step 2: Add portainer secrets (unlocked)**
-
-Edit `ansible/plays/vars/secrets.yml` and add:
+**Step 2: Add portainer secrets**
 
 ```yaml
-# Admin password for Portainer (change after first login)
-vault_portainer_admin_password: "{{ 'initial_password_change_me' | password_hash('sha512') }}"
+# Admin password for Portainer (change after first login).
+# Portainer accepts a plaintext or bcrypt hash — NOT sha512.
+vault_portainer_admin_password: "{{ 'initial_password_change_me' | password_hash('bcrypt') }}"
 
-# Agent secret (random string, kept consistent across deployments)
-vault_portainer_agent_secret: "{{ lookup('password', '/dev/null length=32 chars=ascii_letters,digits') }}"
+# Agent secret — a static random string shared by server UI + agent env.
+# Generate once: openssl rand -hex 32, then store the literal value here.
+vault_portainer_agent_secret: "CHANGE_ME_RANDOM_HEX_32"
 ```
 
-**Step 3: Verify encryption (should show as binary after save)**
+> The original plan used `lookup('password', '/dev/null ...')` at role-eval time — that is non-deterministic and breaks idempotency. Use a static value instead.
+
+**Step 3: Verify encryption after commit**
 
 ```bash
-git-crypt status secrets.yml  # Should show as encrypted
+git-crypt status secrets.yml   # Should show "encrypted"
 ```
 
 **Step 4: Commit**
@@ -520,78 +319,53 @@ git commit -m "feat: add portainer secrets to vault"
 
 ---
 
-### Task 8: Integrate Portainer into Ansible Deployment
+### Task 7: Integrate Portainer into Ansible Inventory & Deployment
 
 **Files:**
-- Modify: `ansible/plays/user.yml`
 - Modify: `ansible/production`
+- Modify: `ansible/plays/user.yml`
 
-**Step 1: Add Portainer Server to lehel.xyz inventory**
+**Step 1: Confirm master inventory entry (already present)**
 
-Edit `ansible/production` and add under `lehel.xyz` services_enabled:
+`ansible/production` already has `portainer: true` under `lehel.xyz` → `services_enabled`. Keep it.
 
-```yaml
-lehel.xyz:
-  services_enabled:
-    traefik: true
-    monitor: true
-    portainer: true  # ← Add this
-    # ... other services
-```
+**Step 2: Add Portainer Agent to slave inventory**
 
-**Step 2: Add Portainer Agent to code.lehel inventory**
-
-Edit `ansible/production` and add under `code.lehel` services_enabled:
+Edit `ansible/production` — add `portainer-agent: true` under `code.lehel.xyz` → `services_enabled`:
 
 ```yaml
-code.lehel:
-  services_enabled:
-    opencode: true
-    portainer_agent: true  # ← Add this
+    code.lehel.xyz:
+        with_docker: true
+        with_containers: true
+        has_10g_volume: false
+        create_swap: true
+        ansible_user: root
+        services_enabled:
+          traefik: true
+          opencode: true
+          opencode-authgate: true
+          portainer-agent: true   # ← Add this
 ```
 
-**Step 3: Add Portainer Server role invocation to user.yml**
+**Step 3: Confirm both services render**
 
-Edit `ansible/plays/user.yml` and add (after traefik, before other services):
-
-```yaml
-- name: Deploy Portainer Server
-  include_role:
-    name: portainer_server
-  when: "'portainer' in services_enabled"
-  tags: [user.docker, user.docker.portainer]
+```bash
+cd ansible && ansible-playbook servyy.yml --syntax-check -i production
 ```
 
-**Step 4: Add Portainer Agent role invocation to user.yml**
-
-Edit `ansible/plays/user.yml` and add (after portainer server):
-
-```yaml
-- name: Deploy Portainer Agent
-  include_role:
-    name: portainer_agent
-  when: "'portainer_agent' in services_enabled"
-  tags: [user.docker, user.docker.portainer_agent]
-```
-
-**Step 5: Add to docker_extras.yml service list**
-
-Edit `ansible/plays/roles/user/tasks/docker_extras.yml` and add portainer services to the script list if needed.
-
-**Step 6: Commit**
+**Step 4: Commit**
 
 ```bash
 git add ansible/production ansible/plays/user.yml
-git commit -m "feat: integrate portainer into ansible deployment"
+git commit -m "feat: integrate portainer-agent into ansible deployment"
 ```
 
 ---
 
-### Task 9: Test Deployment on servyy-test.lxd
+### Task 8: Test Deployment on servyy-test.lxd
 
 **Files:**
 - No new files
-- Testing: Deploy to test environment
 
 **Step 1: Syntax check**
 
@@ -618,44 +392,32 @@ ssh servyy-test.lxd "docker ps | grep portainer"
 ssh servyy-test.lxd "docker logs portainer.server --tail 20"
 ```
 
-**Step 5: Verify Portainer Agent on test (if both services deployed)**
+**Step 5: Verify Portainer Agent on test (if deployed)**
 
 ```bash
 ssh servyy-test.lxd "docker logs portainer.agent --tail 20"
 ```
 
-**Step 6: Access Portainer UI (test)**
-
-Note: Test environment won't have Traefik routing, access directly:
-```bash
-ssh servyy-test.lxd "curl -k https://localhost:9443 2>&1 | head -10"
-```
-
-**Step 7: Verify health checks pass**
+**Step 6: Verify health checks pass**
 
 ```bash
 ssh servyy-test.lxd "docker ps --format 'table {{.Names}}\t{{.Status}}' | grep portainer"
-# Both should show "healthy"
 ```
+
+> Note: a single `servyy-test.lxd` container cannot fully validate the cross-host master/slave connection. Do that during the production rollout (Tasks 9–10).
 
 ---
 
-### Task 10: Deploy Portainer Server to Production (lehel.xyz)
+### Task 9: Deploy Portainer Server to Production (Master: servy.lehel.xyz)
 
 **Files:**
-- No new files (all from previous tasks)
+- No new files
 
-**Step 1: Get user approval before production deployment**
+**Step 1: Get user approval**
 
-Ask user: "Ready to deploy Portainer Server to lehel.xyz? This will:
-- Create portainer service on lehel.xyz
-- Expose at https://portainer.lehel.xyz via Traefik
-- Generate TLS certificates
-- Require initial admin password setup
+Ask user: "Ready to ensure Portainer Server is live on servy.lehel.xyz (master, inventory `lehel.xyz`)? Exposed at https://portainer.lehel.xyz via Traefik. Approve? (y/n)"
 
-Approve? (y/n)"
-
-**Step 2: Deploy to lehel.xyz only**
+**Step 2: Deploy to master only**
 
 ```bash
 cd ansible && ./servyy.sh --tags "user.docker.portainer" --limit lehel.xyz
@@ -664,7 +426,7 @@ cd ansible && ./servyy.sh --tags "user.docker.portainer" --limit lehel.xyz
 **Step 3: Wait for deployment and health check**
 
 ```bash
-ssh lehel.xyz "docker ps -a | grep portainer.server"
+ssh lehel.xyz "docker ps -a | grep portainer"
 # Wait for "healthy" status
 ```
 
@@ -672,7 +434,7 @@ ssh lehel.xyz "docker ps -a | grep portainer.server"
 
 ```bash
 curl -I https://portainer.lehel.xyz 2>&1 | head -5
-# Should show: HTTP/2 200 or 401 (auth required)
+# Should show: HTTP/2 200 or 401/403 (auth required)
 ```
 
 **Step 5: Verify certificate**
@@ -682,73 +444,56 @@ echo | openssl s_client -servername portainer.lehel.xyz -connect portainer.lehel
 # Should show Let's Encrypt certificate
 ```
 
-**Step 6: View initial logs**
-
-```bash
-ssh lehel.xyz "docker logs portainer.server --tail 30"
-```
-
-**Step 7: Commit deployment verification**
-
-```bash
-git add .
-git commit -m "deploy: portainer server live on lehel.xyz"
-```
-
 ---
 
-### Task 11: Deploy Portainer Agent to code.lehel
+### Task 10: Deploy Portainer Agent to Production (Slave: codey.lehel.xyz)
 
 **Files:**
 - No new files
 
 **Step 1: Get user approval**
 
-Ask user: "Ready to deploy Portainer Agent to code.lehel? The agent will:
-- Run on code.lehel
-- Connect outbound to portainer.lehel.xyz:8000 via mTLS
-- Enable lehel.xyz Portainer to monitor code.lehel containers
+Ask user: "Ready to deploy Portainer Agent to codey.lehel.xyz (slave, inventory `code.lehel.xyz`)? The agent is exposed via Traefik at `a.codey.lehel.xyz` (Let's Encrypt, IP-restricted to the master) and registered in the Portainer UI with the shared agent secret. Approve? (y/n)"
 
-Approve? (y/n)"
-
-**Step 2: Deploy agent to code.lehel**
+**Step 2: Deploy agent to slave**
 
 ```bash
-cd ansible && ./servyy.sh --tags "user.docker.portainer_agent" --limit code.lehel
+cd ansible && ./servyy.sh --tags "user.docker.portainer-agent" --limit code.lehel.xyz
 ```
 
 **Step 3: Verify agent container is running**
 
 ```bash
-ssh code.lehel "docker ps | grep portainer.agent"
+ssh code.lehel.xyz "docker ps | grep portainer.agent"
 # Should show "healthy"
 ```
 
-**Step 4: Verify agent connectivity in logs**
+**Step 4: Verify agent listens on 9001 (container-internal)**
 
 ```bash
-ssh code.lehel "docker logs portainer.agent --tail 20 | grep -i 'connected\|connection'"
+ssh code.lehel.xyz "docker exec portainer.agent sh -c 'wget -qO- http://localhost:9001' | head -1"
 ```
 
-**Step 5: Check Portainer Server logs for agent registration**
+**Step 5: Verify Traefik routing + TLS on the agent host**
 
 ```bash
-ssh lehel.xyz "docker logs portainer.server --tail 30 | grep -i agent"
+ssh code.lehel.xyz "curl -s -o /dev/null -w '%{http_code}\n' https://a.codey.lehel.xyz --insecure"
+# Expect a response proving Traefik reaches the agent (e.g. 404/400 from the agent API)
 ```
 
-**Step 6: Commit**
+**Step 6: Verify Let's Encrypt certificate for `a.codey.lehel.xyz`**
 
 ```bash
-git add .
-git commit -m "deploy: portainer agent live on code.lehel"
+echo | openssl s_client -servername a.codey.lehel.xyz -connect a.codey.lehel.xyz:443 2>/dev/null | grep -A 2 "Issuer:"
+# Should show Let's Encrypt certificate
 ```
 
 ---
 
-### Task 12: Configure RBAC in Portainer UI
+### Task 11: Register Slave Agent in Portainer UI & Configure RBAC
 
 **Files:**
-- No new files (UI configuration, not code)
+- No new files (UI configuration)
 
 **Step 1: Access Portainer Web UI**
 
@@ -759,14 +504,23 @@ Navigate to: https://portainer.lehel.xyz
 Username: `admin`
 Password: (use `vault_portainer_admin_password` from secrets.yml)
 
-**Step 3: Create team "leaguesphere"**
+**Step 3: Add the slave environment**
+
+- Go to: **Environments** → **Add environment**
+- Choose **Docker Standalone** → **Agent**
+- Name: `codey.lehel.xyz`
+- Agent URL: `a.codey.lehel.xyz:443` (Traefik TLS termination on the slave; the agent itself stays on 9001 internally)
+- Shared agent secret: `vault_portainer_agent_secret`
+- Click **Connect**
+
+**Step 4: Create team "leaguesphere"**
 
 - Go to: Settings → Teams → Add Team
 - Name: `leaguesphere`
 - Description: LeagueSphere development team
 - Click Create
 
-**Step 4: Create users for team members**
+**Step 5: Create users for team members**
 
 - Go to: Settings → Users → Add User
 - For each team member (1-4 people):
@@ -776,21 +530,21 @@ Password: (use `vault_portainer_admin_password` from secrets.yml)
   - Role: `Operator` (can view and restart containers)
   - Click Create
 
-**Step 5: Configure endpoint permissions**
+**Step 6: Configure endpoint permissions**
 
-- Go to: Environments → code.lehel agent
+- Go to: **Environments** → `codey.lehel.xyz`
 - Access Control → Restrict access
 - Add team: `leaguesphere` with `Operator` role
 - Save
 
-**Step 6: Verify permissions**
+**Step 7: Verify permissions**
 
 - Logout and login as a team member
-- Should see both lehel.xyz (via server) and code.lehel (via agent)
+- Should see both `lehel.xyz` (via server) and `codey.lehel.xyz` (via agent)
 - Should be able to restart containers
 - Should NOT be able to deploy or delete
 
-**Step 7: Document credentials**
+**Step 8: Document credentials**
 
 Create a note (or add to your password manager):
 - Portainer URL: https://portainer.lehel.xyz
@@ -800,76 +554,74 @@ Create a note (or add to your password manager):
 
 ---
 
-### Task 13: Create Documentation
+### Task 12: Create Documentation
 
 **Files:**
-- Create: `history/2026-08-28_portainer-agent-deployment.md`
+- Create: `history/2026-08-29_portainer-master-slave-deployment.md`
 
 **Step 1: Create history log**
 
 ```markdown
-# Portainer Agent Architecture Deployment
+# Portainer Master/Slave Architecture Deployment
 
-**Date:** 2026-08-28
+**Date:** 2026-08-29
 **Deployed by:** claude
 **Status:** Ready for deployment
 
 ## What Will Be Deployed
 
-- **Portainer Server** on lehel.xyz
-  - Exposed: https://portainer.lehel.xyz (via Traefik)
+- **Portainer Server** on servy.lehel.xyz (master, inventory `lehel.xyz`)
+  - Exposed: https://portainer.lehel.xyz (via Traefik, wildcard *.lehel.xyz)
   - SSL: Let's Encrypt (via Traefik)
   - Admin user: local account
   - Team: leaguesphere (1-4 members, Operator role)
 
-- **Portainer Agent** on code.lehel
-  - Lightweight agent container
-  - Secure outbound connection to lehel.xyz:8000 (mTLS)
-  - Uses self-signed CA certificate for verification
-  - No inbound ports exposed
+- **Portainer Agent** on codey.lehel.xyz (slave, inventory `code.lehel.xyz`)
+  - Exposed via slave Traefik at https://a.codey.lehel.xyz (Let's Encrypt)
+  - IP-restricted to master (49.13.6.173) via Traefik ipallowlist middleware
+  - Auth via shared AGENT_SECRET
+  - Docker socket never exposed to the public internet
 
 ## Architecture
 
 ```
-Internet → Traefik (portainer.lehel.xyz) → Portainer Server (lehel.xyz:9443)
-                                          ↓ (mTLS tunnel, port 8000)
-                                    Portainer Agent (code.lehel)
-                                          ↓ (Unix socket)
-                                    Docker daemon (code.lehel)
+Internet → Traefik (portainer.lehel.xyz) → Portainer Server (servy.lehel.xyz)
+                                              ↓ HTTPS (a.codey.lehel.xyz, AGENT_SECRET)
+                                        Traefik (codey.lehel.xyz) → Portainer Agent (9001)
+                                              ↓ (Unix socket)
+                                        Docker daemon (codey.lehel.xyz)
 ```
 
 ## Implementation Process
 
-1. Create portainer/ and portainer-agent/ service directories
-2. Create Ansible roles: portainer_server, portainer_agent
-3. Add secrets to vault: admin password, agent secret
-4. Integrate into ansible/plays/user.yml
-5. Update ansible/production inventory with services_enabled
-6. Test on servyy-test.lxd
-7. Deploy to lehel.xyz (Portainer Server)
-8. Deploy to code.lehel (Portainer Agent)
+1. Reconcile portainer/ server config on master (already deployed)
+2. Create portainer-agent/ service directory + .env template
+3. Register portainer-agent in docker_service role + inventory
+4. Add secrets to git-crypt vault (bcrypt admin password, static agent secret)
+5. Test on servyy-test.lxd
+6. Deploy/verify Portainer Server on servy.lehel.xyz
+7. Deploy Portainer Agent on codey.lehel.xyz
+8. Register slave environment in UI with AGENT_SECRET
 9. Configure RBAC: admin user + leaguesphere team with Operator role
 
 ## Verification Commands
 
 **Check Portainer Server health:**
 ```bash
-ssh lehel.xyz "docker ps | grep portainer.server"
+ssh lehel.xyz "docker ps | grep portainer"
 ssh lehel.xyz "curl -k https://localhost:9443/api/status"
 ```
 
 **Check Portainer Agent health:**
 ```bash
-ssh code.lehel "docker ps | grep portainer.agent"
-ssh code.lehel "docker logs portainer.agent --tail 20"
+ssh code.lehel.xyz "docker ps | grep portainer.agent"
+ssh code.lehel.xyz "docker logs portainer.agent --tail 20"
 ```
 
-**Verify RBAC:**
-- Login to https://portainer.lehel.xyz with team member account
-- Should see both servers
-- Should be able to observe containers
-- Should be able to restart containers
-- Should NOT be able to deploy or delete
+**Verify cross-host connectivity:**
+```bash
+ssh lehel.xyz "curl -s -o /dev/null -w '%{http_code}\n' https://a.codey.lehel.xyz --insecure"
+```
 
 ## Access
 
@@ -878,26 +630,18 @@ ssh code.lehel "docker logs portainer.agent --tail 20"
 - **Team:** leaguesphere (observability + restart)
 - **Team members:** 1-4 people with Operator role
 
-## Future Enhancements
-
-- Integrate with LDAP/OAuth for team authentication (optional)
-- Add Portainer backup strategy (database backups to storagebox)
-- Create dashboard for observability team
-- Add alerting for container restarts (integration with Loki)
-
 ## Rollback (if needed)
 
 ```bash
-cd ansible && ./servyy.sh --tags "user.docker.portainer,user.docker.portainer_agent" --limit lehel.xyz,code.lehel
-# Or remove services:
-ansible-playbook plays/remove_service.yml -e "target_host=lehel.xyz"  # portainer
-ansible-playbook plays/remove_service.yml -e "target_host=code.lehel"  # portainer-agent
+# Remove the agent from the slave:
+ansible-playbook plays/remove_service.yml -e "target_host=code.lehel.xyz"  # portainer-agent
+# Keep the server on the master (or remove via remove_service.yml on lehel.xyz)
 ```
 
 ## Notes
 
-- TLS certificates for agent communication are auto-generated and stored in git-crypt encrypted files
-- Agent connects outbound (no inbound ports on code.lehel) — more secure than Portainer pulling
+- Standard Portainer agent model — the server reaches the agent via Traefik (`a.codey.lehel.xyz`) with the shared secret
+- Agent route IP-restricted to the master via Traefik ipallowlist middleware (49.13.6.173)
 - RBAC configured in Portainer UI (not code-driven) — can be modified per team preference
 - All secrets encrypted with git-crypt (admin password, agent secret)
 ```
@@ -905,13 +649,13 @@ ansible-playbook plays/remove_service.yml -e "target_host=code.lehel"  # portain
 **Step 2: Commit**
 
 ```bash
-git add history/2026-08-28_portainer-agent-deployment.md
-git commit -m "docs: add portainer agent deployment plan"
+git add history/2026-08-29_portainer-master-slave-deployment.md
+git commit -m "docs: add portainer master/slave deployment history"
 ```
 
 ---
 
-### Task 14: Final Verification & Cleanup
+### Task 13: Final Verification & Cleanup
 
 **Files:**
 - No new files
@@ -925,7 +669,7 @@ git status  # Should be clean
 **Step 2: Review all commits**
 
 ```bash
-git log --oneline -14  # Show all commits from this plan
+git log --oneline -10  # Show all commits from this plan
 ```
 
 ---
