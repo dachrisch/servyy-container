@@ -67,6 +67,7 @@
         services: "{{ services_enabled | default({}) | dict2items | selectattr('value', 'equalto', true) | map(attribute='key') | list }}"
       tags:
         - user.docker
+        - always
 
     - name: Stop searxng before config update
       community.docker.docker_compose_v2:
