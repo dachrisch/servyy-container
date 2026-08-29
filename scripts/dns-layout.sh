@@ -186,22 +186,6 @@ display_layout() {
   echo
   echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   echo -e "Total Records: ${BOLD}$(echo "$records" | jq 'length')${NC}"
-  echo
-
-  # Show relationships
-  echo -e "${BOLD}${YELLOW}Service Routing:${NC}"
-
-  local has_cnames=false
-  echo "$records" | jq -r '.[] | select(.type=="CNAME") | "\(.name) → \(.content)"' | while read -r line; do
-    if [[ -n "$line" ]]; then
-      has_cnames=true
-      echo -e "  ${CYAN}$line${NC}"
-    fi
-  done
-
-  if ! $has_cnames; then
-    echo -e "  ${YELLOW}(No CNAME records)${NC}"
-  fi
 }
 
 # Main
