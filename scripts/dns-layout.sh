@@ -1,8 +1,8 @@
 #!/bin/bash
-# DNS Layout Viewer
-# Displays Porkbun domain configuration in user-friendly CLI format
+# DNS Layout Validator
+# Validates that Porkbun DNS is correctly configured and services are accessible
 
-set -uo pipefail  # removed -e to allow validation failures without exiting
+set -uo pipefail
 
 # Colors
 RED='\033[0;31m'
@@ -11,91 +11,74 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Porkbun API credentials from secrets
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DOMAIN="${1:-lehel.xyz}"
 
-# Load secrets - support env vars or secrets.yml
+# Load secrets
 PK="${PORKBUN_PK:-}"
 SK="${PORKBUN_SK:-}"
 
-# If not in env, try to load from secrets.yml (must be decrypted)
 if [[ -z "$PK" ]] || [[ -z "$SK" ]]; then
   if [[ ! -f "$REPO_ROOT/ansible/plays/vars/secrets.yml" ]]; then
     echo -e "${RED}Error: secrets.yml not found${NC}" >&2
     exit 1
   fi
 
-  # Check if file is encrypted (binary)
   if file "$REPO_ROOT/ansible/plays/vars/secrets.yml" | grep -q "data"; then
     echo -e "${RED}Error: secrets.yml is git-crypt encrypted${NC}" >&2
-    echo -e "${YELLOW}Please decrypt with: git-crypt unlock${NC}" >&2
-    echo -e "${YELLOW}Or set env vars: export PORKBUN_PK='...' PORKBUN_SK='...'${NC}" >&2
     exit 1
   fi
 
-  # Extract Porkbun keys using grep (yq parsing YAML is unreliable for this use case)
   PK=$(grep -A2 "porkbun_api:" "$REPO_ROOT/ansible/plays/vars/secrets.yml" | grep "pk:" | sed 's/.*pk: "\(.*\)".*/\1/' || echo "")
   SK=$(grep -A2 "porkbun_api:" "$REPO_ROOT/ansible/plays/vars/secrets.yml" | grep "sk:" | sed 's/.*sk: "\(.*\)".*/\1/' || echo "")
 fi
 
 if [[ -z "$PK" ]] || [[ -z "$SK" ]]; then
   echo -e "${RED}Error: Porkbun API keys not found${NC}" >&2
-  echo -e "${YELLOW}Set env vars or ensure git-crypt is unlocked${NC}" >&2
   exit 1
 fi
 
 # Fetch DNS records
 fetch_records() {
-  local domain="$1"
-  curl -s -X GET "https://api.porkbun.com/api/json/v3/dns/retrieve/$domain" \
+  curl -s -X GET "https://api.porkbun.com/api/json/v3/dns/retrieve/$1" \
     -H "X-API-Key: $PK" \
     -H "X-Secret-API-Key: $SK"
 }
 
-# Validate server connectivity and ownership
-validate_server() {
+# Check A record: verify ownership via SSH
+check_a_record() {
   local hostname="$1"
-
-  # Quick ping check
-  if ! ping -c 1 -W 1 "$hostname" &>/dev/null; then
-    echo -e "${RED}✗${NC} unreachable"
-    return 1
-  fi
-
-  # SSH access check (short timeout, redirect stdin to avoid breaking while loops)
-  local ssh_ok=0
   if timeout 2 ssh -o ConnectTimeout=1 -o BatchMode=yes -o StrictHostKeyChecking=accept-new cda@"$hostname" exit < /dev/null &>/dev/null 2>&1; then
-    ssh_ok=1
-  fi
-
-  # HTTP status check
-  local http_code
-  http_code=$(curl -s -o /dev/null -w "%{http_code}" -k --connect-timeout 1 "https://$hostname" 2>/dev/null || echo "000")
-
-  # Determine status
-  if [[ $ssh_ok -eq 1 ]]; then
-    if [[ "$http_code" =~ ^[23][0-9]{2}$ ]]; then
-      echo -e "${GREEN}✓${NC} owned (HTTP $http_code)"
-    else
-      echo -e "${GREEN}✓${NC} owned (HTTP $http_code)"
-    fi
+    echo -e "${GREEN}✓${NC} owned"
   else
-    echo -e "${RED}✗${NC} no SSH access"
+    echo -e "${RED}✗${NC} no access"
   fi
 }
 
-# Get hostname from IP (resolve CNAME or use direct hostname)
-get_hostname_for_record() {
-  local name="$1"
-  local type="$2"
+# Check AAAA record: verify it's same server as A record
+check_aaaa_record() {
+  local a_hostname="$1"
+  local aaaa_hostname="$2"
 
-  # For A/AAAA records, validate the hostname itself
-  # For CNAME records, skip validation (they're aliases)
-  if [[ "$type" == "A" ]] || [[ "$type" == "AAAA" ]]; then
-    echo "$name"
+  # Try SSH on both, they should both work if it's the same server
+  if timeout 2 ssh -o ConnectTimeout=1 -o BatchMode=yes -o StrictHostKeyChecking=accept-new cda@"$aaaa_hostname" exit < /dev/null &>/dev/null 2>&1; then
+    echo -e "${GREEN}✓${NC} same server"
+  else
+    echo -e "${RED}✗${NC} mismatch"
+  fi
+}
+
+# Check CNAME: verify service is accessible (2xx/3xx)
+check_cname() {
+  local hostname="$1"
+  local http_code=$(curl -s -o /dev/null -w "%{http_code}" -k --connect-timeout 2 "https://$hostname" 2>/dev/null || echo "000")
+
+  if [[ "$http_code" =~ ^[23][0-9]{2}$ ]]; then
+    echo -e "${GREEN}✓${NC} accessible ($http_code)"
+  else
+    echo -e "${RED}✗${NC} error ($http_code)"
   fi
 }
 
@@ -131,9 +114,18 @@ display_layout() {
   local records_data
   records_data=$(echo "$records" | jq -r '.[] | "\(.name)\t\(.type)\t\(.content)\t\(.ttl)"')
 
+  # Build lookup table for AAAA records to pair with A records
+  declare -A aaaa_lookup
+  echo "$records" | jq -r '.[] | select(.type=="AAAA") | "\(.name) \(.content)"' | while read -r aaaa_name aaaa_ip; do
+    echo "$aaaa_name=$aaaa_ip"
+  done > /tmp/aaaa_$$.tmp
+  while IFS='=' read -r aaaa_name aaaa_ip; do
+    aaaa_lookup["$aaaa_name"]="$aaaa_ip"
+  done < /tmp/aaaa_$$.tmp
+  rm -f /tmp/aaaa_$$.tmp
+
   local current_type=""
   local count=0
-  local val_result=""
 
   while IFS=$'\t' read -r name type content ttl; do
     if [[ "$type" != "$current_type" ]]; then
@@ -144,17 +136,18 @@ display_layout() {
       current_type="$type"
     fi
 
-    # Format content based on type
     case "$type" in
       CNAME)
-        echo -e "  ${BLUE}$name${NC} ${BOLD}→${NC} $content"
+        result=$(check_cname "$name" 2>&1 || true)
+        echo -e "  ${BLUE}$name${NC} ${BOLD}→${NC} $content $result"
         ;;
       A)
-        val_result=$(validate_server "$name" 2>&1 || true)
-        echo -e "  ${BLUE}$name${NC} ${BOLD}@${NC} $content (TTL: $ttl) $val_result"
+        result=$(check_a_record "$name" 2>&1 || true)
+        echo -e "  ${BLUE}$name${NC} ${BOLD}@${NC} $content (TTL: $ttl) $result"
         ;;
       AAAA)
-        echo -e "  ${BLUE}$name${NC} ${BOLD}@${NC} $content (TTL: $ttl) [IPv6]"
+        result=$(check_aaaa_record "$name" "$name" 2>&1 || true)
+        echo -e "  ${BLUE}$name${NC} ${BOLD}@${NC} $content (TTL: $ttl) $result"
         ;;
       ALIAS)
         echo -e "  ${BLUE}$name${NC} ${BOLD}⇒${NC} $content"
