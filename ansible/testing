@@ -1,7 +1,7 @@
 test:
   hosts:
     servyy-test.lxd:
-      ansible_host: servyy-test.lxd
+      domain: servyy-test.lxd
       root_user: ubuntu
       with_containers: true
       with_docker: false

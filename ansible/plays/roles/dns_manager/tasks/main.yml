@@ -1,0 +1,81 @@
+---
+# DNS Manager Role
+# Manages Porkbun DNS entries for services with dns_expose: true
+# Only runs on production (lehel.xyz)
+
+- name: Ensure Porkbun credentials are available
+  assert:
+    that:
+      - porkbun_api is defined
+      - porkbun_api.pk is defined
+      - porkbun_api.sk is defined
+    fail_msg: "Porkbun API credentials not found in secrets.yml"
+  tags:
+    - user.docker.dns
+
+- name: Query Porkbun for current DNS records
+  ansible.builtin.uri:
+    url: "https://api.porkbun.com/api/json/v3/dns/retrieve/lehel.xyz"
+    method: GET
+    headers:
+      X-API-Key: "{{ porkbun_api.pk }}"
+      X-Secret-API-Key: "{{ porkbun_api.sk }}"
+    status_code: [200]
+  register: porkbun_records
+  changed_when: false
+  tags:
+    - user.docker.dns
+
+- name: Extract existing DNS entries
+  ansible.builtin.set_fact:
+    existing_cnames: "{{ porkbun_records.json.records | selectattr('type', 'equalto', 'CNAME') | map(attribute='name') | list }}"
+    existing_records: "{{ porkbun_records.json.records | default([]) }}"
+  tags:
+    - user.docker.dns
+
+- name: Build list of services with dns_expose: true
+  ansible.builtin.set_fact:
+    services_to_expose: "{{ services_enabled | default({}) | dict2items | selectattr('value.dns_expose', 'equalto', true) | map(attribute='key') | list }}"
+  when: services_enabled is mapping
+  tags:
+    - user.docker.dns
+
+- name: Create DNS entries for exposed services
+  ansible.builtin.uri:
+    url: "https://api.porkbun.com/api/json/v3/dns/create/lehel.xyz"
+    method: POST
+    headers:
+      X-API-Key: "{{ porkbun_api.pk }}"
+      X-Secret-API-Key: "{{ porkbun_api.sk }}"
+    body_format: json
+    body:
+      name: "{{ (dns_short_name or service_name) }}"
+      type: "CNAME"
+      content: "codey.lehel.xyz"
+      ttl: "600"
+    status_code: [200]
+  vars:
+    service_name: "{{ item }}"
+    service_config: "{{ services_enabled[item] if services_enabled[item] is mapping else {} }}"
+    dns_short_name: "{{ service_config.get('dns_short_name', '') }}"
+  loop: "{{ services_to_expose | default([]) }}"
+  register: dns_create_result
+  when:
+    - item not in existing_cnames
+    - services_to_expose | length > 0
+  changed_when: dns_create_result.json.status | default('') == 'SUCCESS'
+  tags:
+    - user.docker.dns
+
+- name: Report created DNS entries
+  ansible.builtin.debug:
+    msg: "Created DNS entry: {{ (dns_short_name or item) }}.lehel.xyz → codey.lehel.xyz"
+  vars:
+    service_config: "{{ services_enabled[item] if services_enabled[item] is mapping else {} }}"
+    dns_short_name: "{{ service_config.get('dns_short_name', '') }}"
+  loop: "{{ services_to_expose | default([]) }}"
+  when:
+    - item not in existing_cnames
+    - services_to_expose | length > 0
+  tags:
+    - user.docker.dns

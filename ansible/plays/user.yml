@@ -286,6 +286,11 @@
       when: "'monitor' in (services | default([]))"
       tags: [user.docker, user.docker.monitor]
 
+    # DNS Manager — Create Porkbun DNS entries for services with dns_expose: true
+    - role: dns_manager
+      when: domain == 'lehel.xyz'
+      tags: [user.docker.dns]
+
   post_tasks:
     - name: Wait for leagues-finance mongo to become healthy
       community.docker.docker_container_info:

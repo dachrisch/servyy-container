@@ -1,7 +1,8 @@
 ---
 service_dir: ""
 service_name: "{{ service_dir }}"
-service_host: "{{ service_dir }}.{{ inventory_hostname }}"
+dns_short_name: ""           # Optional: override service name for DNS (e.g., "code" for opencode)
+dns_expose: false            # Whether to create explicit DNS entry in Porkbun (production only)
 env_templates:
   - src: docker.env.j2
     dest: .env
