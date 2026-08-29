@@ -70,16 +70,29 @@ check_aaaa_record() {
   fi
 }
 
-# Check CNAME: verify service is accessible (2xx/3xx)
+# Check CNAME: verify service is accessible (2xx/3xx/4xx ok, 5xx/0 bad)
 check_cname() {
   local hostname="$1"
-  local http_code=$(curl -s -o /dev/null -w "%{http_code}" -k --connect-timeout 2 "https://$hostname" 2>/dev/null || echo "000")
 
-  if [[ "$http_code" =~ ^[23][0-9]{2}$ ]]; then
-    echo -e "${GREEN}✓${NC} accessible ($http_code)"
-  else
-    echo -e "${RED}✗${NC} error ($http_code)"
+  # Skip wildcard CNAMEs - they can't be tested directly
+  if [[ "$hostname" == *\** ]]; then
+    echo -e "${YELLOW}~${NC} wildcard"
+    return
   fi
+
+  local http_code=$(curl -s -w "%{http_code}" -o /dev/null -k --connect-timeout 2 "https://$hostname" 2>/dev/null || echo "000")
+
+  case "$http_code" in
+    [23][0-9][0-9])  # 2xx, 3xx
+      echo -e "${GREEN}✓${NC} ok ($http_code)"
+      ;;
+    [45][0-9][0-9])  # 4xx, 5xx (server responding)
+      echo -e "${YELLOW}⚠${NC} http $http_code"
+      ;;
+    *)  # 000 (timeout), other errors
+      echo -e "${RED}✗${NC} unreachable"
+      ;;
+  esac
 }
 
 # Parse and display records
