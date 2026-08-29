@@ -1,6 +1,6 @@
 ---
 # Configure Portainer RBAC and register the slave agent endpoint via the API.
-# Idempotent: existing endpoints / teams / users are detected and skipped.
+# Idempotent: existing endpoints / teams / users / memberships are detected and skipped.
 #
 # This play targets the Portainer *Server* host (master). It is intentionally
 # opt-in via `portainer_rbac_enabled` so it does not fire on every routine
@@ -8,10 +8,19 @@
 #
 #   ansible-playbook plays/user.yml -l lehel.xyz \
 #     -e portainer_rbac_enabled=true --tags user.portainer-rbac
+#
+# API notes (Portainer CE):
+#   * Team endpoint access is set via PUT /api/endpoints/{id} with a
+#     TeamAccessPolicies map (keyed by team Id, value {RoleId}). The legacy
+#     POST /api/endpoints/{id}/access shape is not supported.
+#   * Users are joined to a team via POST /api/team_memberships
+#     ({UserID, TeamID, Role}); account creation alone does not join a team.
+#   * Endpoint access RoleIds: 1=Admin, 2=Helpdesk, 3=Standard User,
+#     4=Read-Only, 5=Operator. We grant Operator (observe + restart).
 
 - name: Wait for Portainer API to be available
   ansible.builtin.uri:
-    url: "https://portainer.lehel.xyz/api/status"
+    url: "{{ portainer_api_url }}/api/status"
     method: GET
     validate_certs: false
     status_code: [200]
@@ -19,10 +28,11 @@
   retries: 30
   delay: 5
   until: portainer_status is succeeded
+  no_log: true
 
 - name: Get Portainer auth token
   ansible.builtin.uri:
-    url: "https://portainer.lehel.xyz/api/auth"
+    url: "{{ portainer_api_url }}/api/auth"
     method: POST
     body_format: json
     body:
@@ -30,19 +40,21 @@
       password: "{{ portainer.admin_password }}"
     validate_certs: false
   register: portainer_auth
+  no_log: true
 
 - name: List existing endpoints
   ansible.builtin.uri:
-    url: "https://portainer.lehel.xyz/api/endpoints"
+    url: "{{ portainer_api_url }}/api/endpoints"
     method: GET
     headers:
       Authorization: "Bearer {{ portainer_auth.json.jwt }}"
     validate_certs: false
   register: portainer_endpoints
+  no_log: true
 
 - name: Register agent endpoint (codey.lehel.xyz)
   ansible.builtin.uri:
-    url: "https://portainer.lehel.xyz/api/endpoints"
+    url: "{{ portainer_api_url }}/api/endpoints"
     method: POST
     headers:
       Authorization: "Bearer {{ portainer_auth.json.jwt }}"
@@ -62,6 +74,7 @@
   register: portainer_endpoint_create
   when: >-
     (portainer_endpoints.json | selectattr('Name', 'equalto', 'codey.lehel.xyz') | list | length) == 0
+  no_log: true
 
 - name: Capture agent endpoint Id
   ansible.builtin.set_fact:
@@ -75,16 +88,17 @@
 
 - name: List existing teams
   ansible.builtin.uri:
-    url: "https://portainer.lehel.xyz/api/teams"
+    url: "{{ portainer_api_url }}/api/teams"
     method: GET
     headers:
       Authorization: "Bearer {{ portainer_auth.json.jwt }}"
     validate_certs: false
   register: portainer_teams
+  no_log: true
 
 - name: Create teams
   ansible.builtin.uri:
-    url: "https://portainer.lehel.xyz/api/teams"
+    url: "{{ portainer_api_url }}/api/teams"
     method: POST
     headers:
       Authorization: "Bearer {{ portainer_auth.json.jwt }}"
@@ -98,20 +112,41 @@
     label: "{{ item.name }}"
   when: >-
     (portainer_teams.json | selectattr('Name', 'equalto', item.name) | list | length) == 0
+  no_log: true
+
+- name: Refresh team list (capture created team Ids)
+  ansible.builtin.uri:
+    url: "{{ portainer_api_url }}/api/teams"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ portainer_auth.json.jwt }}"
+    validate_certs: false
+  register: portainer_teams
+  no_log: true
+
+- name: Build team name -> Id map
+  ansible.builtin.set_fact:
+    portainer_team_id_map: >-
+      {{
+        dict(
+          portainer_teams.json | map(attribute='Name') | list
+          | zip(portainer_teams.json | map(attribute='Id') | list)
+        )
+      }}
 
 - name: List existing users
   ansible.builtin.uri:
-    url: "https://portainer.lehel.xyz/api/users"
+    url: "{{ portainer_api_url }}/api/users"
     method: GET
     headers:
       Authorization: "Bearer {{ portainer_auth.json.jwt }}"
     validate_certs: false
   register: portainer_users
-  when: (portainer_rbac.users | default([]) | length) > 0
+  no_log: true
 
-- name: Create users and assign to team
+- name: Create users
   ansible.builtin.uri:
-    url: "https://portainer.lehel.xyz/api/users"
+    url: "{{ portainer_api_url }}/api/users"
     method: POST
     headers:
       Authorization: "Bearer {{ portainer_auth.json.jwt }}"
@@ -126,26 +161,102 @@
   loop_control:
     label: "{{ item.username }}"
   when: >-
-    (portainer_users.json | default([])
-     | selectattr('Username', 'equalto', item.username) | list | length) == 0
+    (portainer_users.json | selectattr('Username', 'equalto', item.username) | list | length) == 0
   no_log: true
 
-- name: Grant team Operator access to agent endpoint
+- name: Refresh user list (capture created user Ids)
   ansible.builtin.uri:
-    url: "https://portainer.lehel.xyz/api/endpoints/{{ portainer_agent_endpoint_id }}/access"
+    url: "{{ portainer_api_url }}/api/users"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ portainer_auth.json.jwt }}"
+    validate_certs: false
+  register: portainer_users
+  no_log: true
+
+- name: Build user name -> Id map
+  ansible.builtin.set_fact:
+    portainer_user_id_map: >-
+      {{
+        dict(
+          portainer_users.json | map(attribute='Username') | list
+          | zip(portainer_users.json | map(attribute='Id') | list)
+        )
+      }}
+
+- name: List existing team memberships
+  ansible.builtin.uri:
+    url: "{{ portainer_api_url }}/api/team_memberships"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ portainer_auth.json.jwt }}"
+    validate_certs: false
+  register: portainer_memberships
+  no_log: true
+
+- name: Add users to their team
+  ansible.builtin.uri:
+    url: "{{ portainer_api_url }}/api/team_memberships"
     method: POST
     headers:
       Authorization: "Bearer {{ portainer_auth.json.jwt }}"
     body_format: json
     body:
-      TeamId: >-
-        {{
-          (portainer_teams.json | selectattr('Name', 'equalto', item.team)
-           | map(attribute='Id') | list | first)
-        }}
-      Role: 3
+      UserID: "{{ portainer_user_id_map[item.username] }}"
+      TeamID: "{{ portainer_team_id_map[item.team] }}"
+      # 2 = regular member (1 = team leader)
+      Role: 2
     validate_certs: false
-  loop: "{{ portainer_rbac.teams | default([]) }}"
+  loop: "{{ portainer_rbac.users | default([]) }}"
   loop_control:
-    label: "{{ item.name }}"
+    label: "{{ item.username }} -> {{ item.team }}"
+  # Only when the user declares a team and is not already a member of it.
+  when: >-
+    item.team is defined and
+    item.team in portainer_team_id_map and
+    item.username in portainer_user_id_map and
+    (portainer_memberships.json
+     | selectattr('UserID', 'equalto', portainer_user_id_map[item.username])
+     | selectattr('TeamID', 'equalto', portainer_team_id_map[item.team])
+     | list | length) == 0
+  no_log: true
+
+- name: Get current agent endpoint access policies
+  ansible.builtin.uri:
+    url: "{{ portainer_api_url }}/api/endpoints/{{ portainer_agent_endpoint_id }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ portainer_auth.json.jwt }}"
+    validate_certs: false
+  register: portainer_endpoint_detail
   when: portainer_agent_endpoint_id is defined
+  no_log: true
+
+- name: Grant teams Operator access to the agent endpoint
+  ansible.builtin.uri:
+    url: "{{ portainer_api_url }}/api/endpoints/{{ portainer_agent_endpoint_id }}"
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ portainer_auth.json.jwt }}"
+    body_format: json
+    # Merge our teams into any existing TeamAccessPolicies (preserves other grants).
+    # Operator RoleId = 5 (observe + restart). GET /api/roles to verify on the instance.
+    body:
+      TeamAccessPolicies: >-
+        {{
+          (portainer_endpoint_detail.json.TeamAccessPolicies | default({}))
+          | combine(
+            dict(
+              portainer_rbac.teams | default([])
+              | map(attribute='name')
+              | select('in', portainer_team_id_map)
+              | map('extract', portainer_team_id_map)
+              | map('string')
+              | zip([{'RoleId': 5}] * (portainer_rbac.teams | default([])
+                  | map(attribute='name') | select('in', portainer_team_id_map) | list | length))
+            )
+          )
+        }}
+    validate_certs: false
+  when: portainer_agent_endpoint_id is defined
+  no_log: true

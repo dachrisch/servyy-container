@@ -1,0 +1,55 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  vars:
+    portainer_api_url: "http://localhost:9000"
+    portainer_admin_password: "TestAdminPass123!"
+  tasks:
+    - name: Authenticate to local Portainer
+      ansible.builtin.uri:
+        url: "{{ portainer_api_url }}/api/auth"
+        method: POST
+        body_format: json
+        body:
+          username: admin
+          password: "{{ portainer_admin_password }}"
+        status_code: [200]
+      register: auth
+
+    - name: List teams
+      ansible.builtin.uri:
+        url: "{{ portainer_api_url }}/api/teams"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ auth.json.jwt }}"
+        status_code: [200]
+      register: teams
+
+    - name: Assert leaguesphere team was created
+      ansible.builtin.assert:
+        that:
+          - "teams.json | selectattr('Name', 'equalto', 'leaguesphere') | list | length == 1"
+        fail_msg: "leaguesphere team not found after role run"
+
+    - name: List endpoints
+      ansible.builtin.uri:
+        url: "{{ portainer_api_url }}/api/endpoints"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ auth.json.jwt }}"
+        status_code: [200]
+      register: endpoints
+
+    - name: Assert codey.lehel.xyz endpoint was registered
+      ansible.builtin.assert:
+        that:
+          - "endpoints.json | selectattr('Name', 'equalto', 'codey.lehel.xyz') | list | length == 1"
+        fail_msg: "codey.lehel.xyz endpoint not registered after role run"
+
+    - name: Assert team access policy granted to the endpoint
+      ansible.builtin.assert:
+        that:
+          - >-
+            (endpoints.json | selectattr('Name', 'equalto', 'codey.lehel.xyz') | map(attribute='TeamAccessPolicies') | list | first) is not none
+        fail_msg: "TeamAccessPolicies missing on the agent endpoint"

@@ -17,6 +17,7 @@
       - dir: achim-hoefer
         depends: traefik
       - dir: portainer
+      - dir: portainer-agent
       - dir: pass
       - dir: opencode
       - dir: opencode-authgate

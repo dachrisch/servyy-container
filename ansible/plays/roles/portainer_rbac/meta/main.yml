@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  author: servyy
+  description: Register Portainer slave agent endpoint and configure team RBAC via the API.
+  license: MIT
+  min_ansible_version: "2.15"
+  galaxy_tags:
+    - portainer
+    - monitoring
+    - rbac
+dependencies: []
