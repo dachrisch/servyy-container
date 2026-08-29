@@ -1,0 +1,6 @@
+---
+# Base URL of the Portainer Server API. Override for local/Molecule testing.
+portainer_api_url: "https://portainer.lehel.xyz"
+# Endpoint access role granted to each team (Portainer CE):
+# 1=Admin, 2=Helpdesk, 3=Standard User, 4=Read-Only, 5=Operator.
+portainer_endpoint_operator_role_id: 5

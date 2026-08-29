@@ -124,8 +124,32 @@
     - role: docker_service
       vars:
         service_dir: portainer
+        env_templates:
+          - src: portainer/docker.env.j2
+            dest: .env
+          # Plaintext admin password (mode 0600) consumed by the container's
+          # --admin-password-file flag. Only used on first init.
+          - src: portainer/admin-password.txt.j2
+            dest: admin-password.txt
       when: "'portainer' in (services | default([]))"
       tags: [user.docker, user.docker.portainer]
+
+    # Portainer Agent (slave) — runs on code.lehel.xyz, reachable by the master
+    # only via the IP-restricted Traefik route at a.codey.lehel.xyz.
+    - role: docker_service
+      vars:
+        service_dir: portainer-agent
+        service_name: portainer-agent
+        # Traefik router name stays unique (portainer-agent), but Compose
+        # project/container name is "portainer" so the container is
+        # portainer.agent (matching the server's portainer.portainer).
+        project_name: portainer
+        service_host: "a.codey.lehel.xyz"
+        env_templates:
+          - src: portainer-agent/docker.env.j2
+            dest: .env
+      when: "'portainer-agent' in (services | default([]))"
+      tags: [user.docker, user.docker.portainer-agent]
 
     - role: docker_service
       vars:
@@ -338,3 +362,33 @@
       tags:
         - user.docker.leagues-finance
         - user.docker
+
+# Configure Portainer RBAC and register the slave agent endpoint via the API.
+# Opt-in via portainer_rbac_enabled (does not run on routine deploys). See
+# roles/portainer_rbac/tasks/main.yml for usage.
+- name: Configure Portainer RBAC
+  hosts: lehel.xyz
+  remote_user: "{{ create_user }}"
+  become: true
+  become_user: "{{ create_user }}"
+  vars_files:
+    - vars/default.yml
+    - vars/restic.yml
+    - vars/secrets.yml
+    - vars/portainer-rbac.yml
+  pre_tasks:
+    # Rebuild the enabled-services fact so the role's `when` works even when this
+    # play is invoked in isolation via --tags user.portainer-rbac (the fact is
+    # otherwise only produced by the user.docker pre_task in the deploy play).
+    - name: Build enabled services list from services_enabled dict
+      ansible.builtin.set_fact:
+        services: "{{ services_enabled | default({}) | dict2items | selectattr('value', 'equalto', true) | map(attribute='key') | list }}"
+      tags:
+        - always
+  roles:
+    - role: portainer_rbac
+      when:
+        - portainer_rbac_enabled | default(false)
+        - "'portainer' in (services | default([]))"
+  tags:
+    - user.portainer-rbac

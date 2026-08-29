@@ -1,0 +1,51 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Install Python for Ansible
+      raw: |
+        apt-get update
+        apt-get install -y python3 python3-apt
+      changed_when: false
+
+    - name: Ensure Docker is running
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Write initial admin password file for Portainer
+      ansible.builtin.copy:
+        content: "TestAdminPass123!"
+        dest: /tmp/portainer-admin
+        mode: "0600"
+
+    - name: Start Portainer CE for API testing
+      community.docker.docker_container:
+        name: portainer
+        image: portainer/portainer-ce:latest
+        command:
+          - "--admin-password-file"
+          - "/tmp/portainer-admin"
+          - "-H"
+          - "unix:///var/run/docker.sock"
+        volumes:
+          - /var/run/docker.sock:/var/run/docker.sock
+          - /tmp/portainer-admin:/tmp/portainer-admin:ro
+        ports:
+          - "9000:9000"
+        restart: true
+        # Local API smoke test only; never reaches the real agent endpoint.
+        container_defaults:
+          published_ports: []
+
+    - name: Wait for Portainer API to be available
+      ansible.builtin.uri:
+        url: "http://localhost:9000/api/status"
+        method: GET
+        status_code: [200]
+      register: portainer_status
+      retries: 30
+      delay: 5
+      until: portainer_status is succeeded
