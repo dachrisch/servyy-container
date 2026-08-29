@@ -65,9 +65,9 @@ validate_server() {
     return 1
   fi
 
-  # SSH access check (short timeout)
+  # SSH access check (short timeout, redirect stdin to avoid breaking while loops)
   local ssh_ok=0
-  if timeout 2 ssh -o ConnectTimeout=1 -o BatchMode=yes -o StrictHostKeyChecking=accept-new cda@"$hostname" exit &>/dev/null 2>&1; then
+  if timeout 2 ssh -o ConnectTimeout=1 -o BatchMode=yes -o StrictHostKeyChecking=accept-new cda@"$hostname" exit < /dev/null &>/dev/null 2>&1; then
     ssh_ok=1
   fi
 
@@ -133,6 +133,7 @@ display_layout() {
 
   local current_type=""
   local count=0
+  local val_result=""
 
   while IFS=$'\t' read -r name type content ttl; do
     if [[ "$type" != "$current_type" ]]; then
@@ -149,7 +150,8 @@ display_layout() {
         echo -e "  ${BLUE}$name${NC} ${BOLD}→${NC} $content"
         ;;
       A)
-        echo -e "  ${BLUE}$name${NC} ${BOLD}@${NC} $content (TTL: $ttl)"
+        val_result=$(validate_server "$name" 2>&1 || true)
+        echo -e "  ${BLUE}$name${NC} ${BOLD}@${NC} $content (TTL: $ttl) $val_result"
         ;;
       AAAA)
         echo -e "  ${BLUE}$name${NC} ${BOLD}@${NC} $content (TTL: $ttl) [IPv6]"
@@ -194,14 +196,6 @@ display_layout() {
   if ! $has_cnames; then
     echo -e "  ${YELLOW}(No CNAME records)${NC}"
   fi
-
-  # Server Validation
-  echo
-  echo -e "${BOLD}${YELLOW}Server Health:${NC}"
-  echo "$records" | jq -r '.[] | select(.type=="A") | .name' | sort -u | while read -r hostname; do
-    result=$(validate_server "$hostname" 2>/dev/null || echo -e "${RED}✗${NC} error")
-    echo -e "  ${BLUE}$hostname${NC} $result"
-  done
 }
 
 # Main
