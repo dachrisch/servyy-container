@@ -1,7 +1,13 @@
 ---
 service_dir: ""
 service_name: "{{ service_dir }}"
-service_host: "{{ service_dir }}.{{ inventory_hostname }}"
+# SERVICE_HOST pattern (domain-aware):
+#   Production (lehel.xyz): {dns_short_name or service_dir}.lehel.xyz
+#   Test (servyy-test.lxd): {service_dir}.servyy-test.lxd
+#   Dev (aqui.fritz.box): {service_dir}.aqui.fritz.box
+# Computed via jinja2 filter below
+dns_short_name: ""
+dns_expose: false
 env_templates:
   - src: docker.env.j2
     dest: .env
