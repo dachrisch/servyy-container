@@ -1,0 +1,151 @@
+---
+# Configure Portainer RBAC and register the slave agent endpoint via the API.
+# Idempotent: existing endpoints / teams / users are detected and skipped.
+#
+# This play targets the Portainer *Server* host (master). It is intentionally
+# opt-in via `portainer_rbac_enabled` so it does not fire on every routine
+# deploy — run it explicitly after the server + agent are confirmed healthy:
+#
+#   ansible-playbook plays/user.yml -l lehel.xyz \
+#     -e portainer_rbac_enabled=true --tags user.portainer-rbac
+
+- name: Wait for Portainer API to be available
+  ansible.builtin.uri:
+    url: "https://portainer.lehel.xyz/api/status"
+    method: GET
+    validate_certs: false
+    status_code: [200]
+  register: portainer_status
+  retries: 30
+  delay: 5
+  until: portainer_status is succeeded
+
+- name: Get Portainer auth token
+  ansible.builtin.uri:
+    url: "https://portainer.lehel.xyz/api/auth"
+    method: POST
+    body_format: json
+    body:
+      username: admin
+      password: "{{ portainer.admin_password }}"
+    validate_certs: false
+  register: portainer_auth
+
+- name: List existing endpoints
+  ansible.builtin.uri:
+    url: "https://portainer.lehel.xyz/api/endpoints"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ portainer_auth.json.jwt }}"
+    validate_certs: false
+  register: portainer_endpoints
+
+- name: Register agent endpoint (codey.lehel.xyz)
+  ansible.builtin.uri:
+    url: "https://portainer.lehel.xyz/api/endpoints"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ portainer_auth.json.jwt }}"
+    body_format: json
+    body:
+      Name: "codey.lehel.xyz"
+      EndpointType: 2
+      URL: "https://a.codey.lehel.xyz"
+      PublicURL: ""
+      GroupID: 1
+      TLS: false
+      TLSSkipVerify: true
+      TLSConfig:
+        TLS: false
+        TLSSkipVerify: true
+    validate_certs: false
+  register: portainer_endpoint_create
+  when: >-
+    (portainer_endpoints.json | selectattr('Name', 'equalto', 'codey.lehel.xyz') | list | length) == 0
+
+- name: Capture agent endpoint Id
+  ansible.builtin.set_fact:
+    portainer_agent_endpoint_id: >-
+      {{
+        (portainer_endpoints.json | selectattr('Name', 'equalto', 'codey.lehel.xyz')
+         | map(attribute='Id') | list | first)
+        if (portainer_endpoints.json | selectattr('Name', 'equalto', 'codey.lehel.xyz') | list | length) > 0
+        else (portainer_endpoint_create.json.Id | default(omit))
+      }}
+
+- name: List existing teams
+  ansible.builtin.uri:
+    url: "https://portainer.lehel.xyz/api/teams"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ portainer_auth.json.jwt }}"
+    validate_certs: false
+  register: portainer_teams
+
+- name: Create teams
+  ansible.builtin.uri:
+    url: "https://portainer.lehel.xyz/api/teams"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ portainer_auth.json.jwt }}"
+    body_format: json
+    body:
+      Name: "{{ item.name }}"
+      Description: "{{ item.description | default('') }}"
+    validate_certs: false
+  loop: "{{ portainer_rbac.teams | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: >-
+    (portainer_teams.json | selectattr('Name', 'equalto', item.name) | list | length) == 0
+
+- name: List existing users
+  ansible.builtin.uri:
+    url: "https://portainer.lehel.xyz/api/users"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ portainer_auth.json.jwt }}"
+    validate_certs: false
+  register: portainer_users
+  when: (portainer_rbac.users | default([]) | length) > 0
+
+- name: Create users and assign to team
+  ansible.builtin.uri:
+    url: "https://portainer.lehel.xyz/api/users"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ portainer_auth.json.jwt }}"
+    body_format: json
+    body:
+      Username: "{{ item.username }}"
+      Password: "{{ item.password }}"
+      UserTheme: "auto"
+      Role: 2
+    validate_certs: false
+  loop: "{{ portainer_rbac.users | default([]) }}"
+  loop_control:
+    label: "{{ item.username }}"
+  when: >-
+    (portainer_users.json | default([])
+     | selectattr('Username', 'equalto', item.username) | list | length) == 0
+  no_log: true
+
+- name: Grant team Operator access to agent endpoint
+  ansible.builtin.uri:
+    url: "https://portainer.lehel.xyz/api/endpoints/{{ portainer_agent_endpoint_id }}/access"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ portainer_auth.json.jwt }}"
+    body_format: json
+    body:
+      TeamId: >-
+        {{
+          (portainer_teams.json | selectattr('Name', 'equalto', item.team)
+           | map(attribute='Id') | list | first)
+        }}
+      Role: 3
+    validate_certs: false
+  loop: "{{ portainer_rbac.teams | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: portainer_agent_endpoint_id is defined

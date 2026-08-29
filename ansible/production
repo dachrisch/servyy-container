@@ -38,3 +38,4 @@ prod:
             dns_short_name: "code"     # Public-facing name (code.lehel.xyz)
             dns_expose: true           # Create explicit DNS entry in Porkbun
           opencode-authgate: true
+          portainer-agent: true

@@ -1,0 +1,19 @@
+---
+# Portainer RBAC configuration (consumed by roles/portainer_rbac).
+# Apply with: ansible-playbook plays/user.yml -l lehel.xyz \
+#   -e portainer_rbac_enabled=true --tags user.portainer-rbac
+#
+# The agent endpoint (codey.lehel.xyz) is always registered by the role.
+# `teams` receive Operator (role 3) access to that endpoint.
+# Add members under `users` to provision accounts (left empty by default).
+
+portainer_rbac:
+  teams:
+    - name: leaguesphere
+      description: "LeagueSphere development team (Operator: observe + restart)"
+  users: []
+  # Example:
+  # users:
+  #   - username: alice
+  #     password: "changeme123"   # user should rotate on first login
+  #     team: leaguesphere
