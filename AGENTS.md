@@ -292,9 +292,33 @@ ssh lehel.xyz "docker logs portainer.ofelia | grep demo-reset"        # Verify O
 ssh lehel.xyz "docker exec leaguesphere-demo.demo-app /bin/bash -c 'rm -f /app/.demo_last_reset && /app/entrypoint.demo.sh'"
 ```
 
+## Specialized Agents Available
+
+**Service Infrastructure Agents** (`.claude/agents/`):
+- `service-master` - Deploy, troubleshoot, manage Docker services and Traefik routing
+- `service-requirements-analyst` - Plan new service deployments with requirements analysis
+- `service-tester` - Pre-production testing on servyy-test.lxd before production
+- `dns-master` - Manage DNS infrastructure via Porkbun API, validate DNS changes
+
+**When to use dns-master agent:**
+- Query current DNS records for lehel.xyz
+- Create/update/delete DNS entries
+- Validate DNS architecture changes
+- Restructure DNS layout
+- Troubleshoot DNS resolution issues
+- Design Ansible-integrated DNS management
+
+**Example:**
+```
+You: "Add DNS records for new service"
+Agent: dns-master (query current state → validate → create → verify)
+Result: New service accessible via DNS
+```
+
 ## Notes for Agents
 - This is a **production infrastructure** repository - changes have real-world impact
 - **Test-first approach** is mandatory for all infrastructure changes
 - **Security** is paramount - never compromise encryption or access controls
 - **Documentation** is critical - update history logs for all significant changes
+- **DNS changes affect all users** - Always validate and test before applying to production
 - **Rollback procedures** should be considered for all major deployments

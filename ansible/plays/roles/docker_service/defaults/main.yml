@@ -1,7 +1,20 @@
 ---
 service_dir: ""
 service_name: "{{ service_dir }}"
-service_host: "{{ service_dir }}.{{ inventory_hostname }}"
+# SERVICE_HOST pattern (domain-aware):
+#   Production (lehel.xyz): {dns_short_name or service_dir}.lehel.xyz
+#   Test (servyy-test.lxd): {service_dir}.servyy-test.lxd
+#   Dev (aqui.fritz.box): {service_dir}.aqui.fritz.box
+# Base domain for the host. Defaults to inventory_hostname; override via `domain`
+# host var (e.g. lehel.xyz) so services resolve to the public domain even when the
+# inventory hostname differs (e.g. servy.lehel.xyz).
+domain: "{{ inventory_hostname }}"
+# Short DNS name for exposed production services (e.g. "code" -> code.lehel.xyz).
+dns_short_name: ""
+# Whether the service is exposed via a dedicated public DNS name.
+dns_expose: false
+# Computed service host: use dns_short_name when explicitly exposed, else service_dir.
+service_host: "{{ (dns_short_name if (dns_expose | default(false) and dns_short_name) else service_dir) }}.{{ domain }}"
 env_templates:
   - src: docker.env.j2
     dest: .env

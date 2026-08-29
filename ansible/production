@@ -33,5 +33,8 @@ prod:
         ansible_user: root
         services_enabled:
           traefik: true
-          opencode: true
+          opencode:
+            enabled: true
+            dns_short_name: "code"     # Public-facing name (code.lehel.xyz)
+            dns_expose: true           # Create explicit DNS entry in Porkbun
           opencode-authgate: true
