@@ -1,7 +1,7 @@
 # CLAUDE.md - servyy-container Infrastructure
 
 > Self-hosted microservices platform (15+ Docker services) automated with Ansible
-> **Last Updated:** 2026-08-28 (service undeployment workflow)
+> **Last Updated:** 2026-08-29 (DNS restructuring + dns-master agent)
 
 ## Quick Commands
 
@@ -34,6 +34,126 @@ ssh {server} "docker restart {container}"          # Restart on specific server
 ```
 
 ⚠️ **CRITICAL:** Always use `--limit {server}` to target the correct server!
+
+## DNS Management
+
+The infrastructure uses **Porkbun** for DNS management on `lehel.xyz` domain via the `dns-master` agent.
+
+### DNS Architecture
+
+```
+lehel.xyz (root domain)
+  ├─ ALIAS → servy.lehel.xyz (primary server)
+  │
+  ├─ servy.lehel.xyz (primary server: 49.13.6.173)
+  │  └─ *.lehel.xyz → CNAME → servy.lehel.xyz
+  │     (wildcard catches all lehel services: git, photoprism, monitor, etc.)
+  │
+  └─ codey.lehel.xyz (secondary server: 217.217.227.124)
+     └─ code.lehel.xyz → CNAME → codey.lehel.xyz (public alias)
+        (codey infrastructure detail is hidden from users)
+```
+
+**Key points:**
+- `codey.lehel.xyz` is the internal server name (not exposed to users)
+- `code.lehel.xyz` is the public alias users access (backward compatible)
+- Wildcard `*.lehel.xyz` handles all lehel services (git, photoprism, monitor, etc.)
+- Each server has Traefik that routes requests to correct containers
+
+### DNS Management Tasks
+
+**Use the `dns-master` agent for all DNS operations:**
+
+```bash
+# Query current DNS records
+# (agent will show all records for lehel.xyz, organized by type)
+
+# Create new DNS record
+# (agent validates, shows impact, gets your approval)
+
+# Update existing record
+# (agent queries current state, shows diff, executes change)
+
+# Delete DNS record
+# (agent confirms what will be removed, shows impact)
+
+# Restructure DNS
+# (agent designs plan, validates changes, applies safely)
+```
+
+**Example workflow:**
+```
+You: "Add DNS entry for new service xyz on lehel.xyz"
+Agent: "I'll create xyz.lehel.xyz as CNAME → servy.lehel.xyz"
+Agent: "Verifying no conflicts... checking Traefik config..."
+Agent: "Ready to create. Approve? [yes/no]"
+You: "yes"
+Agent: "✓ Created xyz.lehel.xyz → servy.lehel.xyz"
+Agent: "✓ Verified DNS resolves correctly"
+Agent: "✓ Service will be accessible at xyz.lehel.xyz"
+```
+
+### DNS Credentials
+
+Porkbun API keys stored in: `ansible/plays/vars/secrets.yml` (git-crypt encrypted)
+- Key `porkbun_api.pk` - Public API key
+- Key `porkbun_api.sk` - Secret API key
+
+Only the `dns-master` agent needs these credentials. Credentials are:
+- ✅ Encrypted with git-crypt (safe in git)
+- ✅ Never exposed in logs or output
+- ✅ Only used by dns-master agent for Porkbun API calls
+
+### Porkbun API Reference
+
+**Endpoints used:**
+- `GET /api/json/v3/dns/retrieve/{domain}` - List all DNS records
+- `POST /api/json/v3/dns/create/{domain}` - Create record
+- `POST /api/json/v3/dns/edit/{domain}/{id}` - Update record
+- `POST /api/json/v3/dns/delete/{domain}/{id}` - Delete record
+
+**Full API docs:** https://porkbun.com/api/json/v3/documentation
+
+### Common DNS Patterns
+
+**Service on lehel (primary server):**
+```
+{service}.lehel.xyz → CNAME → servy.lehel.xyz
+Example: git.lehel.xyz → CNAME → servy.lehel.xyz
+```
+
+**Service on code (secondary server):**
+```
+code.lehel.xyz → CNAME → codey.lehel.xyz
+(Service-specific routing handled by Traefik, not DNS)
+```
+
+**Adding a new explicit DNS entry:**
+```
+{service}.lehel.xyz → CNAME → servy.lehel.xyz
+(or use Traefik labels in docker-compose if CNAME not needed)
+```
+
+### Troubleshooting DNS Issues
+
+**Service not accessible after DNS change:**
+1. Verify record in Porkbun: `dns-master agent` → "Show current DNS"
+2. Check DNS propagation: `dig {service}.lehel.xyz`
+3. Verify Traefik routing: `ssh lehel.xyz "docker logs traefik.traefik | grep {service}"`
+4. Check certificate: `ssl-verify {service}.lehel.xyz` (ACME must have valid cert)
+5. Revert if needed: `dns-master agent` → "Restore DNS to previous state"
+
+**DNS resolves but service returns 502:**
+- Traefik routing issue (not DNS)
+- Check: `docker ps | grep {service}` on correct server
+- Check: Service Traefik labels match DNS entry hostname
+- Restart Traefik if needed: `docker restart traefik.traefik`
+
+**Changes not propagating:**
+- TTL (time-to-live) may be high (default: 600 seconds)
+- Clear local DNS cache: `systemctl restart systemd-resolved`
+- Test from multiple nameservers: `dig @8.8.8.8 {service}.lehel.xyz`
+- Wait 5-10 minutes for global propagation
 
 ## SSH Key-Based Access Setup
 
