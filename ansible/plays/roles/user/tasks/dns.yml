@@ -6,10 +6,10 @@
 - name: Create host list for services
   blockinfile:
     path: "{{ (docker.remote_dir, 'dns', 'volumes', 'etc-pihole', 'custom.list' ) | path_join }}"
-    marker: "# {mark} {{item.dir}}.{{inventory_hostname}} ips -->"
+    marker: "# {mark} {{item.dir}}.{{domain}} ips -->"
     block: |
-      {{host_ip}}	{{item.dir}}.{{inventory_hostname}}
-      {{host_ip_v6}}	{{item.dir}}.{{inventory_hostname}}
+      {{host_ip}}	{{item.dir}}.{{domain}}
+      {{host_ip_v6}}	{{item.dir}}.{{domain}}
     state: present
     create: yes
   with_items:
@@ -20,7 +20,7 @@
   blockinfile:
     path: "{{ (docker.remote_dir, 'dns', 'volumes', 'etc-pihole', 'custom.list' ) | path_join }}"
     block: |
-      {{host_ip}}	{{inventory_hostname}}
-      {{host_ip_v6}}	{{inventory_hostname}}
+      {{host_ip}}	{{domain}}
+      {{host_ip_v6}}	{{domain}}
     state: present
     create: yes

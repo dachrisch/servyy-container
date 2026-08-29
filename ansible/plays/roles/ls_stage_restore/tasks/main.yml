@@ -18,7 +18,7 @@
 # approach transfers only application data, preserving stage's own system tables.
 #
 # Usage:
-#   ./servyy.sh --tags ls.stage.restore --limit lehel.xyz
+#   ./servyy.sh --tags ls.stage.restore --limit servy.lehel.xyz
 
 - name: Load staging variables
   include_vars:

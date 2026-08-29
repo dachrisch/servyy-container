@@ -45,6 +45,14 @@
       vars:
         service_dir: simple-svc
 
+    - name: Deploy domain-override service (asserts domain var wins over inventory_hostname)
+      ansible.builtin.include_role:
+        name: docker_service
+        tasks_from: main.yml
+      vars:
+        service_dir: domain-svc
+        domain: example.org
+
     - name: Deploy multi-template job-search service
       ansible.builtin.include_role:
         name: docker_service

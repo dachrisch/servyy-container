@@ -204,7 +204,7 @@
     - role: docker_service
       vars:
         service_dir: searxng
-        service_host: "search.{{ inventory_hostname }}"
+        service_host: "search.{{ domain }}"
         service_name: searxng
         env_templates:
           - src: searxng/.env.j2
@@ -216,7 +216,7 @@
     - role: docker_service
       vars:
         service_dir: thore
-        service_host: "thore.{{ inventory_hostname }}"
+        service_host: "thore.{{ domain }}"
         service_name: thore
         env_templates:
           - src: thore/docker.env.j2
@@ -228,7 +228,7 @@
     - role: docker_service
       vars:
         service_dir: job-search
-        service_host: "jobs.{{ inventory_hostname }}"
+        service_host: "jobs.{{ domain }}"
         job_search_jwt_secret: "{{ vault_job_search_jwt_secret }}"
         job_search_searxng_token: "{{ vault_searxng_brave_token }}"
         job_search_searxng_url: https://search.lehel.xyz

@@ -13,18 +13,18 @@ cd ansible && ./servyy.sh
 cd scripts && ./setup_test_container.sh && cd ../ansible && ./servyy-test.sh
 
 # Deploy to specific server only
-cd ansible && ./servyy.sh --limit lehel.xyz      # Primary server
-cd ansible && ./servyy.sh --limit code.lehel     # Opencode server
+cd ansible && ./servyy.sh --limit servy.lehel.xyz      # Primary server
+cd ansible && ./servyy.sh --limit codey.lehel.xyz     # Opencode server
 
 # Deploy specific service to its server
-cd ansible && ./servyy.sh --tags "user.docker.opencode" --limit code.lehel
-cd ansible && ./servyy.sh --tags "user.docker.monitor" --limit lehel.xyz
+cd ansible && ./servyy.sh --tags "user.docker.opencode" --limit codey.lehel.xyz
+cd ansible && ./servyy.sh --tags "user.docker.monitor" --limit servy.lehel.xyz
 
 # Remove a service (interactive, with confirmation)
-cd ansible && ansible-playbook plays/remove_service.yml -e "target_host=lehel.xyz"
+cd ansible && ansible-playbook plays/remove_service.yml -e "target_host=servy.lehel.xyz"
 
 # Recreate locked Restic repositories (DESTRUCTIVE)
-cd ansible && ansible-playbook restic_recreate.yml --limit lehel.xyz
+cd ansible && ansible-playbook restic_recreate.yml --limit servy.lehel.xyz
 
 # Service management (know which server has the service!)
 ssh lehel.xyz "docker ps"                          # Check containers on lehel.xyz
@@ -177,7 +177,7 @@ code.lehel.xyz → CNAME → codey.lehel.xyz
 
 ```bash
 # code.lehel.xyz requires root access to bootstrap setup
-ansible-playbook servyy.yml -i inventory/production -l code.lehel.xyz -u root
+ansible-playbook servyy.yml -i inventory/production -l codey.lehel.xyz -u root
 
 # Then Ansible will:
 # 1. Create cda user with sudo privileges
@@ -287,7 +287,7 @@ ssh servyy-test.lxd "docker ps"
 
 # 5. ASK USER FOR APPROVAL before production deployment
 # Only after explicit user approval:
-cd ansible && ./servyy.sh --limit lehel.xyz
+cd ansible && ./servyy.sh --limit servy.lehel.xyz
 ```
 
 ## Deployment Workflow
@@ -300,7 +300,7 @@ cd ansible && ./servyy.sh --limit lehel.xyz
 cd ansible && ansible-playbook servyy.yml --syntax-check
 
 # 3. Deploy to production
-./servyy.sh --limit lehel.xyz
+./servyy.sh --limit servy.lehel.xyz
 
 # 4. Verify deployment
 ssh lehel.xyz "docker ps | grep {service}"
@@ -367,7 +367,7 @@ Run the interactive removal playbook with confirmation prompt:
 
 ```bash
 cd ansible
-ansible-playbook plays/remove_service.yml -e "target_host=lehel.xyz"
+ansible-playbook plays/remove_service.yml -e "target_host=servy.lehel.xyz"
 
 # Prompts for:
 # 1. Service name (e.g., 'opencode')
@@ -426,7 +426,7 @@ git push origin master
 Deploy to confirm service is no longer deployed on next run:
 
 ```bash
-cd ansible && ./servyy.sh --limit lehel.xyz
+cd ansible && ./servyy.sh --limit servy.lehel.xyz
 
 # Verify in output:
 # - Service role should be skipped (when condition: service not in enabled list)
@@ -443,7 +443,7 @@ If you need to re-enable a service:
 # To:      {service}: true
 
 # Then deploy:
-cd ansible && ./servyy.sh --limit lehel.xyz
+cd ansible && ./servyy.sh --limit servy.lehel.xyz
 
 # Service will be redeployed (if directory exists in git)
 ```
@@ -598,10 +598,10 @@ When deploying a service, **always specify the correct server**:
 
 ```bash
 # Deploy opencode to code.lehel ONLY
-cd ansible && ./servyy.sh --tags "user.docker.opencode" --limit code.lehel
+cd ansible && ./servyy.sh --tags "user.docker.opencode" --limit codey.lehel.xyz
 
 # Deploy all services to lehel.xyz
-cd ansible && ./servyy.sh --limit lehel.xyz
+cd ansible && ./servyy.sh --limit servy.lehel.xyz
 
 # Deploy specific tag to all servers
 cd ansible && ./servyy.sh --tags "docker" --limit all
@@ -611,8 +611,8 @@ cd ansible && ./servyy.sh --tags "docker" --limit all
 
 | Server | Role | Services |
 |--------|------|----------|
-| `lehel.xyz` | Primary production | traefik, monitor, photoprism, git, leaguesphere-*, etc. |
-| `code.lehel` | Secondary (opencode-only) | opencode |
+| `servy.lehel.xyz` | Primary production | traefik, monitor, photoprism, git, leaguesphere-*, etc. |
+| `codey.lehel.xyz` | Secondary (opencode-only) | opencode |
 | `aqui.fritz.box` | Dev/testing | Various dev services |
 | `servyy-test.lxd` | Test environment | Mirrors production for validation |
 
@@ -627,8 +627,8 @@ When responding to requests like "deploy X" or "fix error in X":
 
 **Example:**
 - Request: "Deploy opencode"
-- Action: Check inventory → opencode is on `code.lehel` → Deploy with `--limit code.lehel`
-- Not: ~~Deploy to lehel.xyz~~ (wrong server!)
+- Action: Check inventory → opencode is on `codey.lehel.xyz` → Deploy with `--limit codey.lehel.xyz`
+- Not: ~~Deploy to servy.lehel.xyz~~ (wrong server!)
 
 ## Key Services
 
@@ -664,10 +664,10 @@ ansible/
 ```
 
 **Inventory File: `ansible/production`**
-- Defines all servers (lehel.xyz, code.lehel, aqui.fritz.box, etc.)
+- Defines all servers (servy.lehel.xyz, codey.lehel.xyz, aqui.fritz.box, etc.)
 - Each server has `services_enabled:` dict specifying which services run there
 - Services NOT in enabled list are skipped during deployment
-- Example: opencode only enabled on code.lehel, not on lehel.xyz
+- Example: opencode only enabled on codey.lehel.xyz, not on servy.lehel.xyz
 
 **Common Tags:**
 - `system` - OS packages, fail2ban, monit
@@ -975,7 +975,7 @@ networks:
 
 3. Add the service to the script list in `ansible/plays/roles/user/tasks/docker_extras.yml`.
 
-4. Deploy: `cd ansible && ./servyy.sh --tags "docker" --limit lehel.xyz`
+4. Deploy: `cd ansible && ./servyy.sh --tags "docker" --limit servy.lehel.xyz`
 
 5. Verify:
 ```bash
@@ -1014,7 +1014,7 @@ curl -I https://{service}.lehel.xyz
 
 ```bash
 # Deployment
-cd ansible && ./servyy.sh --limit lehel.xyz
+cd ansible && ./servyy.sh --limit servy.lehel.xyz
 
 # Verify services
 ssh lehel.xyz "docker ps"

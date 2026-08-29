@@ -93,7 +93,7 @@ This skill is infra-only — it does not cover building the actual site content.
    stale mount and blocked the whole run before it ever reached `bumbleflies`)
    — the narrow pair sidesteps that risk entirely, at no cost since these are
    the only two tags this task's deploy ever needed. Never `servyy.sh` /
-   `--limit lehel.xyz` — that's production, and requires separate explicit user
+    `--limit servy.lehel.xyz` — that's production, and requires separate explicit user
    approval per this repo's CLAUDE.md. Verify with
    `ssh servyy-test.lxd "docker ps | grep bumbleflies.<name>"` and a `curl` against
    the local-qualified host.

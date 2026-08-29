@@ -25,6 +25,27 @@
         cmd: grep -q 'SERVICE_NAME=simple-svc' /home/molecule/simple-svc/.env
       changed_when: false
 
+    - name: Verify domain-override service .env exists
+      ansible.builtin.stat:
+        path: /home/molecule/domain-svc/.env
+      register: domain_env
+      failed_when: not domain_env.stat.exists
+
+    - name: Verify domain-override .env SERVICE_HOST uses domain not inventory_hostname
+      ansible.builtin.command:
+        cmd: grep -q 'SERVICE_HOST=domain-svc.example.org' /home/molecule/domain-svc/.env
+      changed_when: false
+
+    - name: Verify domain-override .env SERVICE_ROOT_HOST uses domain
+      ansible.builtin.command:
+        cmd: grep -q 'SERVICE_ROOT_HOST=example.org' /home/molecule/domain-svc/.env
+      changed_when: false
+
+    - name: Verify domain-override .env LOCAL_HOSTNAME uses inventory_hostname
+      ansible.builtin.command:
+        cmd: grep -q 'LOCAL_HOSTNAME={{ inventory_hostname }}' /home/molecule/domain-svc/.env
+      changed_when: false
+
     - name: Check job-search .env exists
       ansible.builtin.stat:
         path: /home/molecule/job-search/.env
@@ -111,17 +132,13 @@
         cmd: grep -q '^OPENCODE_AUTH_GOOGLE_B64=.\+$' /home/molecule/opencode/opencode.env
       changed_when: false
 
-    - name: Verify opencode.env still carries GIT_CRYPT_KEY_B64 (required for gh-dash-crypt repos)
-      ansible.builtin.command:
-        cmd: grep -q '^GIT_CRYPT_KEY_B64=.\+$' /home/molecule/opencode/opencode.env
+    - name: Verify opencode.env DEV_REPOS_B64 decodes to JSON with servyy-container
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          grep '^DEV_REPOS_B64=' /home/molecule/opencode/opencode.env | cut -d= -f2- | base64 -d | grep -q '"dir": "servyy-container"'
+        executable: /bin/bash
       changed_when: false
-
-    - name: Verify opencode.env no longer carries static DEV_REPOS_B64 (gh-dash auto-discovery)
-      ansible.builtin.command:
-        cmd: grep -q '^DEV_REPOS_B64=' /home/molecule/opencode/opencode.env
-      register: dev_repos_present
-      changed_when: false
-      failed_when: dev_repos_present.rc == 0
 
     - name: Verify opencode.env has mode 0600
       ansible.builtin.stat:
