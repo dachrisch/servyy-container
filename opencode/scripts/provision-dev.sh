@@ -94,12 +94,30 @@ fi
 
 # 5. Discovery-based provisioning: search for repos with 'gh-dash' topic
 # Searches across dachrisch + bumbleflies orgs
-if command -v gh >/dev/null 2>&1; then
+if [ -x /usr/bin/gh.real ]; then
   log "discovering repos with 'gh-dash' topic..."
 
   for target in dachrisch bumbleflies; do
     log "  checking $target..."
-    repos=$(gh repo list "$target" --topic gh-dash --json nameWithOwner,url,defaultBranchRef --limit 100 2>/dev/null || echo "[]")
+
+    # Call gh.real directly with the org's own PAT. The gh wrapper instead
+    # picks a token by inspecting the CWD's git remote, which doesn't exist
+    # yet for this org-level listing call and silently defaults to the
+    # dachrisch PAT -- rejected by orgs (e.g. bumbleflies) that forbid
+    # long-lived fine-grained PATs, which then made this loop silently
+    # find zero repos for that org.
+    case "$target" in
+      bumbleflies) target_pat="${GITHUB_PAT_BUMBLEFLIES:-}" ;;
+      dachrisch)   target_pat="${GITHUB_PAT_DACHRISCH:-}" ;;
+      *)           target_pat="" ;;
+    esac
+
+    if output=$(GH_TOKEN="$target_pat" /usr/bin/gh.real repo list "$target" --topic gh-dash --json nameWithOwner,url,defaultBranchRef --limit 100 2>&1); then
+      repos="$output"
+    else
+      log "WARN: repo list failed for $target: $output"
+      repos="[]"
+    fi
 
     echo "$repos" | python3 -c '
 import json,sys
