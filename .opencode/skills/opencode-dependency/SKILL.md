@@ -136,7 +136,7 @@ cd /tmp/wt-opencode/opencode-project/
 
 **Skills updates (coordination side):**
 ```bash
-cd /home/cda/dev/infrastructure/container/opencode/skills/
+cd /home/cda/dev/infrastructure/container/.opencode/skills/
 # Update skill files to document new workflow
 ```
 
@@ -169,7 +169,7 @@ ssh servyy-test.lxd "docker exec opencode.web /path/to/test"
 # ansible/plays/roles/opencode/tasks/main.yml
 - name: Deploy OpenCode skills
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../../opencode/skills/"
+    src: "{{ playbook_dir }}/../../.opencode/skills/"
     dest: "{{ opencode_skills_dir }}"
     owner: "{{ create_user }}"
     group: "{{ create_user }}"
@@ -302,5 +302,5 @@ ssh lehel.xyz "docker logs opencode.web --tail 20"
 | `ansible/plays/roles/opencode/templates/` | Generated config files |
 | `opencode/docker-compose.yml` | Service definition |
 | `opencode/scripts/startup.sh` | Container startup |
-| `opencode/skills/` | Deployed skill definitions |
+| `.opencode/skills/` | Deployed skill definitions |
 | `/home/cda/servyy-container/opencode/.env` | Runtime env on server |

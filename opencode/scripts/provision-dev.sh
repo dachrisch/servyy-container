@@ -29,6 +29,19 @@ Host github.com
   StrictHostKeyChecking accept-new
 EOF
   chmod 600 "$SSH_DIR/config"
+  # The .ssh dir is a bind mount from the docker host, where these files are
+  # owned by the host user (e.g. cda/uid 1000). The container runs as root
+  # (uid 0), and OpenSSH refuses to use a config/private key not owned by root,
+  # which silently breaks every git-over-SSH clone/pull. Re-own them to root.
+  chown root:root "$SSH_DIR/config"
+  if [ -f "$SSH_DIR/id_github" ]; then
+    chown root:root "$SSH_DIR/id_github"
+    chmod 600 "$SSH_DIR/id_github"
+  fi
+  if [ -f "$SSH_DIR/id_servy" ]; then
+    chown root:root "$SSH_DIR/id_servy"
+    chmod 600 "$SSH_DIR/id_servy"
+  fi
   log "ssh key + config written"
 fi
 
@@ -52,65 +65,66 @@ if [ -n "${OPENCODE_AUTH_GOOGLE_B64:-}" ]; then
     || log "WARN: opencode google auth seed failed (continuing)"
 fi
 
-# 3. Decode git-crypt key (used for repos flagged crypt=true)
+# 3. Decode git-crypt key (used for repos flagged with the gh-dash-crypt topic)
 CRYPT_KEY=""
 if [ -n "${GIT_CRYPT_KEY_B64:-}" ]; then
   CRYPT_KEY="$(mktemp)"
   echo "$GIT_CRYPT_KEY_B64" | base64 -d > "$CRYPT_KEY"
 fi
 
-# 4. Clone/pull repos from hardcoded DEV_REPOS_B64 (legacy support)
+# 4. Ensure dev dir exists for discovery-based provisioning
 mkdir -p "$DEV_DIR"
-if [ -n "${DEV_REPOS_B64:-}" ]; then
-  echo "$DEV_REPOS_B64" | base64 -d | python3 -c '
-import json,sys
-for r in json.load(sys.stdin):
-    print("\t".join([r["dir"], r["repo"], r.get("branch","master"), "1" if r.get("crypt") else "0"]))
-' | while IFS="$(printf '\t')" read -r dir repo branch crypt; do
-    dest="$DEV_DIR/$dir"
-    if [ -d "$dest/.git" ]; then
-      log "updating $dir"
-      git -C "$dest" remote set-url origin "$repo"
-      git -C "$dest" fetch --quiet origin "$branch" \
-        && git -C "$dest" checkout --quiet "$branch" \
-        && git -C "$dest" pull --quiet --ff-only origin "$branch" \
-        || log "WARN: update failed for $dir (continuing)"
-    else
-      log "cloning $dir"
-      git clone --quiet --branch "$branch" "$repo" "$dest" \
-        || { log "ERROR: clone failed for $dir"; continue; }
-    fi
-    if [ "$crypt" = "1" ] && [ -n "$CRYPT_KEY" ]; then
-      if git -C "$dest" config --local --get filter.git-crypt.smudge >/dev/null 2>&1; then
-        log "$dir already git-crypt unlocked"
-      else
-        ( cd "$dest" && git-crypt unlock "$CRYPT_KEY" ) \
-          && log "git-crypt unlocked $dir" \
-          || log "WARN: git-crypt unlock failed for $dir"
-      fi
-    fi
-  done
-fi
 
 # 5. Discovery-based provisioning: search for repos with 'gh-dash' topic
-# Searches across dachrisch + bumbleflies orgs
-if command -v gh >/dev/null 2>&1; then
+# Searches across dachrisch + bumbleflies orgs. A repo additionally tagged
+# 'gh-dash-crypt' is git-crypt encrypted and gets unlocked with CRYPT_KEY.
+if [ -x /usr/bin/gh.real ]; then
   log "discovering repos with 'gh-dash' topic..."
 
   for target in dachrisch bumbleflies; do
     log "  checking $target..."
-    repos=$(gh repo list "$target" --topic gh-dash --json nameWithOwner,url,defaultBranchRef --limit 100 2>/dev/null || echo "[]")
+
+    # Call gh.real directly with the org's own PAT. The gh wrapper instead
+    # picks a token by inspecting the CWD's git remote, which doesn't exist
+    # yet for this org-level listing call and silently defaults to the
+    # dachrisch PAT -- rejected by orgs (e.g. bumbleflies) that forbid
+    # long-lived fine-grained PATs, which then made this loop silently
+    # find zero repos for that org.
+    case "$target" in
+      bumbleflies) target_pat="${GITHUB_PAT_BUMBLEFLIES:-}" ;;
+      dachrisch)   target_pat="${GITHUB_PAT_DACHRISCH:-}" ;;
+      *)           target_pat="" ;;
+    esac
+
+    if output=$(GH_TOKEN="$target_pat" /usr/bin/gh.real repo list "$target" --topic gh-dash --json nameWithOwner,url,defaultBranchRef --limit 100 2>&1); then
+      repos="$output"
+    else
+      log "WARN: repo list failed for $target: $output"
+      repos="[]"
+    fi
+
+    # Repos additionally tagged 'gh-dash-crypt' are git-crypt encrypted.
+    # `gh repo list --json` cannot return topics, so query the crypt subset
+    # separately and intersect it against the full gh-dash list below.
+    if crypt_output=$(GH_TOKEN="$target_pat" /usr/bin/gh.real repo list "$target" --topic gh-dash-crypt --json nameWithOwner --limit 100 2>/dev/null); then
+      crypt_repos="$crypt_output"
+    else
+      crypt_repos="[]"
+    fi
 
     echo "$repos" | python3 -c '
 import json,sys
 repos = json.load(sys.stdin)
+crypt_repos = json.loads(sys.argv[1])
+crypt_set = {r["nameWithOwner"] for r in crypt_repos}
 for r in repos:
     owner_repo = r["nameWithOwner"]
     branch = r.get("defaultBranchRef", {}).get("name", "master")
     # Use SSH URL: git@github.com:owner/repo.git
     ssh_url = f"git@github.com:{owner_repo}.git"
-    print("\t".join([owner_repo.split("/")[1], ssh_url, branch, "0"]))
-' | while IFS="$(printf '\t')" read -r dir repo branch crypt; do
+    crypt = "1" if owner_repo in crypt_set else "0"
+    print("\t".join([owner_repo.split("/")[1], ssh_url, branch, crypt]))
+' "$crypt_repos" | while IFS="$(printf '\t')" read -r dir repo branch crypt; do
       dest="$DEV_DIR/$dir"
       if [ -d "$dest/.git" ]; then
         log "updating $dir"
@@ -123,6 +137,15 @@ for r in repos:
         log "cloning $dir from $repo"
         git clone --quiet --branch "$branch" "$repo" "$dest" \
           || { log "ERROR: clone failed for $dir"; continue; }
+      fi
+      if [ "$crypt" = "1" ] && [ -n "$CRYPT_KEY" ]; then
+        if git -C "$dest" config --local --get filter.git-crypt.smudge >/dev/null 2>&1; then
+          log "$dir already git-crypt unlocked"
+        else
+          ( cd "$dest" && git-crypt unlock "$CRYPT_KEY" ) \
+            && log "git-crypt unlocked $dir" \
+            || log "WARN: git-crypt unlock failed for $dir"
+        fi
       fi
     done
   done
