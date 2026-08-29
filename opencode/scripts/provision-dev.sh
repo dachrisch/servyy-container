@@ -1,5 +1,6 @@
 #!/bin/sh
 # Idempotent provisioning of /root/dev checkouts + credentials for OpenCode.
+# Discovers repos tagged with 'gh-dash' topic across dachrisch + bumbleflies orgs.
 # Runs on every container boot from startup.sh. Safe to re-run.
 set -eu
 
@@ -20,25 +21,43 @@ Host servy.lehel.xyz lehel.xyz
   User cda
   IdentityFile ~/.ssh/id_servy
   StrictHostKeyChecking accept-new
+
+Host github.com
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/id_github
+  StrictHostKeyChecking accept-new
 EOF
   chmod 600 "$SSH_DIR/config"
+  # The .ssh dir is a bind mount from the docker host, where these files are
+  # owned by the host user (e.g. cda/uid 1000). The container runs as root
+  # (uid 0), and OpenSSH refuses to use a config/private key not owned by root,
+  # which silently breaks every git-over-SSH clone/pull. Re-own them to root.
+  chown root:root "$SSH_DIR/config"
+  if [ -f "$SSH_DIR/id_github" ]; then
+    chown root:root "$SSH_DIR/id_github"
+    chmod 600 "$SSH_DIR/id_github"
+  fi
+  if [ -f "$SSH_DIR/id_servy" ]; then
+    chown root:root "$SSH_DIR/id_servy"
+    chmod 600 "$SSH_DIR/id_servy"
+  fi
   log "ssh key + config written"
 fi
 
-# 2. GitHub HTTPS credentials (read+write via PAT)
-if [ -n "${GITHUB_PAT:-}" ]; then
-  git config --global credential.helper store
-  printf 'https://x-access-token:%s@github.com\n' "$GITHUB_PAT" > "$HOME/.git-credentials"
-  chmod 600 "$HOME/.git-credentials"
-  log "github credential helper configured"
+# 2. GitHub SSH setup (use SSH_KEY_PATH if provided, otherwise assume mounted)
+if [ -n "${SSH_KEY_PATH:-}" ]; then
+  export GIT_SSH_COMMAND="ssh -i ${SSH_KEY_PATH} -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=$SSH_DIR/known_hosts"
+  log "GIT_SSH_COMMAND set to use $SSH_KEY_PATH"
 fi
+
 git config --global --add safe.directory '*'
 git config --global user.name  "${GIT_AUTHOR_NAME:-opencode}"
 git config --global user.email "${GIT_AUTHOR_EMAIL:-opencode@servy.lehel.xyz}"
+# Use SSH for all github.com URLs (not HTTPS) to avoid credential issues
+git config --global url."git@github.com:".insteadOf "https://github.com/"
 
 # 2b. Seed Antigravity (Google) OAuth credential for OpenCode.
-# Merge the baked-in {"google": {...}} into auth.json without clobbering a
-# credential opencode may have refreshed on a previous boot (persisted volume).
 if [ -n "${OPENCODE_AUTH_GOOGLE_B64:-}" ]; then
   AUTH_DIR="$HOME/.local/share/opencode"; export AUTH_DIR
   result="$(python3 "$(dirname "$0")/seed_auth.py")" \
@@ -46,43 +65,89 @@ if [ -n "${OPENCODE_AUTH_GOOGLE_B64:-}" ]; then
     || log "WARN: opencode google auth seed failed (continuing)"
 fi
 
-# 3. Decode git-crypt key (used for repos flagged crypt=true)
+# 3. Decode git-crypt key (used for repos flagged with the gh-dash-crypt topic)
 CRYPT_KEY=""
 if [ -n "${GIT_CRYPT_KEY_B64:-}" ]; then
   CRYPT_KEY="$(mktemp)"
   echo "$GIT_CRYPT_KEY_B64" | base64 -d > "$CRYPT_KEY"
 fi
 
-# 4. Clone/pull each declared repo
+# 4. Ensure dev dir exists for discovery-based provisioning
 mkdir -p "$DEV_DIR"
-if [ -n "${DEV_REPOS_B64:-}" ]; then
-  echo "$DEV_REPOS_B64" | base64 -d | python3 -c '
-import json,sys
-for r in json.load(sys.stdin):
-    print("\t".join([r["dir"], r["repo"], r.get("branch","master"), "1" if r.get("crypt") else "0"]))
-' | while IFS="$(printf '\t')" read -r dir repo branch crypt; do
-    dest="$DEV_DIR/$dir"
-    if [ -d "$dest/.git" ]; then
-      log "updating $dir"
-      git -C "$dest" remote set-url origin "$repo"
-      git -C "$dest" fetch --quiet origin "$branch" \
-        && git -C "$dest" checkout --quiet "$branch" \
-        && git -C "$dest" pull --quiet --ff-only origin "$branch" \
-        || log "WARN: update failed for $dir (continuing)"
+
+# 5. Discovery-based provisioning: search for repos with 'gh-dash' topic
+# Searches across dachrisch + bumbleflies orgs. A repo additionally tagged
+# 'gh-dash-crypt' is git-crypt encrypted and gets unlocked with CRYPT_KEY.
+if [ -x /usr/bin/gh.real ]; then
+  log "discovering repos with 'gh-dash' topic..."
+
+  for target in dachrisch bumbleflies; do
+    log "  checking $target..."
+
+    # Call gh.real directly with the org's own PAT. The gh wrapper instead
+    # picks a token by inspecting the CWD's git remote, which doesn't exist
+    # yet for this org-level listing call and silently defaults to the
+    # dachrisch PAT -- rejected by orgs (e.g. bumbleflies) that forbid
+    # long-lived fine-grained PATs, which then made this loop silently
+    # find zero repos for that org.
+    case "$target" in
+      bumbleflies) target_pat="${GITHUB_PAT_BUMBLEFLIES:-}" ;;
+      dachrisch)   target_pat="${GITHUB_PAT_DACHRISCH:-}" ;;
+      *)           target_pat="" ;;
+    esac
+
+    if output=$(GH_TOKEN="$target_pat" /usr/bin/gh.real repo list "$target" --topic gh-dash --json nameWithOwner,url,defaultBranchRef --limit 100 2>&1); then
+      repos="$output"
     else
-      log "cloning $dir"
-      git clone --quiet --branch "$branch" "$repo" "$dest" \
-        || { log "ERROR: clone failed for $dir"; continue; }
+      log "WARN: repo list failed for $target: $output"
+      repos="[]"
     fi
-    if [ "$crypt" = "1" ] && [ -n "$CRYPT_KEY" ]; then
-      if git -C "$dest" config --local --get filter.git-crypt.smudge >/dev/null 2>&1; then
-        log "$dir already git-crypt unlocked"
+
+    # Repos additionally tagged 'gh-dash-crypt' are git-crypt encrypted.
+    # `gh repo list --json` cannot return topics, so query the crypt subset
+    # separately and intersect it against the full gh-dash list below.
+    if crypt_output=$(GH_TOKEN="$target_pat" /usr/bin/gh.real repo list "$target" --topic gh-dash-crypt --json nameWithOwner --limit 100 2>/dev/null); then
+      crypt_repos="$crypt_output"
+    else
+      crypt_repos="[]"
+    fi
+
+    echo "$repos" | python3 -c '
+import json,sys
+repos = json.load(sys.stdin)
+crypt_repos = json.loads(sys.argv[1])
+crypt_set = {r["nameWithOwner"] for r in crypt_repos}
+for r in repos:
+    owner_repo = r["nameWithOwner"]
+    branch = r.get("defaultBranchRef", {}).get("name", "master")
+    # Use SSH URL: git@github.com:owner/repo.git
+    ssh_url = f"git@github.com:{owner_repo}.git"
+    crypt = "1" if owner_repo in crypt_set else "0"
+    print("\t".join([owner_repo.split("/")[1], ssh_url, branch, crypt]))
+' "$crypt_repos" | while IFS="$(printf '\t')" read -r dir repo branch crypt; do
+      dest="$DEV_DIR/$dir"
+      if [ -d "$dest/.git" ]; then
+        log "updating $dir"
+        git -C "$dest" remote set-url origin "$repo"
+        git -C "$dest" fetch --quiet origin "$branch" \
+          && git -C "$dest" checkout --quiet "$branch" \
+          && git -C "$dest" pull --quiet --ff-only origin "$branch" \
+          || log "WARN: update failed for $dir (continuing)"
       else
-        ( cd "$dest" && git-crypt unlock "$CRYPT_KEY" ) \
-          && log "git-crypt unlocked $dir" \
-          || log "WARN: git-crypt unlock failed for $dir"
+        log "cloning $dir from $repo"
+        git clone --quiet --branch "$branch" "$repo" "$dest" \
+          || { log "ERROR: clone failed for $dir"; continue; }
       fi
-    fi
+      if [ "$crypt" = "1" ] && [ -n "$CRYPT_KEY" ]; then
+        if git -C "$dest" config --local --get filter.git-crypt.smudge >/dev/null 2>&1; then
+          log "$dir already git-crypt unlocked"
+        else
+          ( cd "$dest" && git-crypt unlock "$CRYPT_KEY" ) \
+            && log "git-crypt unlocked $dir" \
+            || log "WARN: git-crypt unlock failed for $dir"
+        fi
+      fi
+    done
   done
 fi
 

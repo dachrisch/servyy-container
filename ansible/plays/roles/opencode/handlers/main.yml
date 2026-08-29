@@ -1,0 +1,12 @@
+---
+- name: restart opencode container
+  community.docker.docker_container:
+    name: opencode.web
+    state: started
+    restart: yes
+  listen: restart opencode container
+
+- name: push opencode ssh key to vaultwarden
+  ansible.builtin.include_tasks: vaultwarden_push.yml
+  listen: push opencode ssh key to vaultwarden
+  when: inventory_hostname == 'lehel.xyz'

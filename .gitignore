@@ -27,3 +27,4 @@ bumbleflies/site
 key
 # subagent-driven-development scratch workspace
 .superpowers/
+ansible/plays/vars/.opencode_github_ssh_key

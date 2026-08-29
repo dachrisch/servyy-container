@@ -1,28 +1,250 @@
 # CLAUDE.md - servyy-container Infrastructure
 
 > Self-hosted microservices platform (15+ Docker services) automated with Ansible
-> **Last Updated:** 2026-06-29 (restic→Vaultwarden password backup playbook)
+> **Last Updated:** 2026-08-29 (DNS restructuring + dns-master agent)
 
 ## Quick Commands
 
 ```bash
-# Production deployment
+# Production deployment (all servers with their enabled services)
 cd ansible && ./servyy.sh
 
 # Test deployment
 cd scripts && ./setup_test_container.sh && cd ../ansible && ./servyy-test.sh
 
-# Targeted deployment
-cd ansible && ./servyy.sh --tags "docker" --limit lehel.xyz
+# Deploy to specific server only
+cd ansible && ./servyy.sh --limit lehel.xyz      # Primary server
+cd ansible && ./servyy.sh --limit code.lehel     # Opencode server
+
+# Deploy specific service to its server
+cd ansible && ./servyy.sh --tags "user.docker.opencode" --limit code.lehel
+cd ansible && ./servyy.sh --tags "user.docker.monitor" --limit lehel.xyz
+
+# Remove a service (interactive, with confirmation)
+cd ansible && ansible-playbook plays/remove_service.yml -e "target_host=lehel.xyz"
 
 # Recreate locked Restic repositories (DESTRUCTIVE)
 cd ansible && ansible-playbook restic_recreate.yml --limit lehel.xyz
 
-# Service management
-ssh lehel.xyz "docker ps"                          # Check running containers
-ssh lehel.xyz "docker logs {container} --tail 50"  # View logs
-ssh lehel.xyz "docker restart {container}"         # Restart service
+# Service management (know which server has the service!)
+ssh lehel.xyz "docker ps"                          # Check containers on lehel.xyz
+ssh code.lehel "docker ps"                         # Check containers on code.lehel
+ssh {server} "docker logs {container} --tail 50"   # View logs on specific server
+ssh {server} "docker restart {container}"          # Restart on specific server
 ```
+
+⚠️ **CRITICAL:** Always use `--limit {server}` to target the correct server!
+
+## DNS Management
+
+The infrastructure uses **Porkbun** for DNS management on `lehel.xyz` domain via the `dns-master` agent.
+
+### DNS Architecture
+
+```
+lehel.xyz (root domain)
+  ├─ ALIAS → servy.lehel.xyz (primary server)
+  │
+  ├─ servy.lehel.xyz (primary server: 49.13.6.173)
+  │  └─ *.lehel.xyz → CNAME → servy.lehel.xyz
+  │     (wildcard catches all lehel services: git, photoprism, monitor, etc.)
+  │
+  └─ codey.lehel.xyz (secondary server: 217.217.227.124)
+     └─ code.lehel.xyz → CNAME → codey.lehel.xyz (public alias)
+        (codey infrastructure detail is hidden from users)
+```
+
+**Key points:**
+- `codey.lehel.xyz` is the internal server name (not exposed to users)
+- `code.lehel.xyz` is the public alias users access (backward compatible)
+- Wildcard `*.lehel.xyz` handles all lehel services (git, photoprism, monitor, etc.)
+- Each server has Traefik that routes requests to correct containers
+
+### DNS Management Tasks
+
+**Use the `dns-master` agent for all DNS operations:**
+
+```bash
+# Query current DNS records
+# (agent will show all records for lehel.xyz, organized by type)
+
+# Create new DNS record
+# (agent validates, shows impact, gets your approval)
+
+# Update existing record
+# (agent queries current state, shows diff, executes change)
+
+# Delete DNS record
+# (agent confirms what will be removed, shows impact)
+
+# Restructure DNS
+# (agent designs plan, validates changes, applies safely)
+```
+
+**Example workflow:**
+```
+You: "Add DNS entry for new service xyz on lehel.xyz"
+Agent: "I'll create xyz.lehel.xyz as CNAME → servy.lehel.xyz"
+Agent: "Verifying no conflicts... checking Traefik config..."
+Agent: "Ready to create. Approve? [yes/no]"
+You: "yes"
+Agent: "✓ Created xyz.lehel.xyz → servy.lehel.xyz"
+Agent: "✓ Verified DNS resolves correctly"
+Agent: "✓ Service will be accessible at xyz.lehel.xyz"
+```
+
+### DNS Credentials
+
+Porkbun API keys stored in: `ansible/plays/vars/secrets.yml` (git-crypt encrypted)
+- Key `porkbun_api.pk` - Public API key
+- Key `porkbun_api.sk` - Secret API key
+
+Only the `dns-master` agent needs these credentials. Credentials are:
+- ✅ Encrypted with git-crypt (safe in git)
+- ✅ Never exposed in logs or output
+- ✅ Only used by dns-master agent for Porkbun API calls
+
+### Porkbun API Reference
+
+**Endpoints used:**
+- `GET /api/json/v3/dns/retrieve/{domain}` - List all DNS records
+- `POST /api/json/v3/dns/create/{domain}` - Create record
+- `POST /api/json/v3/dns/edit/{domain}/{id}` - Update record
+- `POST /api/json/v3/dns/delete/{domain}/{id}` - Delete record
+
+**Full API docs:** https://porkbun.com/api/json/v3/documentation
+
+### Common DNS Patterns
+
+**Service on lehel (primary server):**
+```
+{service}.lehel.xyz → CNAME → servy.lehel.xyz
+Example: git.lehel.xyz → CNAME → servy.lehel.xyz
+```
+
+**Service on code (secondary server):**
+```
+code.lehel.xyz → CNAME → codey.lehel.xyz
+(Service-specific routing handled by Traefik, not DNS)
+```
+
+**Adding a new explicit DNS entry:**
+```
+{service}.lehel.xyz → CNAME → servy.lehel.xyz
+(or use Traefik labels in docker-compose if CNAME not needed)
+```
+
+### Troubleshooting DNS Issues
+
+**Service not accessible after DNS change:**
+1. Verify record in Porkbun: `dns-master agent` → "Show current DNS"
+2. Check DNS propagation: `dig {service}.lehel.xyz`
+3. Verify Traefik routing: `ssh lehel.xyz "docker logs traefik.traefik | grep {service}"`
+4. Check certificate: `ssl-verify {service}.lehel.xyz` (ACME must have valid cert)
+5. Revert if needed: `dns-master agent` → "Restore DNS to previous state"
+
+**DNS resolves but service returns 502:**
+- Traefik routing issue (not DNS)
+- Check: `docker ps | grep {service}` on correct server
+- Check: Service Traefik labels match DNS entry hostname
+- Restart Traefik if needed: `docker restart traefik.traefik`
+
+**Changes not propagating:**
+- TTL (time-to-live) may be high (default: 600 seconds)
+- Clear local DNS cache: `systemctl restart systemd-resolved`
+- Test from multiple nameservers: `dig @8.8.8.8 {service}.lehel.xyz`
+- Wait 5-10 minutes for global propagation
+
+## SSH Key-Based Access Setup
+
+**SSH access between servers is configured automatically by Ansible roles.**
+
+### How It Works
+
+**For user workstation → server access:**
+1. System role creates the `cda` user on both production servers
+2. Copies your local SSH public key (`~/.ssh/id_rsa.pub`) to each server
+3. Disables password authentication for security
+
+**For service-to-service access (opencode → lehel.xyz):**
+1. OpenCode role generates a dedicated SSH key (`id_servy`) for accessing lehel.xyz
+2. Public key is added to lehel.xyz's authorized_keys with Docker network restrictions
+3. OpenCode containers automatically get the private key mounted
+
+### Initial Server Setup
+
+**First time connecting to a new server:**
+
+```bash
+# code.lehel.xyz requires root access to bootstrap setup
+ansible-playbook servyy.yml -i inventory/production -l code.lehel.xyz -u root
+
+# Then Ansible will:
+# 1. Create cda user with sudo privileges
+# 2. Set up cda user's SSH authorized_keys
+# 3. Disable password authentication
+# 4. Deploy opencode with cross-server SSH access to lehel.xyz
+```
+
+### SSH Access Methods
+
+**Your workstation → lehel.xyz (primary):**
+```bash
+ssh lehel.xyz                  # Uses SSH key from ~/.ssh/id_rsa.pub
+ssh cda@lehel.xyz
+```
+
+**Your workstation → code.lehel.xyz (opencode server):**
+```bash
+ssh code.lehel.xyz             # Uses SSH key from ~/.ssh/id_rsa.pub
+ssh cda@code.lehel.xyz         # Initial deployment still uses root access
+ssh root@code.lehel.xyz        # For emergency access (Ansible-configured)
+```
+
+**OpenCode service (code.lehel.xyz) → lehel.xyz:**
+```bash
+# Automatically configured by opencode role
+# Private key: /home/cda/servyy-container/opencode/.ssh/id_servy
+# Used by: OpenCode containers to sync/pull from lehel.xyz
+# Restricted: Docker networks only (172.16.0.0/12, 127.0.0.1)
+```
+
+### SSH Key Requirements
+
+Ensure you have a local SSH public key before deploying:
+
+```bash
+# Check if key exists
+ls -la ~/.ssh/id_rsa.pub
+
+# If missing, generate one
+ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
+```
+
+The Ansible setup uses this key for all servers.
+
+### Service-to-Service SSH (OpenCode Access)
+
+The OpenCode role automatically:
+1. Generates `id_servy` SSH key for accessing lehel.xyz
+2. Mounts the private key in opencode containers
+3. Adds the public key to lehel.xyz's authorized_keys (Docker network restricted)
+4. Adds lehel.xyz to known_hosts to avoid SSH prompts
+
+**Testing cross-server access:**
+
+```bash
+# Verify opencode container can reach lehel
+ssh code.lehel.xyz "docker exec opencode.opencode ssh -i /root/.ssh/id_servy cda@lehel.xyz whoami"
+
+# Should return: cda
+```
+
+**Access rights:**
+- ✅ OpenCode SSH key authorized on lehel.xyz
+- ✅ Restricted to Docker network ranges (security)
+- ✅ No password needed (key-based only)
+- ✅ Automatic lehel.xyz fingerprint in known_hosts
 
 ## CRITICAL DEPLOYMENT RULES
 
@@ -40,10 +262,12 @@ ssh lehel.xyz "docker restart {container}"         # Restart service
    - ❌ **NEVER** deploy directly to production without testing
 
 3. **Production Deployment Requires Explicit Approval**
-   - ✅ **ALWAYS** ask user for explicit approval before deploying to `lehel.xyz`
-   - ✅ **ALWAYS** show what will be deployed and ask "Should I deploy to production?"
+   - ✅ **ALWAYS** ask user for explicit approval before deploying to production
+   - ✅ **ALWAYS** identify which server(s) will be affected (check inventory first!)
+   - ✅ **ALWAYS** show what will be deployed and ask "Should I deploy to {server}?"
    - ❌ **NEVER** assume production deployment is approved
    - ❌ **NEVER** deploy to production automatically
+   - ❌ **NEVER** deploy to the wrong server (verify inventory: which server has this service?)
 
 **Standard Git Workflow:**
 ```bash
@@ -131,6 +355,97 @@ ssh lehel.xyz "docker restart monitor.grafana"
 # 2. IMMEDIATELY replicate change in git repo
 # 3. Commit to git with explanation
 # 4. Deploy via Ansible to verify git state matches server state
+```
+
+## Removing a Service Permanently
+
+**Never remove services manually. Always use Ansible to decommission services.**
+
+### Step 1: Remove Service from Server
+
+Run the interactive removal playbook with confirmation prompt:
+
+```bash
+cd ansible
+ansible-playbook plays/remove_service.yml -e "target_host=lehel.xyz"
+
+# Prompts for:
+# 1. Service name (e.g., 'opencode')
+# 2. Confirmation ("Remove {service} containers, volumes, and directory? (yes/no)")
+#
+# Removes: containers, volumes, and service directory
+```
+
+### Step 2: Disable Service in Inventory
+
+Disable the service in version control to prevent re-deployment:
+
+```bash
+# Edit: ansible/production
+# Change the service flag from true to false:
+#   services_enabled:
+#     {service}: false    # ← Was 'true'
+
+# Example for removing 'opencode':
+git diff ansible/production
+# Should show: -          opencode: true
+#            +          opencode: false
+
+git add ansible/production
+git commit -m "chore: disable {service} service
+
+- Containers and volumes removed from [hostname]
+- Service marked as disabled in inventory
+"
+```
+
+### Step 3: Clean Up Git Repository
+
+Remove the service directory from version control:
+
+```bash
+# Remove service directory (if exists in git)
+git rm -r {service}/
+
+# Or if directory isn't in git:
+# Just remove from git index if tracked
+git status | grep "deleted:" # Verify removal
+
+# Re-commit with service directory removal if applicable
+git commit --amend -m "chore: remove {service} service
+
+- Removed service directory from git
+- Disabled in inventory (containers/volumes cleaned up on [hostname])
+"
+
+git push origin master
+```
+
+### Step 4: Deploy to Apply Inventory Changes
+
+Deploy to confirm service is no longer deployed on next run:
+
+```bash
+cd ansible && ./servyy.sh --limit lehel.xyz
+
+# Verify in output:
+# - Service role should be skipped (when condition: service not in enabled list)
+# - No "Deploy {service}" task should run
+```
+
+### Recovery (if needed)
+
+If you need to re-enable a service:
+
+```bash
+# Edit: ansible/production
+# Change:  {service}: false
+# To:      {service}: true
+
+# Then deploy:
+cd ansible && ./servyy.sh --limit lehel.xyz
+
+# Service will be redeployed (if directory exists in git)
 ```
 
 ## Molecule Testing (REQUIRED FOR NEW FEATURES)
@@ -241,6 +556,80 @@ Example:
 
 This prevents DNS ambiguity where `getent hosts app` returns wrong service IP.
 
+## Per-Server Service Deployment
+
+**IMPORTANT:** Services are now deployed **per-server**, not uniformly across all servers.
+
+Each server has its own set of enabled services defined in the ansible inventory. Before deploying or troubleshooting a service, **verify which server hosts that service**.
+
+### How to Determine Which Server Has Which Service
+
+**1. Check the Ansible Inventory**
+```bash
+cd ansible
+grep -A 100 "services_enabled:" plays/production
+
+# Output will show which services are enabled per server:
+# lehel.xyz:
+#   services_enabled:
+#     traefik: true
+#     monitor: true
+#     opencode: true
+#     photoprism: true
+#     ...
+#
+# code.lehel:
+#   services_enabled:
+#     opencode: true
+#     ...
+```
+
+**2. Query Running Services on a Server**
+```bash
+ssh {server} "docker ps --format '{{.Names}}'"
+
+# Example:
+ssh code.lehel "docker ps"  # Lists services on code.lehel
+ssh lehel.xyz "docker ps"   # Lists services on lehel.xyz
+```
+
+**3. Deployment by Server**
+When deploying a service, **always specify the correct server**:
+
+```bash
+# Deploy opencode to code.lehel ONLY
+cd ansible && ./servyy.sh --tags "user.docker.opencode" --limit code.lehel
+
+# Deploy all services to lehel.xyz
+cd ansible && ./servyy.sh --limit lehel.xyz
+
+# Deploy specific tag to all servers
+cd ansible && ./servyy.sh --tags "docker" --limit all
+```
+
+### Common Per-Server Configurations
+
+| Server | Role | Services |
+|--------|------|----------|
+| `lehel.xyz` | Primary production | traefik, monitor, photoprism, git, leaguesphere-*, etc. |
+| `code.lehel` | Secondary (opencode-only) | opencode |
+| `aqui.fritz.box` | Dev/testing | Various dev services |
+| `servyy-test.lxd` | Test environment | Mirrors production for validation |
+
+### Agent Responsibility: Know Your Server
+
+When responding to requests like "deploy X" or "fix error in X":
+
+1. **Identify the service**: What service is being referenced?
+2. **Find the host**: Which server runs this service? (check inventory or `docker ps`)
+3. **Connect to correct server**: `ssh {server}` before diagnosing or deploying
+4. **Deploy to correct server**: Always use `--limit {server}` in ansible commands
+
+**Example:**
+- Request: "Deploy opencode"
+- Action: Check inventory → opencode is on `code.lehel` → Deploy with `--limit code.lehel`
+- Not: ~~Deploy to lehel.xyz~~ (wrong server!)
+
 ## Key Services
 
 | Service | Container Name | URL | Purpose |
@@ -267,12 +656,18 @@ This prevents DNS ambiguity where `getent hosts app` returns wrong service IP.
 ansible/
 ├── servyy.yml              # Main playbook
 ├── servyy.sh / servyy-test.sh
-├── inventory/production    # lehel.xyz, aqui.fritz.box
+├── inventory/production    # Defines servers and their enabled services
 └── plays/
     ├── system.yml          # OS, fail2ban, monit, backups
     ├── user.yml            # Docker services, containers
     └── roles/{system,user,testing,docker_service,ls_*}/
 ```
+
+**Inventory File: `ansible/production`**
+- Defines all servers (lehel.xyz, code.lehel, aqui.fritz.box, etc.)
+- Each server has `services_enabled:` dict specifying which services run there
+- Services NOT in enabled list are skipped during deployment
+- Example: opencode only enabled on code.lehel, not on lehel.xyz
 
 **Common Tags:**
 - `system` - OS packages, fail2ban, monit
@@ -280,6 +675,7 @@ ansible/
 - `fail2ban` - fail2ban configuration
 - `backup` - Backup timers
 - `user.docker.env` - Regenerate .env files
+- `user.docker.{service}` - Deploy specific service (e.g., `user.docker.opencode`)
 
 ## Backup & Monitoring
 

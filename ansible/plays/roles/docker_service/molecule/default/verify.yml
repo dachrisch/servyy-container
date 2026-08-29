@@ -53,6 +53,16 @@
         cmd: grep -q 'SEARXNG_TOKEN=test-searxng-token' /home/molecule/job-search/api.env
       changed_when: false
 
+    - name: Verify job-search api.env has OPENCODE_BASE_URL
+      ansible.builtin.command:
+        cmd: grep -q 'OPENCODE_BASE_URL=https://opencode.lehel.xyz' /home/molecule/job-search/api.env
+      changed_when: false
+
+    - name: Verify job-search api.env has OPENCODE_API_KEY
+      ansible.builtin.command:
+        cmd: grep -q 'OPENCODE_API_KEY=test-opencode-api-key' /home/molecule/job-search/api.env
+      changed_when: false
+
     - name: Verify job-search crawler.env has SEARXNG_URL
       ansible.builtin.command:
         cmd: grep -q 'SEARXNG_URL=https://search.lehel.xyz' /home/molecule/job-search/crawler.env
@@ -86,9 +96,14 @@
       register: oc_env
       failed_when: not oc_env.stat.exists
 
-    - name: Verify opencode.env carries GITHUB_PAT
+    - name: Verify opencode.env carries SSH_KEY_PATH
       ansible.builtin.command:
-        cmd: grep -q '^GITHUB_PAT=test-github-pat$' /home/molecule/opencode/opencode.env
+        cmd: grep -q '^SSH_KEY_PATH=/root/.ssh/id_github$' /home/molecule/opencode/opencode.env
+      changed_when: false
+
+    - name: Verify opencode.env carries GIT_SSH_COMMAND
+      ansible.builtin.command:
+        cmd: grep -q '^GIT_SSH_COMMAND=ssh -i /root/.ssh/id_github' /home/molecule/opencode/opencode.env
       changed_when: false
 
     - name: Verify opencode.env carries OPENCODE_AUTH_GOOGLE_B64
@@ -96,13 +111,17 @@
         cmd: grep -q '^OPENCODE_AUTH_GOOGLE_B64=.\+$' /home/molecule/opencode/opencode.env
       changed_when: false
 
-    - name: Verify opencode.env DEV_REPOS_B64 decodes to JSON with servyy-container
-      ansible.builtin.shell:
-        cmd: |
-          set -o pipefail
-          grep '^DEV_REPOS_B64=' /home/molecule/opencode/opencode.env | cut -d= -f2- | base64 -d | grep -q '"dir": "servyy-container"'
-        executable: /bin/bash
+    - name: Verify opencode.env still carries GIT_CRYPT_KEY_B64 (required for gh-dash-crypt repos)
+      ansible.builtin.command:
+        cmd: grep -q '^GIT_CRYPT_KEY_B64=.\+$' /home/molecule/opencode/opencode.env
       changed_when: false
+
+    - name: Verify opencode.env no longer carries static DEV_REPOS_B64 (gh-dash auto-discovery)
+      ansible.builtin.command:
+        cmd: grep -q '^DEV_REPOS_B64=' /home/molecule/opencode/opencode.env
+      register: dev_repos_present
+      changed_when: false
+      failed_when: dev_repos_present.rc == 0
 
     - name: Verify opencode.env has mode 0600
       ansible.builtin.stat:

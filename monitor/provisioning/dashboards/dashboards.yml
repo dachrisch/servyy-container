@@ -36,3 +36,12 @@ providers:
     editable: false
     options:
       path: /etc/grafana/provisioning/dashboards/leaguesphere
+
+  - name: 'bumbleflies'
+    orgId: 1
+    folder: 'Bumbleflies'
+    type: file
+    disableDeletion: false
+    editable: false
+    options:
+      path: /etc/grafana/provisioning/dashboards/bumbleflies

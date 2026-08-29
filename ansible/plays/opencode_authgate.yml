@@ -8,12 +8,18 @@
   vars_files:
     - vars/default.yml
     - vars/secrets.yml
-  vars_prompt:
-    - name: vw_master_password
-      prompt: "Vaultwarden master password (enter to skip opencode API key backup copy)"
-      private: true
-      default: ""
-      confirm: false
+  pre_tasks:
+    - name: Load opencode SSH key from seed file
+      ansible.builtin.slurp:
+        src: "{{ playbook_dir }}/vars/.opencode_github_ssh_key"
+      register: ssh_key_seed
+      delegate_to: localhost
+      run_once: true
+
+    - name: Set opencode SSH key fact
+      ansible.builtin.set_fact:
+        opencode_github_ssh_key: "{{ ssh_key_seed['content'] | b64decode }}"
+      run_once: false
   tasks:
     - name: Push opencode API key into Vaultwarden
       include_role:
@@ -36,9 +42,15 @@
               token, SSH key) and can act on them via prompted tool calls, so treat this key
               as broad access to what the agent can do, not merely "read-only chat". See
               docs/superpowers/specs/2026-08-08-opencode-api-key-forwardauth-design.md.
+          - name: "opencode github ssh key ({{ inventory_hostname_short }})"
+            secret: "{{ opencode_github_ssh_key }}"
+            notes: >-
+              OpenCode GitHub SSH private key (ed25519) for {{ inventory_hostname }}.
+              Used by opencode agent to authenticate with GitHub for git operations.
+              Seed file: ansible/plays/vars/.opencode_github_ssh_key
       when:
         - vw_master_password | default('') | length > 0
-        - inventory_hostname in ['lehel.xyz', 'servyy-test.lxd']
+        - "'opencode-authgate' in (services | default([]))"
       tags:
         - opencode.vaultwarden
   tags:

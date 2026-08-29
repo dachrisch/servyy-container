@@ -1,0 +1,196 @@
+---
+# Guard: Check if SSH key seed exists, generate if missing
+- name: Stat OpenCode GitHub SSH key seed file
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/vars/.opencode_github_ssh_key"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  register: ssh_key_seed
+
+- name: Generate OpenCode GitHub SSH key (ed25519)
+  ansible.builtin.command:
+    cmd: ssh-keygen -t ed25519 -f "{{ playbook_dir }}/vars/.opencode_github_ssh_key" -N "" -C "opencode@{{ inventory_hostname }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  when: not ssh_key_seed.stat.exists
+  register: ssh_keygen_result
+
+- name: Read SSH private key from seed file
+  ansible.builtin.slurp:
+    src: "{{ playbook_dir }}/vars/.opencode_github_ssh_key"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  register: ssh_key_content
+
+- name: Read SSH public key from seed file
+  ansible.builtin.slurp:
+    src: "{{ playbook_dir }}/vars/.opencode_github_ssh_key.pub"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  register: ssh_pubkey_content
+
+- name: Set SSH key fact
+  ansible.builtin.set_fact:
+    opencode_github_ssh_key: "{{ ssh_key_content['content'] | b64decode }}"
+    opencode_github_ssh_pubkey: "{{ ssh_pubkey_content['content'] | b64decode | trim }}"
+    cacheable: true
+  run_once: true
+
+- name: Create OpenCode .ssh directory
+  ansible.builtin.file:
+    path: "{{ opencode_ssh_dir }}"
+    state: directory
+    mode: '0700'
+  vars:
+    opencode_ssh_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh') | path_join }}"
+
+- name: Write GitHub SSH private key to container mount point
+  ansible.builtin.copy:
+    content: "{{ opencode_github_ssh_key }}"
+    dest: "{{ opencode_key_path }}"
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0600'
+    force: true
+  vars:
+    opencode_key_path: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/id_github') | path_join }}"
+  notify: push opencode ssh key to vaultwarden
+
+- name: Ensure GitHub is in known_hosts
+  ansible.builtin.lineinfile:
+    path: "{{ opencode_known_hosts }}"
+    line: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWQcv7dMA3Z5D"
+    create: true
+    mode: '0600'
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+  # The opencode container runs as root and mounts .ssh from the host, so it
+  # rewrites known_hosts as root:root. This task must run as root to modify it.
+  become: true
+  become_user: root
+  vars:
+    opencode_known_hosts: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/known_hosts') | path_join }}"
+
+- name: Ensure lehel.xyz is in known_hosts
+  ansible.builtin.lineinfile:
+    path: "{{ opencode_known_hosts }}"
+    line: "lehel.xyz ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH5PEeIaPA1cj0lG1oBCj/JKO111UVewWkQVh09/QzCi"
+    create: true
+    mode: '0600'
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+  # Same root-owned file issue as the GitHub known_hosts task above.
+  become: true
+  become_user: root
+  vars:
+    opencode_known_hosts: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/known_hosts') | path_join }}"
+
+- name: Ensure SERVICE_ROOT_HOST is set in OpenCode .env
+  ansible.builtin.lineinfile:
+    path: "{{ opencode_env_file }}"
+    regexp: '^SERVICE_ROOT_HOST='
+    line: "SERVICE_ROOT_HOST={{ service_root_host | default(inventory_hostname) }}"
+    create: true
+    mode: '0600'
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+  # The docker_service opencode task that renders .env from docker.env.j2 is
+  # skipped on prod because services_enabled.opencode is a dict, not `true`.
+  # This guarantees the variable (used by docker-compose.yml root-host routers)
+  # is always present, matching docker.env.j2's default.
+  tags: [user.docker.opencode]
+  vars:
+    opencode_env_file: "{{ ('/home/', create_user, 'servyy-container/opencode/.env') | path_join }}"
+
+- name: Write lehel server SSH private key to container mount point
+  ansible.builtin.copy:
+    content: "{{ opencode.servy_ssh_key_b64 | b64decode }}"
+    dest: "{{ opencode_servy_key_path }}"
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0600'
+    force: true
+  vars:
+    opencode_servy_key_path: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/id_servy') | path_join }}"
+
+- name: Deploy OpenCode docker-compose.yml
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../opencode/docker-compose.yml"
+    dest: "{{ ('/home/', create_user, 'servyy-container/opencode/docker-compose.yml') | path_join }}"
+    mode: '0644'
+  tags: [user.docker.opencode]
+
+- name: Ensure OpenCode bin directory exists
+  ansible.builtin.file:
+    path: "{{ opencode_bin_dir }}"
+    state: directory
+    mode: '0755'
+  vars:
+    opencode_bin_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/bin') | path_join }}"
+
+- name: Deploy GitHub CLI wrapper script
+  ansible.builtin.template:
+    src: bin/gh-wrapper.sh.j2
+    dest: "{{ opencode_bin_dir }}/gh"
+    mode: '0755'
+  vars:
+    opencode_bin_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/bin') | path_join }}"
+  tags: [user.docker.opencode]
+
+- name: Create container initialization script for gh wrapper setup
+  ansible.builtin.copy:
+    content: |
+      #!/bin/sh
+      # Initialize gh wrapper: rename real gh binary and ensure wrapper is first in PATH
+      if [ -f /usr/bin/gh ] && [ ! -f /usr/bin/gh.real ]; then
+        mv /usr/bin/gh /usr/bin/gh.real
+      fi
+      # Prepend /opencode/bin to PATH so wrapper is called first
+      export PATH=/opencode/bin:$PATH
+    dest: "{{ ('/home/', create_user, 'servyy-container/opencode/init-gh-wrapper.sh') | path_join }}"
+    mode: '0755'
+  tags: [user.docker.opencode]
+
+- name: Deploy OpenCode startup script
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../opencode/scripts/startup.sh"
+    dest: "{{ ('/home/', create_user, 'servyy-container/opencode/scripts/startup.sh') | path_join }}"
+    mode: '0755'
+  notify: restart opencode container
+  tags: [user.docker.opencode]
+
+- name: Ensure OpenCode skills directory exists
+  ansible.builtin.file:
+    path: "{{ opencode_skills_dir }}"
+    state: directory
+    mode: '0755'
+  vars:
+    opencode_skills_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/skills') | path_join }}"
+  tags: [user.docker.opencode]
+
+- name: Deploy OpenCode skills
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../.opencode/skills/"
+    dest: "{{ opencode_skills_dir }}"
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0644'
+    directory_mode: '0755'
+  vars:
+    opencode_skills_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/skills') | path_join }}"
+  tags: [user.docker.opencode]
+
+- name: Report SSH key info
+  ansible.builtin.debug:
+    msg: |
+      OpenCode GitHub SSH key ready.
+      Public key:
+        {{ opencode_github_ssh_pubkey }}
+
+      To complete setup, add this public key to GitHub:
+      https://github.com/settings/keys
+  run_once: true

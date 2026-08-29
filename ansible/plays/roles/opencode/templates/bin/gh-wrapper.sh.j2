@@ -1,0 +1,43 @@
+#!/bin/sh
+# Wrapper for GitHub CLI that automatically selects the correct PAT
+# based on the repository's owner (dachrisch vs bumbleflies)
+
+# Find the real gh binary (should be /usr/bin/gh.real after setup)
+REAL_GH="/usr/bin/gh.real"
+if [ ! -x "$REAL_GH" ]; then
+  echo "Error: Real gh binary not found at $REAL_GH" >&2
+  echo "Please ensure the OpenCode container has been properly initialized" >&2
+  exit 1
+fi
+
+# Determine which PAT to use based on git remote
+determine_pat() {
+  # Try to get the remote URL from git
+  git_url=$(git config --get remote.origin.url 2>/dev/null || echo "")
+
+  case "$git_url" in
+    *"github.com:bumbleflies"* | *"github.com/bumbleflies"* | *"bumbleflies/")
+      echo "$GITHUB_PAT_BUMBLEFLIES"
+      return 0
+      ;;
+    *"github.com:dachrisch"* | *"github.com/dachrisch"* | *"dachrisch/")
+      echo "$GITHUB_PAT_DACHRISCH"
+      return 0
+      ;;
+  esac
+
+  # Default to dachrisch PAT for personal repos / unknown contexts
+  echo "$GITHUB_PAT_DACHRISCH"
+}
+
+# Select PAT for this repository
+GH_TOKEN=$(determine_pat)
+
+if [ -z "$GH_TOKEN" ]; then
+  echo "Error: No GitHub PAT found for this repository" >&2
+  exit 1
+fi
+
+# Export token and execute real gh
+export GH_TOKEN
+exec "$REAL_GH" "$@"

@@ -14,6 +14,22 @@
   tags:
     - user
 
+- name: Setup OpenCode SSH key
+  hosts: all
+  remote_user: "{{ create_user }}"
+  become: true
+  become_user: "{{ create_user }}"
+  vars_files:
+    - vars/default.yml
+    - vars/restic.yml
+    - vars/secrets.yml
+  roles:
+    - opencode
+  tags:
+    - user
+    - user.opencode
+    - user.docker.opencode
+
 - name: Deploy Docker services
   hosts: all
   strategy: free
@@ -46,6 +62,12 @@
         - user.docker.env
         - user.docker.env.finance
 
+    - name: Build enabled services list from services_enabled dict (compatibility layer)
+      ansible.builtin.set_fact:
+        services: "{{ services_enabled | default({}) | dict2items | selectattr('value', 'equalto', true) | map(attribute='key') | list }}"
+      tags:
+        - user.docker
+
     - name: Stop searxng before config update
       community.docker.docker_compose_v2:
         project_src: "{{ docker.remote_dir }}/searxng"
@@ -72,36 +94,43 @@
     - role: docker_service
       vars:
         service_dir: traefik
+      when: "'traefik' in (services | default([]))"
       tags: [user.docker, user.docker.traefik]
 
     - role: docker_service
       vars:
         service_dir: git
+      when: "'git' in (services | default([]))"
       tags: [user.docker, user.docker.git]
 
     - role: docker_service
       vars:
         service_dir: photoprism
+      when: "'photoprism' in (services | default([]))"
       tags: [user.docker, user.docker.photoprism]
 
     - role: docker_service
       vars:
         service_dir: bumbleflies
+      when: "'bumbleflies' in (services | default([]))"
       tags: [user.docker, user.docker.bumbleflies]
 
     - role: docker_service
       vars:
         service_dir: achim-hoefer
+      when: "'achim-hoefer' in (services | default([]))"
       tags: [user.docker, user.docker.achim-hoefer]
 
     - role: docker_service
       vars:
         service_dir: portainer
+      when: "'portainer' in (services | default([]))"
       tags: [user.docker, user.docker.portainer]
 
     - role: docker_service
       vars:
         service_dir: pass
+      when: "'pass' in (services | default([]))"
       tags: [user.docker, user.docker.pass]
 
     # Services with additional env templates
@@ -113,6 +142,7 @@
             dest: .env
           - src: opencode/.env.j2
             dest: opencode.env
+      when: "'opencode' in (services | default([]))"
       tags: [user.docker, user.docker.opencode]
 
     - role: docker_service
@@ -123,6 +153,7 @@
             dest: .env
           - src: opencode-authgate/.env.j2
             dest: authgate.env
+      when: "'opencode-authgate' in (services | default([]))"
       tags: [user.docker, user.docker.opencode-authgate]
 
     - role: docker_service
@@ -133,6 +164,7 @@
             dest: .env
           - src: energy/.env.j2
             dest: energy.env
+      when: "'energy' in (services | default([]))"
       tags: [user.docker, user.docker.energy]
 
     - role: docker_service
@@ -143,6 +175,7 @@
             dest: .env
           - src: groceries/.env.j2
             dest: groceries.env
+      when: "'groceries' in (services | default([]))"
       tags: [user.docker, user.docker.groceries]
 
     - role: docker_service
@@ -153,6 +186,7 @@
             dest: .env
           - src: leagues-finance/.env.j2
             dest: leagues-finance.env
+      when: "'leagues-finance' in (services | default([]))"
       tags: [user.docker, user.docker.leagues-finance]
 
     - role: docker_service
@@ -163,6 +197,7 @@
             dest: .env
           - src: finance/.env.j2
             dest: finance.env
+      when: "'finance' in (services | default([]))"
       tags: [user.docker, user.docker.finance]
 
     # Searxng — custom service_host (search.* not searxng.*)
@@ -174,6 +209,7 @@
         env_templates:
           - src: searxng/.env.j2
             dest: .env
+      when: "'searxng' in (services | default([]))"
       tags: [user.docker, user.docker.searxng]
 
     # Sproutlings — custom service_host (thore.* not sproutlings.*)
@@ -185,6 +221,7 @@
         env_templates:
           - src: thore/docker.env.j2
             dest: .env
+      when: "'thore' in (services | default([]))"
       tags: [user.docker, user.docker.sproutlings]
 
     # Job search — three env files
@@ -202,6 +239,7 @@
             dest: api.env
           - src: job-search/crawler.env.j2
             dest: crawler.env
+      when: "'job-search' in (services | default([]))"
       tags: [user.docker, user.docker.job-search]
 
     # dontforget — one app container (serves the API and the built
@@ -214,24 +252,38 @@
             dest: .env
           - src: dontforget/web.env.j2
             dest: web.env
+      when: "'dontforget' in (services | default([]))"
       tags: [user.docker, user.docker.dontforget]
+
+    # Platzler-Heid — Festzelt availability dashboard
+    - role: docker_service
+      vars:
+        service_dir: platzler-heid
+        env_templates:
+          - src: platzler-heid/.env.j2
+            dest: .env
+      when: "'platzler-heid' in (services | default([]))"
+      tags: [user.docker, user.docker.platzler-heid]
 
     # Manual services — env rendered, compose not started
     - role: docker_service
       vars:
         service_dir: dns
         manual: true
+      when: "'dns' in (services | default([]))"
       tags: [user.docker, user.docker.dns]
 
     - role: docker_service
       vars:
         service_dir: me
         manual: true
+      when: "'me' in (services | default([]))"
       tags: [user.docker, user.docker.me]
 
     - role: docker_service
       vars:
         service_dir: monitor
+      when: "'monitor' in (services | default([]))"
       tags: [user.docker, user.docker.monitor]
 
   post_tasks:
@@ -246,14 +298,16 @@
       retries: 15
       delay: 2
       failed_when: false
+      when: "'leagues-finance' in (services | default([]))"
       tags:
         - user.docker.leagues-finance
         - user.docker
 
     - name: Remove corrupted mongo volume and restart if unhealthy
       when: >
+        'leagues-finance' in (services | default([])) and (
         lf_mongo_info.container is none or
-        lf_mongo_info.container.State.Health.Status != 'healthy'
+        lf_mongo_info.container.State.Health.Status != 'healthy')
       block:
         - name: Remove leagues-finance containers
           community.docker.docker_compose_v2:

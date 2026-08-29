@@ -28,6 +28,16 @@
   tags:
     - user.docker.install.add_group
 
+- name: "Set up docker socket permissions for {{ create_user }}"
+  file:
+    path: /var/run/docker.sock
+    group: docker
+    mode: '0660'
+  become_user: root
+  when: group_added.changed
+  tags:
+    - user.docker.install.reboot
+
 - name: Reboot to apply changes
   reboot:
     msg: Reboot to make docker user available

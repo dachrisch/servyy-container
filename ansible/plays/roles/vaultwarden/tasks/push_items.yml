@@ -10,7 +10,7 @@
 - name: Unlock the bw vault (shared)
   ansible.builtin.include_tasks: unlock.yml
 
-- name: List existing vault item names
+- name: List existing vault items
   ansible.builtin.command:
     cmd: bw list items
   environment:
@@ -22,14 +22,35 @@
   changed_when: false
   no_log: true
 
-- name: Compute set of item names already present
+- name: Build map of existing items for our push list (lookup only relevant items)
   ansible.builtin.set_fact:
-    existing_item_names: "{{ bw_items_raw.stdout | from_json | map(attribute='name') | list }}"
+    existing_items_map: "{{ existing_items_map | default({}) | combine({item.name: {'id': (bw_items_raw.stdout | from_json | selectattr('name', 'equalto', item.name) | first | default({})).get('id', ''), 'secret': (bw_items_raw.stdout | from_json | selectattr('name', 'equalto', item.name) | first | default({'login': {}})).login.password}}) }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  loop: "{{ vaultwarden_items }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Determine which items need creation vs update
+  ansible.builtin.set_fact:
+    items_to_create: "{{ vaultwarden_items | rejectattr('name', 'in', existing_items_map.keys() | list) | list }}"
   delegate_to: localhost
   run_once: true
   become: false
 
-- name: Create missing items in Vaultwarden
+- name: Recompute items to update (secret value changed)
+  ansible.builtin.set_fact:
+    items_to_update: "{{ items_to_update | default([]) + [item] }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  loop: "{{ vaultwarden_items }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.name in existing_items_map and item.secret != existing_items_map[item.name].secret
+
+- name: Create new items in Vaultwarden
   ansible.builtin.shell:
     cmd: "set -o pipefail; printf '%s' {{ item_json | quote }} | bw encode | bw create item"
     executable: /bin/bash
@@ -45,18 +66,42 @@
           'notes': item.notes,
           'login': {'username': vaultwarden_item_username | default('ansible'), 'password': item.secret, 'uris': []}}
          | to_json }}
-  loop: "{{ vaultwarden_items }}"
+  loop: "{{ items_to_create }}"
   loop_control:
     label: "{{ item.name }}"
-  when: item.name not in existing_item_names
+  when: items_to_create | length > 0
   changed_when: true
   no_log: true
 
-- name: Report which items were created vs already present
+- name: Update existing items with changed secrets
+  ansible.builtin.shell:
+    cmd: "set -o pipefail; printf '%s' {{ item_json | quote }} | bw encode | bw edit item {{ existing_items_map[item.name].id }}"
+    executable: /bin/bash
+  environment:
+    BW_SESSION: "{{ bw_session }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    item_json: >-
+      {{ {'type': 1,
+          'id': existing_items_map[item.name].id,
+          'name': item.name,
+          'notes': item.notes,
+          'login': {'username': vaultwarden_item_username | default('ansible'), 'password': item.secret, 'uris': []}}
+         | to_json }}
+  loop: "{{ items_to_update }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: items_to_update | length > 0
+  changed_when: true
+  no_log: true
+
+- name: Report which items were created, updated, or unchanged
   ansible.builtin.debug:
     msg: >-
       {{ item.name }}:
-      {{ 'already present (skipped)' if item.name in existing_item_names else 'created' }}
+      {{ 'created' if item.name in items_to_create | map(attribute='name') | list else ('updated' if item.name in items_to_update | map(attribute='name') | list else 'unchanged') }}
   delegate_to: localhost
   run_once: true
   become: false

@@ -9,12 +9,6 @@
     - vars/ssh_jail.yaml
     - vars/secrets.yml
     - vars/default.yml
-  vars_prompt:
-    - name: vw_master_password
-      prompt: "Vaultwarden master password (enter to skip SSH-key backup copy)"
-      private: true
-      default: ""
-      confirm: false
   roles:
     # Setup (shared, run once)
     - role: ls_setup
