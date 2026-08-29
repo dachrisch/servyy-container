@@ -68,6 +68,10 @@
     mode: '0600'
     owner: "{{ create_user }}"
     group: "{{ create_user }}"
+  # The opencode container runs as root and mounts .ssh from the host, so it
+  # rewrites known_hosts as root:root. This task must run as root to modify it.
+  become: true
+  become_user: root
   vars:
     opencode_known_hosts: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/known_hosts') | path_join }}"
 
@@ -79,6 +83,9 @@
     mode: '0600'
     owner: "{{ create_user }}"
     group: "{{ create_user }}"
+  # Same root-owned file issue as the GitHub known_hosts task above.
+  become: true
+  become_user: root
   vars:
     opencode_known_hosts: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/known_hosts') | path_join }}"
 
