@@ -182,10 +182,6 @@ display_layout() {
     esac
     count=$((count + 1))
   done <<< "$records_data"
-
-  echo
-  echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-  echo -e "Total Records: ${BOLD}$(echo "$records" | jq 'length')${NC}"
 }
 
 # Main
