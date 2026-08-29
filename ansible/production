@@ -40,6 +40,6 @@ prod:
           opencode-authgate: true
           # DevHub — generic docker_service (must be `true`, not a dict, so it is
           # picked up by the user.yml docker_service block). Exposed at
-          # devhub.lehel.xyz; a Porkbun A/AAAA record → 217.217.227.124 (codey)
-          # is required before the first deploy (create via dns-master).
+          # devhub.lehel.xyz via Porkbun CNAME → codey.lehel.xyz (created; takes
+          # precedence over the *.lehel.xyz wildcard which points at servy).
           devhub: true
