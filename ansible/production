@@ -38,3 +38,8 @@ prod:
             dns_short_name: "code"     # Public-facing name (code.lehel.xyz)
             dns_expose: true           # Create explicit DNS entry in Porkbun
           opencode-authgate: true
+          # DevHub — generic docker_service (must be `true`, not a dict, so it is
+          # picked up by the user.yml docker_service block). Exposed at
+          # devhub.lehel.xyz; a Porkbun A/AAAA record → 217.217.227.124 (codey)
+          # is required before the first deploy (create via dns-master).
+          devhub: true
