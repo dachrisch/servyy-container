@@ -123,7 +123,8 @@ for r in repos:
     # Use SSH URL: git@github.com:owner/repo.git
     ssh_url = f"git@github.com:{owner_repo}.git"
     crypt = "1" if owner_repo in crypt_set else "0"
-    print("\t".join([owner_repo.split("/")[1], ssh_url, branch, crypt]))
+    # Path: owner/repo (e.g. dachrisch/servyy-container)
+    print("\t".join([owner_repo, ssh_url, branch, crypt]))
 ' "$crypt_repos" | while IFS="$(printf '\t')" read -r dir repo branch crypt; do
       dest="$DEV_DIR/$dir"
       if [ -d "$dest/.git" ]; then
