@@ -274,6 +274,7 @@ services:
 - **Custom modules**: `ansible/library/`, `ansible/library/tests/`
 - **Docker services**: `*/docker-compose.yml`
 - **Molecule tests**: `ansible/plays/roles/*/molecule/`
+- **DevHub**: `devhub/docker-compose.yml`, `ansible/plays/roles/docker_service/templates/devhub/`
 
 ## Validation Commands
 ```bash
@@ -290,6 +291,11 @@ ssh lehel.xyz "curl -s https://demo.leaguesphere.app/health/ | head"  # Check AP
 ssh lehel.xyz "docker logs portainer.ofelia | grep demo-reset"        # Verify Ofelia scheduler
 # Manual reset verification (if needed)
 ssh lehel.xyz "docker exec leaguesphere-demo.demo-app /bin/bash -c 'rm -f /app/.demo_last_reset && /app/entrypoint.demo.sh'"
+
+# DevHub Verification
+ssh codey.lehel.xyz "docker ps | grep devhub"                        # Verify devhub containers running
+ssh codey.lehel.xyz "curl -s https://devhub.lehel.xyz/api/auth/me"   # Check auth endpoint
+ssh codey.lehel.xyz "docker logs devhub.web"                         # Check app logs
 ```
 
 ## Specialized Agents Available
