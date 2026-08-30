@@ -52,3 +52,9 @@
     - system.restic
     - system.restic.maintenance
     - system.maintenance
+
+- import_tasks: security_audit.yml
+  when: security_audit.enabled | default(true)
+  tags:
+    - system.security_audit
+    - system.maintenance
