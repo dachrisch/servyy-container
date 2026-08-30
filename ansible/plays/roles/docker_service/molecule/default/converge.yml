@@ -33,6 +33,7 @@
         mode: "0755"
       loop:
         - simple-svc
+        - domain-svc
         - job-search
         - manual-svc
         - opencode
