@@ -17,6 +17,11 @@
     }
   },
   "provider": {
+    "opencode-go": {
+      "options": {
+        "apiKey": "$OPENCODE_GO_API_KEY"
+      }
+    },
     "bailian-payg": {
       "npm": "@ai-sdk/openai-compatible",
       "name": "Alibaba Cloud Model Studio",

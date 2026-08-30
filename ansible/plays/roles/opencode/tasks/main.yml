@@ -169,6 +169,14 @@
   notify: restart opencode container
   tags: [user.docker.opencode]
 
+- name: Deploy OpenCode config template
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../opencode/scripts/opencode.json.template"
+    dest: "{{ ('/home/', create_user, 'servyy-container/opencode/scripts/opencode.json.template') | path_join }}"
+    mode: '0644'
+  notify: restart opencode container
+  tags: [user.docker.opencode]
+
 - name: Ensure OpenCode skills directory exists
   ansible.builtin.file:
     path: "{{ opencode_skills_dir }}"

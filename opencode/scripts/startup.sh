@@ -40,7 +40,7 @@ if [ -f "/scripts/opencode.json.template" ]; then
 
     # We only substitute specific variables to avoid breaking $schema
     echo "⚙️ [Startup] Generating opencode.json from template..."
-    envsubst '$CIRCLECI_TOKEN $CIRCLECI_BASE_URL $DASHSCOPE_API_KEY' < /scripts/opencode.json.template > "$CONFIG_DIR/opencode.json"
+    envsubst '$CIRCLECI_TOKEN $CIRCLECI_BASE_URL $DASHSCOPE_API_KEY $OPENCODE_GO_API_KEY' < /scripts/opencode.json.template > "$CONFIG_DIR/opencode.json"
 fi
 
 # 4b. Configure git to prefer SSH over HTTPS for github.com
