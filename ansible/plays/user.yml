@@ -162,6 +162,22 @@
     - role: docker_service
       vars:
         service_dir: opencode
+        # services_enabled.opencode is a dict here (dns_short_name/dns_expose for
+        # the public code.lehel.xyz hostname), not a bare `true` like most
+        # services — pull those through so docker.env.j2's SERVICE_HOST/
+        # SERVICE_ROOT_HOST resolve to code.lehel.xyz instead of the
+        # opencode.lehel.xyz default. Without this, the "Ensure SERVICE_ROOT_HOST
+        # is set" task in the opencode role sets it correctly first, but this
+        # role's template task (which fully overwrites .env) clobbers it back
+        # to the wrong default.
+        dns_short_name: >-
+          {{ (services_enabled.opencode.dns_short_name | default(''))
+             if (services_enabled.opencode is defined and services_enabled.opencode is mapping)
+             else '' }}
+        dns_expose: >-
+          {{ (services_enabled.opencode.dns_expose | default(false))
+             if (services_enabled.opencode is defined and services_enabled.opencode is mapping)
+             else false }}
         env_templates:
           - src: docker.env.j2
             dest: .env
