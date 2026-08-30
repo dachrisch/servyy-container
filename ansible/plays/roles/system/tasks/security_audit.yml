@@ -8,6 +8,7 @@
       - lynis          # Host OS CIS-like audit
       - nmap           # Network port scanner
       - go-md2man      # Required by nuclei
+      - python3-pip    # Required by humble
     state: present
     update_cache: true
     cache_valid_time: 3600
@@ -127,6 +128,7 @@
   pip:
     requirements: "{{ security_audit.script_dir }}/humble/requirements.txt"
     executable: pip3
+    extra_args: --break-system-packages
   become: true
   when: security_audit.tools.humble | default(true)
   tags:
