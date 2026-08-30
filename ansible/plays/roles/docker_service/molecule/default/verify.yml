@@ -76,7 +76,7 @@
 
     - name: Verify job-search api.env has OPENCODE_BASE_URL
       ansible.builtin.command:
-        cmd: grep -q 'OPENCODE_BASE_URL=https://opencode.lehel.xyz' /home/molecule/job-search/api.env
+        cmd: grep -q 'OPENCODE_BASE_URL=https://code.lehel.xyz' /home/molecule/job-search/api.env
       changed_when: false
 
     - name: Verify job-search api.env has OPENCODE_API_KEY
