@@ -18,6 +18,7 @@
       servy_ssh_key_b64: dGVzdC1zc2gta2V5
       auth_google_b64: eyJnb29nbGUiOiB7InR5cGUiOiAib2F1dGgifX0=
       dashscope_api_key: test-dashscope-api-key
+      opencode_go_api_key: test-opencode-go-api-key
       github_pat_dachrisch: test-pat-dachrisch
       github_pat_bumbleflies: test-pat-bumbleflies
       servy_ssh_pubkey: "ssh-ed25519 AAAATESTKEY opencode@servy.lehel.xyz"
