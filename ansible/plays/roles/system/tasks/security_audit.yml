@@ -31,9 +31,9 @@
 - name: Add Trivy APT repository key
   shell: |
     set -o pipefail
+    rm -f /usr/share/keyrings/trivy.gpg
     curl -fsSL https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor -o /usr/share/keyrings/trivy.gpg
   args:
-    creates: /usr/share/keyrings/trivy.gpg
     executable: /bin/bash
   become: true
   when: security_audit.tools.trivy | default(true)
