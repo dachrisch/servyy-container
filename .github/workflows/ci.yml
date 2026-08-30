@@ -17,11 +17,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: YAML Lint
-        uses: ibiqlik/action-yamllint@v3
+      - name: Set up Python
+        uses: actions/setup-python@v7
         with:
-          config_file: .yamllint.yml
-          file_or_dir: ansible/plays/**/*.yml
+          python-version: '3.12'
+
+      - name: Install yamllint
+        run: pip install yamllint==1.38.0
+
+      - name: YAML Lint
+        run: yamllint -c .yamllint.yml ansible/plays
 
   lint-ansible:
     name: Ansible Lint
