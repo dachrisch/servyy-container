@@ -69,6 +69,7 @@ jobs:
         run: |
           cd ansible
           pip install ansible-lint ansible>=2.11 dnspython jmespath
+          ansible-galaxy install -r requirements.yml
 
       - name: Stub git-crypt encrypted files
         run: .github/scripts/stub-gitcrypt-files.sh
