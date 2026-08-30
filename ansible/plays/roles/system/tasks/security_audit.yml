@@ -29,10 +29,12 @@
     - system.security_audit.packages
 
 - name: Add Trivy APT repository key
-  get_url:
-    url: https://aquasecurity.github.io/trivy-repo/deb/public.key
-    dest: /usr/share/keyrings/trivy.gpg
-    mode: '0644'
+  shell: |
+    set -o pipefail
+    curl -fsSL https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor -o /usr/share/keyrings/trivy.gpg
+  args:
+    creates: /usr/share/keyrings/trivy.gpg
+    executable: /bin/bash
   become: true
   when: security_audit.tools.trivy | default(true)
   tags:
