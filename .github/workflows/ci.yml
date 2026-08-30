@@ -17,11 +17,41 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: YAML Lint
-        uses: ibiqlik/action-yamllint@v3
+      - name: Set up Python
+        uses: actions/setup-python@v7
         with:
-          config_file: .yamllint.yml
-          file_or_dir: ansible/plays/**/*.yml
+          python-version: '3.14'
+
+      - name: Install yamllint
+        run: pip install yamllint==1.38.0
+
+      - name: Build yamllint ignore for git-crypt encrypted files
+        run: |
+          : > /tmp/yamllint-encrypted.txt
+          for f in $(git ls-files | grep -E '^ansible/plays/.*\.ya?ml$'); do
+            a=$(git check-attr filter -- "$f" 2>/dev/null | awk '{print $3}' || true)
+            if [ "$a" = "git-crypt" ]; then
+              echo "$f" >> /tmp/yamllint-encrypted.txt
+            fi
+          done
+          python3 - <<'PY'
+          import yaml
+          with open('.yamllint.yml') as fh:
+              cfg = yaml.safe_load(fh)
+          with open('/tmp/yamllint-encrypted.txt') as fh:
+              extra = [l.strip() for l in fh if l.strip()]
+          existing = cfg.get('ignore', '')
+          if isinstance(existing, str):
+              lines = [l for l in existing.splitlines() if l.strip()]
+          else:
+              lines = list(existing)
+          cfg['ignore'] = '\n'.join(lines + extra) + '\n'
+          with open('.yamllint.yml', 'w') as fh:
+              yaml.safe_dump(cfg, fh, sort_keys=False)
+          PY
+
+      - name: YAML Lint
+        run: yamllint -c .yamllint.yml ansible/plays
 
   lint-ansible:
     name: Ansible Lint
@@ -39,6 +69,10 @@ jobs:
         run: |
           cd ansible
           pip install ansible-lint ansible>=2.11 dnspython jmespath
+          ansible-galaxy install -r requirements.yml
+
+      - name: Stub git-crypt encrypted files
+        run: .github/scripts/stub-gitcrypt-files.sh
 
       - name: Run ansible-lint
         run: |
@@ -185,6 +219,9 @@ jobs:
           # Mock handlers for CI testing
           EOFR
           done
+
+      - name: Stub remaining git-crypt encrypted files
+        run: .github/scripts/stub-gitcrypt-files.sh
 
       - name: Syntax check ${{ matrix.playbook }}
         run: |

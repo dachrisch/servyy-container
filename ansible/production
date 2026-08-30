@@ -1,6 +1,7 @@
 prod:
   hosts:
-    lehel.xyz:
+    servy.lehel.xyz:
+        domain: lehel.xyz
         with_docker: true
         with_containers: true
         has_10g_volume: false
@@ -25,7 +26,8 @@ prod:
           dns: true
           me: true
           monitor: true
-    code.lehel.xyz:
+    codey.lehel.xyz:
+        domain: lehel.xyz
         with_docker: true
         with_containers: true
         has_10g_volume: false
@@ -38,6 +40,7 @@ prod:
             dns_short_name: "code"     # Public-facing name (code.lehel.xyz)
             dns_expose: true           # Create explicit DNS entry in Porkbun
           opencode-authgate: true
+          portainer-agent: true
           # DevHub — generic docker_service (must be `true`, not a dict, so it is
           # picked up by the user.yml docker_service block). Exposed at
           # devhub.lehel.xyz via Porkbun CNAME → codey.lehel.xyz (created; takes

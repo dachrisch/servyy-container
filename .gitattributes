@@ -3,6 +3,7 @@ docker-compose.yml filter=git-crypt diff=git-crypt
 *.yaml filter=git-crypt diff=git-crypt
 secrets.* filter=git-crypt diff=git-crypt
 secret_* filter=git-crypt diff=git-crypt
+ansible/plays/vars/portainer-rbac.yml filter=git-crypt diff=git-crypt
 *.env filter=git-crypt diff=git-crypt
 *.conf filter=git-crypt diff=git-crypt
 *.pem filter=git-crypt diff=git-crypt

@@ -1,0 +1,10 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  tasks:
+    # Run the role directly (the playbook-level `when` is bypassed here).
+    - name: Run portainer_rbac role  # noqa: role-name[path]
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../../"
+      tags: [user.portainer-rbac]

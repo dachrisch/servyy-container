@@ -1,0 +1,39 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../../../../requirements.yml
+driver:
+  name: docker
+platforms:
+  - name: instance
+    image: geerlingguy/docker-ubuntu2204-ansible:latest
+    command: ""
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    cgroupns_mode: host
+    privileged: true
+    pre_build_image: true
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      action_warnings: true
+      allow_world_readable_tmpfiles: true
+      library: ../../../../../library
+  inventory:
+    host_vars:
+      instance:
+        # Run the role against a local Portainer stood up in prepare.yml.
+        portainer_api_url: "http://localhost:9000"
+        portainer:
+          admin_password: "TestAdminPass123!"
+          agent_secret: "testagentsharedsecret00000000000000000000000000000000"
+        portainer_rbac_enabled: true
+        portainer_rbac:
+          teams:
+            - name: leaguesphere
+              description: "LeagueSphere development team (Operator: observe + restart)"
+          users: []
+verifier:
+  name: ansible

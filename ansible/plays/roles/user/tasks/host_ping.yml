@@ -5,6 +5,6 @@
     mode: 0770
     owner: "{{create_user}}"
   vars:
-    test_urls: "{{docker.services | map(attribute='dir') | product([inventory_hostname]) | map('join', '.')}}"
+    test_urls: "{{docker.services | map(attribute='dir') | product([domain]) | map('join', '.')}}"
   tags:
     - user.ping.script

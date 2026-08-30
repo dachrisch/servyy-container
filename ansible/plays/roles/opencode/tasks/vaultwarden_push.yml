@@ -10,4 +10,4 @@
         secret: "{{ opencode_github_ssh_key }}"
         notes: "SSH private key for git@github.com authentication in OpenCode (copy of Ansible seed vars/.opencode_github_ssh_key). Public key: {{ opencode_github_ssh_pubkey }}"
     vaultwarden_item_username: "opencode"
-  when: inventory_hostname == 'lehel.xyz'
+  when: inventory_hostname == 'codey.lehel.xyz'
