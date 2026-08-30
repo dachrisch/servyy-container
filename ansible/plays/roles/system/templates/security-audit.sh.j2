@@ -108,9 +108,16 @@ run_testssl() {
         return 1
     fi
 
-    # Test all public HTTPS endpoints
-    for HOST in $(grep -rh "Host(" "{{ playbook_dir }}/../../.." 2>/dev/null | \
-        grep -oP 'Host\(`\K[^`]+' | grep -v "{{" | sort -u | head -20); do
+    # Test known public endpoints
+    local HOSTS=(
+        "servy.lehel.xyz"
+        "traefik.lehel.xyz"
+        "git.lehel.xyz"
+        "grafana.lehel.xyz"
+        "portainer.lehel.xyz"
+    )
+
+    for HOST in "${HOSTS[@]}"; do
         log "  Testing TLS: ${HOST}"
         "${TESTSSL_DIR}/testssl.sh" --jsonfile "${LOG_DIR}/testssl-${HOST}.json" \
             --quiet "${HOST}" 2>&1 | tee -a "${LOG_DIR}/testssl.log" || true
@@ -125,8 +132,15 @@ run_humble() {
         return 1
     fi
 
-    for HOST in $(grep -rh "Host(" "{{ playbook_dir }}/../../.." 2>/dev/null | \
-        grep -oP 'Host\(`\K[^`]+' | grep -v "{{" | sort -u | head -20); do
+    local HOSTS=(
+        "servy.lehel.xyz"
+        "traefik.lehel.xyz"
+        "git.lehel.xyz"
+        "grafana.lehel.xyz"
+        "portainer.lehel.xyz"
+    )
+
+    for HOST in "${HOSTS[@]}"; do
         log "  Checking headers: ${HOST}"
         python3 "${HUMBLE_DIR}/humble.py" -u "https://${HOST}" -b \
             2>&1 | tee -a "${LOG_DIR}/humble.log" || true
@@ -140,17 +154,19 @@ run_nuclei() {
         return 1
     fi
 
-    # Create target list from Traefik routes
+    # Use known public endpoints
     local TARGETS="${LOG_DIR}/nuclei-targets.txt"
-    grep -rh "Host(" "{{ playbook_dir }}/../../.." 2>/dev/null | \
-        grep -oP 'Host\(`\K[^`]+' | grep -v "{{" | sort -u | head -20 | \
-        sed 's/^/https:\/\//' > "${TARGETS}" || true
+    cat > "${TARGETS}" <<'HOSTS'
+https://servy.lehel.xyz
+https://traefik.lehel.xyz
+https://git.lehel.xyz
+https://grafana.lehel.xyz
+https://portainer.lehel.xyz
+HOSTS
 
-    if [[ -s "${TARGETS}" ]]; then
-        nuclei -l "${TARGETS}" -severity critical,high,medium \
-            -json -o "${LOG_DIR}/nuclei-results.json" 2>&1 | \
-            tee "${LOG_DIR}/nuclei.log" || true
-    fi
+    nuclei -l "${TARGETS}" -severity critical,high,medium \
+        -json -o "${LOG_DIR}/nuclei-results.json" 2>&1 | \
+        tee "${LOG_DIR}/nuclei.log" || true
 }
 
 # Generate summary report
