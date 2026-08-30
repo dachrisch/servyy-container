@@ -52,24 +52,51 @@
   register: portainer_endpoints
   no_log: true
 
+- name: Get current Portainer settings
+  ansible.builtin.uri:
+    url: "{{ portainer_api_url }}/api/settings"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ portainer_auth.json.jwt }}"
+    validate_certs: false
+  register: portainer_settings
+  no_log: true
+
+# The Portainer server must share the agent's secret (secret mode) so its
+# signed requests to the agent verify. Persist it in the server's settings so
+# the handshake works without manual intervention. GET returns the full settings
+# object (AgentSecret blanked); merge the secret in and PUT the whole object
+# back so other settings are preserved.
+- name: Ensure server AgentSecret matches agent secret
+  ansible.builtin.uri:
+    url: "{{ portainer_api_url }}/api/settings"
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ portainer_auth.json.jwt }}"
+    body_format: json
+    body: "{{ portainer_settings.json | combine({'AgentSecret': portainer.agent_secret}) }}"
+    validate_certs: false
+  register: portainer_settings_put
+  no_log: true
+
+# Portainer's POST /api/endpoints expects multipart/form-data (not JSON); the
+# server reads "Name" from the multipart form and returns "invalid environment
+# name" if it is absent. For an Agent environment TLS must be enabled and the
+# cert verification skipped (Traefik/self-signed).
 - name: Register agent endpoint (codey)
   ansible.builtin.uri:
     url: "{{ portainer_api_url }}/api/endpoints"
     method: POST
     headers:
       Authorization: "Bearer {{ portainer_auth.json.jwt }}"
-    body_format: json
+    body_format: form-multipart
     body:
       Name: "codey"
-      EndpointType: 2
+      EndpointCreationType: "2"
       URL: "https://a.codey.lehel.xyz"
-      PublicURL: ""
-      GroupID: 1
-      TLS: false
-      TLSSkipVerify: true
-      TLSConfig:
-        TLS: false
-        TLSSkipVerify: true
+      TLS: "true"
+      TLSSkipVerify: "true"
+      ContainerEngine: "docker"
     validate_certs: false
   register: portainer_endpoint_create
   when: >-
