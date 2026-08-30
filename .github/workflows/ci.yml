@@ -70,6 +70,9 @@ jobs:
           cd ansible
           pip install ansible-lint ansible>=2.11 dnspython jmespath
 
+      - name: Stub git-crypt encrypted files
+        run: .github/scripts/stub-gitcrypt-files.sh
+
       - name: Run ansible-lint
         run: |
           cd ansible
@@ -215,6 +218,9 @@ jobs:
           # Mock handlers for CI testing
           EOFR
           done
+
+      - name: Stub remaining git-crypt encrypted files
+        run: .github/scripts/stub-gitcrypt-files.sh
 
       - name: Syntax check ${{ matrix.playbook }}
         run: |
