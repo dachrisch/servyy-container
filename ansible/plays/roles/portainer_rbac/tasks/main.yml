@@ -6,7 +6,7 @@
 # opt-in via `portainer_rbac_enabled` so it does not fire on every routine
 # deploy — run it explicitly after the server + agent are confirmed healthy:
 #
-#   ansible-playbook plays/user.yml -l lehel.xyz \
+#   ansible-playbook plays/user.yml -l servy.lehel.xyz \
 #     -e portainer_rbac_enabled=true --tags user.portainer-rbac
 #
 # API notes (Portainer CE):

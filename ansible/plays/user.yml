@@ -368,7 +368,7 @@
 # Opt-in via portainer_rbac_enabled (does not run on routine deploys). See
 # roles/portainer_rbac/tasks/main.yml for usage.
 - name: Configure Portainer RBAC
-  hosts: lehel.xyz
+  hosts: servy.lehel.xyz
   remote_user: "{{ create_user }}"
   become: true
   become_user: "{{ create_user }}"
