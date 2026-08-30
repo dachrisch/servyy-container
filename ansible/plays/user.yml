@@ -299,7 +299,7 @@
         service_name: devhub
         service_host: "devhub.lehel.xyz"
         env_templates:
-          - src: docker.env.j2
+          - src: devhub/.env.j2
             dest: .env
           - src: devhub/web.env.j2
             dest: web.env
