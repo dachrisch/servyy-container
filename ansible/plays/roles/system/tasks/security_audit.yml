@@ -104,7 +104,7 @@
     repo: https://github.com/drwetter/testssl.sh.git
     dest: "{{ security_audit.script_dir }}/testssl.sh"
     depth: 1
-    version: v3.2
+    version: v3.0
   become: true
   when: security_audit.tools.testssl | default(true)
   tags:
