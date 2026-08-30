@@ -132,13 +132,17 @@
         cmd: grep -q '^OPENCODE_AUTH_GOOGLE_B64=.\+$' /home/molecule/opencode/opencode.env
       changed_when: false
 
-    - name: Verify opencode.env DEV_REPOS_B64 decodes to JSON with servyy-container
-      ansible.builtin.shell:
-        cmd: |
-          set -o pipefail
-          grep '^DEV_REPOS_B64=' /home/molecule/opencode/opencode.env | cut -d= -f2- | base64 -d | grep -q '"dir": "servyy-container"'
-        executable: /bin/bash
+    - name: Verify opencode.env still carries GIT_CRYPT_KEY_B64 (required for gh-dash-crypt repos)
+      ansible.builtin.command:
+        cmd: grep -q '^GIT_CRYPT_KEY_B64=.\+$' /home/molecule/opencode/opencode.env
       changed_when: false
+
+    - name: Verify opencode.env no longer carries static DEV_REPOS_B64 (gh-dash auto-discovery)
+      ansible.builtin.command:
+        cmd: grep -q '^DEV_REPOS_B64=' /home/molecule/opencode/opencode.env
+      register: dev_repos_present
+      changed_when: false
+      failed_when: dev_repos_present.rc == 0
 
     - name: Verify opencode.env has mode 0600
       ansible.builtin.stat:
