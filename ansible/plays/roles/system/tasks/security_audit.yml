@@ -16,10 +16,23 @@
     - system.security_audit
     - system.security_audit.packages
 
-- name: Add Trivy APT repository key
-  apt_key:
-    url: https://aquasecurity.github.io/trivy-repo/deb/public.key
+- name: Install Trivy prerequisites
+  apt:
+    name:
+      - apt-transport-https
+      - gpg
     state: present
+  become: true
+  when: security_audit.tools.trivy | default(true)
+  tags:
+    - system.security_audit
+    - system.security_audit.packages
+
+- name: Add Trivy APT repository key
+  get_url:
+    url: https://aquasecurity.github.io/trivy-repo/deb/public.key
+    dest: /usr/share/keyrings/trivy.gpg
+    mode: '0644'
   become: true
   when: security_audit.tools.trivy | default(true)
   tags:
