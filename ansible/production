@@ -43,6 +43,5 @@ prod:
           portainer-agent: true
           # DevHub — generic docker_service (must be `true`, not a dict, so it is
           # picked up by the user.yml docker_service block). Exposed at
-          # devhub.lehel.xyz via Porkbun CNAME → codey.lehel.xyz (created; takes
-          # precedence over the *.lehel.xyz wildcard which points at servy).
+          # h.code.lehel.xyz via Porkbun A/AAAA records → codey (217.217.227.124).
           devhub: true
