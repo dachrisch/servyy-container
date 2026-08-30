@@ -36,7 +36,7 @@
     method: POST
     body_format: json
     body:
-      username: admin
+      username: "{{ portainer.api_user | default('admin') }}"
       password: "{{ portainer.admin_password }}"
     validate_certs: false
   register: portainer_auth
