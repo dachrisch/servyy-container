@@ -9,6 +9,7 @@
       - nmap           # Network port scanner
       - go-md2man      # Required by nuclei
       - python3-pip    # Required by humble
+      - unzip          # Required to extract nuclei binary
     state: present
     update_cache: true
     cache_valid_time: 3600
