@@ -71,7 +71,7 @@ run_trivy() {
     echo '{"results":[' > "${LOG_DIR}/trivy-results.json"
     FIRST=true
 
-    for IMAGE in $(docker ps --format '{{.Image}}' | sort -u); do
+    for IMAGE in $(docker ps --format '{% raw %}{{.Image}}{% endraw %}' | sort -u); do
         log "  Scanning image: ${IMAGE}"
         if [[ "${FIRST}" == "true" ]]; then
             FIRST=false
