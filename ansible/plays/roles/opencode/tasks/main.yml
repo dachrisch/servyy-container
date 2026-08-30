@@ -93,7 +93,7 @@
   ansible.builtin.lineinfile:
     path: "{{ opencode_env_file }}"
     regexp: '^SERVICE_ROOT_HOST='
-    line: "SERVICE_ROOT_HOST={{ service_root_host | default(inventory_hostname) }}"
+    line: "SERVICE_ROOT_HOST={{ services_enabled.opencode.service_root_host | default(inventory_hostname) }}"
     create: true
     mode: '0600'
     owner: "{{ create_user }}"

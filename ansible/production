@@ -39,6 +39,7 @@ prod:
             enabled: true
             dns_short_name: "code"     # Public-facing name (code.lehel.xyz)
             dns_expose: true           # Create explicit DNS entry in Porkbun
+            service_root_host: "code.lehel.xyz"  # Root Traefik route
           opencode-authgate: true
           portainer-agent: true
           # DevHub — generic docker_service (must be `true`, not a dict, so it is
