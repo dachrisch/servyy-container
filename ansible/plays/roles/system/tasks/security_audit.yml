@@ -135,9 +135,28 @@
     - system.security_audit
     - system.security_audit.tools
 
+- name: Get latest nuclei version
+  uri:
+    url: https://api.github.com/repos/projectdiscovery/nuclei/releases/latest
+    return_content: true
+  register: nuclei_release
+  become: true
+  when: security_audit.tools.nuclei | default(true)
+  tags:
+    - system.security_audit
+    - system.security_audit.tools
+
+- name: Set nuclei version fact
+  set_fact:
+    nuclei_version: "{{ nuclei_release.json.tag_name }}"
+  when: security_audit.tools.nuclei | default(true)
+  tags:
+    - system.security_audit
+    - system.security_audit.tools
+
 - name: Download nuclei binary
   get_url:
-    url: https://github.com/projectdiscovery/nuclei/releases/latest/download/nuclei_linux_amd64.zip
+    url: "https://github.com/projectdiscovery/nuclei/releases/download/{{ nuclei_version }}/nuclei_{{ nuclei_version | regex_replace('^v', '') }}_linux_amd64.zip"
     dest: /tmp/nuclei.zip
     mode: '0644'
   become: true
