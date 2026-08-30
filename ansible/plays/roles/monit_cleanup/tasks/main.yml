@@ -11,7 +11,7 @@
 # every deploy.
 #
 # Usage:
-#   ./servyy.sh --tags monit.cleanup --limit lehel.xyz
+#   ./servyy.sh --tags monit.cleanup --limit servy.lehel.xyz
 
 - name: Find stale container-check files
   find:

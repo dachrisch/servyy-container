@@ -5,5 +5,5 @@
 - name: Push restic passwords to Vaultwarden
   ansible.builtin.include_tasks: vaultwarden_push.yml
   when:
-    - inventory_hostname == 'lehel.xyz'
+    - inventory_hostname == 'servy.lehel.xyz'
     - (vw_master_password | default('')) | length > 0

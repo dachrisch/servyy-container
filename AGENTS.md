@@ -214,7 +214,7 @@ cd scripts && ./setup_test_container.sh
 cd ../ansible && ./servyy-test.sh
 
 # After successful test deployment
-cd ansible && ./servyy.sh --limit lehel.xyz
+cd ansible && ./servyy.sh --limit servy.lehel.xyz
 ```
 
 ### Security Guidelines

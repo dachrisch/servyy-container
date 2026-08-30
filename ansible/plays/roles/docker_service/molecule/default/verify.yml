@@ -25,6 +25,27 @@
         cmd: grep -q 'SERVICE_NAME=simple-svc' /home/molecule/simple-svc/.env
       changed_when: false
 
+    - name: Verify domain-override service .env exists
+      ansible.builtin.stat:
+        path: /home/molecule/domain-svc/.env
+      register: domain_env
+      failed_when: not domain_env.stat.exists
+
+    - name: Verify domain-override .env SERVICE_HOST uses domain not inventory_hostname
+      ansible.builtin.command:
+        cmd: grep -q 'SERVICE_HOST=domain-svc.example.org' /home/molecule/domain-svc/.env
+      changed_when: false
+
+    - name: Verify domain-override .env SERVICE_ROOT_HOST uses domain
+      ansible.builtin.command:
+        cmd: grep -q 'SERVICE_ROOT_HOST=example.org' /home/molecule/domain-svc/.env
+      changed_when: false
+
+    - name: Verify domain-override .env LOCAL_HOSTNAME uses inventory_hostname
+      ansible.builtin.command:
+        cmd: grep -q 'LOCAL_HOSTNAME={{ inventory_hostname }}' /home/molecule/domain-svc/.env
+      changed_when: false
+
     - name: Check job-search .env exists
       ansible.builtin.stat:
         path: /home/molecule/job-search/.env
