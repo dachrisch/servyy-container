@@ -223,37 +223,37 @@ log "Results directory: ${LOG_DIR}"
 log "=========================================="
 log "Phase 1: Host OS Audit"
 log "=========================================="
-run_tool "lynis" "{{ security_audit.tools.lynis }}" run_lynis || true
+run_tool "lynis" "{{ security_audit.tools.lynis | ternary('true', 'false') }}" run_lynis || true
 
 log "=========================================="
 log "Phase 2: Docker CIS Benchmark"
 log "=========================================="
-run_tool "docker-bench" "{{ security_audit.tools.docker_bench }}" run_docker_bench || true
+run_tool "docker-bench" "{{ security_audit.tools.docker_bench | ternary('true', 'false') }}" run_docker_bench || true
 
 log "=========================================="
 log "Phase 3: Container Vulnerability Scan"
 log "=========================================="
-run_tool "trivy" "{{ security_audit.tools.trivy }}" run_trivy || true
+run_tool "trivy" "{{ security_audit.tools.trivy | ternary('true', 'false') }}" run_trivy || true
 
 log "=========================================="
 log "Phase 4: Network Port Scan"
 log "=========================================="
-run_tool "nmap" "{{ security_audit.tools.nmap }}" run_nmap || true
+run_tool "nmap" "{{ security_audit.tools.nmap | ternary('true', 'false') }}" run_nmap || true
 
 log "=========================================="
 log "Phase 5: TLS/SSL Configuration"
 log "=========================================="
-run_tool "testssl" "{{ security_audit.tools.testssl }}" run_testssl || true
+run_tool "testssl" "{{ security_audit.tools.testssl | ternary('true', 'false') }}" run_testssl || true
 
 log "=========================================="
 log "Phase 6: Security Headers"
 log "=========================================="
-run_tool "humble" "{{ security_audit.tools.humble }}" run_humble || true
+run_tool "humble" "{{ security_audit.tools.humble | ternary('true', 'false') }}" run_humble || true
 
 log "=========================================="
 log "Phase 7: Web Vulnerability Scan"
 log "=========================================="
-run_tool "nuclei" "{{ security_audit.tools.nuclei }}" run_nuclei || true
+run_tool "nuclei" "{{ security_audit.tools.nuclei | ternary('true', 'false') }}" run_nuclei || true
 
 generate_summary
 
