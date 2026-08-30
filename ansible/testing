@@ -8,6 +8,7 @@ test:
       skip_storagebox: true
       services_enabled:
         devhub: true
+        opencode: true
       searxng_service_host: search.servyy-test.lxd
       searxng_traefik_entrypoint: web
       searxng_traefik_tls: "false"
