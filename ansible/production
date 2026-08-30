@@ -41,3 +41,8 @@ prod:
             dns_expose: true           # Create explicit DNS entry in Porkbun
           opencode-authgate: true
           portainer-agent: true
+          # DevHub — generic docker_service (must be `true`, not a dict, so it is
+          # picked up by the user.yml docker_service block). Exposed at
+          # devhub.lehel.xyz via Porkbun CNAME → codey.lehel.xyz (created; takes
+          # precedence over the *.lehel.xyz wildcard which points at servy).
+          devhub: true

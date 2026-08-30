@@ -290,6 +290,22 @@
       when: "'platzler-heid' in (services | default([]))"
       tags: [user.docker, user.docker.platzler-heid]
 
+    # DevHub — personal dev command board (Next.js + SQLite). Runs on codey so it
+    # can dispatch opencode on code.lehel.xyz. Public DNS devhub.lehel.xyz must point
+    # to codey (217.217.227.124) via Porkbun before the first deploy.
+    - role: docker_service
+      vars:
+        service_dir: devhub
+        service_name: devhub
+        service_host: "devhub.lehel.xyz"
+        env_templates:
+          - src: docker.env.j2
+            dest: .env
+          - src: devhub/web.env.j2
+            dest: web.env
+      when: "'devhub' in (services | default([]))"
+      tags: [user.docker, user.docker.devhub]
+
     # Manual services — env rendered, compose not started
     - role: docker_service
       vars:
