@@ -51,7 +51,7 @@ run_lynis() {
 
 # Docker Bench Security - CIS Docker Benchmark
 run_docker_bench() {
-    docker run --rm --net host --pid host --userns host --cap-add audit_control \
+    docker run --rm --privileged --net host --pid host --userns host --cap-add audit_control \
         -e DOCKER_CONTENT_TRUST="${DOCKER_CONTENT_TRUST:-}" \
         -v /var/lib:/var/lib:ro \
         -v /var/run/docker.sock:/var/run/docker.sock:ro \
@@ -68,7 +68,7 @@ run_trivy() {
         return 1
     fi
 
-    echo '{"results":[' > "${LOG_DIR}/trivy-results.json"
+    echo '[' > "${LOG_DIR}/trivy-results.json"
     FIRST=true
 
     for IMAGE in $(docker ps --format '{% raw %}{{.Image}}{% endraw %}' | sort -u); do
@@ -79,11 +79,19 @@ run_trivy() {
             echo ',' >> "${LOG_DIR}/trivy-results.json"
         fi
 
-        trivy image --format json --severity HIGH,CRITICAL "${IMAGE}" 2>/dev/null | \
-            jq -r '.' >> "${LOG_DIR}/trivy-results.json" || true
+        # Scan image and wrap result with target name
+        echo "{\"target\": \"${IMAGE}\", \"result\": " >> "${LOG_DIR}/trivy-results.json"
+        trivy image --format json --severity HIGH,CRITICAL "${IMAGE}" 2>/dev/null || echo '{}'
+        echo '}' >> "${LOG_DIR}/trivy-results.json"
     done
 
-    echo ']}' >> "${LOG_DIR}/trivy-results.json"
+    echo ']' >> "${LOG_DIR}/trivy-results.json"
+
+    # Count findings
+    local CRITICAL HIGH
+    CRITICAL=$(grep -c '"Severity": "CRITICAL"' "${LOG_DIR}/trivy-results.json" 2>/dev/null || echo 0)
+    HIGH=$(grep -c '"Severity": "HIGH"' "${LOG_DIR}/trivy-results.json" 2>/dev/null || echo 0)
+    log "  Trivy: ${CRITICAL} CRITICAL, ${HIGH} HIGH vulnerabilities found"
 
     # Also run filesystem scan for IaC misconfigurations
     trivy config --format json --severity HIGH,CRITICAL \
@@ -165,7 +173,7 @@ https://portainer.lehel.xyz
 HOSTS
 
     nuclei -l "${TARGETS}" -severity critical,high,medium \
-        -json -o "${LOG_DIR}/nuclei-results.json" 2>&1 | \
+        -je "${LOG_DIR}/nuclei-results.json" 2>&1 | \
         tee "${LOG_DIR}/nuclei.log" || true
 }
 
