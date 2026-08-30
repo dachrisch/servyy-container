@@ -180,7 +180,7 @@
 
 - name: Deploy OpenCode skills
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../../.opencode/skills/"
+    src: "{{ playbook_dir }}/../../opencode/skills/"
     dest: "{{ opencode_skills_dir }}"
     owner: "{{ create_user }}"
     group: "{{ create_user }}"

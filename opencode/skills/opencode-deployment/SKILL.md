@@ -166,7 +166,7 @@ ssh lehel.xyz "docker exec opencode.web ls -la ~/.config/opencode/skills/"
 ```
 
 **If missing or empty:**
-1. Check source directory in git: `.opencode/skills/`
+1. Check source directory in git: `opencode/skills/`
 2. Re-deploy: `cd ansible && ./servyy.sh --tags "user.docker.opencode" --limit lehel.xyz`
 3. Restart container: `ssh lehel.xyz "docker restart opencode.web"`
 
