@@ -1,0 +1,247 @@
+#!/bin/bash
+# Security audit orchestrator for servy.lehel.xyz
+# Deployed by: ansible/plays/roles/system/tasks/security_audit.yml
+# Runs all enabled security tools and produces a consolidated report
+
+set -euo pipefail
+
+DATE=$(date +%Y-%m-%d)
+LOG_DIR="{{ security_audit.log_dir }}/${DATE}"
+SUMMARY="${LOG_DIR}/SUMMARY.md"
+TOOLS_DIR="{{ security_audit.script_dir }}"
+
+mkdir -p "${LOG_DIR}"
+
+# Counters
+TOTAL_CHECKS=0
+TOTAL_FINDINGS=0
+
+log() {
+    echo "[$(date '+%H:%M:%S')] $1"
+}
+
+run_tool() {
+    local name="$1"
+    local enabled="$2"
+    shift 2
+
+    if [[ "${enabled}" != "true" ]]; then
+        log "SKIP: ${name} (disabled)"
+        return
+    fi
+
+    log "START: ${name}"
+    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
+
+    if "$@" 2>&1 | tee -a "${LOG_DIR}/${name}.log"; then
+        log "DONE: ${name}"
+    else
+        log "WARN: ${name} exited with non-zero status"
+    fi
+}
+
+# Lynis - Host OS hardening audit
+run_lynis() {
+    if ! command -v lynis &>/dev/null; then
+        echo "ERROR: lynis not installed"
+        return 1
+    fi
+    lynis audit system --quick --cronjob --quiet --report-file "${LOG_DIR}/lynis-report.dat" 2>&1 || true
+}
+
+# Docker Bench Security - CIS Docker Benchmark
+run_docker_bench() {
+    docker run --rm --net host --pid host --userns host --cap-add audit_control \
+        -e DOCKER_CONTENT_TRUST="${DOCKER_CONTENT_TRUST:-}" \
+        -v /var/lib:/var/lib:ro \
+        -v /var/run/docker.sock:/var/run/docker.sock:ro \
+        -v /usr/lib/systemd:/usr/lib/systemd \
+        -v /etc:/etc \
+        --label docker_bench_security \
+        docker/docker-bench-security 2>&1 | tee "${LOG_DIR}/docker-bench.log"
+}
+
+# Trivy - Container image vulnerability scanner
+run_trivy() {
+    if ! command -v trivy &>/dev/null; then
+        echo "ERROR: trivy not installed"
+        return 1
+    fi
+
+    echo '{"results":[' > "${LOG_DIR}/trivy-results.json"
+    FIRST=true
+
+    for IMAGE in $(docker ps --format '{{.Image}}' | sort -u); do
+        log "  Scanning image: ${IMAGE}"
+        if [[ "${FIRST}" == "true" ]]; then
+            FIRST=false
+        else
+            echo ',' >> "${LOG_DIR}/trivy-results.json"
+        fi
+
+        trivy image --format json --severity HIGH,CRITICAL "${IMAGE}" 2>/dev/null | \
+            jq -r '.' >> "${LOG_DIR}/trivy-results.json" || true
+    done
+
+    echo ']}' >> "${LOG_DIR}/trivy-results.json"
+
+    # Also run filesystem scan for IaC misconfigurations
+    trivy config --format json --severity HIGH,CRITICAL \
+        "{{ security_audit.script_dir }}/.." 2>/dev/null > "${LOG_DIR}/trivy-config.json" || true
+}
+
+# Nmap - Network port scan
+run_nmap() {
+    if ! command -v nmap &>/dev/null; then
+        echo "ERROR: nmap not installed"
+        return 1
+    fi
+    nmap -sV -O --top-ports 1000 -oX "${LOG_DIR}/nmap-results.xml" \
+        localhost 2>&1 | tee "${LOG_DIR}/nmap.log"
+}
+
+# testssl.sh - TLS/SSL configuration test
+run_testssl() {
+    local TESTSSL_DIR="${TOOLS_DIR}/testssl.sh"
+    if [[ ! -d "${TESTSSL_DIR}" ]]; then
+        echo "ERROR: testssl.sh not found at ${TESTSSL_DIR}"
+        return 1
+    fi
+
+    # Test all public HTTPS endpoints
+    for HOST in $(grep -rh "Host(" "{{ playbook_dir }}/../../.." 2>/dev/null | \
+        grep -oP 'Host\(`\K[^`]+' | grep -v "{{" | sort -u | head -20); do
+        log "  Testing TLS: ${HOST}"
+        "${TESTSSL_DIR}/testssl.sh" --jsonfile "${LOG_DIR}/testssl-${HOST}.json" \
+            --quiet "${HOST}" 2>&1 | tee -a "${LOG_DIR}/testssl.log" || true
+    done
+}
+
+# humble - HTTP security headers analysis
+run_humble() {
+    local HUMBLE_DIR="${TOOLS_DIR}/humble"
+    if [[ ! -d "${HUMBLE_DIR}" ]]; then
+        echo "ERROR: humble not found at ${HUMBLE_DIR}"
+        return 1
+    fi
+
+    for HOST in $(grep -rh "Host(" "{{ playbook_dir }}/../../.." 2>/dev/null | \
+        grep -oP 'Host\(`\K[^`]+' | grep -v "{{" | sort -u | head -20); do
+        log "  Checking headers: ${HOST}"
+        python3 "${HUMBLE_DIR}/humble.py" -u "https://${HOST}" -b \
+            2>&1 | tee -a "${LOG_DIR}/humble.log" || true
+    done
+}
+
+# Nuclei - Web vulnerability scanner
+run_nuclei() {
+    if ! command -v nuclei &>/dev/null; then
+        echo "ERROR: nuclei not installed"
+        return 1
+    fi
+
+    # Create target list from Traefik routes
+    local TARGETS="${LOG_DIR}/nuclei-targets.txt"
+    grep -rh "Host(" "{{ playbook_dir }}/../../.." 2>/dev/null | \
+        grep -oP 'Host\(`\K[^`]+' | grep -v "{{" | sort -u | head -20 | \
+        sed 's/^/https:\/\//' > "${TARGETS}" || true
+
+    if [[ -s "${TARGETS}" ]]; then
+        nuclei -l "${TARGETS}" -severity critical,high,medium \
+            -json -o "${LOG_DIR}/nuclei-results.json" 2>&1 | \
+            tee "${LOG_DIR}/nuclei.log" || true
+    fi
+}
+
+# Generate summary report
+generate_summary() {
+    log "Generating summary report..."
+
+    cat > "${SUMMARY}" <<EOF
+# Security Audit Report - ${DATE}
+
+## Overview
+- **Host**: servy.lehel.xyz
+- **Date**: ${DATE}
+- **Tools Run**: ${TOTAL_CHECKS}
+
+## Tools Executed
+
+| Tool | Purpose | Log File |
+|------|---------|----------|
+| Lynis | Host OS hardening (CIS-like) | lynis-report.dat |
+| Docker Bench | Docker CIS Benchmark | docker-bench.log |
+| Trivy | Container image CVEs | trivy-results.json |
+| Nmap | Network port scan | nmap-results.xml |
+| testssl.sh | TLS/SSL configuration | testssl-*.json |
+| humble | HTTP security headers | humble.log |
+| Nuclei | Web vulnerabilities | nuclei-results.json |
+
+## Quick Actions
+
+\`\`\`bash
+# View Lynis score
+grep "hardening_index" ${LOG_DIR}/lynis-report.dat
+
+# Count critical findings
+grep -c "CRITICAL" ${LOG_DIR}/trivy-results.json || echo "0"
+
+# View open ports
+nmap -sV localhost
+
+# View TLS results
+cat ${LOG_DIR}/testssl-*.json | jq '.'
+\`\`\`
+
+## Full Results
+All detailed results are in: \`${LOG_DIR}/\`
+EOF
+
+    log "Summary written to ${SUMMARY}"
+}
+
+# Main execution
+log "Security audit started - ${DATE}"
+log "Results directory: ${LOG_DIR}"
+
+log "=========================================="
+log "Phase 1: Host OS Audit"
+log "=========================================="
+run_tool "lynis" "{{ security_audit.tools.lynis }}" run_lynis || true
+
+log "=========================================="
+log "Phase 2: Docker CIS Benchmark"
+log "=========================================="
+run_tool "docker-bench" "{{ security_audit.tools.docker_bench }}" run_docker_bench || true
+
+log "=========================================="
+log "Phase 3: Container Vulnerability Scan"
+log "=========================================="
+run_tool "trivy" "{{ security_audit.tools.trivy }}" run_trivy || true
+
+log "=========================================="
+log "Phase 4: Network Port Scan"
+log "=========================================="
+run_tool "nmap" "{{ security_audit.tools.nmap }}" run_nmap || true
+
+log "=========================================="
+log "Phase 5: TLS/SSL Configuration"
+log "=========================================="
+run_tool "testssl" "{{ security_audit.tools.testssl }}" run_testssl || true
+
+log "=========================================="
+log "Phase 6: Security Headers"
+log "=========================================="
+run_tool "humble" "{{ security_audit.tools.humble }}" run_humble || true
+
+log "=========================================="
+log "Phase 7: Web Vulnerability Scan"
+log "=========================================="
+run_tool "nuclei" "{{ security_audit.tools.nuclei }}" run_nuclei || true
+
+generate_summary
+
+log "=========================================="
+log "Security audit complete - ${DATE}"
+log "Results: ${LOG_DIR}/"
+log "=========================================="

@@ -63,6 +63,21 @@ kernel_cleanup:
   log_file: '/var/log/kernel-cleanup.log'
   description: 'Remove old kernel packages'
 
+# Security audit (monthly)
+security_audit:
+  enabled: true
+  schedule: 'Sun *-*-1..7 04:00'  # 1st Sunday of month, 04:00 UTC
+  log_dir: '/var/log/security-audit'
+  script_dir: '/opt/security-audit'
+  tools:
+    lynis: true
+    docker_bench: true
+    trivy: true
+    nmap: true
+    testssl: true
+    humble: true
+    nuclei: true
+
 # mkcert - Local CA for test environments
 mkcert:
   cert_dir: /etc/ssl/mkcert

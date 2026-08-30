@@ -1,0 +1,13 @@
+[Unit]
+Description=Security audit scan
+After=docker.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart={{ security_audit.script_dir }}/security-audit.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

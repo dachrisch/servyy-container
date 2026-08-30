@@ -1,0 +1,197 @@
+---
+# Security audit role - installs tools and deploys automated scanning
+# Follows the same pattern as docker_cleanup.yml
+
+- name: Install security audit packages
+  apt:
+    name:
+      - lynis          # Host OS CIS-like audit
+      - nmap           # Network port scanner
+      - go-md2man      # Required by nuclei
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+  tags:
+    - system.security_audit
+    - system.security_audit.packages
+
+- name: Add Trivy APT repository key
+  apt_key:
+    url: https://aquasecurity.github.io/trivy-repo/deb/public.key
+    state: present
+  become: true
+  when: security_audit.tools.trivy | default(true)
+  tags:
+    - system.security_audit
+    - system.security_audit.packages
+
+- name: Add Trivy APT repository
+  apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main"
+    state: present
+    filename: trivy
+  become: true
+  when: security_audit.tools.trivy | default(true)
+  tags:
+    - system.security_audit
+    - system.security_audit.packages
+
+- name: Install Trivy
+  apt:
+    name: trivy
+    state: present
+    update_cache: true
+  become: true
+  when: security_audit.tools.trivy | default(true)
+  tags:
+    - system.security_audit
+    - system.security_audit.packages
+
+- name: Create security audit script directory
+  file:
+    path: "{{ security_audit.script_dir }}"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  become: true
+  tags:
+    - system.security_audit
+    - system.security_audit.scripts
+
+- name: Deploy security audit orchestrator script
+  template:
+    src: security-audit.sh.j2
+    dest: "{{ security_audit.script_dir }}/security-audit.sh"
+    mode: '0755'
+    owner: root
+    group: root
+  become: true
+  tags:
+    - system.security_audit
+    - system.security_audit.scripts
+
+- name: Create security audit log directory
+  file:
+    path: "{{ security_audit.log_dir }}"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  become: true
+  tags:
+    - system.security_audit
+    - system.security_audit.scripts
+
+- name: Clone testssl.sh
+  git:
+    repo: https://github.com/drwetter/testssl.sh.git
+    dest: "{{ security_audit.script_dir }}/testssl.sh"
+    depth: 1
+    version: v3.2
+  become: true
+  when: security_audit.tools.testssl | default(true)
+  tags:
+    - system.security_audit
+    - system.security_audit.tools
+
+- name: Clone humble security headers analyzer
+  git:
+    repo: https://github.com/rfc-st/humble.git
+    dest: "{{ security_audit.script_dir }}/humble"
+    version: df50a19865d2148194de8c42931a15f33849d53e
+    depth: 1
+  become: true
+  when: security_audit.tools.humble | default(true)
+  tags:
+    - system.security_audit
+    - system.security_audit.tools
+
+- name: Install humble Python dependencies
+  pip:
+    requirements: "{{ security_audit.script_dir }}/humble/requirements.txt"
+    executable: pip3
+  become: true
+  when: security_audit.tools.humble | default(true)
+  tags:
+    - system.security_audit
+    - system.security_audit.tools
+
+- name: Download nuclei binary
+  get_url:
+    url: https://github.com/projectdiscovery/nuclei/releases/latest/download/nuclei_linux_amd64.zip
+    dest: /tmp/nuclei.zip
+    mode: '0644'
+  become: true
+  when: security_audit.tools.nuclei | default(true)
+  tags:
+    - system.security_audit
+    - system.security_audit.tools
+
+- name: Extract nuclei binary
+  unarchive:
+    src: /tmp/nuclei.zip
+    dest: /usr/local/bin/
+    remote_src: true
+    mode: '0755'
+  become: true
+  when: security_audit.tools.nuclei | default(true)
+  tags:
+    - system.security_audit
+    - system.security_audit.tools
+
+- name: Clean up nuclei download
+  file:
+    path: /tmp/nuclei.zip
+    state: absent
+  become: true
+  when: security_audit.tools.nuclei | default(true)
+  tags:
+    - system.security_audit
+    - system.security_audit.tools
+
+- name: Deploy logrotate configuration
+  template:
+    src: logrotate-security-audit.j2
+    dest: /etc/logrotate.d/security-audit
+    mode: '0644'
+    owner: root
+    group: root
+  become: true
+  tags:
+    - system.security_audit
+    - system.security_audit.logrotate
+
+- name: Deploy security audit systemd service
+  template:
+    src: security-audit.service.j2
+    dest: /etc/systemd/system/security-audit.service
+    mode: '0644'
+  notify: reload systemd
+  become: true
+  tags:
+    - system.security_audit
+    - system.security_audit.timer
+
+- name: Deploy security audit systemd timer
+  template:
+    src: security-audit.timer.j2
+    dest: /etc/systemd/system/security-audit.timer
+    mode: '0644'
+  notify: reload systemd
+  become: true
+  tags:
+    - system.security_audit
+    - system.security_audit.timer
+
+- name: Enable and start security audit timer
+  systemd:
+    name: security-audit.timer
+    enabled: true
+    state: started
+  become: true
+  when: ansible_facts['virtualization_type'] | default('') != 'docker'
+  tags:
+    - system.security_audit
+    - system.security_audit.timer

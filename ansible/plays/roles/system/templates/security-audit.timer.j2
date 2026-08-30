@@ -1,0 +1,11 @@
+[Unit]
+Description=Monthly security audit trigger
+Requires=security-audit.service
+
+[Timer]
+OnCalendar={{ security_audit.schedule }}
+RandomizedDelaySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
