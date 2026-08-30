@@ -177,7 +177,7 @@
              if (services_enabled.opencode is defined and services_enabled.opencode is mapping
                  and (services_enabled.opencode.dns_expose | default(false))
                  and (services_enabled.opencode.dns_short_name | default('')))
-             else omit }}
+             else domain }}
         env_templates:
           - src: docker.env.j2
             dest: .env
