@@ -36,7 +36,7 @@
             notes: >-
               X-Api-Key value for opencode's scoped ForwardAuth gate (opencode-authgate) on
               {{ inventory_hostname }}. Grants session-create + session-scoped chat access to
-              https://opencode.{{ domain }}/api/session/* only. No direct HTTP
+              https://code.lehel.xyz/api/session/* only. No direct HTTP
               access to opencode's filesystem/shell/VCS/credential endpoints — but the agent
               this drives runs with real credentials (GitHub PAT, git-crypt key, CircleCI
               token, SSH key) and can act on them via prompted tool calls, so treat this key
