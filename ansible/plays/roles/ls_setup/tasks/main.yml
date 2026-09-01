@@ -17,3 +17,23 @@
     ssh_chroot_copy_extra_items: >-
       {{ lookup('vars', 'ssh_chroot_copy_extra_items', default=[]) +
       (lookup('vars', 'extra_ssh_chroot_copy_extra_items', default=[])) }}
+
+- name: Check which ssh_chroot binaries exist on the host
+  ansible.builtin.stat:
+    path: "{{ item.bin | default(item) }}"
+  loop: "{{ ssh_chroot_bins }}"
+  loop_control:
+    label: "{{ item.bin | default(item) }}"
+  register: ssh_chroot_bin_check
+
+# The geerlingguy.ssh-chroot-jail role copies every entry in ssh_chroot_bins
+# into the jail and aborts the deploy if one is missing on the host (e.g. the
+# optional /bin/ed editor). Drop entries that do not exist here so a missing
+# optional binary can never abort a deploy (defense in depth).
+- name: Restrict ssh_chroot_bins to binaries present on the host
+  ansible.builtin.set_fact:
+    ssh_chroot_bins: >-
+      {{ ssh_chroot_bin_check.results
+         | selectattr('stat.exists')
+         | map(attribute='item')
+         | list }}

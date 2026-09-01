@@ -9,6 +9,13 @@
     - vars/ssh_jail.yaml
     - vars/secrets.yml
     - vars/default.yml
+  pre_tasks:
+    # Skip this play on hosts that do not run LeagueSphere. Without this
+    # guard the ssh-chroot-jail role (and all other ls_* roles) would run on
+    # hosts like codey.lehel.xyz that have no LeagueSphere service.
+    - name: End play if leaguesphere is not enabled on the host
+      ansible.builtin.meta: end_play
+      when: not (services_enabled | default({})).leaguesphere | default(false) | bool
   roles:
     # Setup (shared, run once)
     - role: ls_setup
