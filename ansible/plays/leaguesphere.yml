@@ -13,8 +13,13 @@
     # Skip this play on hosts that do not run LeagueSphere. Without this
     # guard the ssh-chroot-jail role (and all other ls_* roles) would run on
     # hosts like codey.lehel.xyz that have no LeagueSphere service.
+    #
+    # end_host (not end_play) is used deliberately: this play targets a mixed
+    # host set (servy runs LeagueSphere, codey does not), and end_play would
+    # abort the play on the LeagueSphere host too. end_host only stops the
+    # current host, so servy continues while codey is skipped.
     - name: End play if leaguesphere is not enabled on the host
-      ansible.builtin.meta: end_play
+      ansible.builtin.meta: end_host
       when: not (services_enabled | default({})).leaguesphere | default(false) | bool
   roles:
     # Setup (shared, run once)
