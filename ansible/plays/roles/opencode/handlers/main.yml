@@ -1,9 +1,20 @@
 ---
 - name: restart opencode container
-  community.docker.docker_container:
-    name: opencode.web
-    state: started
-    restart: yes
+  # NOTE: previously used community.docker.docker_container with just
+  # {name, state: started, restart: yes}. That module compares the given
+  # (mostly unspecified) parameters against the running container and, on
+  # any perceived drift, RECREATES it using only the params in this task --
+  # silently dropping docker-compose's volumes/env/networks/labels entirely.
+  # docker_compose_v2 with state=restarted maps to `docker compose restart`,
+  # which never recreates containers, so it can't destroy compose-managed
+  # config -- it just re-execs the entrypoint (re-running startup.sh), which
+  # is all this handler is meant to do.
+  community.docker.docker_compose_v2:
+    project_src: "{{ ('/home/', create_user, 'servyy-container/opencode') | path_join }}"
+    project_name: opencode
+    files:
+      - docker-compose.yml
+    state: restarted
   listen: restart opencode container
 
 - name: push opencode ssh key to vaultwarden
