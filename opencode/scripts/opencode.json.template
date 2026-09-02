@@ -14,6 +14,11 @@
         "CIRCLECI_TOKEN": "$CIRCLECI_TOKEN",
         "CIRCLECI_BASE_URL": "$CIRCLECI_BASE_URL"
       }
+    },
+    "docstash": {
+      "type": "http",
+      "url": "https://mcp.docstash.ai",
+      "enabled": true
     }
   },
   "provider": {
