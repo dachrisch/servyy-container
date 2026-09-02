@@ -16,7 +16,7 @@
       }
     },
     "docstash": {
-      "type": "http",
+      "type": "remote",
       "url": "https://mcp.docstash.ai",
       "enabled": true
     }
