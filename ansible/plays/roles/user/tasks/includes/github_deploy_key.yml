@@ -1,0 +1,50 @@
+# Generates (idempotent, seed-file backed) and deploys a read-only GitHub
+# deploy key for the cda user's own git operations against the
+# servyy-container repo (repository.yml's docker.repo clone/pull).
+#
+# GitHub can 401 the actual git-upload-pack fetch (not just the anonymous
+# ref-advertisement GET) for anti-abuse reasons even on a public repo, which
+# makes an unauthenticated HTTPS clone hang forever under Ansible's
+# pseudo-tty SSH session waiting for a username that never comes. SSH with a
+# repo-scoped deploy key sidesteps that entirely.
+- name: Stat servyy-container GitHub deploy key seed file
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/vars/.servyy_container_deploy_key"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  register: servyy_deploy_key_seed
+
+- name: Generate servyy-container GitHub deploy key (ed25519)
+  ansible.builtin.command:
+    cmd: ssh-keygen -t ed25519 -f "{{ playbook_dir }}/vars/.servyy_container_deploy_key" -N "" -C "servyy-container-deploy-key"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  when: not servyy_deploy_key_seed.stat.exists
+
+- name: Read servyy-container deploy private key
+  ansible.builtin.slurp:
+    src: "{{ playbook_dir }}/vars/.servyy_container_deploy_key"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  register: servyy_deploy_key_private_slurp
+
+- name: Set servyy-container deploy key fact
+  ansible.builtin.set_fact:
+    servyy_deploy_key_content: "{{ servyy_deploy_key_private_slurp['content'] | b64decode }}"
+    cacheable: true
+  run_once: true
+
+- name: Ensure ~/.ssh exists
+  ansible.builtin.file:
+    path: "~/.ssh"
+    state: directory
+    mode: '0700'
+
+- name: Write servyy-container GitHub deploy private key
+  ansible.builtin.copy:
+    content: "{{ servyy_deploy_key_content }}"
+    dest: "~/.ssh/id_servyy_container_deploy"
+    mode: '0600'

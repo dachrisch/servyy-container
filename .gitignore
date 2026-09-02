@@ -28,3 +28,4 @@ key
 # subagent-driven-development scratch workspace
 .superpowers/
 ansible/plays/vars/.opencode_github_ssh_key
+ansible/plays/vars/.servyy_container_deploy_key

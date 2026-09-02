@@ -25,6 +25,13 @@
   tags:
     - user.repo.me
 
+- import_tasks: includes/github_deploy_key.yml
+  tags:
+    - user.docker.repo
+    - user.docker
+    - user.repo
+  when: with_containers | default(false)
+
 - import_tasks: includes/repository.yml
   vars:
     repository_uri: "{{ docker.repo }}"
@@ -34,6 +41,7 @@
     check_git_servyy_reachable: true     # Check git.lehel.xyz (me/ submodule is there)
     clone_submodules: true                # Clone submodules if reachable
     update_submodules: true               # Update submodules on every deployment
+    git_key_file: "~/.ssh/id_servyy_container_deploy"
   tags:
     - user.docker.repo
     - user.docker

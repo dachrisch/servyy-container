@@ -50,6 +50,8 @@
     force: true
     recursive: "{{ clone_submodules | default(true) and git_servyy_reachable == 'yes' }}"
     version: "{{ branch | default('master') }}"
+    key_file: "{{ git_key_file | default(omit) }}"
+    accept_hostkey: true
   tags:
     - user.repo.clone
 
