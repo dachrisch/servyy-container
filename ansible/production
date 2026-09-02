@@ -26,6 +26,7 @@ prod:
           dns: true
           me: true
           monitor: true
+          leaguesphere: true
     codey.lehel.xyz:
         domain: lehel.xyz
         with_docker: true
