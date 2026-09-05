@@ -78,10 +78,14 @@ mkdir -p "$DEV_DIR"
 # 5. Discovery-based provisioning: search for repos with 'gh-dash' topic
 # Searches across dachrisch + bumbleflies orgs. A repo additionally tagged
 # 'gh-dash-crypt' is git-crypt encrypted and gets unlocked with CRYPT_KEY.
+# ORGS is also used below (step 6) to identify orphaned clones -- keep both
+# uses in sync by only listing orgs here.
+ORGS="dachrisch bumbleflies"
+
 if [ -x /usr/bin/gh.real ]; then
   log "discovering repos with 'gh-dash' topic..."
 
-  for target in dachrisch bumbleflies; do
+  for target in $ORGS; do
     log "  checking $target..."
 
     # Call gh.real directly with the org's own PAT. The gh wrapper instead
@@ -151,6 +155,26 @@ for r in repos:
     done
   done
 fi
+
+# 6. Clean up orphaned flat-layout clones. An earlier discovery generation
+# cloned repos directly to $DEV_DIR/$repo instead of today's
+# $DEV_DIR/$owner/$repo; nothing ever removed those when the layout changed,
+# so they just sit there accumulating (never updated, never reclaimed).
+# Anything at the top level that isn't a known org directory is stale.
+log "checking for orphaned flat-layout clones..."
+for entry in "$DEV_DIR"/*; do
+  [ -e "$entry" ] || continue
+  name=$(basename "$entry")
+  is_org=0
+  for org in $ORGS; do
+    [ "$name" = "$org" ] && is_org=1 && break
+  done
+  [ "$is_org" = 1 ] && continue
+  if [ -d "$entry/.git" ]; then
+    log "removing orphaned flat clone: $name"
+    rm -rf "$entry"
+  fi
+done
 
 [ -n "$CRYPT_KEY" ] && rm -f "$CRYPT_KEY"
 log "done"
