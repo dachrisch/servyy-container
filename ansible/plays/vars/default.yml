@@ -22,7 +22,9 @@ sys_packages:
   - restic                      # backup tool with deduplication
   - sshpass                     # SFTP authentication for restic
 
-swap_space: 10G
+# Per-host override: set `swap_space_override` on a host in ansible/production
+# (e.g. codey.lehel.xyz has less disk, so it runs a smaller swapfile).
+swap_space: "{{ swap_space_override | default('10G') }}"
 
 storagebox:
   file: /etc/storagebox.cred

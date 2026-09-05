@@ -11,6 +11,47 @@
     - system.swap.on
     - system.swap.swappiness
 
+# swap_file's name encodes swap_space (e.g. /5GB.swap), so changing swap_space
+# (or swap_space_override) points at a brand-new file — the old one would
+# otherwise be left behind on disk and in fstab, doubling swap usage instead
+# of resizing it.
+- name: find existing swap file entries in fstab
+  shell: grep -oP '^/\S+\.swap(?=\s+none\s+swap)' /etc/fstab || true
+  register: fstab_swap_files
+  changed_when: false
+  tags:
+    - system.swap.stale.cleanup
+
+- name: identify stale swap files (different size than desired)
+  set_fact:
+    stale_swap_files: "{{ fstab_swap_files.stdout_lines | reject('equalto', swap_file) | list }}"
+  tags:
+    - system.swap.stale.cleanup
+
+- name: turn off stale swap files
+  command: swapoff {{ item }}
+  loop: "{{ stale_swap_files }}"
+  failed_when: false
+  tags:
+    - system.swap.stale.cleanup
+
+- name: remove stale swap fstab entries
+  lineinfile:
+    path: /etc/fstab
+    regexp: '^\s*{{ item | regex_escape }}\s+none\s+swap\s+'
+    state: absent
+  loop: "{{ stale_swap_files }}"
+  tags:
+    - system.swap.stale.cleanup
+
+- name: delete stale swap files
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ stale_swap_files }}"
+  tags:
+    - system.swap.stale.cleanup
+
 - name: check if swap file exists
   stat:
     path: "{{ swap_file }}"

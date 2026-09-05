@@ -33,6 +33,7 @@ prod:
         with_containers: true
         has_10g_volume: false
         create_swap: true
+        swap_space_override: 5G  # 29GB root disk — 10G default swap was too large
         ansible_user: root
         services_enabled:
           traefik: true
