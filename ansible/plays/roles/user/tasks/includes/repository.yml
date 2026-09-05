@@ -43,6 +43,27 @@
   tags:
     - user.repo.clone
 
+# Other tasks (e.g. the opencode role's "Deploy OpenCode docker-compose.yml")
+# write directly to paths tracked in this same repo, bypassing git entirely.
+# git-crypt's encryption is non-deterministic (random IV per encrypt), so any
+# such direct write leaves the working tree looking locally modified to git,
+# which then blocks checking out a not-yet-locally-known branch below
+# ("local changes would be overwritten by checkout") even though the git
+# module's own force:true only auto-discards mods when updating an *existing*
+# local branch, not when creating a new one via `checkout -b`. Reset tracked
+# files back to HEAD first so the checkout below always has a clean slate to
+# work from, regardless of what a prior run left behind. Untracked files
+# (host-specific secrets/env files other tasks also write into this tree)
+# are unaffected -- this only touches tracked paths.
+- name: "Discard local working-tree modifications in {{ remote_dir }} before checkout"
+  command: git reset --hard
+  args:
+    chdir: "{{ remote_dir }}"
+  when: git_check.rc == 0
+  changed_when: false
+  tags:
+    - user.repo.clone
+
 - name: "Clone [ {{ repository_uri }} ] to [ {{remote_dir}} ] (branch: {{ branch | default('master') }} )"
   git:
     repo: "{{ repository_uri }}"
