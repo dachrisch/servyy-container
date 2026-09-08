@@ -1103,16 +1103,27 @@ ssh lehel.xyz "docker exec leaguesphere-demo.demo-app /bin/bash -c 'rm -f /app/.
 - Log: `/var/log/kernel-cleanup.log`
 - Monitoring: monit alerts if log not updated in 32 days
 
+**Apt Package Upgrades** (daily, both servy.lehel.xyz and codey.lehel.xyz):
+- Mechanism: `unattended-upgrades` (Ubuntu's standard tool), configured via `ansible/plays/roles/system/tasks/apt_upgrade.yml`
+- Scope: all available upgrades (`-security` and `-updates` pockets), not security-only
+- Run time: 05:00 CET daily (`apt-daily-upgrade.timer`, pinned via a systemd drop-in so it's not randomized into the 02:00-04:00 nightly restic backup window)
+- Reboot: only if a reboot-requiring upgrade (e.g. new kernel) was installed, at a fixed time of 05:30 CET (`Unattended-Upgrade::Automatic-Reboot-Time`) — this briefly restarts all Docker containers on that server
+- Config: `/etc/apt/apt.conf.d/50unattended-upgrades`, `/etc/apt/apt.conf.d/20auto-upgrades`
+- Log: `/var/log/unattended-upgrades/unattended-upgrades.log` (also mirrored to syslog → Promtail/Loki)
+
 **Check cleanup status:**
 ```bash
-# View cleanup timers
-ssh lehel.xyz "systemctl list-timers | grep cleanup"
+# View cleanup/upgrade timers
+ssh lehel.xyz "systemctl list-timers | grep -E 'cleanup|apt-daily'"
 
 # Check Docker cleanup logs
 ssh lehel.xyz "tail -50 /var/log/docker-cleanup.log"
 
 # Check kernel cleanup logs
 ssh lehel.xyz "tail -50 /var/log/kernel-cleanup.log"
+
+# Check apt upgrade logs
+ssh lehel.xyz "sudo tail -50 /var/log/unattended-upgrades/unattended-upgrades.log"
 
 # Verify monit monitoring
 ssh lehel.xyz "sudo monit status | grep cleanup"

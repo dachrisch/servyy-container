@@ -40,6 +40,12 @@
     - system.docker.cleanup
     - system.maintenance
 
+- import_tasks: apt_upgrade.yml
+  when: apt_upgrade.enabled | default(true)
+  tags:
+    - system.apt_upgrade
+    - system.maintenance
+
 - import_tasks: kernel_cleanup.yml
   when: kernel_cleanup.enabled | default(true)
   tags:

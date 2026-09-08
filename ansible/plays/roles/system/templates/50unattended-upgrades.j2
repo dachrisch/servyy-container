@@ -1,0 +1,21 @@
+// Deployed by: ansible/plays/roles/system/tasks/apt_upgrade.yml
+// Managed by Ansible - do not edit manually
+
+Unattended-Upgrade::Allowed-Origins {
+        "${distro_id}:${distro_codename}";
+        "${distro_id}:${distro_codename}-security";
+        "${distro_id}:${distro_codename}-updates";
+};
+
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-New-Unused-Dependencies "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+
+// Only reboot if a reboot-requiring upgrade (e.g. kernel) was installed, and
+// only at this fixed off-peak time (after nightly restic backups complete).
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
+Unattended-Upgrade::Automatic-Reboot-Time "{{ apt_upgrade.reboot_time }}";
+
+// Surface activity in syslog so Promtail/Loki picks it up like other services.
+Unattended-Upgrade::SyslogEnable "true";
