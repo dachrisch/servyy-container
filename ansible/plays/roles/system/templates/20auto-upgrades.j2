@@ -1,0 +1,7 @@
+// Deployed by: ansible/plays/roles/system/tasks/apt_upgrade.yml
+// Managed by Ansible - do not edit manually
+
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Download-Upgradeable-Packages "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";

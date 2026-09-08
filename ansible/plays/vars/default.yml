@@ -57,6 +57,12 @@ docker_cleanup:
 # runc 1.3.3 breaks Docker in LXC containers; auto-unhold when this version is available
 runc_safe_version: "1.4.0"
 
+# Apt package upgrades (unattended-upgrades, daily)
+apt_upgrade:
+  enabled: true
+  run_time: '05:00'     # apt-daily-upgrade.timer fixed run time, after nightly restic backups
+  reboot_time: '05:30'  # Automatic-Reboot-Time - only if a reboot-requiring update was installed
+
 # Kernel cleanup (monthly)
 kernel_cleanup:
   enabled: true

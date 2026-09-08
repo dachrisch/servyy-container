@@ -19,6 +19,10 @@
       script_path: '/usr/local/bin/kernel-cleanup.sh'
       log_file: '/var/log/kernel-cleanup.log'
       description: 'Remove old kernel packages'
+    apt_upgrade:
+      enabled: true
+      run_time: '05:00'
+      reboot_time: '05:30'
   tasks:
     - name: Run user tasks  # noqa: role-name[path]
       ansible.builtin.include_role:
@@ -45,3 +49,10 @@
         tasks_from: kernel_cleanup
       when: kernel_cleanup.enabled | default(true)
       tags: [system.kernel, system.kernel.cleanup]
+
+    - name: Run apt_upgrade tasks  # noqa: role-name[path]
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../../"
+        tasks_from: apt_upgrade
+      when: apt_upgrade.enabled | default(true)
+      tags: [system.apt_upgrade]

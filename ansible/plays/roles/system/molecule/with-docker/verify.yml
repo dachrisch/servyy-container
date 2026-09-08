@@ -60,3 +60,62 @@
       assert:
         that:
           - kernel_cleanup_timer.stat.exists
+
+    - name: Check unattended-upgrades package is installed
+      command: dpkg -l unattended-upgrades
+      register: uu_pkg
+      changed_when: false
+      failed_when: uu_pkg.rc != 0
+
+    - name: Check unattended-upgrades config exists
+      stat:
+        path: /etc/apt/apt.conf.d/50unattended-upgrades
+      register: uu_config
+
+    - name: Verify unattended-upgrades config was created
+      assert:
+        that:
+          - uu_config.stat.exists
+
+    - name: Check unattended-upgrades config content
+      slurp:
+        path: /etc/apt/apt.conf.d/50unattended-upgrades
+      register: uu_config_content
+
+    - name: Verify unattended-upgrades reboot settings
+      assert:
+        that:
+          - "'Automatic-Reboot \"true\"' in uu_config_content.content | b64decode"
+          - "'Automatic-Reboot-Time \"05:30\"' in uu_config_content.content | b64decode"
+        fail_msg: "unattended-upgrades config does not contain expected reboot settings"
+
+    - name: Check periodic auto-upgrades config exists
+      stat:
+        path: /etc/apt/apt.conf.d/20auto-upgrades
+      register: auto_upgrades_config
+
+    - name: Verify periodic auto-upgrades config was created
+      assert:
+        that:
+          - auto_upgrades_config.stat.exists
+
+    - name: Check apt-daily-upgrade timer override exists
+      stat:
+        path: /etc/systemd/system/apt-daily-upgrade.timer.d/override.conf
+      register: apt_timer_override
+
+    - name: Verify apt-daily-upgrade timer override was created
+      assert:
+        that:
+          - apt_timer_override.stat.exists
+
+    - name: Check apt-daily-upgrade timer override content
+      slurp:
+        path: /etc/systemd/system/apt-daily-upgrade.timer.d/override.conf
+      register: apt_timer_override_content
+
+    - name: Verify apt-daily-upgrade timer runs at the configured time
+      assert:
+        that:
+          - "'05:00:00' in apt_timer_override_content.content | b64decode"
+        fail_msg: "apt-daily-upgrade timer override does not contain expected run time"

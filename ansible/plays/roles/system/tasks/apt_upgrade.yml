@@ -1,0 +1,63 @@
+---
+- name: Install unattended-upgrades
+  apt:
+    name:
+      - unattended-upgrades
+      - apt-listchanges
+    state: present
+  become: true
+  tags:
+    - system.apt_upgrade
+
+- name: Deploy unattended-upgrades configuration
+  template:
+    src: 50unattended-upgrades.j2
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    mode: '0644'
+  become: true
+  tags:
+    - system.apt_upgrade
+
+- name: Enable periodic apt upgrades
+  template:
+    src: 20auto-upgrades.j2
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: '0644'
+  become: true
+  tags:
+    - system.apt_upgrade
+
+- name: Create apt-daily-upgrade timer override directory
+  file:
+    path: /etc/systemd/system/apt-daily-upgrade.timer.d
+    state: directory
+    mode: '0755'
+  become: true
+  tags:
+    - system.apt_upgrade
+
+- name: Pin apt-daily-upgrade timer to a fixed off-peak time
+  template:
+    src: apt-daily-upgrade-timer-override.conf.j2
+    dest: /etc/systemd/system/apt-daily-upgrade.timer.d/override.conf
+    mode: '0644'
+  notify: reload systemd
+  become: true
+  tags:
+    - system.apt_upgrade
+
+- name: Flush handlers so timer override is active before enabling
+  meta: flush_handlers
+
+- name: Enable and start apt-daily timers
+  systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - apt-daily.timer
+    - apt-daily-upgrade.timer
+  become: true
+  when: ansible_facts['virtualization_type'] | default('') != 'docker'
+  tags:
+    - system.apt_upgrade
