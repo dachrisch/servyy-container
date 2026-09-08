@@ -3,7 +3,7 @@
 **Date:** 2026-09-08
 **Author:** Claude (via user dachrisch)
 **Type:** Feature Implementation
-**Status:** ✅ Tested on servyy-test.lxd — awaiting production approval
+**Status:** ✅ Deployed to Production
 
 ## Summary
 
@@ -51,13 +51,24 @@ Results:
 - `sudo unattended-upgrade --dry-run --debug` confirmed the config parses correctly, correctly selects real upgradeable security/updates-pocket packages (e.g. `openssl`, `libssl3t64`), and correctly excludes `-backports` (pinned out, not in `Allowed-Origins`)
 - `ansible-lint` (production profile) passed on all new/changed files
 
+## Production Deployment
+
+**Date:** 2026-09-08
+**Targets:** `servy.lehel.xyz`, `codey.lehel.xyz`
+**Method:** `./servyy.sh --tags system.apt_upgrade --limit {server}` (scoped to this feature only)
+
+**Results:**
+```
+servy.lehel.xyz   : ok=23  changed=5  unreachable=0  failed=0
+codey.lehel.xyz   : ok=21  changed=5  unreachable=0  failed=0
+```
+
+Verified on both hosts post-deploy: `unattended-upgrades` package installed, `apt-daily-upgrade.timer` shows the drop-in loaded and next `Trigger: 2026-09-09 05:00:00 CEST` — confirming the fixed schedule took effect on the real production units (not just systemd defaults).
+
+**PR:** [#122](https://github.com/dachrisch/servyy-container/pull/122), squash auto-merge enabled (merges once CI passes).
+
 ## Not Yet Done
 
-- **Production deployment** — requires explicit user approval per this repo's mandatory workflow (`CLAUDE.md` → "CRITICAL DEPLOYMENT RULES"). Deploy with:
-  ```bash
-  cd ansible && ./servyy.sh --tags system.apt_upgrade --limit servy.lehel.xyz
-  cd ansible && ./servyy.sh --tags system.apt_upgrade --limit codey.lehel.xyz
-  ```
 - **monit monitoring** — unlike docker-cleanup/kernel-cleanup, this task does not yet have a monit log-staleness check, since `unattended-upgrades` manages its own log file/rotation rather than a bespoke one. Not implemented; can be added later if desired (e.g. check `/var/log/unattended-upgrades/unattended-upgrades.log` mtime).
 
 ## Technical Decisions
