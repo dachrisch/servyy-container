@@ -43,6 +43,11 @@ if [ -f "/scripts/opencode.json.template" ]; then
     envsubst '$CIRCLECI_TOKEN $CIRCLECI_BASE_URL $DASHSCOPE_API_KEY $OPENCODE_GO_API_KEY' < /scripts/opencode.json.template > "$CONFIG_DIR/opencode.json"
 fi
 
+if [ -f "/scripts/opencode-mem.jsonc" ]; then
+    echo "⚙️ [Startup] Deploying opencode-mem config..."
+    cp /scripts/opencode-mem.jsonc "$CONFIG_DIR/opencode-mem.jsonc"
+fi
+
 # 4b. Configure git to prefer SSH over HTTPS for github.com
 git config --global --add safe.directory '*'
 git config --global user.name  "${GIT_AUTHOR_NAME:-opencode}"
