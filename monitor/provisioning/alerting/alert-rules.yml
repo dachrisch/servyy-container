@@ -415,7 +415,7 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
-              expr: 'sum by (instance) (rate(node_cpu_seconds_total{mode="user"}[5m])) * 100'
+              expr: 'avg by (instance) (rate(node_cpu_seconds_total{mode="user"}[5m])) * 100'
               intervalMs: 1000
               maxDataPoints: 43200
               refId: A
@@ -460,7 +460,7 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
-              expr: 'sum by (instance) (rate(node_cpu_seconds_total{mode="system"}[5m])) * 100'
+              expr: 'avg by (instance) (rate(node_cpu_seconds_total{mode="system"}[5m])) * 100'
               intervalMs: 1000
               maxDataPoints: 43200
               refId: A
@@ -505,7 +505,7 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
-              expr: 'sum by (instance) (rate(node_cpu_seconds_total{mode="iowait"}[5m])) * 100'
+              expr: 'avg by (instance) (rate(node_cpu_seconds_total{mode="iowait"}[5m])) * 100'
               intervalMs: 1000
               maxDataPoints: 43200
               refId: A
