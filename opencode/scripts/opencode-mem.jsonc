@@ -1,0 +1,10 @@
+{
+  // Auto-capture issues structured-output requests through opencode's own
+  // session API rather than calling a provider directly, so opencode owns
+  // auth/token-refresh/routing — no separate API key needed here.
+  // "opencode" matches the provider already used by DevHub's develop
+  // sessions (see devhub's MODEL_TIERS); "inherit" reuses whichever
+  // model actually ran the session being captured.
+  "opencodeProvider": "opencode",
+  "opencodeModel": "inherit"
+}

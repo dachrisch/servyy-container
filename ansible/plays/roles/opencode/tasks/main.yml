@@ -177,6 +177,14 @@
   notify: restart opencode container
   tags: [user.docker.opencode]
 
+- name: Deploy opencode-mem config
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../opencode/scripts/opencode-mem.jsonc"
+    dest: "{{ ('/home/', create_user, 'servyy-container/opencode/scripts/opencode-mem.jsonc') | path_join }}"
+    mode: '0644'
+  notify: restart opencode container
+  tags: [user.docker.opencode]
+
 - name: Ensure OpenCode skills directory exists
   ansible.builtin.file:
     path: "{{ opencode_skills_dir }}"
