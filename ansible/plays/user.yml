@@ -107,7 +107,7 @@
     - name: Ensure leagues-finance MongoDB root user exists before auth is enforced
       community.docker.docker_container_exec:
         container: leagues-finance.mongo
-        command:
+        argv:
           - mongosh
           - admin
           - --quiet
