@@ -131,6 +131,80 @@
         - user.docker.leagues-finance
         - user.docker
 
+    # Same one-time MongoDB auth migration for dontforget (DBS-1820 fix).
+    - name: Check current dontforget mongo container
+      community.docker.docker_container_info:
+        name: dontforget.mongo
+      register: df_mongo_pre_auth_info
+      when: "'dontforget' in (services | default([]))"
+      tags:
+        - user.docker.dontforget
+        - user.docker
+
+    - name: Ensure dontforget MongoDB root user exists before auth is enforced
+      community.docker.docker_container_exec:
+        container: dontforget.mongo
+        argv:
+          - mongosh
+          - admin
+          - --quiet
+          - --eval
+          - >-
+            db.createUser({user: "{{ vault_dontforget_mongo_root_username }}",
+            pwd: "{{ vault_dontforget_mongo_root_password }}",
+            roles: [{role: "root", db: "admin"}]})
+      register: df_mongo_user_create
+      changed_when: df_mongo_user_create.rc == 0
+      failed_when: >-
+        df_mongo_user_create.rc != 0 and
+        'already exists' not in (df_mongo_user_create.stdout | default('') ~ df_mongo_user_create.stderr | default('')) and
+        'requires authentication' not in (df_mongo_user_create.stdout | default('') ~ df_mongo_user_create.stderr | default('')) and
+        'not authorized' not in (df_mongo_user_create.stdout | default('') ~ df_mongo_user_create.stderr | default(''))
+      when:
+        - "'dontforget' in (services | default([]))"
+        - df_mongo_pre_auth_info.container is defined
+        - df_mongo_pre_auth_info.container is not none
+      tags:
+        - user.docker.dontforget
+        - user.docker
+
+    # Same one-time MongoDB auth migration for job-search (DBS-1820 fix).
+    - name: Check current job-search mongo container
+      community.docker.docker_container_info:
+        name: job-search-mongodb
+      register: js_mongo_pre_auth_info
+      when: "'job-search' in (services | default([]))"
+      tags:
+        - user.docker.job-search
+        - user.docker
+
+    - name: Ensure job-search MongoDB root user exists before auth is enforced
+      community.docker.docker_container_exec:
+        container: job-search-mongodb
+        argv:
+          - mongosh
+          - admin
+          - --quiet
+          - --eval
+          - >-
+            db.createUser({user: "{{ vault_job_search_mongo_root_username }}",
+            pwd: "{{ vault_job_search_mongo_root_password }}",
+            roles: [{role: "root", db: "admin"}]})
+      register: js_mongo_user_create
+      changed_when: js_mongo_user_create.rc == 0
+      failed_when: >-
+        js_mongo_user_create.rc != 0 and
+        'already exists' not in (js_mongo_user_create.stdout | default('') ~ js_mongo_user_create.stderr | default('')) and
+        'requires authentication' not in (js_mongo_user_create.stdout | default('') ~ js_mongo_user_create.stderr | default('')) and
+        'not authorized' not in (js_mongo_user_create.stdout | default('') ~ js_mongo_user_create.stderr | default(''))
+      when:
+        - "'job-search' in (services | default([]))"
+        - js_mongo_pre_auth_info.container is defined
+        - js_mongo_pre_auth_info.container is not none
+      tags:
+        - user.docker.job-search
+        - user.docker
+
   roles:
     # Simple services — generic .env only
     - role: docker_service
