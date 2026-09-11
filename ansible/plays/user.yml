@@ -90,6 +90,47 @@
       tags:
         - user.docker.searxng
 
+    # One-time MongoDB auth migration for leagues-finance (DBS-1820 fix).
+    # Must run before the docker_service role below recreates the container
+    # with `command: ["--auth"]` — MONGO_INITDB_ROOT_USERNAME only creates the
+    # user on an empty /data/db, so an already-populated volume needs the user
+    # created here first, against the still-unauthenticated running container.
+    - name: Check current leagues-finance mongo container
+      community.docker.docker_container_info:
+        name: leagues-finance.mongo
+      register: lf_mongo_pre_auth_info
+      when: "'leagues-finance' in (services | default([]))"
+      tags:
+        - user.docker.leagues-finance
+        - user.docker
+
+    - name: Ensure leagues-finance MongoDB root user exists before auth is enforced
+      community.docker.docker_container_exec:
+        container: leagues-finance.mongo
+        command:
+          - mongosh
+          - admin
+          - --quiet
+          - --eval
+          - >-
+            db.createUser({user: "{{ leagues_finance.mongo_root_username }}",
+            pwd: "{{ leagues_finance.mongo_root_password }}",
+            roles: [{role: "root", db: "admin"}]})
+      register: lf_mongo_user_create
+      changed_when: lf_mongo_user_create.rc == 0
+      failed_when: >-
+        lf_mongo_user_create.rc != 0 and
+        'already exists' not in (lf_mongo_user_create.stdout | default('') ~ lf_mongo_user_create.stderr | default('')) and
+        'requires authentication' not in (lf_mongo_user_create.stdout | default('') ~ lf_mongo_user_create.stderr | default('')) and
+        'not authorized' not in (lf_mongo_user_create.stdout | default('') ~ lf_mongo_user_create.stderr | default(''))
+      when:
+        - "'leagues-finance' in (services | default([]))"
+        - lf_mongo_pre_auth_info.container is defined
+        - lf_mongo_pre_auth_info.container is not none
+      tags:
+        - user.docker.leagues-finance
+        - user.docker
+
   roles:
     # Simple services — generic .env only
     - role: docker_service
