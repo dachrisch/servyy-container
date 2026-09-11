@@ -236,11 +236,11 @@ ssh servyy-test.lxd "docker exec opencode.web /bin/sh -c 'test-command'"
 ssh servyy-test.lxd "docker logs opencode.web --tail 30"
 
 # 4. Production deployment (after approval)
-cd ansible && ./servyy.sh --tags "user.docker.opencode" --limit lehel.xyz
+cd ansible && ./servyy.sh --tags "user.docker.opencode" --limit codey.lehel.xyz
 
 # 5. Final verification
-ssh lehel.xyz "docker ps | grep opencode"
-curl -I https://opencode.lehel.xyz
+ssh codey.lehel.xyz "docker ps | grep opencode"
+curl -I https://code.lehel.xyz
 ```
 
 ## Worktree Cleanup
@@ -280,7 +280,7 @@ cd /tmp/wt-infra/infrastructure-container/ansible
 **Production (after test passes):**
 ```bash
 cd /tmp/wt-infra/infrastructure-container/ansible
-./servyy.sh --tags "user.docker.opencode" --limit lehel.xyz
+./servyy.sh --tags "user.docker.opencode" --limit codey.lehel.xyz
 ```
 
 **Verification:**
@@ -290,8 +290,8 @@ git status
 git log --oneline origin/master..HEAD
 
 # Deployment succeeded?
-ssh lehel.xyz "docker ps | grep opencode"
-ssh lehel.xyz "docker logs opencode.web --tail 20"
+ssh codey.lehel.xyz "docker ps | grep opencode"
+ssh codey.lehel.xyz "docker logs opencode.web --tail 20"
 ```
 
 ## Key Files to Monitor

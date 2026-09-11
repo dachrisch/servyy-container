@@ -75,15 +75,43 @@
   vars:
     opencode_known_hosts: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/known_hosts') | path_join }}"
 
-- name: Ensure lehel.xyz is in known_hosts
+- name: Remove stale bare lehel.xyz known_hosts entry
   ansible.builtin.lineinfile:
     path: "{{ opencode_known_hosts }}"
-    line: "lehel.xyz ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH5PEeIaPA1cj0lG1oBCj/JKO111UVewWkQVh09/QzCi"
+    regexp: '^lehel\.xyz '
+    state: absent
+  # Superseded by the explicit servy.lehel.xyz entry below; the bare alias is
+  # ambiguous now that codey.lehel.xyz is also in play.
+  become: true
+  become_user: root
+  vars:
+    opencode_known_hosts: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/known_hosts') | path_join }}"
+
+- name: Ensure servy.lehel.xyz is in known_hosts
+  ansible.builtin.lineinfile:
+    path: "{{ opencode_known_hosts }}"
+    line: "servy.lehel.xyz ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH5PEeIaPA1cj0lG1oBCj/JKO111UVewWkQVh09/QzCi"
     create: true
     mode: '0600'
     owner: "{{ create_user }}"
     group: "{{ create_user }}"
   # Same root-owned file issue as the GitHub known_hosts task above.
+  become: true
+  become_user: root
+  vars:
+    opencode_known_hosts: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/known_hosts') | path_join }}"
+
+- name: Ensure codey.lehel.xyz is in known_hosts
+  ansible.builtin.lineinfile:
+    path: "{{ opencode_known_hosts }}"
+    line: "codey.lehel.xyz ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEURPNKnc3F5o6cG7SqzttrBv9JjkmZxk3WnG71MPm4U"
+    create: true
+    mode: '0600'
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+  # opencode runs on codey.lehel.xyz itself; this lets the container reach its
+  # own host via id_servy (already authorized there) for host-level tasks it
+  # can't do from inside its own container, same as the servy.lehel.xyz entry above.
   become: true
   become_user: root
   vars:
