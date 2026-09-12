@@ -10,6 +10,8 @@
     job_search_jwt_secret: test-jwt-secret
     job_search_searxng_token: test-searxng-token
     job_search_searxng_url: https://search.lehel.xyz
+    vault_job_search_mongo_root_username: test-mongo-root-user
+    vault_job_search_mongo_root_password: test-mongo-root-pass
     opencode:
       server_password: test-opencode-pass
       api_key: test-opencode-api-key
