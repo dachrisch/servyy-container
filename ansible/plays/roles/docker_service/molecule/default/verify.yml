@@ -84,6 +84,26 @@
         cmd: grep -q 'OPENCODE_API_KEY=test-opencode-api-key' /home/molecule/job-search/api.env
       changed_when: false
 
+    - name: Verify job-search api.env has MONGO_INITDB_ROOT_USERNAME
+      ansible.builtin.command:
+        cmd: grep -q 'MONGO_INITDB_ROOT_USERNAME=test-mongo-root-user' /home/molecule/job-search/api.env
+      changed_when: false
+
+    - name: Verify job-search api.env has MONGO_INITDB_ROOT_PASSWORD
+      ansible.builtin.command:
+        cmd: grep -q 'MONGO_INITDB_ROOT_PASSWORD=test-mongo-root-pass' /home/molecule/job-search/api.env
+      changed_when: false
+
+    - name: Verify job-search api.env has MONGODB_URI with credentials
+      ansible.builtin.command:
+        cmd: grep -q 'MONGODB_URI=mongodb://test-mongo-root-user' /home/molecule/job-search/api.env
+      changed_when: false
+
+    - name: Verify job-search api.env MONGODB_URI uses authSource=admin
+      ansible.builtin.command:
+        cmd: grep -q 'MONGODB_URI=.*authSource=admin' /home/molecule/job-search/api.env
+      changed_when: false
+
     - name: Verify job-search crawler.env has SEARXNG_URL
       ansible.builtin.command:
         cmd: grep -q 'SEARXNG_URL=https://search.lehel.xyz' /home/molecule/job-search/crawler.env
