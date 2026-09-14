@@ -1,4 +1,0 @@
-[submodule "me/website"]
-	path = me/website
-	url = https://git.lehel.xyz/me
-	branch = dist

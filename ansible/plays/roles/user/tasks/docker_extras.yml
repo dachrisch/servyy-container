@@ -29,10 +29,6 @@
       - dir: job-search
       - dir: dontforget
       - dir: platzler-heid
-      - dir: dns
-        manual: {}
-      - dir: me
-        manual: {}
       - dir: monitor
     services_root: "{{ docker.remote_dir }}"
   tags:
