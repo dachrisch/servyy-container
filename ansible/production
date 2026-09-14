@@ -23,8 +23,8 @@ prod:
           job-search: true
           dontforget: true
           platzler-heid: true
-          dns: true
-          me: true
+          dns: false
+          me: false
           monitor: true
           leaguesphere: true
     codey.lehel.xyz:
