@@ -10,14 +10,13 @@ SSH_DIR="$HOME/.ssh"
 
 log() { echo "[provision-dev] $*"; }
 
-# 1. SSH key + config for servy.lehel.xyz (reached over the docker bridge)
+# 1. SSH key + config for servy.lehel.xyz and codey.lehel.xyz
 if [ -n "${SERVY_SSH_KEY_B64:-}" ]; then
   mkdir -p "$SSH_DIR"; chmod 700 "$SSH_DIR"
   echo "$SERVY_SSH_KEY_B64" | base64 -d > "$SSH_DIR/id_servy"
   chmod 600 "$SSH_DIR/id_servy"
   cat > "$SSH_DIR/config" <<EOF
-Host servy.lehel.xyz lehel.xyz
-  HostName host.docker.internal
+Host servy.lehel.xyz codey.lehel.xyz
   User cda
   IdentityFile ~/.ssh/id_servy
   StrictHostKeyChecking accept-new
