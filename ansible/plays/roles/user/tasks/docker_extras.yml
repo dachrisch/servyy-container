@@ -77,11 +77,24 @@
   tags:
     - user.docker.opencode
 
-- name: Authorize OpenCode container SSH key (scoped to local docker networks)
+- name: Resolve codey.lehel.xyz addresses for OpenCode SSH key restriction
+  ansible.builtin.set_fact:
+    opencode_codey_ipv4: "{{ lookup('dig', 'codey.lehel.xyz', 'qtype=A') }}"
+    opencode_codey_ipv6: "{{ lookup('dig', 'codey.lehel.xyz', 'qtype=AAAA') }}"
+  tags:
+    - user.docker.opencode
+    - user.ssh.opencode
+
+- name: Authorize OpenCode container SSH key (scoped to local docker networks + codey.lehel.xyz)
   ansible.posix.authorized_key:
     user: "{{ create_user }}"
     key: "{{ opencode.servy_ssh_pubkey }}"
-    key_options: 'from="172.16.0.0/12,127.0.0.1"'
+    key_options: >-
+      from="172.16.0.0/12,127.0.0.1{{
+      ',' + opencode_codey_ipv4 + '/32' if opencode_codey_ipv4 not in ['', 'NXDOMAIN'] else ''
+      }}{{
+      ',' + opencode_codey_ipv6 + '/128' if opencode_codey_ipv6 not in ['', 'NXDOMAIN'] else ''
+      }}"
     comment: "opencode-container-servy"
     state: present
   tags:
