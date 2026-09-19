@@ -13,7 +13,7 @@ jobs:
   # Fast-fail checks (run in parallel)
   lint-yaml:
     name: Lint YAML
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
 
@@ -55,7 +55,7 @@ jobs:
 
   lint-ansible:
     name: Ansible Lint
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
 
@@ -81,7 +81,7 @@ jobs:
 
   lint-python:
     name: Lint Python (Custom Modules)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
 
@@ -111,7 +111,7 @@ jobs:
 
   syntax-check:
     name: Ansible Syntax Check
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     strategy:
       matrix:
         playbook:
@@ -230,7 +230,7 @@ jobs:
 
   git-crypt-validation:
     name: Validate git-crypt Encryption
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
 
@@ -242,7 +242,7 @@ jobs:
 
   test-custom-modules:
     name: Test Custom Modules
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
 
@@ -262,7 +262,7 @@ jobs:
   molecule-test:
     name: Molecule Test (${{ matrix.role }}/${{ matrix.scenario }})
     needs: [lint-yaml, lint-ansible, lint-python, syntax-check]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
