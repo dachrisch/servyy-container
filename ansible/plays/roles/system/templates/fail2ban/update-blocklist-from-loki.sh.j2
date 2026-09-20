@@ -55,7 +55,9 @@ get_scanner_ips() {
 get_error_ips() {
     log "Querying Loki for IPs with excessive errors..."
 
-    local query='topk(50, sum by (ip) (count_over_time({job="docker"} |~ "\" 4[0-9][0-9] " | regexp "(?P<ip>[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)"['"$TIME_RANGE"'])))'
+    # Matches both plain-text access logs (" 404 ") and Traefik JSON logs
+    # ("DownstreamStatus":404) - the latter was previously invisible here.
+    local query='topk(50, sum by (ip) (count_over_time({job="docker"} |~ "\" 4[0-9][0-9] |\"DownstreamStatus\":4[0-9][0-9]" | regexp "(?P<ip>[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)"['"$TIME_RANGE"'])))'
 
     curl -s -H "X-Scope-OrgID: $LOKI_TENANT_ID" \
         "$LOKI_URL/loki/api/v1/query" \
@@ -100,6 +102,23 @@ get_traefik_crawler_ips() {
         "$LOKI_URL/loki/api/v1/query" \
         --data-urlencode "query=$query" 2>/dev/null | \
     jq -r '.data.result[] | select(.value[1] | tonumber >= 20) | .metric.ClientHost + " traefik-aggressive-crawler attempts=" + .value[1]' 2>/dev/null || true
+}
+
+# Query for secret-probing scanners (env files, cloud metadata, VCS configs).
+# These paths are never requested legitimately, so even a handful of hits
+# marks a secret-harvesting scanner. Added 2026-09-21 after a distributed
+# 34.x campaign probed /.env, /proc/self/environ and k8s serviceaccount
+# tokens with spoofed AI-crawler UAs - invisible to the UA-based queries
+# above and to the old 4xx pattern (Traefik JSON logs).
+get_secret_probe_ips() {
+    log "Querying Loki for secret-probing scanner IPs..."
+
+    local query='topk(50, sum by (ClientHost) (count_over_time({job="docker",container="traefik.traefik"} |~ "(?i)(\\.env|proc/self/environ|proc/self/cmdline|serviceaccount/token|\\.git/config|wp-config\\.php|terminal-xhr\\.php|\\.aws/credentials)" | json | ClientHost=~".+" [24h])))'
+
+    curl -s -H "X-Scope-OrgID: $LOKI_TENANT_ID" \
+        "$LOKI_URL/loki/api/v1/query" \
+        --data-urlencode "query=$query" 2>/dev/null | \
+    jq -r '.data.result[] | select(.value[1] | tonumber >= 5) | .metric.ClientHost + " secret-probe attempts=" + .value[1]' 2>/dev/null || true
 }
 
 # Get currently banned IPs to avoid duplicates
@@ -225,6 +244,20 @@ main() {
         new_ips+=("$ip")
         log "Added $ip ($reason)"
     done < <(get_traefik_crawler_ips)
+
+    # Secret-probing scanners
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        local ip="${line%% *}"
+        local reason="${line#* }"
+
+        if echo "$banned_ips" | grep -q "^$ip$"; then continue; fi
+        if [[ "$ip" =~ ^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.) ]]; then continue; fi
+
+        echo "$(date '+%Y-%m-%d %H:%M:%S') $ip $reason" >> "$BLOCKLIST_LOG"
+        new_ips+=("$ip")
+        log "Added $ip ($reason)"
+    done < <(get_secret_probe_ips)
 
     log "Blocklist update complete. Added ${#new_ips[@]} new IPs."
 
