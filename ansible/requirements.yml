@@ -6,4 +6,10 @@ collections:
 roles:
   - name: geerlingguy.security
   - name: geerlingguy.ssh-chroot-jail
+  # Pinned to the last commit before upstream #18 (merged 2026-09-15) broke
+  # tasks/main.yml's indentation ("when: state == 'update'" landed unindented,
+  # outside the task mapping) - unpinned installs intermittently pull that
+  # broken HEAD and fail Ansible syntax checks. Bump once upstream fixes it.
   - name: sebthebert.ubuntu_pro
+    src: https://github.com/sebthebert/ansible-role-ubuntu_pro.git
+    version: 53f9dd1c4767db5cb771af3df58289c5435a7bbe
