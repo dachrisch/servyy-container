@@ -1,0 +1,69 @@
+---
+# Vaultwarden's own ADMIN_TOKEN: hash the plaintext seed (vaultwarden_admin_token,
+# vars/.vaultwarden_admin_token) into the argon2id form Vaultwarden's ADMIN_TOKEN env
+# var expects, expose it as vaultwarden_admin_token_hash for pass/docker.env.j2, and
+# mirror the plaintext into Vaultwarden itself as a convenience copy (source of truth
+# stays the seed file - same pattern as the restic passwords / opencode keys).
+#
+# PHC-format argon2 hashes are self-describing (params are encoded in the string), so
+# any compliant argon2id implementation's output verifies fine regardless of which
+# tool produced it - this doesn't need to match Vaultwarden's own Rust argon2 crate
+# byte-for-byte, just be a valid argon2id PHC hash of the secret.
+
+- name: Check that argon2-cffi is available on the controller
+  ansible.builtin.command:
+    cmd: python3 -c "import argon2"
+  delegate_to: localhost
+  become: false
+  register: argon2_check
+  changed_when: false
+  failed_when: false
+
+- name: Fail clearly when argon2-cffi is missing
+  ansible.builtin.fail:
+    msg: >-
+      python3's argon2-cffi module is not installed on the Ansible controller, but
+      pass.lehel.xyz's ADMIN_TOKEN hash needs to be computed. Install it with
+      `pip install --user argon2-cffi`.
+  delegate_to: localhost
+  become: false
+  when: argon2_check.rc != 0
+
+- name: Compute Vaultwarden ADMIN_TOKEN argon2id hash
+  ansible.builtin.command:
+    cmd: python3 -c "import argon2, os; print(argon2.PasswordHasher().hash(os.environ['VW_ADMIN_TOKEN']))"
+  environment:
+    VW_ADMIN_TOKEN: "{{ vaultwarden_admin_token }}"
+  delegate_to: localhost
+  become: false
+  register: vaultwarden_admin_token_hash_result
+  changed_when: false
+  no_log: true
+
+- name: Set ADMIN_TOKEN hash fact
+  ansible.builtin.set_fact:
+    vaultwarden_admin_token_hash: "{{ vaultwarden_admin_token_hash_result.stdout | trim }}"
+  no_log: true
+
+# Convenience copy only (mirrors the restic-password / opencode-key pattern);
+# vars/.vaultwarden_admin_token stays the source of truth. Skipped when the
+# operator left the Vaultwarden master password blank at the servyy.sh prompt.
+# Host-guarded like restic's handler: vw_server always points at the real
+# pass.lehel.xyz, so this must never fire from a test-inventory run even if
+# 'pass' were temporarily enabled there for verification.
+- name: Push Vaultwarden admin token to Vaultwarden
+  ansible.builtin.include_role:
+    name: vaultwarden
+    tasks_from: push_items.yml
+  vars:
+    vaultwarden_item_username: "pass"
+    vaultwarden_items:
+      - name: "vaultwarden - admin token (pass.lehel.xyz)"
+        secret: "{{ vaultwarden_admin_token }}"
+        notes: >-
+          Plaintext ADMIN_TOKEN for pass.lehel.xyz's /admin panel (copy of Ansible
+          seed vars/.vaultwarden_admin_token). pass/docker.env.j2's ADMIN_TOKEN is
+          the argon2id hash of this value, not this value itself.
+  when:
+    - inventory_hostname == 'servy.lehel.xyz'
+    - vw_master_password | default('') | length > 0
