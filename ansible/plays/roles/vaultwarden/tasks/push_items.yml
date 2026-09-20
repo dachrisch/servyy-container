@@ -24,7 +24,7 @@
 
 - name: Build map of existing items for our push list (lookup only relevant items)
   ansible.builtin.set_fact:
-    existing_items_map: "{{ existing_items_map | default({}) | combine({item.name: {'id': (bw_items_raw.stdout | from_json | selectattr('name', 'equalto', item.name) | first | default({})).get('id', ''), 'secret': (bw_items_raw.stdout | from_json | selectattr('name', 'equalto', item.name) | first | default({'login': {}})).login.password}}) }}"
+    existing_items_map: "{{ existing_items_map | default({}) | combine({item.name: {'id': (bw_items_raw.stdout | from_json | selectattr('name', 'equalto', item.name) | first | default({})).get('id', ''), 'secret': (bw_items_raw.stdout | from_json | selectattr('name', 'equalto', item.name) | first | default({})).get('login', {}).get('password', '')}}) }}"
   delegate_to: localhost
   run_once: true
   become: false
