@@ -10,7 +10,6 @@ test:
         devhub: true
         opencode: true
         leaguesphere: true
-        pass: true
       searxng_service_host: search.servyy-test.lxd
       searxng_traefik_entrypoint: web
       searxng_traefik_tls: "false"
