@@ -77,12 +77,12 @@
   register: vaultwarden_admin_token_hash_result
   changed_when: false
   no_log: true
-  when: not (hash_still_valid is defined and hash_still_valid.rc == 0)
+  when: hash_still_valid.rc | default(1) != 0
 
 - name: Set ADMIN_TOKEN hash fact (reuse existing when still valid, else the fresh one)
   ansible.builtin.set_fact:
     vaultwarden_admin_token_hash: >-
-      {{ existing_admin_token_hash if (hash_still_valid is defined and hash_still_valid.rc == 0)
+      {{ existing_admin_token_hash if (hash_still_valid.rc | default(1) == 0)
          else vaultwarden_admin_token_hash_result.stdout | trim }}
   no_log: true
 
