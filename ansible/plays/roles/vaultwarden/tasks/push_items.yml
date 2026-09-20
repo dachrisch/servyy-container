@@ -22,9 +22,20 @@
   changed_when: false
   no_log: true
 
+# Only adds a key when the item is ACTUALLY found. combine()-ing an entry for
+# every requested name regardless of whether it exists (e.g. via a first|default({})
+# fallback) means existing_items_map.keys() always contains every requested name,
+# so "not in existing_items_map.keys()" below never detects a genuinely new item -
+# it gets routed to "update" with an empty item id instead, and `bw edit item ""`
+# fails. Leaving absent items out of the map entirely is what makes that rejectattr
+# check work.
 - name: Build map of existing items for our push list (lookup only relevant items)
   ansible.builtin.set_fact:
-    existing_items_map: "{{ existing_items_map | default({}) | combine({item.name: {'id': (bw_items_raw.stdout | from_json | selectattr('name', 'equalto', item.name) | first | default({})).get('id', ''), 'secret': (bw_items_raw.stdout | from_json | selectattr('name', 'equalto', item.name) | first | default({})).get('login', {}).get('password', '')}}) }}"
+    existing_items_map: >-
+      {{ existing_items_map | default({})
+         | combine({item.name: {'id': found[0].id, 'secret': found[0].login.get('password', '')}} if found | length > 0 else {}) }}
+  vars:
+    found: "{{ bw_items_raw.stdout | from_json | selectattr('name', 'equalto', item.name) | list }}"
   delegate_to: localhost
   run_once: true
   become: false
