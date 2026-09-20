@@ -29,7 +29,45 @@
   become: false
   when: argon2_check.rc != 0
 
-- name: Compute Vaultwarden ADMIN_TOKEN argon2id hash
+# argon2's hash() call salts randomly each time, so re-hashing on every run would
+# produce a different ADMIN_TOKEN string every deploy and recreate the (otherwise
+# untouched) pass container on every routine servyy.sh run. Reuse the already-
+# rendered hash when it still verifies against the current plaintext seed; only
+# compute a fresh one on first deploy or an actual rotation (seed changed).
+- name: Check for an already-rendered .env for pass
+  ansible.builtin.stat:
+    path: "{{ docker.remote_dir }}/pass/.env"
+  register: pass_env_stat
+
+- name: Slurp the existing .env for pass
+  ansible.builtin.slurp:
+    src: "{{ docker.remote_dir }}/pass/.env"
+  register: pass_env_slurp
+  when: pass_env_stat.stat.exists
+
+- name: Extract the existing ADMIN_TOKEN hash (un-escape compose's "$$" -> "$")
+  ansible.builtin.set_fact:
+    existing_admin_token_hash: >-
+      {{ (pass_env_slurp.content | b64decode | regex_findall('ADMIN_TOKEN=(.*)') | first | default(''))
+         | replace('$$', '$') }}
+  when: pass_env_stat.stat.exists
+  no_log: true
+
+- name: Check whether the existing hash still matches the current plaintext seed
+  ansible.builtin.command:
+    cmd: python3 -c "import argon2, os; argon2.PasswordHasher().verify(os.environ['VW_HASH'], os.environ['VW_ADMIN_TOKEN'])"
+  environment:
+    VW_HASH: "{{ existing_admin_token_hash | default('') }}"
+    VW_ADMIN_TOKEN: "{{ vaultwarden_admin_token }}"
+  delegate_to: localhost
+  become: false
+  register: hash_still_valid
+  changed_when: false
+  failed_when: false
+  no_log: true
+  when: existing_admin_token_hash | default('') | length > 0
+
+- name: Compute a fresh Vaultwarden ADMIN_TOKEN argon2id hash (first deploy or rotation)
   ansible.builtin.command:
     cmd: python3 -c "import argon2, os; print(argon2.PasswordHasher().hash(os.environ['VW_ADMIN_TOKEN']))"
   environment:
@@ -39,10 +77,13 @@
   register: vaultwarden_admin_token_hash_result
   changed_when: false
   no_log: true
+  when: not (hash_still_valid is defined and hash_still_valid.rc == 0)
 
-- name: Set ADMIN_TOKEN hash fact
+- name: Set ADMIN_TOKEN hash fact (reuse existing when still valid, else the fresh one)
   ansible.builtin.set_fact:
-    vaultwarden_admin_token_hash: "{{ vaultwarden_admin_token_hash_result.stdout | trim }}"
+    vaultwarden_admin_token_hash: >-
+      {{ existing_admin_token_hash if (hash_still_valid is defined and hash_still_valid.rc == 0)
+         else vaultwarden_admin_token_hash_result.stdout | trim }}
   no_log: true
 
 # Convenience copy only (mirrors the restic-password / opencode-key pattern);
