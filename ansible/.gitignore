@@ -9,5 +9,8 @@ vars/.restic_password_ls_db
 # Vaultwarden's own ADMIN_TOKEN (generated and persisted by Ansible)
 plays/vars/.vaultwarden_admin_token
 vars/.vaultwarden_admin_token
+
+# Vaultwarden master password, manually dropped here for one-off runs - never commit
+.vw_master_pw
 __pycache__/
 .ansible/
