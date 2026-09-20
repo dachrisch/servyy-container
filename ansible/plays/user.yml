@@ -267,9 +267,18 @@
       when: "'portainer-agent' in (services | default([]))"
       tags: [user.docker, user.docker.portainer-agent]
 
+    # Computes vaultwarden_admin_token_hash (consumed by pass/docker.env.j2 below) and
+    # mirrors the plaintext seed into Vaultwarden itself as a convenience copy.
+    - role: vaultwarden_admin_token
+      when: "'pass' in (services | default([]))"
+      tags: [user.docker, user.docker.pass]
+
     - role: docker_service
       vars:
         service_dir: pass
+        env_templates:
+          - src: pass/docker.env.j2
+            dest: .env
       when: "'pass' in (services | default([]))"
       tags: [user.docker, user.docker.pass]
 
