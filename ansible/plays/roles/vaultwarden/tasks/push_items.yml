@@ -101,10 +101,10 @@
           'notes': item.notes,
           'login': {'username': vaultwarden_item_username | default('ansible'), 'password': item.secret, 'uris': []}}
          | to_json }}
-  loop: "{{ items_to_update }}"
+  loop: "{{ items_to_update | default([]) }}"
   loop_control:
     label: "{{ item.name }}"
-  when: items_to_update | length > 0
+  when: items_to_update | default([]) | length > 0
   changed_when: true
   no_log: true
 
@@ -112,7 +112,7 @@
   ansible.builtin.debug:
     msg: >-
       {{ item.name }}:
-      {{ 'created' if item.name in items_to_create | map(attribute='name') | list else ('updated' if item.name in items_to_update | map(attribute='name') | list else 'unchanged') }}
+      {{ 'created' if item.name in items_to_create | map(attribute='name') | list else ('updated' if item.name in items_to_update | default([]) | map(attribute='name') | list else 'unchanged') }}
   delegate_to: localhost
   run_once: true
   become: false
