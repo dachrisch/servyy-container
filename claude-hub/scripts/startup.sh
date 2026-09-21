@@ -26,14 +26,21 @@ git config --global --add safe.directory '*'
 echo "[startup] registering github credential helper..."
 # 4. Install the credential helper from the read-only /scripts mount to a
 #    writable, executable path, then register it for github.com HTTPS auth.
-#    An absolute path passed to credential.helper is invoked directly by git
-#    (argv[0] = the path, "get"/"store"/"erase" appended as an argument);
-#    only a "!"-prefixed value is run through a shell. Since this is a plain
-#    absolute path (no "!"), no prefix is needed. Confirmed against git's
-#    documented credential.helper resolution rules.
+#    Every form of credential.helper (bare name, absolute path, or
+#    "!"-prefixed) is executed via a shell (sh -c) per gitcredentials(7);
+#    the forms differ only in what string is built for that shell command,
+#    not in whether a shell runs. A plain absolute path like this one is
+#    used as-is with no "!" needed -- confirmed against git's documented
+#    credential.helper resolution rules.
 cp /scripts/gh-cred-helper.sh /usr/local/bin/gh-cred-helper.sh
 chmod +x /usr/local/bin/gh-cred-helper.sh
 git config --global credential.https://github.com.helper '/usr/local/bin/gh-cred-helper.sh'
+# credential.useHttpPath defaults to false, which makes git strip the
+# "path" attribute (the owner/repo.git part) from every credential
+# request sent to an HTTP(S) helper -- without this, gh-cred-helper.sh's
+# owner="${path%%/*}" routing always sees an empty path and always falls
+# into its default case. Must be set for per-org PAT selection to work.
+git config --global credential.useHttpPath true
 
 echo "[startup] seeding ~/.claude/settings.json..."
 # 5. Idempotently merge {"remoteControlAtStartup": true} into
