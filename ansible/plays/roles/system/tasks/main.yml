@@ -43,7 +43,7 @@
 - import_tasks: claude_hub_prune.yml
   when: >-
     (claude_hub_prune.enabled | default(true))
-    and ((services_enabled['claude-hub'] | default(false)) == true)
+    and (services_enabled['claude-hub'] | default(false))
   tags:
     - system.docker
     - system.docker.claude_hub_prune
