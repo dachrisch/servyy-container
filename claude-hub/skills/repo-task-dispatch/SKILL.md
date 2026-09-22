@@ -1,19 +1,6 @@
 ---
 name: repo-task-dispatch
-description: Dispatch a new per-repo Claude Code session from the claude-hub session
-triggers:
-  - "start work on"
-  - "continue work on"
-  - "new session"
-  - "spin up"
-  - "launch session"
-  - "work on the"
-  - "task for"
-  - repo
-delegates_to: []
-reads:
-  - scripts/launch-session.sh
-  - scripts/prune-sessions.sh
+description: Use when the user asks to start, resume, or continue work on a specific repo or task -- e.g. "start work on the leagues-finance bug", "spin up a session for servyy-container to fix the DNS thing", "continue the job-search scraper work", "new session for X", "launch a task for Y". Discovers the right gh-dash-tagged repo (across the dachrisch and bumbleflies orgs), sets up an isolated git worktree, and spawns a new independent Remote-Control-visible Claude Code session for it.
 ---
 
 # Repo Task Dispatch
