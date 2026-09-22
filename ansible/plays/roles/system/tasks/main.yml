@@ -40,6 +40,15 @@
     - system.docker.cleanup
     - system.maintenance
 
+- import_tasks: claude_hub_prune.yml
+  when: >-
+    (claude_hub_prune.enabled | default(true))
+    and ((services_enabled['claude-hub'] | default(false)) == true)
+  tags:
+    - system.docker
+    - system.docker.claude_hub_prune
+    - system.maintenance
+
 - import_tasks: apt_upgrade.yml
   when: apt_upgrade.enabled | default(true)
   tags:
