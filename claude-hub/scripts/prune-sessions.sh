@@ -95,6 +95,17 @@ while IFS= read -r marker; do
   repo="$(basename "$dev_dest")"
   session_name="$(sanitize_session_name "${owner}-${repo}-${branch_name}")"
 
+  # Liveness check: the .claude-hub-created marker is stamped once at
+  # creation and never refreshed, so age-since-creation alone cannot tell an
+  # abandoned worktree from one that's still being actively worked on. If the
+  # tmux session is still alive, that overrides the age check entirely --
+  # skip pruning (and do NOT kill the session or remove the worktree) rather
+  # than destroying uncommitted work with no warning.
+  if tmux has-session -t "$session_name" 2>/dev/null; then
+    log "skipping $owner/$repo branch=$branch_name worktree=$worktree_dir: session=$session_name is still active"
+    continue
+  fi
+
   tmux kill-session -t "$session_name" 2>/dev/null || true
 
   if git -C "$dev_dest" worktree remove --force "$worktree_dir" 2>/dev/null; then

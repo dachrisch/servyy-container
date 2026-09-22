@@ -21,7 +21,7 @@ echo "[startup] configuring git identity..."
 # 3. Git identity for commits made from inside this container.
 git config --global user.name "claude-hub"
 git config --global user.email "claude-hub@codey.lehel.xyz"
-git config --global --add safe.directory '*'
+git config --global --replace-all safe.directory '*'
 
 echo "[startup] registering github credential helper..."
 # 4. Install the credential helper from the read-only /scripts mount to a
@@ -77,8 +77,19 @@ echo "[startup] starting hub session..."
 # against a live installed CLI as part of this implementation. Check
 # `claude --help` before relying on this at the first real deploy.
 HUB_DIR="$HOME/dev/${INFRA_REPO:-dachrisch/servyy-container}"
+# provision-repos.sh (step 6 above) is best-effort and can fail silently to
+# clone/anchor $HUB_DIR. Without this check, `tmux new-session -c "$HUB_DIR"`
+# on a missing directory either falls back to $HOME (the workspace-trust
+# failure mode) or, worse, dies here under `set -e` -- which would loop the
+# expensive apk/npm install every `restart: unless-stopped` cycle with no
+# running container to `docker exec` into and debug. Log and continue either
+# way; this check must never itself be fatal.
+if [ ! -d "$HUB_DIR/.git" ]; then
+  echo "[startup] ERROR: $HUB_DIR is not a git checkout -- provision-repos.sh likely failed to clone/update it; hub session will still be started anchored there so an operator can docker exec in and fix it"
+fi
 if ! tmux has-session -t hub 2>/dev/null; then
   tmux new-session -d -s hub -c "$HUB_DIR" \
-    "claude --continue --remote-control 'hub' || claude --remote-control 'hub'"
+    "claude --continue --remote-control 'hub' || claude --remote-control 'hub'" \
+    || echo "[startup] ERROR: hub session failed to start"
 fi
 exec tail -f /dev/null
