@@ -20,3 +20,7 @@ env_templates:
     dest: .env
 compose_file: docker-compose.yml
 manual: false
+# Docker volumes to ensure exist before `docker compose up` (e.g. volumes
+# referenced as `external: true` by this service but owned by another compose
+# project). Ordering-independent: whichever service runs first creates it.
+ensure_volumes: []
