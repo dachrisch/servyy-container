@@ -612,7 +612,7 @@ cd ansible && ./servyy.sh --tags "docker" --limit all
 | Server | Role | Services |
 |--------|------|----------|
 | `servy.lehel.xyz` | Primary production | traefik, monitor, photoprism, git, leaguesphere-*, etc. |
-| `codey.lehel.xyz` | Secondary (opencode-only) | opencode |
+| `codey.lehel.xyz` | Secondary (opencode + claude-hub) | opencode, claude-hub |
 | `aqui.fritz.box` | Dev/testing | Various dev services |
 | `servyy-test.lxd` | Test environment | Mirrors production for validation |
 
@@ -639,6 +639,7 @@ When responding to requests like "deploy X" or "fix error in X":
 | photoprism | photoprism.photoprism | photoprism.lehel.xyz | Photo library |
 | git | git.gitea | git.lehel.xyz | Git hosting |
 | leaguesphere-demo | leaguesphere-demo.{www,demo-app,mysql} | demo.leaguesphere.app | LeagueSphere demo (auto-resets nightly) |
+| claude-hub | claude-hub.hub | *(none — `traefik.enable=false`, SSH/CLI only)* | Headless Claude Code session dispatcher on `codey.lehel.xyz`; spawns per-repo sessions via `tmux attach`/`docker exec`, no public URL |
 
 > **LeagueSphere prod/stage/demo/test environments, setup, logs, and the
 > "investigate-on-prod / reproduce-with-prod-data-on-stage" workflows:** see
