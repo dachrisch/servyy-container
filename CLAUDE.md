@@ -639,7 +639,7 @@ When responding to requests like "deploy X" or "fix error in X":
 | photoprism | photoprism.photoprism | photoprism.lehel.xyz | Photo library |
 | git | git.gitea | git.lehel.xyz | Git hosting |
 | leaguesphere-demo | leaguesphere-demo.{www,demo-app,mysql} | demo.leaguesphere.app | LeagueSphere demo (auto-resets nightly) |
-| claude-hub | claude-hub.hub | *(none — `traefik.enable=false`, SSH/CLI only)* | Headless Claude Code session dispatcher on `codey.lehel.xyz`; spawns per-repo sessions via `tmux attach`/`docker exec`, no public URL |
+| claude-hub | claude-hub.hub | *(none — `traefik.enable=false`, SSH/CLI only)* | Headless Claude Code session dispatcher on `codey.lehel.xyz`; spawns per-repo sessions via `tmux attach`/`docker exec`, no public URL; shares its `/root/dev` checkouts with `opencode` via the `claude_shared_dev_checkouts` named volume (opencode must deploy first for the `external: true` reference to resolve — see `history/2026-09-22_claude-hub-service.md`) |
 
 > **LeagueSphere prod/stage/demo/test environments, setup, logs, and the
 > "investigate-on-prod / reproduce-with-prod-data-on-stage" workflows:** see

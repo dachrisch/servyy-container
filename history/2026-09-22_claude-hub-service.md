@@ -147,6 +147,65 @@ Confirm the hub session then appears in the claude.ai/code session list
 (Remote Control) before considering the deploy complete. This step must be
 repeated any time the `claude_hub_root` volume is lost or recreated.
 
+## Task 6: Shared dev checkouts with opencode
+
+The final whole-branch review (Important finding #5) flagged that
+`claude-hub`'s `provision-repos.sh` independently clones the entire
+`gh-dash`-tagged repo set of both orgs into its own private
+`claude_hub_root` volume — duplicating exactly what `opencode` (already
+running on the same `codey.lehel.xyz` host, same disk) clones into its own
+private `opencode_root` volume, with no orphan cleanup on either side (this
+was the "Future Enhancements" / "Known Issues" duplication noted above).
+Fixed by having both containers mount the **same physical Docker volume** at
+`/root/dev`:
+
+- `opencode/docker-compose.yml` now defines a second top-level volume with a
+  fixed, explicit name (`shared_dev_checkouts`, Docker volume name
+  `claude_shared_dev_checkouts`) and mounts it at `/root/dev` on the
+  `opencode` service, *in addition to* the existing `opencode_root:/root`
+  mount. Docker mounts the more-specific `/root/dev` path from the second
+  volume on top of the less-specific `/root` from the first — standard,
+  supported layered-mount behavior.
+- `claude-hub/docker-compose.yml` references the same volume as
+  `external: true` (same fixed name) and mounts it at `/root/dev` on the
+  `hub` service, *in addition to* the existing `claude_hub_root:/root`
+  mount. `claude-hub`'s worktree working directories
+  (`$HOME/worktrees/<owner>-<repo>/<branch>`) are **not** on the shared
+  volume — only the base `$HOME/dev/<owner>/<repo>` clones are shared; the
+  worktrees stay private to `claude_hub_root`.
+- **No script changes needed.** Both `provision-repos.sh` and
+  `provision-dev.sh` already resolve their clone directory as `$HOME/dev`
+  (opencode's script allows a `DEV_DIR` override but defaults to the same
+  `$HOME/dev`, and nothing sets that override), use the same
+  `$DEV_DIR/<owner>/<repo>` layout, the same `dachrisch bumbleflies` org
+  list and `gh-dash` topic, and the same clone-if-missing /
+  fetch+checkout+ff-only-pull-if-present idempotent logic. Both containers
+  also already run as root (uid 0) inside their images, so there's no
+  ownership/permission mismatch between the two writers. Whichever
+  container boots first does the real clone/update; the other's
+  provisioning script just finds an already-current checkout and no-ops
+  through it. `launch-session.sh`'s `$DEV_DIR` and `startup.sh`'s
+  `$HUB_DIR` (`$HOME/dev/$INFRA_REPO`) anchor are likewise unaffected — they
+  only read/write under `$HOME/dev` without caring whether it's backed by a
+  private or shared volume.
+- **Ordering dependency:** `opencode` must be deployed before or together
+  with `claude-hub` on a given host for the `external: true` volume
+  reference to resolve (Compose fails to start `claude-hub` otherwise,
+  since the external volume must already exist). This is already true
+  today — `opencode` is enabled on every host `claude-hub` is
+  (`codey.lehel.xyz`), and the `docker_service` role invocation for
+  `opencode` in `ansible/plays/user.yml` already runs earlier in that
+  file's task list than the one for `claude-hub`.
+- **Migration tradeoff:** on `opencode`'s *first* redeploy after this
+  change, its previously-private `/root/dev` (inside the `opencode_root`
+  volume) becomes orphaned/unused — Docker doesn't delete unused volume
+  data, it just stops being mounted there. This is harmless: the new
+  `shared_dev_checkouts` volume starts empty and `provision-dev.sh` simply
+  re-clones into it on the next boot. No data loss, since these are all
+  just re-creatable git clones; the only cost is one extra clone pass and
+  the old data sitting unused inside `opencode_root` until that volume is
+  itself pruned/removed.
+
 ## Files Changed
 
 **Feature (prior commits on this branch):**
@@ -173,6 +232,14 @@ repeated any time the `claude_hub_root` volume is lost or recreated.
   comment, `.claude-hub-created` added to worktree's shared `info/exclude`
 - `CLAUDE.md` — Key Services + Common Per-Server Configurations rows
 - `history/2026-09-22_claude-hub-service.md` — this document
+
+**Task 6 (shared dev checkouts):**
+- `opencode/docker-compose.yml` — added `shared_dev_checkouts` volume
+  (fixed name `claude_shared_dev_checkouts`), mounted at `/root/dev`
+- `claude-hub/docker-compose.yml` — added `shared_dev_checkouts` volume
+  (`external: true`, same fixed name), mounted at `/root/dev`
+- `CLAUDE.md` — extended the `claude-hub` row with the shared-checkout note
+- `history/2026-09-22_claude-hub-service.md` — this section
 
 ## Testing
 
@@ -214,7 +281,19 @@ carries out the rollout in the plan's "Rollout" section.
   orphan pruning" finding was explicitly deferred (monitoring
   recommendation, not a code change for this pass) — `du -sh` on
   `claude_hub_root` should be checked after the first couple of weeks in
-  production, same as was done for opencode.
+  production, same as was done for opencode. **Resolved by Task 6** (see
+  above): both containers now share one checkout set via the
+  `claude_shared_dev_checkouts` volume, so this is no longer a duplication
+  concern — though orphan pruning of stale `<owner>/<repo>` checkouts that
+  fall out of the `gh-dash` topic (tracked separately, see "Future
+  Enhancements" below) still applies to the now-shared volume.
+- Task 6's compose changes were verified with `docker-compose config`
+  (standalone binary; no live Docker daemon on this workstation) and
+  `ansible-playbook servyy.yml --syntax-check` only — not deployed to
+  `servyy-test.lxd`. The actual cross-container resolution of the
+  `external: true` volume reference, and confirmation that both containers
+  converge on one checkout set at runtime, remain to be verified at the
+  first real test/production deploy.
 
 ## Future Enhancements
 
