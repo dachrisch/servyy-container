@@ -40,6 +40,7 @@
         - job-search
         - manual-svc
         - opencode
+        - claude-hub
 
   tasks:
     - name: Deploy simple service
@@ -91,3 +92,16 @@
             dest: .env
           - src: opencode/.env.j2
             dest: opencode.env
+
+    - name: Deploy claude-hub service (env only)
+      ansible.builtin.include_role:
+        name: docker_service
+        tasks_from: main.yml
+      vars:
+        service_dir: claude-hub
+        manual: true
+        env_templates:
+          - src: docker.env.j2
+            dest: .env
+          - src: claude-hub/.env.j2
+            dest: claude-hub.env

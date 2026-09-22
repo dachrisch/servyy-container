@@ -169,3 +169,46 @@
         path: /home/molecule/opencode/opencode.env
       register: oc_env_perms
       failed_when: oc_env_perms.stat.mode != '0600'
+
+    - name: Check claude-hub.env exists
+      ansible.builtin.stat:
+        path: /home/molecule/claude-hub/claude-hub.env
+      register: ch_env
+      failed_when: not ch_env.stat.exists
+
+    - name: Verify claude-hub.env carries GITHUB_PAT_DACHRISCH
+      ansible.builtin.command:
+        cmd: grep -q '^GITHUB_PAT_DACHRISCH=test-pat-dachrisch$' /home/molecule/claude-hub/claude-hub.env
+      changed_when: false
+
+    - name: Verify claude-hub.env carries GITHUB_PAT_BUMBLEFLIES
+      ansible.builtin.command:
+        cmd: grep -q '^GITHUB_PAT_BUMBLEFLIES=test-pat-bumbleflies$' /home/molecule/claude-hub/claude-hub.env
+      changed_when: false
+
+    - name: Verify claude-hub.env has mode 0600
+      ansible.builtin.stat:
+        path: /home/molecule/claude-hub/claude-hub.env
+      register: ch_env_perms
+      failed_when: ch_env_perms.stat.mode != '0600'
+
+    - name: Verify claude-hub.env does NOT carry SSH_KEY_PATH (needs strictly less than opencode)
+      ansible.builtin.command:
+        cmd: grep -q 'SSH_KEY_PATH' /home/molecule/claude-hub/claude-hub.env
+      register: ch_ssh_key_path_present
+      changed_when: false
+      failed_when: ch_ssh_key_path_present.rc == 0
+
+    - name: Verify claude-hub.env does NOT carry SERVY_SSH_KEY_B64 (needs strictly less than opencode)
+      ansible.builtin.command:
+        cmd: grep -q 'SERVY_SSH_KEY_B64' /home/molecule/claude-hub/claude-hub.env
+      register: ch_servy_ssh_key_present
+      changed_when: false
+      failed_when: ch_servy_ssh_key_present.rc == 0
+
+    - name: Verify claude-hub.env does NOT carry id_github (needs strictly less than opencode)
+      ansible.builtin.command:
+        cmd: grep -q 'id_github' /home/molecule/claude-hub/claude-hub.env
+      register: ch_id_github_present
+      changed_when: false
+      failed_when: ch_id_github_present.rc == 0

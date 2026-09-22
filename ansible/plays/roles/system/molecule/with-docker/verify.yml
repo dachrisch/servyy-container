@@ -61,6 +61,59 @@
         that:
           - kernel_cleanup_timer.stat.exists
 
+    - name: Check claude-hub-prune script exists
+      stat:
+        path: /home/testuser/.cleanup-scripts/claude-hub-prune.sh
+      register: claude_hub_prune_script
+
+    - name: Verify claude-hub-prune script was created
+      assert:
+        that:
+          - claude_hub_prune_script.stat.exists
+          - claude_hub_prune_script.stat.executable
+
+    - name: Check claude-hub-prune service unit exists
+      stat:
+        path: /etc/systemd/system/claude-hub-prune.service
+      register: claude_hub_prune_service
+
+    - name: Verify claude-hub-prune service unit was created
+      assert:
+        that:
+          - claude_hub_prune_service.stat.exists
+
+    - name: Check claude-hub-prune service unit content
+      slurp:
+        path: /etc/systemd/system/claude-hub-prune.service
+      register: claude_hub_prune_service_content
+
+    - name: Verify claude-hub-prune service ExecStart
+      assert:
+        that:
+          - "'ExecStart=/home/testuser/.cleanup-scripts/claude-hub-prune.sh' in claude_hub_prune_service_content.content | b64decode"
+        fail_msg: "claude-hub-prune service unit does not contain expected ExecStart"
+
+    - name: Check claude-hub-prune timer exists
+      stat:
+        path: /etc/systemd/system/claude-hub-prune.timer
+      register: claude_hub_prune_timer
+
+    - name: Verify claude-hub-prune timer was created
+      assert:
+        that:
+          - claude_hub_prune_timer.stat.exists
+
+    - name: Check claude-hub-prune timer content
+      slurp:
+        path: /etc/systemd/system/claude-hub-prune.timer
+      register: claude_hub_prune_timer_content
+
+    - name: Verify claude-hub-prune timer OnCalendar
+      assert:
+        that:
+          - "'OnCalendar=04:30' in claude_hub_prune_timer_content.content | b64decode"
+        fail_msg: "claude-hub-prune timer does not contain expected OnCalendar schedule"
+
     - name: Check unattended-upgrades package is installed
       command: dpkg -l unattended-upgrades
       register: uu_pkg
