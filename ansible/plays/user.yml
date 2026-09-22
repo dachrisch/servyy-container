@@ -446,6 +446,18 @@
       when: "'devhub' in (services | default([]))"
       tags: [user.docker, user.docker.devhub]
 
+    - role: docker_service
+      vars:
+        service_dir: claude-hub
+        service_name: claude-hub
+        env_templates:
+          - src: docker.env.j2
+            dest: .env
+          - src: claude-hub/.env.j2
+            dest: claude-hub.env
+      when: "'claude-hub' in (services | default([]))"
+      tags: [user.docker, user.docker.claude-hub]
+
     # Manual services — env rendered, compose not started
     - role: docker_service
       vars:

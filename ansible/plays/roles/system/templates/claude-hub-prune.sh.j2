@@ -1,0 +1,13 @@
+#!/bin/bash
+# Prune old claude-hub dispatch sessions (worktrees, branches, tmux sessions)
+# by invoking the container's own prune script.
+# Deployed by: ansible/plays/roles/system/tasks/claude_hub_prune.yml
+
+LOG_FILE="{{ claude_hub_prune.log_file }}"
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+
+echo "[$TIMESTAMP] Starting Claude Hub session prune..." | tee -a "$LOG_FILE"
+
+docker exec claude-hub.hub sh /scripts/prune-sessions.sh 2>&1 | tee -a "$LOG_FILE"
+
+echo "[$TIMESTAMP] Claude Hub session prune complete" | tee -a "$LOG_FILE"

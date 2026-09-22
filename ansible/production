@@ -47,3 +47,4 @@ prod:
           # picked up by the user.yml docker_service block). Exposed at
           # h.code.lehel.xyz via Porkbun A/AAAA records → codey (217.217.227.124).
           devhub: true
+          claude-hub: true
