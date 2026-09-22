@@ -12,6 +12,14 @@ HOME="${HOME:-/root}"
 DEV_DIR="$HOME/dev"
 INFRA_REPO="${INFRA_REPO:-dachrisch/servyy-container}"
 
+# This runs unattended from startup.sh (no tty). If the credential helper
+# ever yields a bad PAT, fail instead of hanging on a username/password
+# prompt -- a stall here is worse than in launch-session.sh's interactive
+# dispatch, since it blocks the whole entrypoint from ever starting the hub
+# session.
+GIT_TERMINAL_PROMPT=0
+export GIT_TERMINAL_PROMPT
+
 log() { echo "[provision-repos] $*"; }
 
 mkdir -p "$DEV_DIR"
@@ -34,7 +42,11 @@ else
 fi
 
 # 2. Decode git-crypt key (used for repos flagged with the gh-dash-crypt topic).
+# trap ... EXIT (same pattern prune-sessions.sh uses for its tmpfile) so the
+# decoded key material is removed even on an early exit under `set -eu`, not
+# just on the happy-path cleanup at the bottom of this script.
 CRYPT_KEY=""
+trap 'rm -f "$CRYPT_KEY"' EXIT
 if [ -n "${GIT_CRYPT_KEY_B64:-}" ]; then
   CRYPT_KEY="$(mktemp)"
   echo "$GIT_CRYPT_KEY_B64" | base64 -d > "$CRYPT_KEY"
@@ -112,5 +124,4 @@ repos.forEach(function (r) {
   done
 done
 
-[ -n "$CRYPT_KEY" ] && rm -f "$CRYPT_KEY"
 log "done"

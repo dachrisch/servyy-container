@@ -28,8 +28,12 @@ while IFS='=' read -r key value; do
     path) path="$value" ;;
   esac
 done
-# shellcheck disable=SC2034  # captured per protocol; not used for routing
-: "$host"
+
+# Safe-by-construction, not just safe-by-registration: only ever answer for
+# github.com, even if this helper were ever invoked for some other host
+# (e.g. a misconfigured global credential.helper, rather than the
+# github.com-scoped one startup.sh registers).
+[ "$host" = "github.com" ] || exit 0
 
 # path looks like "owner/repo.git" or "owner/repo"; owner is the first
 # path segment.

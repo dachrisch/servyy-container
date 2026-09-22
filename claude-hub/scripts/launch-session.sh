@@ -34,8 +34,11 @@ ORGS="dachrisch bumbleflies"
 # Launched branches are "<BRANCH_PREFIX>-<slug>-<epoch>". Deliberately no '/'
 # in the branch name: it doubles as the worktree directory name, and a slash
 # would nest the worktree one level too deep for prune-sessions.sh's
-# $HOME/worktrees/*/* scan. prune-sessions.sh only deletes branches carrying
-# this prefix, so keep the two in sync.
+# $HOME/worktrees/*/* scan. prune-sessions.sh does NOT match on this prefix --
+# it discovers worktrees to prune purely by the age of their
+# .claude-hub-created marker file and resolves the owning branch/clone from
+# `git worktree list`, regardless of branch name. BRANCH_PREFIX only needs to
+# stay a stable, slash-free string for the worktree-path scheme above.
 BRANCH_PREFIX="claude-hub"
 
 # This runs under the hub Claude's Bash tool (no tty). If the credential
@@ -220,6 +223,24 @@ git -C "$dest" worktree add "$worktree_dir" -b "$branch_name" "origin/$default_b
 # Marker consumed by prune-sessions.sh. Its mtime (not its content) is what
 # gets aged; the content is just the human-readable creation time.
 date -u +%Y-%m-%dT%H:%M:%SZ > "$worktree_dir/.claude-hub-created"
+
+# Keep the marker out of `git status` in the spawned session. NOTE:
+# info/exclude is one of the files a linked worktree SHARES with its main
+# clone -- `git -C <worktree> rev-parse --git-path info/exclude` resolves
+# through the common gitdir, not a private per-worktree one (verified: it is
+# NOT under $dest/.git/worktrees/<name>/), so this is written once per clone
+# and then applies to every worktree (past and future) of this repo, not just
+# this one. That still satisfies the goal -- the marker never shows up as
+# untracked -- so append idempotently (only if not already present) rather
+# than unconditionally, or repeated launches against the same repo would grow
+# the file with duplicate lines the same way item 8's safe.directory bug did.
+exclude_file="$(git -C "$worktree_dir" rev-parse --git-path info/exclude 2>/dev/null || true)"
+if [ -n "$exclude_file" ]; then
+  mkdir -p "$(dirname "$exclude_file")"
+  if ! grep -qxF '.claude-hub-created' "$exclude_file" 2>/dev/null; then
+    echo '.claude-hub-created' >> "$exclude_file"
+  fi
+fi
 
 # ------------------------------------------------------------- 4. tmux start
 session_name="$(sanitize_session_name "${owner}-${repo}-${branch_name}")"
