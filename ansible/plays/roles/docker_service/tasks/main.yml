@@ -1,5 +1,12 @@
 ---
 - include_tasks: env.yml
 
+- name: Ensure external volumes exist for {{ service_dir }}
+  community.docker.docker_volume:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ ensure_volumes }}"
+  when: not manual | default(false)
+
 - include_tasks: deploy.yml
   when: not manual

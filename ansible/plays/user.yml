@@ -64,7 +64,16 @@
 
     - name: Build enabled services list from services_enabled dict (compatibility layer)
       ansible.builtin.set_fact:
-        services: "{{ services_enabled | default({}) | dict2items | selectattr('value', 'equalto', true) | map(attribute='key') | list }}"
+        services: >-
+          {{
+            (services_enabled | default({}) | dict2items
+              | selectattr('value', 'equalto', true)
+              | map(attribute='key') | list)
+            + (services_enabled | default({}) | dict2items
+              | selectattr('value.enabled', 'defined')
+              | selectattr('value.enabled', 'equalto', true)
+              | map(attribute='key') | list)
+          }}
       tags:
         - user.docker
         - always
@@ -307,6 +316,11 @@
             dest: .env
           - src: opencode/.env.j2
             dest: opencode.env
+        # Owns the claude_shared_dev_checkouts volume (see
+        # opencode/docker-compose.yml); ensure it exists even when only
+        # claude-hub is targeted via --tags.
+        ensure_volumes:
+          - claude_shared_dev_checkouts
       when: "'opencode' in (services | default([]))"
       tags: [user.docker, user.docker.opencode]
 
@@ -455,6 +469,10 @@
             dest: .env
           - src: claude-hub/.env.j2
             dest: claude-hub.env
+        # References claude_shared_dev_checkouts as external (owned by
+        # opencode). Ensure it here so a claude-hub-only --tags run works.
+        ensure_volumes:
+          - claude_shared_dev_checkouts
       when: "'claude-hub' in (services | default([]))"
       tags: [user.docker, user.docker.claude-hub]
 
