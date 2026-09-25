@@ -3,7 +3,7 @@
 **Date:** 2026-09-25
 **Author:** Claude (via user dachrisch)
 **Type:** Bug Fix
-**Status:** 🚧 Pending test verification (not yet deployed to production)
+**Status:** 🚧 Tested on servyy-test.lxd, pending production deploy
 
 ## Summary
 
@@ -50,11 +50,17 @@ regression from a prior working config.
 Set `SHELL=/bin/sh` as a static `environment:` entry on the `hub` service in
 `claude-hub/docker-compose.yml` (not templated — it's a constant container-runtime
 fact, not a per-deploy/per-secret value, so it doesn't belong in
-`docker.env.j2`/`claude-hub/.env.j2`):
+`docker.env.j2`/`claude-hub/.env.j2`).
+
+Also bumped the base image `node:22-alpine` → `node:24-alpine`: Node 22 moved
+from Active to Maintenance LTS in Oct 2025, and Node 24 is the current Active
+LTS (per user request while reviewing this fix — unrelated to the $SHELL root
+cause, both versions leave `$SHELL` unset the same way).
 
 ```yaml
 services:
   hub:
+    image: node:24-alpine
     entrypoint: [ "/bin/sh", "/scripts/startup.sh" ]
     environment:
       - SHELL=/bin/sh
@@ -67,12 +73,13 @@ services:
 
 1. Branch: `claude/claude-hub-fix-shell-env`
 2. Test on `servyy-test.lxd` (`claude-hub: true` in `ansible/testing`) via
-   `./servyy-test.sh --tags "user.docker.claude-hub"`
-3. Verify `docker exec claude-hub.hub env | grep SHELL` shows `SHELL=/bin/sh` and
-   a fresh `docker exec claude-hub.hub sh /scripts/launch-session.sh <repo> <title>`
-   (or the hub's own Bash tool) works
+   `./servyy-test.sh --tags "user.docker.repo,user.docker.claude-hub"`
+3. Verified: `docker exec claude-hub.hub env | grep SHELL` → `SHELL=/bin/sh`;
+   `sh -c 'echo hello-from-shell'` works; `hub` tmux session started; container
+   reports `healthy`; no shell error in boot logs
 4. Production deploy to `codey.lehel.xyz` pending explicit user approval
 
 ## Files Changed
 
-- `claude-hub/docker-compose.yml` — added `SHELL=/bin/sh` to the `hub` service
+- `claude-hub/docker-compose.yml` — bumped `node:22-alpine` → `node:24-alpine`,
+  added `SHELL=/bin/sh` to the `hub` service
