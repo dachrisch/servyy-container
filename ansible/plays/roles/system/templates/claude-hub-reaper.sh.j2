@@ -1,0 +1,16 @@
+#!/bin/bash
+# Run the vendored session-reaper.mjs's park sweep inside the claude-hub container.
+# Deployed by: ansible/plays/roles/system/tasks/claude_hub_reaper.yml
+#
+# This only ever parks idle/never-prompted/cleared sessions (reversible via revive) -- it never
+# deletes a worktree. list/revive/close are hub-Bash-tool-invoked, not cron-invoked; the long-tail
+# force-close backstop is claude-hub-force-cleanup.sh, on its own separate weekly timer.
+
+LOG_FILE="{{ claude_hub_reaper.log_file }}"
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+
+echo "[$TIMESTAMP] Starting Claude Hub session reaper..." | tee -a "$LOG_FILE"
+
+docker exec claude-hub.hub node /opt/vendor/skills/session-reaper/scripts/session-reaper.mjs --action run --text 2>&1 | tee -a "$LOG_FILE"
+
+echo "[$TIMESTAMP] Claude Hub session reaper complete" | tee -a "$LOG_FILE"

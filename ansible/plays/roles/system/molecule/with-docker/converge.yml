@@ -23,10 +23,15 @@
       enabled: true
       run_time: '05:00'
       reboot_time: '05:30'
-    claude_hub_prune:
+    claude_hub_reaper:
       enabled: true
-      schedule: '04:30'
-      log_file: '/var/log/claude-hub-prune.log'
+      every_minutes: 15
+      log_file: '/var/log/claude-hub-reaper.log'
+    claude_hub_force_cleanup:
+      enabled: true
+      days: 75
+      schedule: 'Sun 06:00'
+      log_file: '/var/log/claude-hub-force-cleanup.log'
     services_enabled:
       claude-hub: true
   tasks:
@@ -56,14 +61,23 @@
       when: kernel_cleanup.enabled | default(true)
       tags: [system.kernel, system.kernel.cleanup]
 
-    - name: Run claude_hub_prune tasks  # noqa: role-name[path]
+    - name: Run claude_hub_reaper tasks  # noqa: role-name[path]
       ansible.builtin.include_role:
         name: "{{ playbook_dir }}/../../"
-        tasks_from: claude_hub_prune
+        tasks_from: claude_hub_reaper
       when: >-
-        (claude_hub_prune.enabled | default(true))
+        (claude_hub_reaper.enabled | default(true))
         and (services_enabled['claude-hub'] | default(false))
-      tags: [system.docker, system.docker.claude_hub_prune]
+      tags: [system.docker, system.docker.claude_hub_reaper]
+
+    - name: Run claude_hub_force_cleanup tasks  # noqa: role-name[path]
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../../"
+        tasks_from: claude_hub_force_cleanup
+      when: >-
+        (claude_hub_force_cleanup.enabled | default(true))
+        and (services_enabled['claude-hub'] | default(false))
+      tags: [system.docker, system.docker.claude_hub_force_cleanup]
 
     - name: Run apt_upgrade tasks  # noqa: role-name[path]
       ansible.builtin.include_role:

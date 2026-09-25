@@ -1,5 +1,5 @@
 [Unit]
-Description=Claude Hub session prune
+Description=Claude Hub session reaper
 After=docker.service
 Requires=docker.service
 
@@ -7,7 +7,7 @@ Requires=docker.service
 Type=oneshot
 User={{ create_user }}
 Group=docker
-ExecStart=/home/{{ create_user }}/.cleanup-scripts/claude-hub-prune.sh
+ExecStart=/home/{{ create_user }}/.cleanup-scripts/claude-hub-reaper.sh
 StandardOutput=journal
 StandardError=journal
 

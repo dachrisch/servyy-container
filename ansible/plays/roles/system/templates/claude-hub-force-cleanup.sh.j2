@@ -1,0 +1,19 @@
+#!/bin/bash
+# Run the long-tail disk-growth backstop (force-close sessions parked far longer than
+# CLAUDE_HUB_FORCE_CLEANUP_DAYS) inside the claude-hub container.
+# Deployed by: ansible/plays/roles/system/tasks/claude_hub_force_cleanup.yml
+#
+# A deliberate, infra-specific exception to session-reaper's own "never close on a timeout"
+# guardrail -- see claude-hub/scripts/force-cleanup-stale.sh and
+# history/2026-09-26_claude-hub-worktree-dispatch-rework.md. Still refuses a dirty worktree, still
+# always keeps branches: this can never lose committed work, only tear down a stale, already-clean
+# workspace directory.
+
+LOG_FILE="{{ claude_hub_force_cleanup.log_file }}"
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+
+echo "[$TIMESTAMP] Starting Claude Hub force-cleanup..." | tee -a "$LOG_FILE"
+
+docker exec claude-hub.hub sh /scripts/force-cleanup-stale.sh 2>&1 | tee -a "$LOG_FILE"
+
+echo "[$TIMESTAMP] Claude Hub force-cleanup complete" | tee -a "$LOG_FILE"

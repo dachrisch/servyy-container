@@ -60,12 +60,46 @@ settings.remoteControlAtStartup = true;
 fs.writeFileSync(path, JSON.stringify(settings, null, 2) + "\n");
 ' || true
 
+echo "[startup] writing ~/.claude/claude-hub.json..."
+# 6. Non-interactively write the config the vendored dispatch/lifecycle scripts read (see
+#    claude-hub/vendor/VENDORED.md) -- the equivalent of running june-hub's own interactive
+#    hub-setup skill, but generated from Ansible-templated env vars every boot instead. Always
+#    fully overwritten (unlike the settings.json merge above): nothing else ever writes this
+#    file, so there is nothing to preserve, and it must stay in sync with the current env vars.
+#    Best-effort: never let a JSON build failure abort startup.
+mkdir -p "$HOME/.claude"
+CLAUDE_HUB_SESSION_PREFIX="${CLAUDE_HUB_SESSION_PREFIX:-[codey]}" \
+CLAUDE_HUB_OWNER="${CLAUDE_HUB_OWNER:-the user}" \
+CLAUDE_HUB_NO_PR_REPOS="${CLAUDE_HUB_NO_PR_REPOS:-}" \
+CLAUDE_HUB_REPO_NOTES_JSON="${CLAUDE_HUB_REPO_NOTES_JSON:-{}}" \
+node -e '
+const fs = require("fs");
+const path = (process.env.CLAUDE_HUB_CONFIG || (process.env.HOME + "/.claude/claude-hub.json"));
+const noPrRepos = (process.env.CLAUDE_HUB_NO_PR_REPOS || "")
+  .split(",").map((s) => s.trim()).filter(Boolean);
+let repoNotes = {};
+try { repoNotes = JSON.parse(process.env.CLAUDE_HUB_REPO_NOTES_JSON || "{}"); } catch (e) { repoNotes = {}; }
+const config = {
+  version: 1,
+  checkoutRoot: "/root/dev",
+  workspaceRoot: "/root/worktrees",
+  sessionPrefix: process.env.CLAUDE_HUB_SESSION_PREFIX,
+  owner: process.env.CLAUDE_HUB_OWNER,
+  repoMap: null,
+  noPrRepos,
+  repoNotes,
+  contextDirs: [],
+  reaper: {},
+};
+fs.writeFileSync(path, JSON.stringify(config, null, 2) + "\n");
+' || echo "[startup] failed to write claude-hub.json (continuing)"
+
 echo "[startup] provisioning repo checkouts..."
-# 6. Provision dev checkouts (infra repo + gh-dash-tagged repos). Best-effort.
+# 7. Provision dev checkouts (infra repo + gh-dash-tagged repos). Best-effort.
 sh /scripts/provision-repos.sh || echo "[startup] provision-repos.sh reported issues (continuing)"
 
 echo "[startup] starting hub session..."
-# 7. Start (or resume) the persistent "hub" tmux session, then keep the
+# 8. Start (or resume) the persistent "hub" tmux session, then keep the
 #    container alive. Guarded by `tmux has-session` so a restart that
 #    somehow finds tmux already running (unlikely -- tmux dies with the
 #    container -- but kept for defensive idempotency) doesn't spawn a

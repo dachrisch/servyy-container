@@ -186,6 +186,38 @@
         cmd: grep -q '^GITHUB_PAT_BUMBLEFLIES=test-pat-bumbleflies$' /home/molecule/claude-hub/claude-hub.env
       changed_when: false
 
+    - name: Verify claude-hub.env carries CLAUDE_HUB_SESSION_PREFIX (default)
+      ansible.builtin.command:
+        cmd: grep -q '^CLAUDE_HUB_SESSION_PREFIX=\[codey\]$' /home/molecule/claude-hub/claude-hub.env
+      changed_when: false
+
+    - name: Verify claude-hub.env carries CLAUDE_HUB_OWNER (default)
+      ansible.builtin.command:
+        cmd: grep -q '^CLAUDE_HUB_OWNER=dachrisch$' /home/molecule/claude-hub/claude-hub.env
+      changed_when: false
+
+    - name: Verify claude-hub.env carries CLAUDE_HUB_NO_PR_REPOS (present, empty by default)
+      ansible.builtin.command:
+        cmd: grep -q '^CLAUDE_HUB_NO_PR_REPOS=' /home/molecule/claude-hub/claude-hub.env
+      changed_when: false
+
+    - name: Verify claude-hub.env carries CLAUDE_HUB_REPO_NOTES_JSON (default {})
+      ansible.builtin.command:
+        cmd: grep -q '^CLAUDE_HUB_REPO_NOTES_JSON={}$' /home/molecule/claude-hub/claude-hub.env
+      changed_when: false
+
+    - name: Verify claude-hub.env carries CLAUDE_HUB_FORCE_CLEANUP_DAYS (default 75)
+      ansible.builtin.command:
+        cmd: grep -q '^CLAUDE_HUB_FORCE_CLEANUP_DAYS=75$' /home/molecule/claude-hub/claude-hub.env
+      changed_when: false
+
+    - name: Verify claude-hub.env no longer carries CLAUDE_HUB_PRUNE_DAYS (superseded by the reaper)
+      ansible.builtin.command:
+        cmd: grep -q '^CLAUDE_HUB_PRUNE_DAYS=' /home/molecule/claude-hub/claude-hub.env
+      register: prune_days_present
+      changed_when: false
+      failed_when: prune_days_present.rc == 0
+
     - name: Verify claude-hub.env has mode 0600
       ansible.builtin.stat:
         path: /home/molecule/claude-hub/claude-hub.env

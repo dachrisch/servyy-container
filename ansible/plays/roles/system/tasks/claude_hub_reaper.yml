@@ -1,0 +1,78 @@
+---
+# Renamed from claude_hub_prune.yml (see history/2026-09-26_claude-hub-worktree-dispatch-rework.md):
+# the old prune script force-deleted worktrees by age alone; this instead runs the vendored
+# session-reaper.mjs, which only ever parks (reversible) unless a task session explicitly
+# close-requests itself. Tear down the old units first -- a template rename doesn't delete the
+# previously rendered files.
+
+- name: Stop and disable old claude-hub-prune timer (renamed to claude-hub-reaper)
+  systemd:
+    name: claude-hub-prune.timer
+    state: stopped
+    enabled: false
+  become: true
+  failed_when: false
+
+- name: Remove old claude-hub-prune unit files and script
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/claude-hub-prune.timer
+    - /etc/systemd/system/claude-hub-prune.service
+    - "/home/{{ create_user }}/.cleanup-scripts/claude-hub-prune.sh"
+  become: true
+  notify: reload systemd
+
+- name: Create cleanup scripts directory
+  file:
+    path: "/home/{{ create_user }}/.cleanup-scripts"
+    state: directory
+    mode: '0755'
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+  become: true
+
+- name: Deploy Claude Hub reaper script
+  template:
+    src: claude-hub-reaper.sh.j2
+    dest: "/home/{{ create_user }}/.cleanup-scripts/claude-hub-reaper.sh"
+    mode: '0755'
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+  become: true
+
+- name: Create Claude Hub reaper log file with correct permissions
+  file:
+    path: /var/log/claude-hub-reaper.log
+    state: touch
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0644'
+    modification_time: preserve
+    access_time: preserve
+  become: true
+
+- name: Deploy Claude Hub reaper systemd service
+  template:
+    src: claude-hub-reaper.service.j2
+    dest: /etc/systemd/system/claude-hub-reaper.service
+    mode: '0644'
+  notify: reload systemd
+  become: true
+
+- name: Deploy Claude Hub reaper systemd timer
+  template:
+    src: claude-hub-reaper.timer.j2
+    dest: /etc/systemd/system/claude-hub-reaper.timer
+    mode: '0644'
+  notify: reload systemd
+  become: true
+
+- name: Enable and start Claude Hub reaper timer
+  systemd:
+    name: claude-hub-reaper.timer
+    enabled: true
+    state: started
+  become: true
+  when: ansible_facts['virtualization_type'] | default('') != 'docker'

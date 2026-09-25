@@ -61,58 +61,100 @@
         that:
           - kernel_cleanup_timer.stat.exists
 
-    - name: Check claude-hub-prune script exists
+    - name: Verify old claude-hub-prune script/units were torn down (renamed to reaper)
       stat:
-        path: /home/testuser/.cleanup-scripts/claude-hub-prune.sh
-      register: claude_hub_prune_script
+        path: "{{ item }}"
+      loop:
+        - /home/testuser/.cleanup-scripts/claude-hub-prune.sh
+        - /etc/systemd/system/claude-hub-prune.service
+        - /etc/systemd/system/claude-hub-prune.timer
+      register: claude_hub_prune_leftovers
+      failed_when: claude_hub_prune_leftovers.stat.exists
 
-    - name: Verify claude-hub-prune script was created
+    - name: Check claude-hub-reaper script exists
+      stat:
+        path: /home/testuser/.cleanup-scripts/claude-hub-reaper.sh
+      register: claude_hub_reaper_script
+
+    - name: Verify claude-hub-reaper script was created
       assert:
         that:
-          - claude_hub_prune_script.stat.exists
-          - claude_hub_prune_script.stat.executable
+          - claude_hub_reaper_script.stat.exists
+          - claude_hub_reaper_script.stat.executable
 
-    - name: Check claude-hub-prune service unit exists
+    - name: Check claude-hub-reaper service unit exists
       stat:
-        path: /etc/systemd/system/claude-hub-prune.service
-      register: claude_hub_prune_service
+        path: /etc/systemd/system/claude-hub-reaper.service
+      register: claude_hub_reaper_service
 
-    - name: Verify claude-hub-prune service unit was created
+    - name: Verify claude-hub-reaper service unit was created
       assert:
         that:
-          - claude_hub_prune_service.stat.exists
+          - claude_hub_reaper_service.stat.exists
 
-    - name: Check claude-hub-prune service unit content
+    - name: Check claude-hub-reaper service unit content
       slurp:
-        path: /etc/systemd/system/claude-hub-prune.service
-      register: claude_hub_prune_service_content
+        path: /etc/systemd/system/claude-hub-reaper.service
+      register: claude_hub_reaper_service_content
 
-    - name: Verify claude-hub-prune service ExecStart
+    - name: Verify claude-hub-reaper service ExecStart
       assert:
         that:
-          - "'ExecStart=/home/testuser/.cleanup-scripts/claude-hub-prune.sh' in claude_hub_prune_service_content.content | b64decode"
-        fail_msg: "claude-hub-prune service unit does not contain expected ExecStart"
+          - "'ExecStart=/home/testuser/.cleanup-scripts/claude-hub-reaper.sh' in claude_hub_reaper_service_content.content | b64decode"
+        fail_msg: "claude-hub-reaper service unit does not contain expected ExecStart"
 
-    - name: Check claude-hub-prune timer exists
+    - name: Check claude-hub-reaper timer exists
       stat:
-        path: /etc/systemd/system/claude-hub-prune.timer
-      register: claude_hub_prune_timer
+        path: /etc/systemd/system/claude-hub-reaper.timer
+      register: claude_hub_reaper_timer
 
-    - name: Verify claude-hub-prune timer was created
+    - name: Verify claude-hub-reaper timer was created
       assert:
         that:
-          - claude_hub_prune_timer.stat.exists
+          - claude_hub_reaper_timer.stat.exists
 
-    - name: Check claude-hub-prune timer content
+    - name: Check claude-hub-reaper timer content
       slurp:
-        path: /etc/systemd/system/claude-hub-prune.timer
-      register: claude_hub_prune_timer_content
+        path: /etc/systemd/system/claude-hub-reaper.timer
+      register: claude_hub_reaper_timer_content
 
-    - name: Verify claude-hub-prune timer OnCalendar
+    - name: Verify claude-hub-reaper timer runs every 15 minutes (not a once-daily OnCalendar)
       assert:
         that:
-          - "'OnCalendar=04:30' in claude_hub_prune_timer_content.content | b64decode"
-        fail_msg: "claude-hub-prune timer does not contain expected OnCalendar schedule"
+          - "'OnUnitActiveSec=15min' in claude_hub_reaper_timer_content.content | b64decode"
+        fail_msg: "claude-hub-reaper timer does not contain expected OnUnitActiveSec interval"
+
+    - name: Check claude-hub-force-cleanup script exists
+      stat:
+        path: /home/testuser/.cleanup-scripts/claude-hub-force-cleanup.sh
+      register: claude_hub_force_cleanup_script
+
+    - name: Verify claude-hub-force-cleanup script was created
+      assert:
+        that:
+          - claude_hub_force_cleanup_script.stat.exists
+          - claude_hub_force_cleanup_script.stat.executable
+
+    - name: Check claude-hub-force-cleanup timer exists
+      stat:
+        path: /etc/systemd/system/claude-hub-force-cleanup.timer
+      register: claude_hub_force_cleanup_timer
+
+    - name: Verify claude-hub-force-cleanup timer was created
+      assert:
+        that:
+          - claude_hub_force_cleanup_timer.stat.exists
+
+    - name: Check claude-hub-force-cleanup timer content
+      slurp:
+        path: /etc/systemd/system/claude-hub-force-cleanup.timer
+      register: claude_hub_force_cleanup_timer_content
+
+    - name: Verify claude-hub-force-cleanup timer OnCalendar (weekly, not the reaper's 15min)
+      assert:
+        that:
+          - "'OnCalendar=Sun 06:00' in claude_hub_force_cleanup_timer_content.content | b64decode"
+        fail_msg: "claude-hub-force-cleanup timer does not contain expected OnCalendar schedule"
 
     - name: Check unattended-upgrades package is installed
       command: dpkg -l unattended-upgrades

@@ -1,0 +1,15 @@
+[Unit]
+Description=Trigger for Claude Hub session reaper
+Requires=claude-hub-reaper.service
+
+[Timer]
+# OnUnitActiveSec= alone has nothing to be relative to on a fresh boot (the service has never run
+# yet), so OnBootSec= gives it a first run a couple of minutes after boot -- enough time for the
+# container to actually start -- and OnUnitActiveSec= repeats it every N minutes after that.
+OnBootSec=2min
+OnUnitActiveSec={{ claude_hub_reaper.every_minutes | default(15) }}min
+RandomizedDelaySec=30s
+Persistent=false
+
+[Install]
+WantedBy=timers.target
