@@ -79,5 +79,15 @@ existed only in `~/.config/opencode/skills/`).
   needs a running opencode container on test.
 
 ## Deployment
-NOT yet deployed to prod `codey.lehel.xyz`. Next: run test handler path,
-then `ansible/servyy.sh --limit codey.lehel.xyz` (or standard prod flow).
+- PR #144 merged to `master` (`c019d1d`), all 21 CI checks green.
+- Prod: NEVER run the full play — deploy scoped with
+  `./servyy.sh --limit codey.lehel.xyz --tags user.docker.opencode`
+  from a clean worktree at `origin/master` (controller hub branch lacks
+  the merge and must not be used). Result: ok=51 changed=14 failed=0.
+- Verified on `codey.lehel.xyz`: 20 skill dirs (no README phantom),
+  patched `plugins/superpowers.js`, fresh `./plugins` mount present on
+  the running container, `opencode.web (healthy)`, boot log shows
+  `gh-stack extension already installed` + `Setup complete`.
+  (File→registry mapping was proven on test with identical content;
+  prod `/api/skill` needs the server password, skipped to avoid
+  handling secrets in shell.)
