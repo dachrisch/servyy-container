@@ -52,7 +52,7 @@ fi
 
 # --- state --------------------------------------------------------------------
 LOG_CURSOR="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-declare -A DIGEST HEALTH STARTED GATE_T0
+declare -A DIGEST DIGEST_PREV HEALTH STARTED GATE_T0
 HIST=""            # strip of last HTTP results: "." = 200, else status code char
 LAST_HTTP="…"
 LAST_HTTP_T=""
@@ -187,13 +187,16 @@ render() {
   printf '%s%s %ss%s  hist:%s\n' "$col" "$LAST_HTTP" "$LAST_HTTP_T" "$RESET" "$HIST"
   printf '├%s┤\n' "$bar"
   printf '│ %sWATCHTOWER-DEV (latest %d)%s\n' "$BOLD" "$LOG_LINES" "$RESET"
-  for line in "${LOG_BUF[@]:-}"; do
-    if printf '%s' "$line" | grep -qiE "error|rollback|unhealthy|failed=[1-9]"; then col="$RED";
-    elif printf '%s' "$line" | grep -qiE "Creating|Session done"; then col="$GREEN";
-    else col=""; fi
-    printf '│ %s%.*s%s\n' "$col" $((width-4)) "$line" "$RESET"
-  done
-  [ "${#LOG_BUF[@]}" -eq 0 ] && printf '│ %s(waiting for next poll — dev interval is 5m)%s\n' "$DIM" "$RESET"
+  if [ "${#LOG_BUF[@]}" -eq 0 ]; then
+    printf '│ %s(waiting for next poll — dev interval is 5m)%s\n' "$DIM" "$RESET"
+  else
+    for line in "${LOG_BUF[@]}"; do
+      if printf '%s' "$line" | grep -qiE "error|rollback|unhealthy|failed=[1-9]"; then col="$RED";
+      elif printf '%s' "$line" | grep -qiE "Creating|Session done"; then col="$GREEN";
+      else col=""; fi
+      printf '│ %s%.*s%s\n' "$col" $((width-4)) "$line" "$RESET"
+    done
+  fi
   printf '├%s┤\n' "$bar"
   printf '│ %s%s%s\n' "$bcol" "$banner" "$RESET"
   printf '└%s┘\n' "$bar"
