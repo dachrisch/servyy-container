@@ -44,7 +44,7 @@
       },
       "id": 100,
       "panels": [],
-      "title": "API Consumers \u2014 LeagueSphere third-party clients",
+      "title": "API Consumers — LeagueSphere third-party clients",
       "type": "row"
     },
     {
@@ -76,7 +76,7 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "**Scope:** Traefik access logs (`traefik.traefik`, JSON on docker stdout) shipped by promtail to Loki. Only `/api/*` LeagueSphere traffic is analysed here.\n\n**Effective window (important):** Docker `local` log driver rotation keeps roughly the **current day** of container logs; Loki retention is 31d (`retention_period: 744h`) but cannot show what Docker already rotated. Treat this dashboard as a **~24h window**. Longer retention / recording rules are a follow-up proposal, not part of this dashboard.\n\n**Query conventions (copied from the Security dashboard):** stream `{job=\"docker\", container=\"traefik.traefik\"}`, structured-metadata filters `| path =~ \"\u2026\"`, `| user_agent =~ \"\u2026\"`, `| status =~ \"\u2026\"`. `ClientHost`, `Duration` (ns), `DownstreamContentSize`, `RouterName` are parsed at query time with `| json`. Healthchecks (`/health`, `/metrics`, `HEAD /`) are already dropped by promtail and excluded here.",
+        "content": "**Scope:** Traefik access logs (`traefik.traefik`, JSON on docker stdout) shipped by promtail to Loki. Only `/api/*` traffic on `leaguesphere.app` (host-scoped; other vhosts, demo/stage and subdomain-scan noise excluded) is analysed here.\n\n**Effective window (important):** Docker `local` log driver rotation keeps roughly the **current day** of container logs; Loki retention is 31d (`retention_period: 744h`) but cannot show what Docker already rotated. Treat this dashboard as a **~24h window**. Longer retention / recording rules are a follow-up proposal, not part of this dashboard.\n\n**Query conventions (copied from the Security dashboard):** stream `{job=\"docker\", container=\"traefik.traefik\"}`, structured-metadata filters `| path =~ \"…\"`, `| user_agent =~ \"…\"`, `| status =~ \"…\"`. `ClientHost`, `Duration` (ns), `DownstreamContentSize`, `RouterName` are parsed at query time with field-limited `| json <field>` plus `| __error__=\"\"` (drops truncated lines from Docker log rotation). Endpoint grouping is by `/api/<area>` (first two path segments via `regexp`, honoring Loki 500-series limits — per-ID grouping exceeds them). Go-template `regexReplaceAll` in `label_format` does NOT parse on this Loki and must not be used. Client totals group by fixed UA classes (node / Sideline / browsers / scrapers&probes / other), never by raw `user_agent` (UA diversity exceeds 500 distinct values/day). Healthchecks (`/health`, `/metrics`, `HEAD /`) are already dropped by promtail and excluded here.",
         "mode": "markdown"
       },
       "title": "About this dashboard / effective window",
@@ -99,7 +99,7 @@
       },
       "id": 101,
       "panels": [],
-      "title": "1 \u00b7 Traffic by client",
+      "title": "1 · Traffic by client",
       "type": "row"
     },
     {
@@ -160,14 +160,58 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "topk(20, sum by (user_agent, ClientHost) (count_over_time({job=\"docker\", container=\"traefik.traefik\"} | json [$__range])))",
-          "legendFormat": "{{user_agent}} @ {{ClientHost}}",
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=\"node\" | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" [$__range]))",
+          "legendFormat": "Snapshot bot",
           "refId": "A",
+          "instant": true,
+          "queryType": "instant"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=~\"(?i).*Sideline.*\" | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" [$__range]))",
+          "legendFormat": "Sideline",
+          "refId": "B",
+          "instant": true,
+          "queryType": "instant"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=~\"(?i)^Mozilla.*\" | user_agent!~\"(?i)(ExternalAgent|SemrushBot|PanguBot|Googlebot|ForestEngine|Claude-SearchBot|Cortex|Palo Alto)\" | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" [$__range]))",
+          "legendFormat": "Browsers",
+          "refId": "C",
+          "instant": true,
+          "queryType": "instant"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=~\"(?i)(CCBot|Claude-SearchBot|SemrushBot|PanguBot|Meta-ExternalAgent|Googlebot|ForestEngine|Cortex|Palo Alto|wp-cve|Go-http-client|curl|wget|python-requests|ClaudeBot)\" | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" [$__range]))",
+          "legendFormat": "Scrapers & probes",
+          "refId": "D",
+          "instant": true,
+          "queryType": "instant"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent!~\"(?i)(node|Sideline|^Mozilla|(CCBot|Claude-SearchBot|SemrushBot|PanguBot|Meta-ExternalAgent|Googlebot|ForestEngine|Cortex|Palo Alto|wp-cve|Go-http-client|curl|wget|python-requests|ClaudeBot))\" | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" [$__range]))",
+          "legendFormat": "Other",
+          "refId": "E",
           "instant": true,
           "queryType": "instant"
         }
       ],
-      "title": "Traffic by client (totals in range)",
+      "title": "Traffic by client class (totals in range)",
       "type": "table",
       "description": "Top 20 (user_agent, ClientHost) by request count. UA \"node\" + Azure/GH IP = renegades-scores snapshot bot; \"Sideline/1.0\" = Spielplan client; Mozilla/* = browsers.",
       "transformations": [
@@ -291,12 +335,48 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "topk(10, sum by (user_agent, ClientHost) (count_over_time({job=\"docker\", container=\"traefik.traefik\"} | json [1m])))",
-          "legendFormat": "{{user_agent}} @ {{ClientHost}}",
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=\"node\" | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" [1m]))",
+          "legendFormat": "Snapshot bot",
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=~\"(?i).*Sideline.*\" | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" [1m]))",
+          "legendFormat": "Sideline",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=~\"(?i)^Mozilla.*\" | user_agent!~\"(?i)(ExternalAgent|SemrushBot|PanguBot|Googlebot|ForestEngine|Claude-SearchBot|Cortex|Palo Alto)\" | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" [1m]))",
+          "legendFormat": "Browsers",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=~\"(?i)(CCBot|Claude-SearchBot|SemrushBot|PanguBot|Meta-ExternalAgent|Googlebot|ForestEngine|Cortex|Palo Alto|wp-cve|Go-http-client|curl|wget|python-requests|ClaudeBot)\" | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" [1m]))",
+          "legendFormat": "Scrapers & probes",
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent!~\"(?i)(node|Sideline|^Mozilla|(CCBot|Claude-SearchBot|SemrushBot|PanguBot|Meta-ExternalAgent|Googlebot|ForestEngine|Cortex|Palo Alto|wp-cve|Go-http-client|curl|wget|python-requests|ClaudeBot))\" | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" [1m]))",
+          "legendFormat": "Other",
+          "refId": "E"
         }
       ],
-      "title": "Traffic by client (req/min)",
+      "title": "Traffic by client class (req/min)",
       "type": "timeseries",
       "description": "Per-minute request rate for the top 10 clients. Daily snapshot-bot burst (~900 /games/ hits in ~3 min) shows as a sharp spike.",
       "gridPos": {
@@ -317,7 +397,7 @@
       },
       "id": 102,
       "panels": [],
-      "title": "2 \u00b7 Endpoint heatmap (templated)",
+      "title": "2 · Endpoint heatmap (templated)",
       "type": "row"
     },
     {
@@ -378,16 +458,16 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "topk(20, sum by (endpoint) (count_over_time({job=\"docker\", container=\"traefik.traefik\"} | path=~\"/api.*\" | json | label_format path_nq=\"{{ regexReplaceAll \"\\\\?.*\" .RequestPath \"\" }}\" | label_format endpoint=\"{{ regexReplaceAll \"/[0-9]+\" .path_nq \"/{id}\" }}\" [$__range])))",
+          "expr": "topk(20, sum by (endpoint) (count_over_time({job=\"docker\", container=\"traefik.traefik\"} | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" | path=~\"/api.*\" | regexp \"RequestPath\\\":\\\"(?P<endpoint>/api/[A-Za-z]+)\" | endpoint=~\".+\" [$__range])))",
           "legendFormat": "{{endpoint}}",
           "refId": "A",
           "instant": true,
           "queryType": "instant"
         }
       ],
-      "title": "Top 20 API endpoints (numeric IDs \u2192 {id}, query stripped)",
+      "title": "Top 20 API areas (/api/<name>)",
       "type": "table",
-      "description": "RequestPath with numeric IDs templated out (/api/gamedays/<id>/games/ \u2192 /api/gamedays/{id}/games/) and query strings stripped.",
+      "description": "RequestPath with numeric IDs templated out (/api/gamedays/<id>/games/ → /api/gamedays/{id}/games/) and query strings stripped.",
       "transformations": [
         {
           "id": "labelsToFields",
@@ -508,12 +588,12 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "topk(10, sum by (endpoint) (count_over_time({job=\"docker\", container=\"traefik.traefik\"} | path=~\"/api.*\" | json | label_format path_nq=\"{{ regexReplaceAll \"\\\\?.*\" .RequestPath \"\" }}\" | label_format endpoint=\"{{ regexReplaceAll \"/[0-9]+\" .path_nq \"/{id}\" }}\" [5m])))",
+          "expr": "topk(10, sum by (endpoint) (count_over_time({job=\"docker\", container=\"traefik.traefik\"} | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" | path=~\"/api.*\" | regexp \"RequestPath\\\":\\\"(?P<endpoint>/api/[A-Za-z]+)\" | endpoint=~\".+\" [5m])))",
           "legendFormat": "{{endpoint}}",
           "refId": "A"
         }
       ],
-      "title": "Endpoint usage over time (top 10 templated)",
+      "title": "Endpoint usage over time (top 10 areas)",
       "type": "timeseries",
       "description": "Stacked request volume per templated endpoint.",
       "gridPos": {
@@ -534,7 +614,7 @@
       },
       "id": 103,
       "panels": [],
-      "title": "3 \u00b7 Burst view (>100 req/min)",
+      "title": "3 · Burst view (>100 req/min)",
       "type": "row"
     },
     {
@@ -621,8 +701,8 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "topk(8, sum by (user_agent, ClientHost) (count_over_time({job=\"docker\", container=\"traefik.traefik\"} | json [1m])))",
-          "legendFormat": "{{user_agent}} @ {{ClientHost}}",
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=\"node\" | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" [1m]))",
+          "legendFormat": "Snapshot bot",
           "refId": "A"
         },
         {
@@ -630,8 +710,8 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=\"node\" | json [1m]))",
-          "legendFormat": "snapshot-bot UA=node (total)",
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=~\"(?i).*Sideline.*\" | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" [1m]))",
+          "legendFormat": "Sideline",
           "refId": "B"
         },
         {
@@ -639,12 +719,48 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=~\"(?i).*Sideline.*\" | json [1m]))",
-          "legendFormat": "Sideline client (total)",
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=~\"(?i)^Mozilla.*\" | user_agent!~\"(?i)(ExternalAgent|SemrushBot|PanguBot|Googlebot|ForestEngine|Claude-SearchBot|Cortex|Palo Alto)\" | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" [1m]))",
+          "legendFormat": "Browsers",
           "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=~\"(?i)(CCBot|Claude-SearchBot|SemrushBot|PanguBot|Meta-ExternalAgent|Googlebot|ForestEngine|Cortex|Palo Alto|wp-cve|Go-http-client|curl|wget|python-requests|ClaudeBot)\" | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" [1m]))",
+          "legendFormat": "Scrapers & probes",
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent!~\"(?i)(node|Sideline|^Mozilla|(CCBot|Claude-SearchBot|SemrushBot|PanguBot|Meta-ExternalAgent|Googlebot|ForestEngine|Cortex|Palo Alto|wp-cve|Go-http-client|curl|wget|python-requests|ClaudeBot))\" | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" [1m]))",
+          "legendFormat": "Other",
+          "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" | user_agent=\"node\" [1m]))",
+          "legendFormat": "snapshot-bot UA=node (total)",
+          "refId": "F"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" | user_agent=~\"(?i).*Sideline.*\" [1m]))",
+          "legendFormat": "Sideline client (total)",
+          "refId": "G"
         }
       ],
-      "title": "Req/min per client (bursts > 100/min highlighted)",
+      "title": "Req/min per client class (bursts > 100/min highlighted)",
       "type": "timeseries",
       "description": "Burst threshold is 100 req/min (red line). Snapshot bot does ~300 req/min during its ~3 min run. A NEW UA bursting is the signal to investigate.",
       "gridPos": {
@@ -665,7 +781,7 @@
       },
       "id": 104,
       "panels": [],
-      "title": "4 \u00b7 Status codes",
+      "title": "4 · Status codes",
       "type": "row"
     },
     {
@@ -790,7 +906,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (status) (count_over_time({job=\"docker\", container=\"traefik.traefik\"} | json [5m]))",
+          "expr": "sum by (status) (count_over_time({job=\"docker\", container=\"traefik.traefik\"} | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" [5m]))",
           "legendFormat": "{{status}}",
           "refId": "A"
         },
@@ -799,7 +915,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | status=~\"429\" [5m]))",
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" | status=~\"429\" [5m]))",
           "legendFormat": "429 rate-limited",
           "refId": "B"
         },
@@ -808,7 +924,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | status=~\"5..\" [5m]))",
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" | status=~\"5..\" [5m]))",
           "legendFormat": "5xx upstream",
           "refId": "C"
         }
@@ -876,7 +992,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | status=~\"429\" [$__range]))",
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" | status=~\"429\" [$__range]))",
           "legendFormat": "429s",
           "refId": "A"
         }
@@ -944,7 +1060,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | status=~\"5..\" [$__range]))",
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" | status=~\"5..\" [$__range]))",
           "legendFormat": "5xx",
           "refId": "A"
         }
@@ -970,7 +1086,7 @@
       },
       "id": 105,
       "panels": [],
-      "title": "5 \u00b7 Latency p50/p95 per endpoint (ms)",
+      "title": "5 · Latency p50/p95 per endpoint (ms)",
       "type": "row"
     },
     {
@@ -1049,7 +1165,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "quantile_over_time(0.50, {job=\"docker\", container=\"traefik.traefik\"} | path=~\"/api/gamedays/(\\?.*)?\" | json | unwrap Duration [5m]) / 1000000",
+          "expr": "quantile_over_time(0.50, {job=\"docker\", container=\"traefik.traefik\"} | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" | path=~\"/api/gamedays/([?].*)?\" | json Duration | __error__=\"\" | unwrap Duration [5m]) / 1000000",
           "legendFormat": "catalog p50",
           "refId": "A"
         },
@@ -1058,7 +1174,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "quantile_over_time(0.95, {job=\"docker\", container=\"traefik.traefik\"} | path=~\"/api/gamedays/(\\?.*)?\" | json | unwrap Duration [5m]) / 1000000",
+          "expr": "quantile_over_time(0.95, {job=\"docker\", container=\"traefik.traefik\"} | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" | path=~\"/api/gamedays/([?].*)?\" | json Duration | __error__=\"\" | unwrap Duration [5m]) / 1000000",
           "legendFormat": "catalog p95",
           "refId": "B"
         },
@@ -1067,7 +1183,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "quantile_over_time(0.50, {job=\"docker\", container=\"traefik.traefik\"} | path=~\"/api/gamedays/[0-9]+/games/.*\" | json | unwrap Duration [5m]) / 1000000",
+          "expr": "quantile_over_time(0.50, {job=\"docker\", container=\"traefik.traefik\"} | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" | path=~\"/api/gamedays/[0-9]+/games/.*\" | json Duration | __error__=\"\" | unwrap Duration [5m]) / 1000000",
           "legendFormat": "games p50",
           "refId": "C"
         },
@@ -1076,14 +1192,14 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "quantile_over_time(0.95, {job=\"docker\", container=\"traefik.traefik\"} | path=~\"/api/gamedays/[0-9]+/games/.*\" | json | unwrap Duration [5m]) / 1000000",
+          "expr": "quantile_over_time(0.95, {job=\"docker\", container=\"traefik.traefik\"} | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" | path=~\"/api/gamedays/[0-9]+/games/.*\" | json Duration | __error__=\"\" | unwrap Duration [5m]) / 1000000",
           "legendFormat": "games p95",
           "refId": "D"
         }
       ],
-      "title": "Latency p50/p95 \u2014 catalog vs games (Duration ns \u2192 ms)",
+      "title": "Latency p50/p95 — catalog vs games (Duration ns → ms)",
       "type": "timeseries",
-      "description": "Traefik Duration is nanoseconds; divided by 1e6 \u2192 ms. Watch p95 of /api/gamedays*/games/ for regressions (Django/gunicorn slowness).",
+      "description": "Traefik Duration is nanoseconds; divided by 1e6 → ms. Watch p95 of /api/gamedays*/games/ for regressions (Django/gunicorn slowness).",
       "gridPos": {
         "h": 8,
         "w": 24,
@@ -1102,7 +1218,7 @@
       },
       "id": 106,
       "panels": [],
-      "title": "6 \u00b7 Response payload size per endpoint",
+      "title": "6 · Response payload size per endpoint",
       "type": "row"
     },
     {
@@ -1181,7 +1297,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "avg(avg_over_time({job=\"docker\", container=\"traefik.traefik\"} | path=~\"/api/gamedays/(\\?.*)?\" | json | unwrap DownstreamContentSize [5m]))",
+          "expr": "avg(avg_over_time({job=\"docker\", container=\"traefik.traefik\"} | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" | path=~\"/api/gamedays/([?].*)?\" | json DownstreamContentSize | __error__=\"\" | unwrap DownstreamContentSize [5m]))",
           "legendFormat": "catalog avg bytes",
           "refId": "A"
         },
@@ -1190,12 +1306,12 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "avg(avg_over_time({job=\"docker\", container=\"traefik.traefik\"} | path=~\"/api/gamedays/[0-9]+/games/.*\" | json | unwrap DownstreamContentSize [5m]))",
+          "expr": "avg(avg_over_time({job=\"docker\", container=\"traefik.traefik\"} | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" | path=~\"/api/gamedays/[0-9]+/games/.*\" | json DownstreamContentSize | __error__=\"\" | unwrap DownstreamContentSize [5m]))",
           "legendFormat": "games avg bytes",
           "refId": "B"
         }
       ],
-      "title": "Avg response bytes \u2014 catalog vs games",
+      "title": "Avg response bytes — catalog vs games",
       "type": "timeseries",
       "description": "DownstreamContentSize averaged per window. A sudden jump on /games/ (page_size change, serialization regression) shows here first.",
       "gridPos": {
@@ -1264,14 +1380,14 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "topk(20, sum by (endpoint) (sum_over_time({job=\"docker\", container=\"traefik.traefik\"} | path=~\"/api.*\" | json | label_format path_nq=\"{{ regexReplaceAll \"\\\\?.*\" .RequestPath \"\" }}\" | label_format endpoint=\"{{ regexReplaceAll \"/[0-9]+\" .path_nq \"/{id}\" }}\" | unwrap DownstreamContentSize [$__range])))",
+          "expr": "topk(20, sum by (endpoint) (sum_over_time({job=\"docker\", container=\"traefik.traefik\"} | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" | path=~\"/api.*\" | regexp \"RequestPath\\\":\\\"(?P<endpoint>/api/[A-Za-z]+)\" | json DownstreamContentSize | __error__=\"\" | unwrap DownstreamContentSize [$__range])))",
           "legendFormat": "{{endpoint}}",
           "refId": "A",
           "instant": true,
           "queryType": "instant"
         }
       ],
-      "title": "Total bytes by templated endpoint",
+      "title": "Total bytes by API area",
       "type": "table",
       "description": "Total DownstreamContentSize per templated endpoint in range.",
       "transformations": [
@@ -1328,7 +1444,7 @@
       },
       "id": 107,
       "panels": [],
-      "title": "7 \u00b7 Known-bot signature (snapshot bot)",
+      "title": "7 · Known-bot signature (snapshot bot)",
       "type": "row"
     },
     {
@@ -1383,14 +1499,14 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=\"node\" | path=~\"/api/gamedays/(\\?.*)?\" [$__range]))",
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" | user_agent=\"node\" | path=~\"/api/gamedays/([?].*)?\" [$__range]))",
           "legendFormat": "catalog",
           "refId": "A"
         }
       ],
       "title": "Snapshot-bot: catalog hits (UA=node)",
       "type": "stat",
-      "description": "Snapshot-bot signature: UA exactly `node`, 1\u00d7 catalog `/api/gamedays/?format=json&page_size=1000` then ~900\u00d7 `/api/gamedays/<id>/games/?format=json` inside ~3 min (e.g. 2026-09-26 08:06\u201308:08 UTC from 20.161.69.33).",
+      "description": "Snapshot-bot signature: UA exactly `node`, 1× catalog `/api/gamedays/?format=json&page_size=1000` then ~900× `/api/gamedays/<id>/games/?format=json` inside ~3 min (e.g. 2026-09-26 08:06–08:08 UTC from 20.161.69.33).",
       "gridPos": {
         "h": 4,
         "w": 8,
@@ -1451,7 +1567,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=\"node\" | path=~\"/api/gamedays/[0-9]+/games/.*\" [$__range]))",
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" | user_agent=\"node\" | path=~\"/api/gamedays/[0-9]+/games/.*\" [$__range]))",
           "legendFormat": "games",
           "refId": "A"
         }
@@ -1519,7 +1635,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=~\"(?i).*Sideline.*\" [$__range]))",
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\" | user_agent=~\"(?i).*Sideline.*\" [$__range]))",
           "legendFormat": "sideline",
           "refId": "A"
         }
@@ -1562,13 +1678,13 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{job=\"docker\", container=\"traefik.traefik\"} | user_agent=\"node\" | path=~\"/api/gamedays.*\"",
+          "expr": "{job=\"docker\", container=\"traefik.traefik\"} | user_agent=\"node\" | path=~\"/api/gamedays.*\" | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\"",
           "refId": "A"
         }
       ],
-      "title": "Snapshot-bot raw lines (UA=node, /api/gamedays*) \u2014 proof view",
+      "title": "Snapshot-bot raw lines (UA=node, /api/gamedays*) — proof view",
       "type": "logs",
-      "description": "Set dashboard time to cover a daily run (e.g. 2026-09-26 08:00\u201308:15 UTC). You must see 1\u00d7 catalog + ~900\u00d7 /games/ lines from one ClientHost.",
+      "description": "Set dashboard time to cover a daily run (e.g. 2026-09-26 08:00–08:15 UTC). You must see 1× catalog + ~900× /games/ lines from one ClientHost.",
       "id": 15
     },
     {
@@ -1581,7 +1697,7 @@
       },
       "id": 108,
       "panels": [],
-      "title": "Runbook \u2014 normal vs investigate",
+      "title": "Runbook — normal vs investigate",
       "type": "row"
     },
     {
@@ -1613,7 +1729,7 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "**Normal**\n- **Daily snapshot-bot burst:** ~08:0x UTC, UA `node`, one Azure/GH-Actions IP, 1\u00d7 `/api/gamedays/?format=json&page_size=1000` then ~900\u00d7 `/api/gamedays/<id>/games/?format=json` in ~3 min. Stat panels \u00a77 read ~1 / ~900. Burst view spikes to ~300 req/min and falls back to ~0.\n- **Sideline polling:** UA `Sideline/1.0 (inoffizieller Spielplan-Client)`, low steady rate on `/api/gamedays/?search=season:2026&page_size=500` and `/games/`. No bursts.\n- **Browsers:** `Mozilla/*` spread across many ClientHosts, low per-IP rate, mixed endpoints, 2xx-dominated.\n\n**Deserves a look**\n- A **new UA** (or new ClientHost) bursting >100 req/min, esp. on `/api/gamedays*/games/`.\n- **429 spikes** (\u00a74): rate limiting is engaging \u2014 check whether it is the known bot (tune limits?) or an unknown client.\n- **5xx spikes**: nginx/gunicorn/Django upstream problem, not client behaviour \u2014 check LeagueSphere logs.\n- **p95 regression** on `/api/gamedays*/games/` (\u00a75) or payload jump (\u00a76): serialization / page_size / DB regression.\n\n**Alert proposals (OUT OF SCOPE for this task \u2014 candidates only)**\n1. `burst>100/min by unknown UA for 5m` (Loki metric query on \u00a73, exclude `node`+`Sideline`).\n2. `5xx rate on /api/* > threshold for 5m` (match the existing `traefik_service_requests_total{code=~\"5..\"}` Prometheus alerts).\n3. `p95(/api/gamedays*/games/) > SLO (e.g. 2\u00d7 baseline) for 15m` (recording rule on \u00a75 quantiles; needs longer retention first).",
+        "content": "**Normal**\n- **Daily snapshot-bot burst:** ~08:0x UTC, UA `node`, one Azure/GH-Actions IP, 1× `/api/gamedays/?format=json&page_size=1000` then ~900× `/api/gamedays/<id>/games/?format=json` in ~3 min. Stat panels §7 read ~1 / ~900. Burst view spikes to ~300 req/min and falls back to ~0.\n- **Sideline polling:** UA `Sideline/1.0 (inoffizieller Spielplan-Client)`, low steady rate on `/api/gamedays/?search=season:2026&page_size=500` and `/games/`. No bursts.\n- **Browsers:** `Mozilla/*` spread across many ClientHosts, low per-IP rate, mixed endpoints, 2xx-dominated. (Note: `ClientHost` is the Docker gateway IP behind Traefik, so per-client distinction comes from the UA classes above, not from IPs.)\n\n**Deserves a look**\n- A **new UA** (or new ClientHost) bursting >100 req/min, esp. on `/api/gamedays*/games/`.\n- **429 spikes** (§4): rate limiting is engaging — check whether it is the known bot (tune limits?) or an unknown client.\n- **5xx spikes**: nginx/gunicorn/Django upstream problem, not client behaviour — check LeagueSphere logs.\n- **p95 regression** on `/api/gamedays*/games/` (§5) or payload jump (§6): serialization / page_size / DB regression.\n\n**Alert proposals (OUT OF SCOPE for this task — candidates only)**\n1. `burst>100/min by unknown UA for 5m` (Loki metric query on §3, exclude `node`+`Sideline`).\n2. `5xx rate on /api/* > threshold for 5m` (match the existing `traefik_service_requests_total{code=~\"5..\"}` Prometheus alerts).\n3. `p95(/api/gamedays*/games/) > SLO (e.g. 2× baseline) for 15m` (recording rule on §5 quantiles; needs longer retention first).",
         "mode": "markdown"
       },
       "title": "Runbook",
@@ -1646,7 +1762,7 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "LeagueSphere \u2014 API Consumers",
+  "title": "LeagueSphere — API Consumers",
   "uid": "leaguesphere-api-consumers",
   "version": 1,
   "weekStart": ""
