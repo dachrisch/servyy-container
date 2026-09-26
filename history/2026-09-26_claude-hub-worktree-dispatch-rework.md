@@ -3,8 +3,10 @@
 **Date:** 2026-09-26
 **Author:** Claude (via user dachrisch)
 **Type:** Feature / Refactor
-**Status:** ✅ Implemented and verified end-to-end on `servyy-test.lxd` (real dispatch → work →
-close-request → hub close, full round trip); pending Molecule and production deploy
+**Status:** ✅ Merged (PR #143, all 22 CI checks green including both Molecule scenarios) and
+deployed to production `codey.lehel.xyz` — container healthy, hub session resumed on its existing
+persistent volume (no fresh login needed), Bash tool and both new systemd timers confirmed
+working live.
 
 ## Summary
 
@@ -255,17 +257,32 @@ user.docker.repo,user.docker.claude-hub,system.docker.claude_hub_reaper,system.d
   workaround (`! <command>` or a permission rule) handles this correctly;
   documented here so it isn't mistaken for a `session-fleet` skill bug.
 
-**Not yet done**:
-- `molecule test` in `ansible/plays/roles/docker_service` and
-  `ansible/plays/roles/system` (both scenarios updated, neither yet run
-  live — no Docker access in the session that authored the Ansible changes).
-- The raw `docker exec ... claude attach`/`claude logs` operator commands
-  specifically (the equivalent `session-reaper.mjs --action list --all`
-  fleet view and the hub's own handling were exercised instead).
-- A force-cleanup dry run against a deliberately-aged parked session (the
-  live fleet never had one old enough to exercise the 75-day threshold).
-- Production deploy to `codey.lehel.xyz` — requires the above, then explicit
-  user approval, per this repo's mandatory workflow.
+**CI** (GitHub Actions, on PR #143): all 22 checks passed, including
+`Molecule Test (docker_service/default)` and `Molecule Test (system/with-docker)` —
+the two scenarios this session couldn't run locally (no Docker access).
+
+**Production (`codey.lehel.xyz`)**, deployed via `./servyy.sh --tags
+user.docker.repo,user.docker.claude-hub,system.docker.claude_hub_reaper,system.docker.claude_hub_force_cleanup
+--limit codey.lehel.xyz` after explicit user approval:
+- Both new systemd timers deployed, enabled, correctly scheduled; old
+  `claude-hub-prune.*` units fully absent.
+- Container healthy after the boot sequence completed (package installs,
+  CLI install, `claude-hub.json` write, gh-dash provisioning, hub session
+  start).
+- Hub session resumed its existing conversation on the pre-existing
+  `claude_hub_root` volume (same session id as before this change) — no
+  fresh OAuth login needed in production, unlike the fresh `servyy-test.lxd`
+  volume.
+- Bash tool confirmed working (`bash -c 'echo ...'` via `docker exec`, and
+  the `CLAUDE_CODE_SHELL`/`SHELL`/`CLAUDE_HUB_VENDOR_ROOT`/`CLAUDE_HUB_CONFIG`
+  env vars all present and correct).
+
+**Not exercised specifically on production** (already validated on
+`servyy-test.lxd`, not worth repeating live against the real fleet): a real
+task dispatch, the `close-request` round trip, and a force-cleanup dry run
+against a deliberately-aged parked session. The raw `docker exec ... claude
+attach`/`claude logs` operator commands were exercised via their
+`session-reaper.mjs --action list --all` equivalent instead.
 
 ## Future Enhancements
 
