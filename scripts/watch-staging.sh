@@ -138,24 +138,40 @@ poll_http() {
   [ "${#HIST}" -gt "$HIST_LEN" ] && HIST="${HIST: -$HIST_LEN}"
 }
 
+# Every content row goes through emit_line so the table keeps an exact
+# rectangular shape: truncate plain text to the inner width, pad with spaces,
+# wrap in │ borders. Colors are applied to a parallel string; width math only
+# ever sees the plain text (ANSI codes would break column counts).
+emit_line() { # $1 plain, $2 colored (defaults to plain)
+  local plain=$1 colored=${2:-$1} pad
+  if [ "${#plain}" -gt "$INNER" ]; then
+    plain="${plain:0:$INNER}"; colored="$plain"
+  fi
+  pad=$((INNER - ${#plain}))
+  printf '│ %s%*s│\n' "$colored" "$pad" ""
+}
+
 print_row() { # shortname fullname
-  local sn=$1 fn=$2 d h up gate col extra=""
+  local sn=$1 fn=$2 d h up gate extra_plain="" plain colored col
   d="${DIGEST[$fn]:-…}"; h="${HEALTH[$fn]:-?}"
   col="$(health_color "$h")"
   if [ -n "${STARTED[$fn]:-}" ]; then up="up $(fmt_dur $(( $(date +%s) - STARTED[$fn] )))"; else up="up ?"; fi
   if [ -n "${DIGEST_PREV[$fn]:-}" ] && [ "${DIGEST_PREV[$fn]}" != "$d" ]; then
-    extra=" ${DIM}(was ${DIGEST_PREV[$fn]})${RESET}"
+    extra_plain=" (was ${DIGEST_PREV[$fn]})"
   fi
   gate=""
   if [ "$h" = "starting" ]; then
     t0="${GATE_T0[$fn]:-$(date +%s)}"
     gate="  gate: $(fmt_dur $(( $(date +%s) - t0 ))) / $(fmt_dur "$GATE_TIMEOUT")"
   fi
-  printf '│ %-11s %-8s %s%-9s%s  %-9s%s%s\n' "$sn" "$d" "$col" "$h" "$RESET" "$up" "$gate" "$extra"
+  plain="$(printf '%-11s %-8s %-9s  %-9s%s%s' "$sn" "$d" "$h" "$up" "$gate" "$extra_plain")"
+  colored="${plain/$h/${col}${h}${RESET}}"
+  [ -n "$extra_plain" ] && colored="${colored/$extra_plain/${DIM}${extra_plain}${RESET}}"
+  emit_line "$plain" "$colored"
 }
 
 render() {
-  local width i line col banner bcol
+  local width i line col banner bcol INNER
   width="$(tput cols 2>/dev/null || echo 80)"
   [ "$width" -gt 100 ] && width=100
   [ "$width" -lt 60 ] && width=60
@@ -178,27 +194,36 @@ render() {
   fi
 
   clear
+  INNER=$((width-3))
   printf '┌%s┐\n' "$bar"
-  printf '│ %sSTAGE MONITOR%s  poll %s%s\n' "$BOLD" "$RESET" "$LAST_POLL_TS" "$([ "$STALE" -eq 1 ] && printf ' %sstale%s' "$RED" "$RESET")" | cut -c1-"$width"
+  local hplain hcolored
+  hplain="STAGE MONITOR  poll $LAST_POLL_TS"
+  hcolored="${BOLD}${hplain}${RESET}"
+  if [ "$STALE" -eq 1 ]; then
+    hplain="${hplain} STALE"; hcolored="${hcolored/ STALE/} ${RED}STALE${RESET}"
+  fi
+  emit_line "$hplain" "$hcolored"
   i=0; for fn in $CONTAINERS; do sn="$(echo "$SHORTNAMES" | cut -d' ' -f$((i+1)))"; print_row "$sn" "$fn"; i=$((i+1)); done
   printf '├%s┤\n' "$bar"
-  printf '│ %sHTTP %s%s  →  ' "$BOLD" "$RESET" "$STAGE_URL"
+  local http_plain http_colored
+  http_plain="HTTP $STAGE_URL  →  $LAST_HTTP ${LAST_HTTP_T}s  hist:$HIST"
   if [ "$LAST_HTTP" = "200" ]; then col="$GREEN"; elif [ "$LAST_HTTP" = "…" ]; then col="$DIM"; else col="$RED"; fi
-  printf '%s%s %ss%s  hist:%s\n' "$col" "$LAST_HTTP" "$LAST_HTTP_T" "$RESET" "$HIST"
+  http_colored="${http_plain/$LAST_HTTP/${col}${LAST_HTTP}${RESET}}"
+  emit_line "$http_plain" "$http_colored"
   printf '├%s┤\n' "$bar"
-  printf '│ %sWATCHTOWER-DEV (latest %d)%s\n' "$BOLD" "$LOG_LINES" "$RESET"
+  emit_line "WATCHTOWER-DEV (latest $LOG_LINES)" "${BOLD}WATCHTOWER-DEV (latest $LOG_LINES)${RESET}"
   if [ "${#LOG_BUF[@]}" -eq 0 ]; then
-    printf '│ %s(waiting for next poll — dev interval is 5m)%s\n' "$DIM" "$RESET"
+    emit_line "(waiting for next poll — dev interval is 5m)" "${DIM}(waiting for next poll — dev interval is 5m)${RESET}"
   else
     for line in "${LOG_BUF[@]}"; do
       if printf '%s' "$line" | grep -qiE "error|rollback|unhealthy|failed=[1-9]"; then col="$RED";
       elif printf '%s' "$line" | grep -qiE "Creating|Session done"; then col="$GREEN";
       else col=""; fi
-      printf '│ %s%.*s%s\n' "$col" $((width-4)) "$line" "$RESET"
+      emit_line "$line" "${col}${line}${RESET}"
     done
   fi
   printf '├%s┤\n' "$bar"
-  printf '│ %s%s%s\n' "$bcol" "$banner" "$RESET"
+  emit_line "$banner" "${bcol}${banner}${RESET}"
   printf '└%s┘\n' "$bar"
   printf '%sq: quit%s' "$DIM" "$RESET"
 }
