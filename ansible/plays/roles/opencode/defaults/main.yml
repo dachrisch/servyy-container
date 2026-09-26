@@ -2,3 +2,7 @@
 # Vaultwarden backup-copy for OpenCode GitHub SSH key.
 # Idempotently generated and stored in vars/.opencode_github_ssh_key seed file.
 vw_server: "https://pass.lehel.xyz"
+# Pinned upstream commit for superpowers skills (obra/superpowers).
+# Refresh: bump this SHA, redeploy, and re-check the SERVER PATCH in
+# opencode/plugins/superpowers.js still applies cleanly.
+opencode_superpowers_version: 06b92f36820f38175b2ed6ff3f8df45157d54731

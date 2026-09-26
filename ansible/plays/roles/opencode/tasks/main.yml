@@ -232,6 +232,53 @@
     directory_mode: '0755'
   vars:
     opencode_skills_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/skills') | path_join }}"
+  notify: restart opencode container
+  tags: [user.docker.opencode]
+
+- name: Clone superpowers upstream (controller staging)
+  ansible.builtin.git:
+    repo: https://github.com/obra/superpowers.git
+    dest: /tmp/opencode-superpowers-upstream
+    version: "{{ opencode_superpowers_version }}"
+    depth: 1
+  delegate_to: localhost
+  run_once: true
+  become: false
+  tags: [user.docker.opencode]
+
+- name: Deploy superpowers skills from upstream
+  ansible.builtin.copy:
+    src: /tmp/opencode-superpowers-upstream/skills/
+    dest: "{{ opencode_skills_dir }}"
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0644'
+    directory_mode: '0755'
+  vars:
+    opencode_skills_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/skills') | path_join }}"
+  notify: restart opencode container
+  tags: [user.docker.opencode]
+
+- name: Ensure OpenCode plugins directory exists
+  ansible.builtin.file:
+    path: "{{ opencode_plugins_dir }}"
+    state: directory
+    mode: '0755'
+  vars:
+    opencode_plugins_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/plugins') | path_join }}"
+  tags: [user.docker.opencode]
+
+- name: Deploy OpenCode plugins
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../opencode/plugins/"
+    dest: "{{ opencode_plugins_dir }}"
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0644'
+    directory_mode: '0755'
+  vars:
+    opencode_plugins_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/plugins') | path_join }}"
+  notify: restart opencode container
   tags: [user.docker.opencode]
 
 - name: Report SSH key info
