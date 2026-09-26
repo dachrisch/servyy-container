@@ -9,7 +9,10 @@ set -e
 
 echo "[startup] installing system packages..."
 # 1. System packages. node/npm already ship in the node:22-alpine base image.
-apk update && apk add --no-cache git tmux github-cli git-crypt
+# bash: required by the Claude Code CLI's Bash tool, which scans /bin and /usr/bin for an actual
+# bash/zsh binary rather than accepting any POSIX shell -- see docker-compose.yml's SHELL/
+# CLAUDE_CODE_SHELL comment and history/2026-09-26_claude-hub-worktree-dispatch-rework.md.
+apk update && apk add --no-cache git tmux github-cli git-crypt bash
 
 echo "[startup] installing @anthropic-ai/claude-code..."
 # 2. Claude Code CLI. Idempotent (npm just no-ops if already at this version).

@@ -188,10 +188,50 @@ if [ -z "$resolved" ]; then
 fi
 
 # ------------------------------------------------------- 3. hand off to spinup-session.mjs
-# spinup-session.mjs owns everything from here: workspace directory, worktrees, branch, session
-# name, starting the claude --bg --remote-control session. Never re-implement any of that here.
+# spinup-session.mjs owns everything deterministic from here: workspace directory, worktrees,
+# branch, session name. Never re-implement any of that here.
 set -- --repos "$resolved" --desc "$desc" --root "$DEV_DIR"
 [ -n "$ticket" ] && set -- "$@" --ticket "$ticket"
 [ -n "$task_file" ] && set -- "$@" --task-file "$task_file"
 
-exec node "$VENDOR_ROOT/skills/spinup-session/scripts/spinup-session.mjs" "$@"
+SPINUP="$VENDOR_ROOT/skills/spinup-session/scripts/spinup-session.mjs"
+
+# Build the workspace first, without starting anything (--no-start): claude --bg's first-run
+# workspace-trust check blocks on every brand-new workspace directory otherwise, and nothing here
+# is interactive to answer it. Confirmed live -- see
+# history/2026-09-26_claude-hub-worktree-dispatch-rework.md. Calling spinup-session.mjs a second
+# time below (without --no-start) is safe: an existing worktree/TASK.md/CLAUDE.md is its own
+# ordinary "already built" case, not a special one we have to handle here.
+build_out="$(node "$SPINUP" "$@" --no-start)" || { printf '%s\n' "$build_out"; exit 1; }
+
+workspace="$(printf '%s\n' "$build_out" | node -e '
+const fs = require("fs");
+let d;
+try { d = JSON.parse(fs.readFileSync(0, "utf8")); } catch { process.exit(1); }
+if (d.event !== "workspace-ready" || !d.workspace) process.exit(1);
+process.stdout.write(d.workspace);
+')"
+
+if [ -z "$workspace" ]; then
+  # Not workspace-ready (e.g. spinup-blocked from a bad repo/branch/base) -- relay --no-start's
+  # own output verbatim; there is no workspace here to seed trust for.
+  printf '%s\n' "$build_out"
+  exit 1
+fi
+
+log "pre-trusting workspace $workspace"
+# ~/.claude.json is the Claude Code CLI's own state file (projects, trust, etc.) -- distinct from
+# our CLAUDE_HUB_CONFIG-pointed claude-hub.json. Merge in one entry; never overwrite the file,
+# it holds real state (auth, other projects) the CLI itself owns.
+CLAUDE_HUB_SEED_WORKSPACE="$workspace" node -e '
+const fs = require("fs");
+const path = (process.env.HOME || "/root") + "/.claude.json";
+let d = {};
+try { d = JSON.parse(fs.readFileSync(path, "utf8")); } catch { d = {}; }
+d.projects = d.projects || {};
+const ws = process.env.CLAUDE_HUB_SEED_WORKSPACE;
+d.projects[ws] = { ...(d.projects[ws] || {}), hasTrustDialogAccepted: true };
+fs.writeFileSync(path, JSON.stringify(d, null, 2));
+'
+
+exec node "$SPINUP" "$@"
