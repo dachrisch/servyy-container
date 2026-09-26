@@ -8,13 +8,31 @@
   become: false
   register: ssh_key_seed
 
+- name: Guard against silent GitHub SSH key rotation
+  ansible.builtin.assert:
+    that: ssh_key_seed.stat.exists or (opencode_allow_key_generation | bool)
+    fail_msg: >-
+      Refusing to generate a new OpenCode GitHub SSH key: the seed file
+      {{ playbook_dir }}/vars/.opencode_github_ssh_key is missing, and minting
+      a key here would silently rotate the production key GitHub trusts,
+      breaking container git access. Restore the seed (Vaultwarden item
+      "opencode - GitHub SSH key (lehel.xyz)", or copy from the checkout that
+      last deployed), or set opencode_allow_key_generation=true for a
+      deliberate first-time setup/rotation (then register the new public key
+      on GitHub).
+    success_msg: "OpenCode GitHub SSH key seed present (or generation explicitly allowed)."
+  delegate_to: localhost
+  run_once: true
+  become: false
+  when: not ssh_key_seed.stat.exists
+
 - name: Generate OpenCode GitHub SSH key (ed25519)
   ansible.builtin.command:
     cmd: ssh-keygen -t ed25519 -f "{{ playbook_dir }}/vars/.opencode_github_ssh_key" -N "" -C "opencode@{{ inventory_hostname }}"
   delegate_to: localhost
   run_once: true
   become: false
-  when: not ssh_key_seed.stat.exists
+  when: not ssh_key_seed.stat.exists and opencode_allow_key_generation
   register: ssh_keygen_result
 
 - name: Read SSH private key from seed file

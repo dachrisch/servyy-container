@@ -6,3 +6,9 @@ vw_server: "https://pass.lehel.xyz"
 # Refresh: bump this SHA, redeploy, and re-check the SERVER PATCH in
 # opencode/plugins/superpowers.js still applies cleanly.
 opencode_superpowers_version: 06b92f36820f38175b2ed6ff3f8df45157d54731
+# Guard against silent GitHub SSH key rotation: generating a new key when the
+# seed file is missing silently replaces the production key (which GitHub
+# still trusts) and breaks container git access. Keep false; set true only
+# for a deliberate first-time setup or key rotation (and register the new
+# public key on GitHub afterwards).
+opencode_allow_key_generation: false
