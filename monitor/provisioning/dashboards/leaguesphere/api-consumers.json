@@ -1,0 +1,1653 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "datasource",
+          "uid": "grafana"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "red",
+        "name": "Snapshot-bot catalog hit",
+        "expr": "{job=\"docker\", container=\"traefik.traefik\"} | user_agent=\"node\" | path=~\"/api/gamedays/\\\\?.*page_size=1000.*\"",
+        "titleFormat": "snapshot-bot catalog",
+        "textFormat": "UA=node catalog {{ClientHost}} {{path}}"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 100,
+      "panels": [],
+      "title": "API Consumers \u2014 LeagueSphere third-party clients",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "datasource",
+        "uid": "grafana"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "**Scope:** Traefik access logs (`traefik.traefik`, JSON on docker stdout) shipped by promtail to Loki. Only `/api/*` LeagueSphere traffic is analysed here.\n\n**Effective window (important):** Docker `local` log driver rotation keeps roughly the **current day** of container logs; Loki retention is 31d (`retention_period: 744h`) but cannot show what Docker already rotated. Treat this dashboard as a **~24h window**. Longer retention / recording rules are a follow-up proposal, not part of this dashboard.\n\n**Query conventions (copied from the Security dashboard):** stream `{job=\"docker\", container=\"traefik.traefik\"}`, structured-metadata filters `| path =~ \"\u2026\"`, `| user_agent =~ \"\u2026\"`, `| status =~ \"\u2026\"`. `ClientHost`, `Duration` (ns), `DownstreamContentSize`, `RouterName` are parsed at query time with `| json`. Healthchecks (`/health`, `/metrics`, `HEAD /`) are already dropped by promtail and excluded here.",
+        "mode": "markdown"
+      },
+      "title": "About this dashboard / effective window",
+      "type": "text",
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "id": 109
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      },
+      "id": 101,
+      "panels": [],
+      "title": "1 \u00b7 Traffic by client",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto",
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 100
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "footer": {
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": true
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Requests"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "topk(20, sum by (user_agent, ClientHost) (count_over_time({job=\"docker\", container=\"traefik.traefik\"} | json [$__range])))",
+          "legendFormat": "{{user_agent}} @ {{ClientHost}}",
+          "refId": "A",
+          "instant": true,
+          "queryType": "instant"
+        }
+      ],
+      "title": "Traffic by client (totals in range)",
+      "type": "table",
+      "description": "Top 20 (user_agent, ClientHost) by request count. UA \"node\" + Azure/GH IP = renegades-scores snapshot bot; \"Sideline/1.0\" = Spielplan client; Mozilla/* = browsers.",
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value #A": "Requests",
+              "user_agent": "User-Agent",
+              "ClientHost": "Client IP"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "desc": true,
+                "field": "Requests"
+              }
+            ]
+          }
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 7
+      },
+      "id": 1
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "sum",
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "topk(10, sum by (user_agent, ClientHost) (count_over_time({job=\"docker\", container=\"traefik.traefik\"} | json [1m])))",
+          "legendFormat": "{{user_agent}} @ {{ClientHost}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Traffic by client (req/min)",
+      "type": "timeseries",
+      "description": "Per-minute request rate for the top 10 clients. Daily snapshot-bot burst (~900 /games/ hits in ~3 min) shows as a sharp spike.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 7
+      },
+      "id": 2
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 15
+      },
+      "id": 102,
+      "panels": [],
+      "title": "2 \u00b7 Endpoint heatmap (templated)",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto",
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 100
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "footer": {
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": true
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Requests"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "topk(20, sum by (endpoint) (count_over_time({job=\"docker\", container=\"traefik.traefik\"} | path=~\"/api.*\" | json | label_format path_nq=\"{{ regexReplaceAll \"\\\\?.*\" .RequestPath \"\" }}\" | label_format endpoint=\"{{ regexReplaceAll \"/[0-9]+\" .path_nq \"/{id}\" }}\" [$__range])))",
+          "legendFormat": "{{endpoint}}",
+          "refId": "A",
+          "instant": true,
+          "queryType": "instant"
+        }
+      ],
+      "title": "Top 20 API endpoints (numeric IDs \u2192 {id}, query stripped)",
+      "type": "table",
+      "description": "RequestPath with numeric IDs templated out (/api/gamedays/<id>/games/ \u2192 /api/gamedays/{id}/games/) and query strings stripped.",
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value #A": "Requests",
+              "endpoint": "Endpoint"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "desc": true,
+                "field": "Requests"
+              }
+            ]
+          }
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "id": 3
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "sum",
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "topk(10, sum by (endpoint) (count_over_time({job=\"docker\", container=\"traefik.traefik\"} | path=~\"/api.*\" | json | label_format path_nq=\"{{ regexReplaceAll \"\\\\?.*\" .RequestPath \"\" }}\" | label_format endpoint=\"{{ regexReplaceAll \"/[0-9]+\" .path_nq \"/{id}\" }}\" [5m])))",
+          "legendFormat": "{{endpoint}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Endpoint usage over time (top 10 templated)",
+      "type": "timeseries",
+      "description": "Stacked request volume per templated endpoint.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "id": 4
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "id": 103,
+      "panels": [],
+      "title": "3 \u00b7 Burst view (>100 req/min)",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 50
+              },
+              {
+                "color": "red",
+                "value": 100
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "sum",
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "topk(8, sum by (user_agent, ClientHost) (count_over_time({job=\"docker\", container=\"traefik.traefik\"} | json [1m])))",
+          "legendFormat": "{{user_agent}} @ {{ClientHost}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=\"node\" | json [1m]))",
+          "legendFormat": "snapshot-bot UA=node (total)",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=~\"(?i).*Sideline.*\" | json [1m]))",
+          "legendFormat": "Sideline client (total)",
+          "refId": "C"
+        }
+      ],
+      "title": "Req/min per client (bursts > 100/min highlighted)",
+      "type": "timeseries",
+      "description": "Burst threshold is 100 req/min (red line). Snapshot bot does ~300 req/min during its ~3 min run. A NEW UA bursting is the signal to investigate.",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
+      "id": 5
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 33
+      },
+      "id": 104,
+      "panels": [],
+      "title": "4 \u00b7 Status codes",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "429 rate-limited"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "5xx upstream"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "dark-red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/^2../"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "sum",
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (status) (count_over_time({job=\"docker\", container=\"traefik.traefik\"} | json [5m]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | status=~\"429\" [5m]))",
+          "legendFormat": "429 rate-limited",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | status=~\"5..\" [5m]))",
+          "legendFormat": "5xx upstream",
+          "refId": "C"
+        }
+      ],
+      "title": "Status codes over time (429 / 5xx emphasized)",
+      "type": "timeseries",
+      "description": "429 = Traefik rate limiting kicking in; 5xx = nginx/gunicorn/Django upstream problem. Both deserve a look; 2xx/4xx background is normal.",
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 0,
+        "y": 34
+      },
+      "id": 6
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 100
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | status=~\"429\" [$__range]))",
+          "legendFormat": "429s",
+          "refId": "A"
+        }
+      ],
+      "title": "429 in range",
+      "type": "stat",
+      "description": "Rate-limited responses in the selected window.",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 34
+      },
+      "id": 7
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | status=~\"5..\" [$__range]))",
+          "legendFormat": "5xx",
+          "refId": "A"
+        }
+      ],
+      "title": "5xx in range",
+      "type": "stat",
+      "description": "Upstream errors in the selected window.",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 34
+      },
+      "id": 8
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 42
+      },
+      "id": 105,
+      "panels": [],
+      "title": "5 \u00b7 Latency p50/p95 per endpoint (ms)",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "sum",
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "quantile_over_time(0.50, {job=\"docker\", container=\"traefik.traefik\"} | path=~\"/api/gamedays/(\\?.*)?\" | json | unwrap Duration [5m]) / 1000000",
+          "legendFormat": "catalog p50",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "quantile_over_time(0.95, {job=\"docker\", container=\"traefik.traefik\"} | path=~\"/api/gamedays/(\\?.*)?\" | json | unwrap Duration [5m]) / 1000000",
+          "legendFormat": "catalog p95",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "quantile_over_time(0.50, {job=\"docker\", container=\"traefik.traefik\"} | path=~\"/api/gamedays/[0-9]+/games/.*\" | json | unwrap Duration [5m]) / 1000000",
+          "legendFormat": "games p50",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "quantile_over_time(0.95, {job=\"docker\", container=\"traefik.traefik\"} | path=~\"/api/gamedays/[0-9]+/games/.*\" | json | unwrap Duration [5m]) / 1000000",
+          "legendFormat": "games p95",
+          "refId": "D"
+        }
+      ],
+      "title": "Latency p50/p95 \u2014 catalog vs games (Duration ns \u2192 ms)",
+      "type": "timeseries",
+      "description": "Traefik Duration is nanoseconds; divided by 1e6 \u2192 ms. Watch p95 of /api/gamedays*/games/ for regressions (Django/gunicorn slowness).",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 43
+      },
+      "id": 9
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 51
+      },
+      "id": 106,
+      "panels": [],
+      "title": "6 \u00b7 Response payload size per endpoint",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "sum",
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg(avg_over_time({job=\"docker\", container=\"traefik.traefik\"} | path=~\"/api/gamedays/(\\?.*)?\" | json | unwrap DownstreamContentSize [5m]))",
+          "legendFormat": "catalog avg bytes",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg(avg_over_time({job=\"docker\", container=\"traefik.traefik\"} | path=~\"/api/gamedays/[0-9]+/games/.*\" | json | unwrap DownstreamContentSize [5m]))",
+          "legendFormat": "games avg bytes",
+          "refId": "B"
+        }
+      ],
+      "title": "Avg response bytes \u2014 catalog vs games",
+      "type": "timeseries",
+      "description": "DownstreamContentSize averaged per window. A sudden jump on /games/ (page_size change, serialization regression) shows here first.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 52
+      },
+      "id": 10
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto",
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 100
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "footer": {
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": true
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Requests"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "topk(20, sum by (endpoint) (sum_over_time({job=\"docker\", container=\"traefik.traefik\"} | path=~\"/api.*\" | json | label_format path_nq=\"{{ regexReplaceAll \"\\\\?.*\" .RequestPath \"\" }}\" | label_format endpoint=\"{{ regexReplaceAll \"/[0-9]+\" .path_nq \"/{id}\" }}\" | unwrap DownstreamContentSize [$__range])))",
+          "legendFormat": "{{endpoint}}",
+          "refId": "A",
+          "instant": true,
+          "queryType": "instant"
+        }
+      ],
+      "title": "Total bytes by templated endpoint",
+      "type": "table",
+      "description": "Total DownstreamContentSize per templated endpoint in range.",
+      "transformations": [
+        {
+          "id": "labelsToFields",
+          "options": {
+            "mode": "columns"
+          }
+        },
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "Value #A": "Requests",
+              "endpoint": "Endpoint"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "desc": true,
+                "field": "Requests"
+              }
+            ]
+          }
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 52
+      },
+      "id": 11
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 60
+      },
+      "id": 107,
+      "panels": [],
+      "title": "7 \u00b7 Known-bot signature (snapshot bot)",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=\"node\" | path=~\"/api/gamedays/(\\?.*)?\" [$__range]))",
+          "legendFormat": "catalog",
+          "refId": "A"
+        }
+      ],
+      "title": "Snapshot-bot: catalog hits (UA=node)",
+      "type": "stat",
+      "description": "Snapshot-bot signature: UA exactly `node`, 1\u00d7 catalog `/api/gamedays/?format=json&page_size=1000` then ~900\u00d7 `/api/gamedays/<id>/games/?format=json` inside ~3 min (e.g. 2026-09-26 08:06\u201308:08 UTC from 20.161.69.33).",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 61
+      },
+      "id": 12
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 100
+              },
+              {
+                "color": "red",
+                "value": 800
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=\"node\" | path=~\"/api/gamedays/[0-9]+/games/.*\" [$__range]))",
+          "legendFormat": "games",
+          "refId": "A"
+        }
+      ],
+      "title": "Snapshot-bot: /games/ hits (UA=node)",
+      "type": "stat",
+      "description": "Expect ~900 per daily run. 0 outside the run window is NORMAL.",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 61
+      },
+      "id": 13
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 200
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({job=\"docker\", container=\"traefik.traefik\"} | user_agent=~\"(?i).*Sideline.*\" [$__range]))",
+          "legendFormat": "sideline",
+          "refId": "A"
+        }
+      ],
+      "title": "Sideline client hits in range",
+      "type": "stat",
+      "description": "Sideline/1.0 polls /api/gamedays/?search=season:2026&page_size=500 + /games/. Steady low-rate polling is normal.",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 61
+      },
+      "id": 14
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 65
+      },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": false
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{job=\"docker\", container=\"traefik.traefik\"} | user_agent=\"node\" | path=~\"/api/gamedays.*\"",
+          "refId": "A"
+        }
+      ],
+      "title": "Snapshot-bot raw lines (UA=node, /api/gamedays*) \u2014 proof view",
+      "type": "logs",
+      "description": "Set dashboard time to cover a daily run (e.g. 2026-09-26 08:00\u201308:15 UTC). You must see 1\u00d7 catalog + ~900\u00d7 /games/ lines from one ClientHost.",
+      "id": 15
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 71
+      },
+      "id": 108,
+      "panels": [],
+      "title": "Runbook \u2014 normal vs investigate",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "datasource",
+        "uid": "grafana"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "**Normal**\n- **Daily snapshot-bot burst:** ~08:0x UTC, UA `node`, one Azure/GH-Actions IP, 1\u00d7 `/api/gamedays/?format=json&page_size=1000` then ~900\u00d7 `/api/gamedays/<id>/games/?format=json` in ~3 min. Stat panels \u00a77 read ~1 / ~900. Burst view spikes to ~300 req/min and falls back to ~0.\n- **Sideline polling:** UA `Sideline/1.0 (inoffizieller Spielplan-Client)`, low steady rate on `/api/gamedays/?search=season:2026&page_size=500` and `/games/`. No bursts.\n- **Browsers:** `Mozilla/*` spread across many ClientHosts, low per-IP rate, mixed endpoints, 2xx-dominated.\n\n**Deserves a look**\n- A **new UA** (or new ClientHost) bursting >100 req/min, esp. on `/api/gamedays*/games/`.\n- **429 spikes** (\u00a74): rate limiting is engaging \u2014 check whether it is the known bot (tune limits?) or an unknown client.\n- **5xx spikes**: nginx/gunicorn/Django upstream problem, not client behaviour \u2014 check LeagueSphere logs.\n- **p95 regression** on `/api/gamedays*/games/` (\u00a75) or payload jump (\u00a76): serialization / page_size / DB regression.\n\n**Alert proposals (OUT OF SCOPE for this task \u2014 candidates only)**\n1. `burst>100/min by unknown UA for 5m` (Loki metric query on \u00a73, exclude `node`+`Sideline`).\n2. `5xx rate on /api/* > threshold for 5m` (match the existing `traefik_service_requests_total{code=~\"5..\"}` Prometheus alerts).\n3. `p95(/api/gamedays*/games/) > SLO (e.g. 2\u00d7 baseline) for 15m` (recording rule on \u00a75 quantiles; needs longer retention first).",
+        "mode": "markdown"
+      },
+      "title": "Runbook",
+      "type": "text",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 72
+      },
+      "id": 110
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": [
+    "leaguesphere",
+    "api",
+    "consumers",
+    "traefik",
+    "bots"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "LeagueSphere \u2014 API Consumers",
+  "uid": "leaguesphere-api-consumers",
+  "version": 1,
+  "weekStart": ""
+}
