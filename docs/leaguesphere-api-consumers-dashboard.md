@@ -36,11 +36,8 @@ stack redeploy picks it up into the LeagueSphere folder with no manual step.
 1. Import the dashboard, set the time picker to `2026-09-26 08:00 – 08:15 UTC`
    (retention permitting — see effective-window note below).
 2. Row 7 §7 must read: **catalog hits ≈ 1**, **/games/ hits ≈ 900** for UA `node`.
-3. The "Snapshot-bot raw lines" logs panel must show 1×
-   `/api/gamedays/?format=json&page_size=1000` then ~900×
-   `/api/gamedays/<id>/games/?format=json` from a single ClientHost
-   (on 2026-09-26: `20.161.69.33`), and the red "Snapshot-bot catalog hit"
-   annotation must mark the window.
+3. The §7 stat panels (§7 "catalog hits" and "/games/ hits") carry the proof
+   numbers directly (no separate logs panel since dashboard v3).
 4. If the 2026-09-26 window has aged out (Docker rotation ≈ current day),
    use the **next daily run** (~08:0x UTC): same signature, fresh Azure/GH-Actions IP.
 5. Sanity: row 3 burst view spikes to ~300 req/min during the run and returns to ~0.
