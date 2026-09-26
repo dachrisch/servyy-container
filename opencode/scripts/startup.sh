@@ -29,6 +29,31 @@ if [ ! -x "/opencode/bin/gh" ]; then
     echo "⚠️ [Startup] GitHub CLI wrapper not found at /opencode/bin/gh - wrapper will not function"
 fi
 
+# 3b. gh-stack extension (required by the gh-stack skill).
+# Installed once into /root/.local/share/gh (persists via opencode_root
+# volume); the guard makes this a no-op on later boots. Auth strategy:
+# the gh wrapper hard-fails when no PAT is configured, so use it only
+# when GITHUB_PAT_DACHRISCH is present; otherwise fall back to gh.real,
+# which can install this PUBLIC extension unauthenticated (rate limits
+# apply). Never fail the boot here.
+echo "🧩 [Startup] Ensuring gh-stack extension..."
+gh_ext_bin="/usr/bin/gh.real"
+if [ -n "${GITHUB_PAT_DACHRISCH:-}" ] && [ -x "/opencode/bin/gh" ]; then
+    export GH_TOKEN="$GITHUB_PAT_DACHRISCH"
+    gh_ext_bin="gh"
+fi
+if "$gh_ext_bin" extension list 2>/dev/null | grep -q 'gh-stack'; then
+    echo "📍 [Startup] gh-stack extension already installed"
+else
+    "$gh_ext_bin" extension install github/gh-stack \
+        && echo "📍 [Startup] gh-stack extension installed" \
+        || echo "⚠️ [Startup] gh-stack extension install failed (continuing)"
+fi
+unset GH_TOKEN || true
+# Non-interactive prerequisites from the gh-stack skill:
+git config --global rerere.enabled true || true
+git config --global remote.pushDefault origin || true
+
 # 4. Configuration Substitution
 echo "⚙️ [Startup] Configuring OpenCode..."
 CONFIG_DIR="/root/.config/opencode"
