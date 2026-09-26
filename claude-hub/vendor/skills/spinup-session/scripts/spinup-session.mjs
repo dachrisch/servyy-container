@@ -11,7 +11,7 @@
 //
 // Emits exactly one JSON object on stdout:
 //   session-ready | session-exists | workspace-ready | spinup-planned | spinup-blocked
-import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, sep } from 'node:path';
 import { HubConfigError, inList, parseRemote, resolveSettings } from '../../../scripts/lib/hub-config.mjs';
@@ -64,6 +64,19 @@ function slugify(text, max = 48) {
 }
 
 const git = (...a) => run('git', a);
+
+// git-crypt keeps its unlocked key under the repo's OWN git-dir (`<git-dir>/git-crypt/keys/...`),
+// never something a linked worktree inherits: `git worktree add` gives the new worktree its own
+// git-dir (`<main-git-dir>/worktrees/<name>/`), which has no git-crypt state, so the moment
+// checkout hits an encrypted path the smudge filter fails with "Unable to open key file" and the
+// whole `worktree add` aborts (local claude-hub patch, not upstream june-hub - see VENDORED.md).
+// Detected once per source repo via its real git-dir, not by symlink/committed-file guessing.
+function gitCryptDir(repoRoot) {
+  const r = git('-C', repoRoot, 'rev-parse', '--absolute-git-dir');
+  if (!r.ok) return null;
+  const dir = join(r.text, 'git-crypt');
+  return existsSync(dir) ? dir : null;
+}
 
 function worktreeList(repoRoot) {
   const r = git('-C', repoRoot, 'worktree', 'list', '--porcelain');
@@ -258,13 +271,26 @@ const created = [];
 for (const p of plan) {
   const entry = { repo: p.repo, path: p.path, branch: p.branch, base: p.base, source: p.source, remote: p.remote, linked: p.linked };
   if (p.action !== 'exists') {
+    // Skip checkout on the initial add for a git-crypt repo: it would try to smudge encrypted
+    // paths before the new worktree has any key. Populate the key first, then check out for real.
+    const cryptDir = gitCryptDir(p.source);
     const add = p.action === 'checkout-existing-branch'
-      ? git('-C', p.source, 'worktree', 'add', p.path, p.branch)
-      : git('-C', p.source, 'worktree', 'add', '-b', p.branch, p.path, p.base);
+      ? git('-C', p.source, 'worktree', 'add', ...(cryptDir ? ['--no-checkout'] : []), p.path, p.branch)
+      : git('-C', p.source, 'worktree', 'add', ...(cryptDir ? ['--no-checkout'] : []), '-b', p.branch, p.path, p.base);
     if (!add.ok) {
       fail(EV, 'worktree_add_failed', `git worktree add failed for ${p.repo}: ${add.text}`, {
         workspace, created, failed_repo: p.repo,
       });
+    }
+    if (cryptDir) {
+      const wtGitDir = git('-C', p.path, 'rev-parse', '--absolute-git-dir').text;
+      cpSync(cryptDir, join(wtGitDir, 'git-crypt'), { recursive: true });
+      const co = git('-C', p.path, 'checkout', 'HEAD', '--', '.');
+      if (!co.ok) {
+        fail(EV, 'worktree_add_failed', `git-crypt checkout failed for ${p.repo} after copying the key into the new worktree: ${co.text}`, {
+          workspace, created, failed_repo: p.repo,
+        });
+      }
     }
   }
   entry.head = git('-C', p.path, 'rev-parse', '--short', 'HEAD').text;

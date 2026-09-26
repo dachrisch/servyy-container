@@ -68,10 +68,13 @@ if [ -f "/scripts/opencode.json.template" ]; then
     envsubst '$CIRCLECI_TOKEN $CIRCLECI_BASE_URL $DASHSCOPE_API_KEY $OPENCODE_GO_API_KEY' < /scripts/opencode.json.template > "$CONFIG_DIR/opencode.json"
 fi
 
-if [ -f "/scripts/opencode-mem.jsonc" ]; then
-    echo "⚙️ [Startup] Deploying opencode-mem config..."
-    cp /scripts/opencode-mem.jsonc "$CONFIG_DIR/opencode-mem.jsonc"
+if [ -f "/scripts/tui.json" ]; then
+    echo "⚙️ [Startup] Deploying tui.json..."
+    cp /scripts/tui.json "$CONFIG_DIR/tui.json"
 fi
+
+# Cleanup legacy files from removed plugins (one-way, idempotent).
+rm -f "$CONFIG_DIR/opencode-mem.jsonc"
 
 # 4b. Configure git to prefer SSH over HTTPS for github.com
 git config --global --add safe.directory '*'

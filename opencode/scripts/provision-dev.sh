@@ -56,14 +56,6 @@ git config --global user.email "${GIT_AUTHOR_EMAIL:-opencode@servy.lehel.xyz}"
 # Use SSH for all github.com URLs (not HTTPS) to avoid credential issues
 git config --global url."git@github.com:".insteadOf "https://github.com/"
 
-# 2b. Seed Antigravity (Google) OAuth credential for OpenCode.
-if [ -n "${OPENCODE_AUTH_GOOGLE_B64:-}" ]; then
-  AUTH_DIR="$HOME/.local/share/opencode"; export AUTH_DIR
-  result="$(python3 "$(dirname "$0")/seed_auth.py")" \
-    && log "opencode google auth $result" \
-    || log "WARN: opencode google auth seed failed (continuing)"
-fi
-
 # 3. Decode git-crypt key (used for repos flagged with the gh-dash-crypt topic)
 CRYPT_KEY=""
 if [ -n "${GIT_CRYPT_KEY_B64:-}" ]; then

@@ -65,6 +65,15 @@ as static `environment:` entries in `claude-hub/docker-compose.yml`, so every re
 resolves deterministically without depending on the (now-dead-anyway) marketplace-scanning
 fallback.
 
+## Local bug fixes (behavior, not renames)
+
+Genuine deviations from the vendored source, beyond the rename patch above — kept here so a
+future re-vendoring pass re-applies them too, not just the rename table.
+
+| File | Fix | Why |
+|---|---|---|
+| `skills/spinup-session/scripts/spinup-session.mjs` | Adding a worktree for a git-crypt-enabled source repo now passes `--no-checkout` to `git worktree add`, copies `<source-git-dir>/git-crypt` into the new worktree's own git-dir, then does an explicit `checkout HEAD -- .` | git-crypt's unlocked key lives under the repo's own git-dir (`.git/git-crypt/keys/...`); a linked worktree gets its own git-dir (`.git/worktrees/<name>/`) with no such key, so plain `git worktree add`'s immediate checkout fails on the first encrypted path (`git-crypt: Unable to open key file`) and dispatch into any git-crypt repo (servyy-container included) came back `spinup-blocked`. See `history/2026-09-26_claude-hub-gitcrypt-worktree-fix.md`. |
+
 ## Why `scripts/launcher/hub.mjs` is vendored despite not being our normal invocation path
 
 Our own systemd-timer-driven calls (`claude-hub-reaper.timer`, `claude-hub-force-cleanup.timer`)

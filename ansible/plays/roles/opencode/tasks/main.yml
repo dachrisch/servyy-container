@@ -223,11 +223,25 @@
   notify: restart opencode container
   tags: [user.docker.opencode]
 
-- name: Deploy opencode-mem config
+- name: Deploy OpenCode TUI config
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../../opencode/scripts/opencode-mem.jsonc"
-    dest: "{{ ('/home/', create_user, 'servyy-container/opencode/scripts/opencode-mem.jsonc') | path_join }}"
+    src: "{{ playbook_dir }}/../../opencode/scripts/tui.json"
+    dest: "{{ ('/home/', create_user, 'servyy-container/opencode/scripts/tui.json') | path_join }}"
     mode: '0644'
+  notify: restart opencode container
+  tags: [user.docker.opencode]
+
+- name: Remove legacy opencode-mem config (replaced by opencode-working-memory)
+  ansible.builtin.file:
+    path: "{{ ('/home/', create_user, 'servyy-container/opencode/scripts/opencode-mem.jsonc') | path_join }}"
+    state: absent
+  notify: restart opencode container
+  tags: [user.docker.opencode]
+
+- name: Remove legacy Antigravity auth seeder (Antigravity removed)
+  ansible.builtin.file:
+    path: "{{ ('/home/', create_user, 'servyy-container/opencode/scripts/seed_auth.py') | path_join }}"
+    state: absent
   notify: restart opencode container
   tags: [user.docker.opencode]
 
