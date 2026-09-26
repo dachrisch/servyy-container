@@ -232,22 +232,14 @@
               "Time": true
             },
             "renameByName": {
-              "Value #A": "Requests",
+              "Value #A": "Snapshot bot",
               "user_agent": "User-Agent",
-              "ClientHost": "Client IP"
+              "ClientHost": "Client IP",
+              "Value #B": "Sideline",
+              "Value #C": "Browsers",
+              "Value #D": "Scrapers & probes",
+              "Value #E": "Other"
             }
-          }
-        },
-        {
-          "id": "sortBy",
-          "options": {
-            "fields": {},
-            "sort": [
-              {
-                "desc": true,
-                "field": "Requests"
-              }
-            ]
           }
         }
       ],
@@ -1650,42 +1642,6 @@
         "y": 61
       },
       "id": 14
-    },
-    {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 24,
-        "x": 0,
-        "y": 65
-      },
-      "options": {
-        "dedupStrategy": "none",
-        "enableLogDetails": true,
-        "prettifyLogMessage": false,
-        "showCommonLabels": false,
-        "showLabels": false,
-        "showTime": true,
-        "sortOrder": "Descending",
-        "wrapLogMessage": false
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "{job=\"docker\", container=\"traefik.traefik\"} | user_agent=\"node\" | path=~\"/api/gamedays.*\" | json RequestHost | __error__=\"\" | RequestHost=~\"^(www\\\\.)?leaguesphere\\\\.app$\"",
-          "refId": "A"
-        }
-      ],
-      "title": "Snapshot-bot raw lines (UA=node, /api/gamedays*) — proof view",
-      "type": "logs",
-      "description": "Set dashboard time to cover a daily run (e.g. 2026-09-26 08:00–08:15 UTC). You must see 1× catalog + ~900× /games/ lines from one ClientHost.",
-      "id": 15
     },
     {
       "collapsed": false,
