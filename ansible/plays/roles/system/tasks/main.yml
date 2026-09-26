@@ -40,13 +40,22 @@
     - system.docker.cleanup
     - system.maintenance
 
-- import_tasks: claude_hub_prune.yml
+- import_tasks: claude_hub_reaper.yml
   when: >-
-    (claude_hub_prune.enabled | default(true))
+    (claude_hub_reaper.enabled | default(true))
     and (services_enabled['claude-hub'] | default(false))
   tags:
     - system.docker
-    - system.docker.claude_hub_prune
+    - system.docker.claude_hub_reaper
+    - system.maintenance
+
+- import_tasks: claude_hub_force_cleanup.yml
+  when: >-
+    (claude_hub_force_cleanup.enabled | default(true))
+    and (services_enabled['claude-hub'] | default(false))
+  tags:
+    - system.docker
+    - system.docker.claude_hub_force_cleanup
     - system.maintenance
 
 - import_tasks: apt_upgrade.yml

@@ -1,0 +1,11 @@
+[Unit]
+Description=Trigger for Claude Hub long-tail force-cleanup
+Requires=claude-hub-force-cleanup.service
+
+[Timer]
+OnCalendar={{ claude_hub_force_cleanup.schedule }}
+RandomizedDelaySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
