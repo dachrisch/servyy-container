@@ -73,3 +73,16 @@ structured-metadata filters (`| path =~`, `| user_agent =~`, `| status =~`),
 `| json` only for `ClientHost`/`Duration`/`DownstreamContentSize`/`RouterName`.
 Endpoint templating via
 `| label_format path_nq=… | label_format endpoint=…` (`regexReplaceAll`, query stripped, IDs → `{id}`).
+
+> 2026-09-26 fix (dashboard v2): three corrections after live verification.
+> (1) Go-template `regexReplaceAll` inside `label_format` does **not** parse on
+> Loki 3.7.8 — endpoint grouping is now by `/api/<area>` (first two path
+> segments via `regexp`, no templates). (2) Bare `| json` extracts every field
+> (incl. per-line-unique `RequestCount`/nanosecond timings) and blows Loki's
+> 500-series limit — all extractions are field-limited (`| json <field>`) with
+> `| __error__=""` guards (Docker rotation truncates lines mid-write, which
+> otherwise aborts whole queries). Same guard needed because raw-`user_agent`
+> grouping exceeds 500 distinct values/day: client totals are fixed UA classes
+> (node / Sideline / browsers / scrapers&probes / other). (3) All consumer
+> panels are host-scoped to `leaguesphere.app` (the unscoped stream mixes in
+> Grafana's own `/api/*` polling and subdomain-scan noise).
