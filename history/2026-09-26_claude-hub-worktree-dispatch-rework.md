@@ -3,7 +3,8 @@
 **Date:** 2026-09-26
 **Author:** Claude (via user dachrisch)
 **Type:** Feature / Refactor
-**Status:** 🚧 Implemented, static checks passed; pending Molecule/servyy-test.lxd verification and production deploy
+**Status:** ✅ Implemented and verified end-to-end on `servyy-test.lxd` (real dispatch → work →
+close-request → hub close, full round trip); pending Molecule and production deploy
 
 ## Summary
 
@@ -121,6 +122,38 @@ directly runnable instead of referencing a file that doesn't exist here.
   narrow override of `session-reaper`'s own "never close on a timeout"
   guardrail for this one long-tail case.
 
+## Two bugs found and fixed during live `servyy-test.lxd` verification
+
+Both root-caused live (not guessed), both fixed on this same branch since they blocked finishing
+this branch's own verification.
+
+**1. Workspace trust blocked every fresh dispatch (new, caused by this rework).**
+`claude --bg`'s first-run workspace-trust check fires for every brand-new task workspace, because
+`spinup-session.mjs` creates a new directory per task by design. Trust turned out to be a literal
+per-directory entry in `~/.claude.json`'s `projects` map (`hasTrustDialogAccepted: true`), keyed by
+the exact workspace-root path used as `cwd` in the `--bg` call — not inherited from the source
+repo, not shared between sibling worktrees of the same repo (confirmed both ways experimentally).
+Fix: `spinup-repo.sh` now calls `spinup-session.mjs --no-start` first to build the workspace and
+learn its path, seeds that one trust entry via a small `node -e` (merging into `~/.claude.json`,
+never overwriting it), then calls `spinup-session.mjs` again for real. Safe to automate:
+`spinup-repo.sh` already fully owns everything under `/root/worktrees`.
+
+**2. The 2026-09-25 `SHELL` fix (commit `a8270b1`) no longer works — pre-existing, not caused by
+this rework.** Confirmed live on both the hub session and a dispatched session: the Bash tool
+failed with `No suitable shell found...` even though `SHELL=/bin/sh` was genuinely present in the
+process's own OS environment (checked via `/proc/<pid>/environ`, not a misdiagnosis). Root cause,
+extracted directly from the installed CLI binary's strings (`strings .../bin/claude.exe | grep -B5
+-A15 'No suitable shell found'`): this CLI version (`2.1.283`) scans `/bin` and `/usr/bin` for an
+actual **`bash` or `zsh`** binary (or honors an explicit `CLAUDE_CODE_SHELL` override, itself
+validated as a path whose name contains "bash" or "zsh") — plain POSIX-compliance was never
+actually sufficient; `/bin/sh` on `node:24-alpine` is BusyBox `ash`, which this check rejects
+regardless of `$SHELL`. Since `startup.sh` runs an unpinned `npm install -g
+@anthropic-ai/claude-code` on every boot, this container always runs whatever's newest, and a
+tightened check in a newer release silently broke the September fix with zero local change. Fix:
+`apk add bash` in `startup.sh`, `docker-compose.yml` switched to `CLAUDE_CODE_SHELL=/bin/bash` +
+`SHELL=/bin/bash`. Verified live in both the hub session and a fresh dispatched session after
+redeploy — Bash tool works in both.
+
 ## Known, accepted gaps
 
 - **cwd-based hub-protection mismatch**: june-hub's `samePath(cwd,
@@ -135,10 +168,12 @@ directly runnable instead of referencing a file that doesn't exist here.
   live OK. The weekly force-cleanup script does exactly that, for sessions
   parked far past a long threshold — an explicit, narrow, infra-specific
   exception the user asked for, not an oversight.
-- **Native `claude --bg`/`claude agents`/`claude attach` behavior is still
-  unverified against a live installed CLI** (same open gap as before this
-  change, inherited from the original `claude-hub` design doc) — this is the
-  single biggest risk item for the `servyy-test.lxd` pass below.
+- **Native `claude --bg`/`claude agents` behavior** — the single biggest risk
+  item going into the `servyy-test.lxd` pass, inherited as an open
+  `TODO(verify)` from the original `claude-hub` design doc — is now
+  confirmed working live (see Testing below), including a real
+  `--disallowedTools` deny-list flag surviving into the running job and a
+  real `close-request`/`SendMessage` round trip between sessions.
 
 ## Files Changed
 
@@ -174,7 +209,7 @@ and their systemd templates (`claude-hub-reaper.{sh,service,timer}.j2`,
 
 ## Testing
 
-Done so far (all static, no live Docker/CLI needed):
+**Static** (no live Docker/CLI needed):
 - `ansible-playbook servyy.yml -i production --syntax-check` — clean.
 - `ansible-lint --profile production` (whole repo) — 0 failures/warnings.
 - `sh -n` + `shellcheck -s sh` on `startup.sh`, `spinup-repo.sh`,
@@ -186,18 +221,51 @@ Done so far (all static, no live Docker/CLI needed):
 - `launcherPath()` resolves to `~/.claude/claude-hub/hub.mjs` (zero "june"
   anywhere) when exercised directly against the vendored code.
 
-**Not yet done** (this sandboxed session has no Docker access):
+**Live on `servyy-test.lxd`** — deployed via `./servyy-test.sh --tags
+user.docker.repo,user.docker.claude-hub,system.docker.claude_hub_reaper,system.docker.claude_hub_force_cleanup`
+(branch auto-selected via the existing `docker.local_dir` HEAD lookup in
+`includes/repository.yml` — no `-e branch=` needed):
+- Full boot sequence completes correctly end to end, including the new
+  `claude-hub.json` write step and gh-dash repo provisioning.
+- `claude agents --json` works without auth (`[]` on an empty fleet).
+- Vendored `session-reaper.mjs` runs correctly for real: `list --all`,
+  `run --dry-run`, and a real automatic 15-minute timer tick that completed
+  cleanly with no errors.
+- Both new systemd timers (`claude-hub-reaper.timer`,
+  `claude-hub-force-cleanup.timer`) created, enabled, correctly scheduled;
+  old `claude-hub-prune.*` units fully torn down, no orphans.
+- After the two bugs above were fixed and redeployed: a **full, real,
+  end-to-end round trip** — `spinup-repo.sh` dispatch (gh-dash resolution +
+  clone + automated workspace-trust pre-seeding) → `session-ready` on the
+  first try → dispatched session runs real Bash-tool commands in its
+  worktree → sends a `close-request` to the hub via `SendMessage` → hub
+  dry-runs the close, asks for the user's OK, closes for real → worktree
+  removed, branch (`claude/smoke-test-three`) and its commits kept, `reopen`
+  command correctly references the renamed `~/.claude/claude-hub/hub.mjs`
+  launcher. Repeated for a second dispatched session with the same result.
+- `EnterWorktree` was never even invoked by either dispatched session (the
+  `CLAUDE.md`/prompt instructions were sufficient on their own) — the
+  `--disallowedTools=EnterWorktree` deny-list is there as the backstop for
+  when that doesn't hold, not exercised as the primary mechanism in this
+  pass.
+- Real-world wrinkle, not a bug: Claude Code's own "auto mode" permission
+  gate categorizes `session-reaper.mjs --action close` as risky enough to
+  require an explicit manual run or a standing permission rule, even after
+  the user approves the close in conversation — the hub's own suggested
+  workaround (`! <command>` or a permission rule) handles this correctly;
+  documented here so it isn't mistaken for a `session-fleet` skill bug.
+
+**Not yet done**:
 - `molecule test` in `ansible/plays/roles/docker_service` and
   `ansible/plays/roles/system` (both scenarios updated, neither yet run
-  live).
-- Full `servyy-test.lxd` deployment and the live-CLI verification list from
-  the plan (`claude agents --json --all` behavior, a real `spinup-repo.sh`
-  dispatch, `--disallowedTools=EnterWorktree` actually suppressing the
-  approval prompt, the raw `claude attach`/`claude logs` operator commands,
-  a real reaper timer tick, an end-to-end `close-request` round trip, and a
-  force-cleanup dry run against a deliberately-aged parked session).
-- Production deploy to `codey.lehel.xyz` — requires the above to pass first,
-  then explicit user approval, per this repo's mandatory workflow.
+  live — no Docker access in the session that authored the Ansible changes).
+- The raw `docker exec ... claude attach`/`claude logs` operator commands
+  specifically (the equivalent `session-reaper.mjs --action list --all`
+  fleet view and the hub's own handling were exercised instead).
+- A force-cleanup dry run against a deliberately-aged parked session (the
+  live fleet never had one old enough to exercise the 75-day threshold).
+- Production deploy to `codey.lehel.xyz` — requires the above, then explicit
+  user approval, per this repo's mandatory workflow.
 
 ## Future Enhancements
 
