@@ -52,8 +52,8 @@ CI re-confirmed green for the fix commit (a18bcdd): all 23 checks pass on PR #15
 
 ## Phase 4: Production Approval & Documentation
 
-- [ ] Task: Write `history/2026-09-27_claude-hub-gh-wrapper.md` (problem, solution, files changed, test results)
-- [ ] Task: Present Molecule + servyy-test verification results to user
+- [x] Task: Write `history/2026-09-27_claude-hub-gh-wrapper.md` (problem, solution, files changed, test results)
+- [x] Task: Present Molecule + servyy-test verification results to user
 - [ ] Task: **PAUSE** — await explicit "Approved for Production"
 - [ ] Task: Conductor - User Manual Verification 'Phase 4: Production Approval & Documentation' (Protocol in workflow.md)
 
