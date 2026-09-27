@@ -120,11 +120,12 @@ echo "[startup] starting hub session..."
 #    container -- but kept for defensive idempotency) doesn't spawn a
 #    duplicate hub session.
 #
-# TODO(verify): the exact behavior of `claude --remote-control '<name>'` --
-# whether the value is a display name vs. something else, and how Remote
-# Control registration actually gets confirmed -- has not been verified
-# against a live installed CLI as part of this implementation. Check
-# `claude --help` before relying on this at the first real deploy.
+# `--remote-control '<name>'` sets the Remote Control display name, while
+# `--name '<name>'` sets the messaging name `ListAgents`/`SendMessage` use
+# (task sessions already get theirs that way -- their saved launch settings
+# include `--name "[codey] ..."`). The hub needs both set to `hub`, or task
+# sessions cannot find it by name when they send their `close-request`
+# (see https://github.com/dachrisch/servyy-container/issues/159).
 HUB_DIR="$HOME/dev/${INFRA_REPO:-dachrisch/servyy-container}"
 # provision-repos.sh (step 8 above) is best-effort and can fail silently to
 # clone/anchor $HUB_DIR. Without this check, `tmux new-session -c "$HUB_DIR"`
@@ -138,7 +139,7 @@ if [ ! -d "$HUB_DIR/.git" ]; then
 fi
 if ! tmux has-session -t hub 2>/dev/null; then
   tmux new-session -d -s hub -c "$HUB_DIR" \
-    "claude --continue --remote-control 'hub' || claude --remote-control 'hub'" \
+    "claude --continue --remote-control 'hub' --name 'hub' || claude --remote-control 'hub' --name 'hub'" \
     || echo "[startup] ERROR: hub session failed to start"
 fi
 exec tail -f /dev/null
