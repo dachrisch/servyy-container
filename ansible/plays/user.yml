@@ -214,6 +214,159 @@
         - user.docker.job-search
         - user.docker
 
+    # One-time MongoDB 7 -> 8 upgrade prep (shares the mongo:8 image with dontforget).
+    # Runs only while the container is still on a mongo:7 image: assert FCV is 7.0
+    # (mongod 8 refuses to start on older FCV data) and dump into <service>/.backup/
+    # (gitignored, covered by the restic home backup) before compose swaps the image.
+    # The FCV bump to 8.0 happens in post_tasks once mongo:8 is healthy.
+    - name: Timestamp for mongo 7 -> 8 pre-upgrade dumps
+      ansible.builtin.set_fact:
+        mongo8_dump_ts: "{{ now(utc=true).strftime('%Y%m%dT%H%M%SZ') }}"
+      tags:
+        - user.docker.leagues-finance
+        - user.docker.job-search
+        - user.docker
+
+    - name: Detect leagues-finance mongo still on mongo 7
+      ansible.builtin.set_fact:
+        lf_mongo_upgrading: "{{ lf_mongo_pre_auth_info.container.Config.Image is match('^(docker.io/)?(library/)?mongo:7') }}"
+      when:
+        - "'leagues-finance' in (services | default([]))"
+        - lf_mongo_pre_auth_info.container is defined
+        - lf_mongo_pre_auth_info.container is not none
+      tags:
+        - user.docker.leagues-finance
+        - user.docker
+
+    - name: Read leagues-finance mongo featureCompatibilityVersion
+      community.docker.docker_container_exec:
+        container: leagues-finance.mongo
+        argv:
+          - mongosh
+          - admin
+          - --quiet
+          - -u
+          - "{{ leagues_finance.mongo_root_username }}"
+          - -p
+          - "{{ leagues_finance.mongo_root_password }}"
+          - --eval
+          - 'db.adminCommand({getParameter: 1, featureCompatibilityVersion: 1}).featureCompatibilityVersion.version'
+      register: lf_mongo_pre_fcv
+      changed_when: false
+      when: lf_mongo_upgrading | default(false)
+      tags:
+        - user.docker.leagues-finance
+        - user.docker
+
+    - name: Assert leagues-finance mongo FCV is 7.0 before switching to mongo 8
+      ansible.builtin.assert:
+        that: lf_mongo_pre_fcv.stdout | trim == '7.0'
+        fail_msg: >-
+          leagues-finance.mongo FCV is '{{ lf_mongo_pre_fcv.stdout | trim }}', mongo 8 needs 7.0.
+          Run setFeatureCompatibilityVersion "7.0" first.
+      when: lf_mongo_upgrading | default(false)
+      tags:
+        - user.docker.leagues-finance
+        - user.docker
+
+    - name: Dump leagues-finance mongo before 7 -> 8 upgrade
+      community.docker.docker_container_exec:
+        container: leagues-finance.mongo
+        argv:
+          - mongodump
+          - -u
+          - "{{ leagues_finance.mongo_root_username }}"
+          - -p
+          - "{{ leagues_finance.mongo_root_password }}"
+          - --authenticationDatabase
+          - admin
+          - --gzip
+          - --archive=/tmp/pre-mongo8.archive.gz
+      when: lf_mongo_upgrading | default(false)
+      tags:
+        - user.docker.leagues-finance
+        - user.docker
+
+    - name: Copy leagues-finance pre-upgrade dump to host
+      ansible.builtin.shell: >-
+        mkdir -p {{ (docker.remote_dir, 'leagues-finance', '.backup') | path_join | quote }} &&
+        docker cp leagues-finance.mongo:/tmp/pre-mongo8.archive.gz
+        {{ (docker.remote_dir, 'leagues-finance', '.backup', 'mongo7-' ~ mongo8_dump_ts ~ '.archive.gz') | path_join | quote }}
+      when: lf_mongo_upgrading | default(false)
+      tags:
+        - user.docker.leagues-finance
+        - user.docker
+
+    - name: Detect job-search mongo still on mongo 7
+      ansible.builtin.set_fact:
+        js_mongo_upgrading: "{{ js_mongo_pre_auth_info.container.Config.Image is match('^(docker.io/)?(library/)?mongo:7') }}"
+      when:
+        - "'job-search' in (services | default([]))"
+        - js_mongo_pre_auth_info.container is defined
+        - js_mongo_pre_auth_info.container is not none
+      tags:
+        - user.docker.job-search
+        - user.docker
+
+    - name: Read job-search mongo featureCompatibilityVersion
+      community.docker.docker_container_exec:
+        container: job-search-mongodb
+        argv:
+          - mongosh
+          - admin
+          - --quiet
+          - -u
+          - "{{ vault_job_search_mongo_root_username }}"
+          - -p
+          - "{{ vault_job_search_mongo_root_password }}"
+          - --eval
+          - 'db.adminCommand({getParameter: 1, featureCompatibilityVersion: 1}).featureCompatibilityVersion.version'
+      register: js_mongo_pre_fcv
+      changed_when: false
+      when: js_mongo_upgrading | default(false)
+      tags:
+        - user.docker.job-search
+        - user.docker
+
+    - name: Assert job-search mongo FCV is 7.0 before switching to mongo 8
+      ansible.builtin.assert:
+        that: js_mongo_pre_fcv.stdout | trim == '7.0'
+        fail_msg: >-
+          job-search-mongodb FCV is '{{ js_mongo_pre_fcv.stdout | trim }}', mongo 8 needs 7.0.
+          Run setFeatureCompatibilityVersion "7.0" first.
+      when: js_mongo_upgrading | default(false)
+      tags:
+        - user.docker.job-search
+        - user.docker
+
+    - name: Dump job-search mongo before 7 -> 8 upgrade
+      community.docker.docker_container_exec:
+        container: job-search-mongodb
+        argv:
+          - mongodump
+          - -u
+          - "{{ vault_job_search_mongo_root_username }}"
+          - -p
+          - "{{ vault_job_search_mongo_root_password }}"
+          - --authenticationDatabase
+          - admin
+          - --gzip
+          - --archive=/tmp/pre-mongo8.archive.gz
+      when: js_mongo_upgrading | default(false)
+      tags:
+        - user.docker.job-search
+        - user.docker
+
+    - name: Copy job-search pre-upgrade dump to host
+      ansible.builtin.shell: >-
+        mkdir -p {{ (docker.remote_dir, 'job-search', '.backup') | path_join | quote }} &&
+        docker cp job-search-mongodb:/tmp/pre-mongo8.archive.gz
+        {{ (docker.remote_dir, 'job-search', '.backup', 'mongo7-' ~ mongo8_dump_ts ~ '.archive.gz') | path_join | quote }}
+      when: js_mongo_upgrading | default(false)
+      tags:
+        - user.docker.job-search
+        - user.docker
+
   roles:
     # Simple services — generic .env only
     - role: docker_service
@@ -514,9 +667,13 @@
         - user.docker.leagues-finance
         - user.docker
 
+    # Never wipe the volume during the 7 -> 8 upgrade: mongo 8 may need longer to
+    # come up on existing data, and an unhealthy container here means the upgrade
+    # failed, not that the volume is corrupt. The dedicated wait below fails loudly.
     - name: Remove corrupted mongo volume and restart if unhealthy
       when: >
-        'leagues-finance' in (services | default([])) and (
+        'leagues-finance' in (services | default([])) and
+        not (lf_mongo_upgrading | default(false)) and (
         lf_mongo_info.container is none or
         lf_mongo_info.container.State.Health.Status != 'healthy')
       block:
@@ -548,6 +705,131 @@
           delay: 2
       tags:
         - user.docker.leagues-finance
+        - user.docker
+
+    - name: Wait for leagues-finance mongo after 7 -> 8 upgrade
+      community.docker.docker_container_info:
+        name: "leagues-finance.mongo"
+      register: lf_mongo_upgraded_info
+      until: >
+        lf_mongo_upgraded_info.container is not none and
+        lf_mongo_upgraded_info.container.State.Health.Status is defined and
+        lf_mongo_upgraded_info.container.State.Health.Status == 'healthy'
+      retries: 30
+      delay: 5
+      when: lf_mongo_upgrading | default(false)
+      tags:
+        - user.docker.leagues-finance
+        - user.docker
+
+    # Idempotent: also finishes an upgrade whose FCV bump was interrupted on a previous run.
+    - name: Read leagues-finance mongo featureCompatibilityVersion
+      community.docker.docker_container_exec:
+        container: leagues-finance.mongo
+        argv:
+          - mongosh
+          - admin
+          - --quiet
+          - -u
+          - "{{ leagues_finance.mongo_root_username }}"
+          - -p
+          - "{{ leagues_finance.mongo_root_password }}"
+          - --eval
+          - 'db.adminCommand({getParameter: 1, featureCompatibilityVersion: 1}).featureCompatibilityVersion.version'
+      register: lf_mongo_post_fcv
+      changed_when: false
+      when: "'leagues-finance' in (services | default([]))"
+      tags:
+        - user.docker.leagues-finance
+        - user.docker
+
+    - name: Set leagues-finance mongo featureCompatibilityVersion to 8.0
+      community.docker.docker_container_exec:
+        container: leagues-finance.mongo
+        argv:
+          - mongosh
+          - admin
+          - --quiet
+          - -u
+          - "{{ leagues_finance.mongo_root_username }}"
+          - -p
+          - "{{ leagues_finance.mongo_root_password }}"
+          - --eval
+          - 'db.adminCommand({setFeatureCompatibilityVersion: "8.0", confirm: true})'
+      when:
+        - "'leagues-finance' in (services | default([]))"
+        - lf_mongo_post_fcv.stdout | default('') | trim == '7.0'
+      tags:
+        - user.docker.leagues-finance
+        - user.docker
+
+    - name: Wait for job-search mongo to become healthy
+      community.docker.docker_container_info:
+        name: "job-search-mongodb"
+      register: js_mongo_info
+      until: >
+        js_mongo_info.container is not none and
+        js_mongo_info.container.State.Health.Status is defined and
+        js_mongo_info.container.State.Health.Status == 'healthy'
+      retries: 30
+      delay: 5
+      when: "'job-search' in (services | default([]))"
+      tags:
+        - user.docker.job-search
+        - user.docker
+
+    - name: Read job-search mongo featureCompatibilityVersion
+      community.docker.docker_container_exec:
+        container: job-search-mongodb
+        argv:
+          - mongosh
+          - admin
+          - --quiet
+          - -u
+          - "{{ vault_job_search_mongo_root_username }}"
+          - -p
+          - "{{ vault_job_search_mongo_root_password }}"
+          - --eval
+          - 'db.adminCommand({getParameter: 1, featureCompatibilityVersion: 1}).featureCompatibilityVersion.version'
+      register: js_mongo_post_fcv
+      changed_when: false
+      when: "'job-search' in (services | default([]))"
+      tags:
+        - user.docker.job-search
+        - user.docker
+
+    - name: Set job-search mongo featureCompatibilityVersion to 8.0
+      community.docker.docker_container_exec:
+        container: job-search-mongodb
+        argv:
+          - mongosh
+          - admin
+          - --quiet
+          - -u
+          - "{{ vault_job_search_mongo_root_username }}"
+          - -p
+          - "{{ vault_job_search_mongo_root_password }}"
+          - --eval
+          - 'db.adminCommand({setFeatureCompatibilityVersion: "8.0", confirm: true})'
+      when:
+        - "'job-search' in (services | default([]))"
+        - js_mongo_post_fcv.stdout | default('') | trim == '7.0'
+      tags:
+        - user.docker.job-search
+        - user.docker
+
+    # Opt-in (-e prune_legacy_datastore_images=true) once every service has moved to
+    # valkey:9-alpine / mongo:8. Docker refuses to remove an image still used by a container.
+    - name: Remove legacy datastore images superseded by valkey:9-alpine and mongo:8
+      community.docker.docker_image:
+        name: "{{ item }}"
+        state: absent
+      loop:
+        - redis:7-alpine
+        - mongo:7
+        - mongo:7.0
+      when: prune_legacy_datastore_images | default(false)
+      tags:
         - user.docker
 
 # Configure Portainer RBAC and register the slave agent endpoint via the API.
