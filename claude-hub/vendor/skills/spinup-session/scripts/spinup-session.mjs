@@ -178,6 +178,11 @@ if (!slug) fail(EV, 'bad_slug', `cannot build a directory name from '${o.desc}'`
 const workspace = fullPath(join(s.workspaceRoot, slug));
 const branchName = o.branch.trim() || `claude/${slug}`;
 const machine = s.prefixExplicit ? s.prefix : s.prefix.replace(/^\[|\]$/g, '');
+// The hub session lives in the infra repo checkout under the checkout root
+// (same INFRA_REPO convention as startup.sh/provision-repos.sh). Task
+// sessions use this as the cwd-based fallback when finding the hub.
+const infraRepo = String(process.env.INFRA_REPO || 'dachrisch/servyy-container').replace(/^\/+|\/+$/g, '');
+const hubDir = fullPath(join(s.checkoutRoot, infraRepo));
 
 // ---------------------------------------------------------------- plan (no mutation)
 
@@ -380,7 +385,7 @@ const finish = [
   '- **Done** means the deliverable exists (PR merged where the repo\'s flow allows a PR, committed locally where it does not, draft created, comment posted, ...) and you have given the final report. An open PR is not done: stay open while it is reviewed, work the review comments, and wait for the merge. If the goal cannot be reached, done means the blocker is reported. Never while a question to the user is still open.',
   '- **Clean the worktrees first.** Any untracked or modified file makes the close fail with `dirty_worktree`. Commit it, or move it where it belongs outside the worktree (e.g. the customer\'s project folder) and delete it here, until `git status --short` prints nothing in every worktree.',
   '- **Learnings go in the close-request, not in your own auto memory.** A fact the next session on one of these repos or folders should know (a gotcha, an API quirk, a decision and its reason) goes into the close-request as a `learnings:` block, one line each: `- <target> | <feedback|project|reference> | <kebab-name> | <the fact in one line>`. `<target>` is a repo directory from the table above, a folder passed for this task, or `general`. A fact about one customer goes to that customer\'s folder target, never to `general`: `general` loads in every session, for every customer. The hub files the ones the user approves. Leave out what the repo, its git history or its CLAUDE.md already records.',
-  '- **Then send the close-request by yourself, without being asked.** Your job id is the last path segment of `$CLAUDE_JOB_DIR`; the hub is the session on this machine whose name ends in `hub` (find it with `ListAgents`). Send it one `SendMessage`: `close-request <job id>` with this workspace path, the branches, whether everything is pushed, what you did with scratch files, a one-line result, and the `learnings:` block if there is one. The hub asks the user, then stops this session and removes the worktrees; branches are kept. Never stop yourself or remove a worktree yourself.',
+  `- **Then send the close-request by yourself, without being asked.** Your job id is the last path segment of \`$CLAUDE_JOB_DIR\`; the hub is the session on this machine whose name ends in \`hub\` **or** whose working directory is \`${hubDir}\` (find it with \`ListAgents\` -- prefer the name match, fall back to the cwd match). Send it one \`SendMessage\`: \`close-request <job id>\` with this workspace path, the branches, whether everything is pushed, what you did with scratch files, a one-line result, and the \`learnings:\` block if there is one. The hub asks the user, then stops this session and removes the worktrees; branches are kept. Never stop yourself or remove a worktree yourself.`,
   '- If the user keeps working with you after that (or says to keep it running), stay open: the close waits for their OK anyway. Send a new close-request when the new work is done.',
 ];
 

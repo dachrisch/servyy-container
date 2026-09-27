@@ -512,16 +512,37 @@ if (action === 'close') {
 // ---------------------------------------------------------------- revive
 
 if (action === 'revive') {
-  if (!o.id) fail(EV, 'id_missing', '--action revive needs --id <job id>; --action list shows the parked ones');
+  if (!o.id) fail(EV, 'id_missing', '--action revive needs --id <job id>; --action list --all shows the parked and stopped ones');
   const last = latestEvent(o.id);
   if (last?.event === 'closed') {
     fail(EV, 'closed_not_revivable', `${o.id} was closed at ${last.at} and its worktrees were removed; the branch is kept - start it again with: ${last.reopen}`, { id: o.id });
   }
   const entry = ledger().filter((e) => e.id === o.id && e.event === 'parked').pop();
-  if (!entry) fail(EV, 'not_in_ledger', `no parked entry for ${o.id} in ${ledgerPath}`);
   const agent = getAgents().find((a) => a.id === o.id);
   if (agent && isRunning(agent)) {
     emit({ event: 'session-revived', result: 'already-running', id: o.id, name: agent.name, attach: `claude attach ${o.id}` });
+    process.exit(0);
+  }
+  // A finished task session goes `stopped` (Remote Control disconnected) about a minute after
+  // its last job reaches `done` -- the whole --bg background service shuts down once idle,
+  // not via the reaper, so there is no parked ledger entry for it. Fall back to a plain
+  // `claude respawn`, which restarts the service and brings the job back under the same id.
+  // See https://github.com/dachrisch/servyy-container/issues/159.
+  if (!entry) {
+    if (!agent) fail(EV, 'not_in_ledger', `no parked entry for ${o.id} in ${ledgerPath} and claude agents does not know it - check the id with --action list --all`, { id: o.id });
+    if (dryRun) {
+      emit({ event: 'session-revived', result: 'planned', id: o.id, name: agent.name,
+        command: `claude respawn ${o.id}`, rearm_loops: false, loops: [], entry: null,
+        note: 'no parked entry; plain respawn of a stopped session' });
+      process.exit(0);
+    }
+    const r = claude('respawn', o.id);
+    const live = r.ok ? waitAgent(o.id, true, 30) : null;
+    if (!(live && isRunning(live))) fail(EV, 'revive_failed', `claude respawn ${o.id} failed: ${r.text}`, { id: o.id });
+    addLedger({ event: 'revived', at: new Date().toISOString(), machine, id: o.id, now_id: live.id, name: live.name,
+      how: 'respawn-stopped', rearm_sent: null, reaper_version: REAPER_VERSION });
+    emit({ event: 'session-revived', result: 'respawn-stopped', id: live.id, previous_id: o.id, name: live.name,
+      rearm: null, attach: `claude attach ${live.id}` });
     process.exit(0);
   }
   const rearmWanted = loopCount(entry.loops) > 0 && !o['no-rearm'];

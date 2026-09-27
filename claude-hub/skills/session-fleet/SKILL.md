@@ -46,9 +46,14 @@ back.
 node /opt/vendor/skills/session-reaper/scripts/session-reaper.mjs --action revive --id <id>
 ```
 
-Brings a parked session back (`claude respawn`, keeping the job id, name, and
-Remote Control), re-arms any loops the ledger recorded, and drops it off the
-parked list.
+Brings a parked **or stopped** session back (`claude respawn`, keeping the
+job id, name, and Remote Control), re-arms any loops the ledger recorded,
+and drops it off the parked list. A finished task session goes `stopped`
+(Remote Control disconnected) about a minute after its last job reaches
+`done` -- the whole `--bg` background service shuts down once idle, not via
+the reaper, so there is no parked ledger entry for it. Revive handles that
+case too with a plain `claude respawn` fallback (no loop re-arm, since there
+is no ledger entry to re-arm from).
 
 ## Handling an incoming `close-request`
 
