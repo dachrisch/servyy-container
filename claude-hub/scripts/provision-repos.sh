@@ -124,4 +124,26 @@ repos.forEach(function (r) {
   done
 done
 
+# 4. Clean up orphaned flat-layout clones. An earlier discovery generation
+# cloned repos directly to $DEV_DIR/$repo instead of today's
+# $DEV_DIR/$owner/$repo; nothing ever removed those when the layout changed,
+# so they just sit there accumulating (never updated, never reclaimed).
+# Anything at the top level that isn't a known org directory is stale.
+# (Same sweep as opencode's provision-dev.sh step 6 -- either boot keeps the
+# shared volume on the owner/repo convention devhub expects.)
+log "checking for orphaned flat-layout clones..."
+for entry in "$DEV_DIR"/*; do
+  [ -e "$entry" ] || continue
+  name=$(basename "$entry")
+  is_org=0
+  for org in $ORGS; do
+    [ "$name" = "$org" ] && is_org=1 && break
+  done
+  [ "$is_org" = 1 ] && continue
+  if [ -d "$entry/.git" ]; then
+    log "removing orphaned flat clone: $name"
+    rm -rf "$entry"
+  fi
+done
+
 log "done"

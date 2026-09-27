@@ -70,7 +70,7 @@ Internet → code.lehel.xyz (DNS → codey.lehel.xyz) → codey's Traefik (proxy
 - Internal port: 4096 (only reachable inside the container/host, not part of the public URL)
 
 **Key Volumes:**
-- `opencode_root:/root` - Persists ~/.config, ~/.ssh, git clones
+- `opencode_root:/root` - Persists ~/.config, ~/.ssh (git checkouts live in the shared `codey_dev_checkouts` volume at `/root/dev`, also mounted into claude-hub)
 - `./scripts:/scripts:ro` - Startup scripts (read-only)
 - `./bin:/opencode/bin:ro` - gh CLI wrapper (read-only)
 - `./.ssh:/root/.ssh` - SSH keys for GitHub, plus `id_servy` for servy.lehel.xyz and codey.lehel.xyz (self) access
