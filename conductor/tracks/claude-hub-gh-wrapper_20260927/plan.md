@@ -19,6 +19,8 @@
 - [x] Task: **PAUSE** — present this file-change plan and await user validation before writing code (approved by user)
 - [x] Task: Conductor - User Manual Verification 'Phase 1: Branch Setup & Planning' (Protocol in workflow.md)
 
+**Checkpoint:** e59b6cd1391f7a23ac3f655fcc05416e5c8a0326
+
 ## Phase 2: TDD Implementation (Molecule)
 
 - [ ] Task: **RED** — write the `docker_service/gh-wrapper` Molecule scenario (fake `gh` stub recording argv+`$GH_TOKEN`; test PATs `test-pat-dachrisch`/`test-pat-bumbleflies`) covering: `-R owner/repo`, `--repo=owner/repo`, git-remote-derived owner for both orgs, caller-set `GH_TOKEN` passthrough, and the no-owner-determinable failure case. Confirm it fails (wrapper doesn't exist yet).
