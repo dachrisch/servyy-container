@@ -129,15 +129,17 @@
         cmd: grep -q '^GH_TOKEN:explicit-caller-token$' {{ gh_log }}
       changed_when: false
 
-    # -- Case 7: no -R, no git repo -- must fail before reaching real gh ---
+    # -- Case 7: no -R, no positional owner/repo, no git repo -- must fail
+    #    before reaching real gh. `pr list` (unlike `repo view`) takes no
+    #    positional repo argument, so this genuinely has zero signal.
     - name: Remove any stale invocation log (case 7)
       ansible.builtin.file:
         path: "{{ gh_log }}"
         state: absent
 
-    - name: "Case 7: gh auth status with no owner determinable"
+    - name: "Case 7: gh pr list with no owner determinable"
       ansible.builtin.command:
-        cmd: gh auth status
+        cmd: gh pr list
         chdir: /home/molecule/gh-wrapper/no-git
       environment: "{{ test_env }}"
       register: case7
@@ -156,3 +158,64 @@
         path: "{{ gh_log }}"
       register: case7_log
       failed_when: case7_log.stat.exists
+
+    # -- Case 8: positional owner/repo (gh repo view takes it positionally,
+    #    not via -R/--repo) -- the gap found on servyy-test.lxd, where
+    #    `gh repo view dachrisch/servyy-container` hard-failed because only
+    #    the flag form was originally handled -----------------------------
+    - name: Remove any stale invocation log (case 8)
+      ansible.builtin.file:
+        path: "{{ gh_log }}"
+        state: absent
+
+    - name: "Case 8: gh repo view dachrisch/servyy-container (positional)"
+      ansible.builtin.command:
+        cmd: gh repo view dachrisch/servyy-container
+        chdir: /home/molecule/gh-wrapper/no-git
+      environment: "{{ test_env }}"
+      changed_when: false
+
+    - name: Verify case 8 resolved the owner from the positional argument
+      ansible.builtin.command:
+        cmd: grep -q '^GH_TOKEN:test-pat-dachrisch$' {{ gh_log }}
+      changed_when: false
+
+    - name: Remove any stale invocation log (case 9)
+      ansible.builtin.file:
+        path: "{{ gh_log }}"
+        state: absent
+
+    - name: "Case 9: gh repo view bumbleflies/somerepo (positional)"
+      ansible.builtin.command:
+        cmd: gh repo view bumbleflies/somerepo
+        chdir: /home/molecule/gh-wrapper/no-git
+      environment: "{{ test_env }}"
+      changed_when: false
+
+    - name: Verify case 9 resolved the owner from the positional argument
+      ansible.builtin.command:
+        cmd: grep -q '^GH_TOKEN:test-pat-bumbleflies$' {{ gh_log }}
+      changed_when: false
+
+    # -- Case 10: owner-agnostic subcommand skip-list ----------------------
+    # `gh auth status` has no repo context at all -- no -R, no positional,
+    # and (as found on servyy-test.lxd, where claude-hub's checkoutRoot
+    # itself isn't a single repo's git checkout) often no git remote either.
+    # It must reach real gh, with GH_TOKEN left untouched (empty here),
+    # rather than being blocked by the owner-detection gate.
+    - name: Remove any stale invocation log (case 10)
+      ansible.builtin.file:
+        path: "{{ gh_log }}"
+        state: absent
+
+    - name: "Case 10: gh auth status (owner-agnostic skip-list)"
+      ansible.builtin.command:
+        cmd: gh auth status
+        chdir: /home/molecule/gh-wrapper/no-git
+      environment: "{{ test_env }}"
+      changed_when: false
+
+    - name: Verify case 10 reached real gh with no GH_TOKEN override
+      ansible.builtin.command:
+        cmd: grep -q '^GH_TOKEN:$' {{ gh_log }}
+      changed_when: false
