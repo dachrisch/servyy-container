@@ -35,11 +35,16 @@
 
 ## Phase 3: servyy-test Verification
 
-- [ ] Task: Deploy to test env: `cd ansible && ./servyy-test.sh --tags user.docker.claude-hub`
-- [ ] Task: Verify inside `claude-hub.hub`: `gh auth status`, `gh repo view dachrisch/servyy-container`, and a bumbleflies-org repo view
-- [ ] Task: Verify a dispatched-session worktree can run `gh pr list` with no `-R` flag
-- [ ] Task: Verify a caller-set `GH_TOKEN` is not overridden, and an unresolvable-owner invocation fails clearly
-- [ ] Task: Conductor - User Manual Verification 'Phase 3: servyy-test Verification' (Protocol in workflow.md)
+- [x] Task: Deploy to test env: `cd ansible && ./servyy-test.sh --tags "user.docker.repo,user.docker.claude-hub"` (needed both tags -- `user.docker.claude-hub` alone only re-renders env, doesn't check out the branch), then `docker restart claude-hub.hub` (bind-mounted script change, not a compose/env diff, so compose alone wouldn't recreate the container -- same pattern as the earlier opencode deploy)
+- [x] Task: Verify inside `claude-hub.hub`: `gh repo view dachrisch/servyy-container` and a bumbleflies repo view — both succeeded once real repo names were used. `gh auth status` reaches real `gh` with no wrapper error, but real `gh` itself reports "not logged into any hosts" (accepted trade-off, see below)
+- [x] Task: Verify a dispatched-session worktree can run `gh pr list` with no `-R` flag — ran inside a throwaway git checkout with `origin` set to `dachrisch/servyy-container`; returned the real PR list (including this track's own PR #158)
+- [x] Task: Verify a caller-set `GH_TOKEN` is not overridden, and an unresolvable-owner invocation fails clearly — confirmed: a caller-set (deliberately invalid) `GH_TOKEN` reached real `gh` unmodified (real `gh` rejected the fake token itself, proving the wrapper passed it through untouched); an empty dir with no `-R` and no git repo still hard-fails with the wrapper's own clear error
+- [x] Task: Conductor - User Manual Verification 'Phase 3: servyy-test Verification' (Protocol in workflow.md)
+
+**Findings that required going back to the user (both resolved, spec.md updated):**
+1. First deploy attempt: `gh repo view dachrisch/servyy-container` and `gh auth status` both hard-failed — positional `owner/repo` args (not just `-R`/`--repo`) needed a detection path, and `gh auth status` has no repo context at all. Fixed with positional-arg detection + an owner-agnostic subcommand skip-list (see 352ce7f.. → a18bcdd, plan Phase 2 note).
+2. After that fix, `gh auth status` reached real `gh` correctly but real `gh` itself still reports "not logged in" (skip-list exports no token for `auth`) — accepted as-is per user decision; acceptance criteria in spec.md reworded to not require it report as logged in.
+3. Also hit unrelated pre-existing dirty state on servyy-test.lxd (a stale untracked `opencode/scripts/tui.json` from a prior session blocked the branch checkout) and a local git-crypt diff-stat false alarm (`ansible/plays/roles/user/defaults/main.yaml` — confirmed via manual decrypt to be a no-op, unrelated to this track, left untouched).
 
 ## Phase 4: Production Approval & Documentation
 

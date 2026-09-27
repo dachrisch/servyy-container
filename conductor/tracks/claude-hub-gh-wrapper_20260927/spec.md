@@ -72,8 +72,12 @@ not an Ansible template — that resolves the right org PAT (`GITHUB_PAT_DACHRIS
 4. **Manual verification on servyy-test.lxd** (per the issue), after the Molecule scenario
    passes and before production:
    - Deploy with `./servyy-test.sh`.
-   - `docker exec claude-hub.hub gh auth status`, `gh repo view dachrisch/servyy-container`,
-     and a bumbleflies repo view — all should succeed with no `gh auth login` prompt.
+   - `gh repo view dachrisch/servyy-container` and a bumbleflies repo view — both should succeed
+     with no `gh auth login` prompt, using the correct per-org PAT.
+   - `gh auth status` reaches the real binary without a wrapper-level error (found and accepted
+     during verification: it still reports "not logged into any hosts" / exits non-zero, since
+     the owner-agnostic skip-list intentionally exports no token for `auth` — see the accepted
+     trade-off below). Not treated as a hard requirement that it report as logged in.
    - In a dispatched session's worktree, confirm `gh pr list` works without `-R`.
 
 5. **History entry** `history/2026-09-27_claude-hub-gh-wrapper.md` documenting the change.
@@ -88,9 +92,11 @@ not an Ansible template — that resolves the right org PAT (`GITHUB_PAT_DACHRIS
 ## Acceptance Criteria
 
 - [ ] New Molecule scenario `docker_service/gh-wrapper` passes locally and in CI.
-- [ ] On servyy-test.lxd, `docker exec claude-hub.hub gh auth status` succeeds.
 - [ ] `gh repo view dachrisch/servyy-container` and a bumbleflies-org repo view both succeed
       from inside `claude-hub.hub` with no explicit `GH_TOKEN`.
+- [ ] `gh auth status` reaches the real `gh` binary without the wrapper itself erroring out
+      (its own "not logged into any hosts" / non-zero exit is accepted — see Functional
+      Requirement 1's owner-agnostic skip-list; not a hard requirement that it report logged in).
 - [ ] A dispatched session can run `gh pr list` / `gh pr create` in its worktree with no `-R`
       flag and no manual `GH_TOKEN=...` prefix.
 - [ ] A caller-set `GH_TOKEN` is never overwritten.
