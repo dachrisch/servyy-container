@@ -7,9 +7,10 @@
 # session now just sits parked forever. This script is a deliberate, narrow, infra-specific
 # exception: force-close (never hand-roll deletion -- always go through session-reaper.mjs's own
 # --action close) any job session that has been parked for a very long time
-# (CLAUDE_HUB_FORCE_CLEANUP_DAYS, default 75 days). Run weekly from a host-side systemd timer
-# (claude-hub-force-cleanup.timer), well below the frequency of the reaper's own 15-minute park
-# sweep -- see history/2026-09-26_claude-hub-worktree-dispatch-rework.md for why this exists and
+# (CLAUDE_HUB_FORCE_CLEANUP_DAYS, default 75 days). Run weekly from codey's
+# Ofelia scheduler (hub-force-cleanup job), well below the frequency of the
+# reaper's own hourly park sweep -- see
+# history/2026-09-26_claude-hub-worktree-dispatch-rework.md for why this exists and
 # why it's safe.
 #
 # session-reaper.mjs's own --action close still refuses a dirty worktree outright (exits non-zero

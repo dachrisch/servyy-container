@@ -71,90 +71,18 @@
       register: claude_hub_prune_leftovers
       failed_when: claude_hub_prune_leftovers.stat.exists
 
-    - name: Check claude-hub-reaper script exists
+    - name: Verify claude-hub-reaper/force-cleanup script/units were torn down (moved to Ofelia)
       stat:
-        path: /home/testuser/.cleanup-scripts/claude-hub-reaper.sh
-      register: claude_hub_reaper_script
-
-    - name: Verify claude-hub-reaper script was created
-      assert:
-        that:
-          - claude_hub_reaper_script.stat.exists
-          - claude_hub_reaper_script.stat.executable
-
-    - name: Check claude-hub-reaper service unit exists
-      stat:
-        path: /etc/systemd/system/claude-hub-reaper.service
-      register: claude_hub_reaper_service
-
-    - name: Verify claude-hub-reaper service unit was created
-      assert:
-        that:
-          - claude_hub_reaper_service.stat.exists
-
-    - name: Check claude-hub-reaper service unit content
-      slurp:
-        path: /etc/systemd/system/claude-hub-reaper.service
-      register: claude_hub_reaper_service_content
-
-    - name: Verify claude-hub-reaper service ExecStart
-      assert:
-        that:
-          - "'ExecStart=/home/testuser/.cleanup-scripts/claude-hub-reaper.sh' in claude_hub_reaper_service_content.content | b64decode"
-        fail_msg: "claude-hub-reaper service unit does not contain expected ExecStart"
-
-    - name: Check claude-hub-reaper timer exists
-      stat:
-        path: /etc/systemd/system/claude-hub-reaper.timer
-      register: claude_hub_reaper_timer
-
-    - name: Verify claude-hub-reaper timer was created
-      assert:
-        that:
-          - claude_hub_reaper_timer.stat.exists
-
-    - name: Check claude-hub-reaper timer content
-      slurp:
-        path: /etc/systemd/system/claude-hub-reaper.timer
-      register: claude_hub_reaper_timer_content
-
-    - name: Verify claude-hub-reaper timer runs every 15 minutes (not a once-daily OnCalendar)
-      assert:
-        that:
-          - "'OnUnitActiveSec=15min' in claude_hub_reaper_timer_content.content | b64decode"
-        fail_msg: "claude-hub-reaper timer does not contain expected OnUnitActiveSec interval"
-
-    - name: Check claude-hub-force-cleanup script exists
-      stat:
-        path: /home/testuser/.cleanup-scripts/claude-hub-force-cleanup.sh
-      register: claude_hub_force_cleanup_script
-
-    - name: Verify claude-hub-force-cleanup script was created
-      assert:
-        that:
-          - claude_hub_force_cleanup_script.stat.exists
-          - claude_hub_force_cleanup_script.stat.executable
-
-    - name: Check claude-hub-force-cleanup timer exists
-      stat:
-        path: /etc/systemd/system/claude-hub-force-cleanup.timer
-      register: claude_hub_force_cleanup_timer
-
-    - name: Verify claude-hub-force-cleanup timer was created
-      assert:
-        that:
-          - claude_hub_force_cleanup_timer.stat.exists
-
-    - name: Check claude-hub-force-cleanup timer content
-      slurp:
-        path: /etc/systemd/system/claude-hub-force-cleanup.timer
-      register: claude_hub_force_cleanup_timer_content
-
-    - name: Verify claude-hub-force-cleanup timer OnCalendar (weekly, not the reaper's 15min)
-      assert:
-        that:
-          - "'OnCalendar=Sun 06:00' in claude_hub_force_cleanup_timer_content.content | b64decode"
-        fail_msg: "claude-hub-force-cleanup timer does not contain expected OnCalendar schedule"
+        path: "{{ item }}"
+      loop:
+        - /home/testuser/.cleanup-scripts/claude-hub-reaper.sh
+        - /etc/systemd/system/claude-hub-reaper.service
+        - /etc/systemd/system/claude-hub-reaper.timer
+        - /home/testuser/.cleanup-scripts/claude-hub-force-cleanup.sh
+        - /etc/systemd/system/claude-hub-force-cleanup.service
+        - /etc/systemd/system/claude-hub-force-cleanup.timer
+      register: claude_hub_ofelia_leftovers
+      failed_when: claude_hub_ofelia_leftovers.stat.exists
 
     - name: Check unattended-upgrades package is installed
       command: dpkg -l unattended-upgrades

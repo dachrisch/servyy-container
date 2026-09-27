@@ -23,15 +23,6 @@
       enabled: true
       run_time: '05:00'
       reboot_time: '05:30'
-    claude_hub_reaper:
-      enabled: true
-      every_minutes: 15
-      log_file: '/var/log/claude-hub-reaper.log'
-    claude_hub_force_cleanup:
-      enabled: true
-      days: 75
-      schedule: 'Sun 06:00'
-      log_file: '/var/log/claude-hub-force-cleanup.log'
     services_enabled:
       claude-hub: true
   tasks:

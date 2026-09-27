@@ -11,8 +11,8 @@ task session once it says it's done -- always through the vendored
 `session-reaper.mjs` (see `claude-hub/vendor/VENDORED.md`), never by hand.
 
 Automatic parking of idle/never-prompted/cleared sessions already runs on
-its own schedule (`claude-hub-reaper.timer`, every 15 minutes, host-side,
-outside this skill) -- you don't need to trigger that. This skill is for
+its own schedule (the `hub-reaper` Ofelia job on codey's scheduler, hourly)
+-- you don't need to trigger that. This skill is for
 on-demand fleet questions, reviving something the user wants back, and
 handling a `close-request` that arrives while the hub is being talked to.
 
@@ -121,11 +121,11 @@ docker exec claude-hub.hub claude logs <job-id>
 
 ## What runs outside this skill
 
-- **Parking** (`--action run`, every 15 minutes): `claude-hub-reaper.timer`
-  on the host, `docker exec`-ing into the container. Nothing here needs to
+- **Parking** (`--action run`, hourly): the `hub-reaper` Ofelia job on
+  codey's scheduler, `job-exec`-ing into the container. Nothing here needs to
   trigger it.
 - **Long-tail force-cleanup** (`claude-hub/scripts/force-cleanup-stale.sh`,
-  weekly): force-closes sessions parked far longer than
+  weekly via the `hub-force-cleanup` Ofelia job): force-closes sessions parked far longer than
   `CLAUDE_HUB_FORCE_CLEANUP_DAYS` (default 75 days) -- a deliberate,
   infra-specific exception to "never close on a timeout", reusing this same
   `--action close` (still refuses a dirty worktree, still always keeps
