@@ -31,6 +31,8 @@
 - [x] Task: Add the new scenario to the CI matrix in `.github/workflows/ci.yml` (352ce7f)
 - [x] Task: Conductor - User Manual Verification 'Phase 2: TDD Implementation (Molecule)' (Protocol in workflow.md)
 
+**Checkpoint:** 903a4cf50ea45b9a04ece20c6e724b82e0a14f1e
+
 ## Phase 3: servyy-test Verification
 
 - [ ] Task: Deploy to test env: `cd ansible && ./servyy-test.sh --tags user.docker.claude-hub`
