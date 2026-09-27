@@ -219,6 +219,8 @@ function gitFacts(cwd) {
 const selfJob = process.env.CLAUDE_JOB_DIR ? basename(process.env.CLAUDE_JOB_DIR) : '';
 // A hub kept alive by a service on this box may remember its id here.
 const serviceHubId = String(readJson(join(checkoutRoot, '.claude-service.json'))?.id ?? '');
+// Shared by `close` and `revive`: is this agent the hub, by any of the three ways it can tell?
+const isHubAgent = (a) => isHubName(a.name) || samePath(a.cwd, checkoutRoot) || (serviceHubId && a.id === serviceHubId);
 const pinsRaw = readJson(join(jobsDir, 'pins.json'));
 const pins = (Array.isArray(pinsRaw) ? pinsRaw : []).map((p) => (typeof p === 'string' ? p : String(p?.id ?? p?.jobId ?? '')));
 const now = new Date();
@@ -445,7 +447,7 @@ if (action === 'close') {
   if (!o.id) fail(CEV, 'id_missing', '--action close needs --id <job id> (the id in the close-request)');
   const a = getAgents().find((x) => x.id === o.id);
   if (!a) fail(CEV, 'not_found', `claude agents does not know ${o.id}`);
-  if (a.kind !== 'background' || isHubName(a.name) || samePath(a.cwd, checkoutRoot) || (serviceHubId && a.id === serviceHubId)) {
+  if (a.kind !== 'background' || isHubAgent(a)) {
     fail(CEV, 'not_closable', `${o.id} (${a.name}) is ${a.kind !== 'background' ? `a ${a.kind} session` : 'the hub'} - only background task sessions can be closed`);
   }
   const ws = a.cwd;
@@ -517,7 +519,9 @@ if (action === 'revive') {
   if (last?.event === 'closed') {
     fail(EV, 'closed_not_revivable', `${o.id} was closed at ${last.at} and its worktrees were removed; the branch is kept - start it again with: ${last.reopen}`, { id: o.id });
   }
-  const entry = ledger().filter((e) => e.id === o.id && e.event === 'parked').pop();
+  // `last` (not a fresh `parked`-only scan) so a park superseded by a later `revived` event is
+  // never mistaken for a still-parked one - see https://github.com/dachrisch/servyy-container/pull/161.
+  const entry = last?.event === 'parked' ? last : null;
   const agent = getAgents().find((a) => a.id === o.id);
   if (agent && isRunning(agent)) {
     emit({ event: 'session-revived', result: 'already-running', id: o.id, name: agent.name, attach: `claude attach ${o.id}` });
@@ -530,6 +534,9 @@ if (action === 'revive') {
   // See https://github.com/dachrisch/servyy-container/issues/159.
   if (!entry) {
     if (!agent) fail(EV, 'not_in_ledger', `no parked entry for ${o.id} in ${ledgerPath} and claude agents does not know it - check the id with --action list --all`, { id: o.id });
+    if (agent.kind !== 'background' || isHubAgent(agent)) {
+      fail(EV, 'not_revivable', `${o.id} (${agent.name}) is ${agent.kind !== 'background' ? `a ${agent.kind} session` : 'the hub'} - only stopped background task sessions can be revived this way`, { id: o.id });
+    }
     if (dryRun) {
       emit({ event: 'session-revived', result: 'planned', id: o.id, name: agent.name,
         command: `claude respawn ${o.id}`, rearm_loops: false, loops: [], entry: null,
