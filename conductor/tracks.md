@@ -13,5 +13,5 @@
 
 ---
 
-## [~] Track: claude-hub gh CLI Authentication (Per-Org Wrapper)
+## [x] Track: claude-hub gh CLI Authentication (Per-Org Wrapper)
 *Link: [./conductor/tracks/claude-hub-gh-wrapper_20260927/](./conductor/tracks/claude-hub-gh-wrapper_20260927/)*
