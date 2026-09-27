@@ -8,16 +8,16 @@
 
 ## Phase 1: Branch Setup & Planning
 
-- [ ] Task: Create feature branch `claude/claude-hub-gh-wrapper`
+- [x] Task: Create feature branch `claude/claude-hub-gh-wrapper` (7e07d3d)
 - [x] Task: Confirm wrapper behavior & verification loop with user (satisfied by `spec.md` approval)
-- [ ] Task: Plan the concrete file changes:
+- [x] Task: Plan the concrete file changes (7e07d3d):
   - New: `claude-hub/scripts/gh-wrapper.sh`
   - Modify: `claude-hub/scripts/startup.sh` (install step)
   - New: `ansible/plays/roles/docker_service/molecule/gh-wrapper/{molecule.yml,converge.yml,verify.yml,prepare.yml}`
   - Modify: `.github/workflows/ci.yml` (add `{role: docker_service, scenario: gh-wrapper}` to matrix)
   - New: `history/2026-09-27_claude-hub-gh-wrapper.md`
-- [x] Task: **PAUSE** — present this file-change plan and await user validation before writing code
-- [ ] Task: Conductor - User Manual Verification 'Phase 1: Branch Setup & Planning' (Protocol in workflow.md)
+- [x] Task: **PAUSE** — present this file-change plan and await user validation before writing code (approved by user)
+- [x] Task: Conductor - User Manual Verification 'Phase 1: Branch Setup & Planning' (Protocol in workflow.md)
 
 ## Phase 2: TDD Implementation (Molecule)
 
