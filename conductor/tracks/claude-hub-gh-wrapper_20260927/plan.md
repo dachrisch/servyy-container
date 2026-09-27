@@ -59,9 +59,9 @@ CI re-confirmed green for the fix commit (a18bcdd): all 23 checks pass on PR #15
 
 ## Phase 5: Production Rollout & Finalization
 
-- [ ] Task: Push branch to origin, open PR
-- [ ] Task: Deploy to production: `cd ansible && ./servyy.sh --limit codey.lehel.xyz --tags user.docker.claude-hub`
-- [ ] Task: Post-deploy health check (`gh auth status`, `gh repo view` for both orgs on `claude-hub.hub`)
-- [ ] Task: Commit with Conventional Commit message; attach verification summary via `git notes`
-- [ ] Task: Update `plan.md` to `[x]` with commit SHA; update `conductor/tracks.md` entry to `[x]`
-- [ ] Task: Conductor - User Manual Verification 'Phase 5: Production Rollout & Finalization' (Protocol in workflow.md)
+- [x] Task: Push branch to origin, open PR — [#158](https://github.com/dachrisch/servyy-container/pull/158), merged as `3c2bb1d` (user approved: "merge pr, then deploy")
+- [x] Task: Deploy to production: `cd ansible && ./servyy.sh --limit codey.lehel.xyz --tags "user.docker.repo,user.docker.claude-hub"` (both tags needed, same as servyy-test), then `docker restart claude-hub.hub`
+- [x] Task: Post-deploy health check on `claude-hub.hub` (`codey.lehel.xyz`): `gh repo view dachrisch/servyy-container` succeeds (real API data), `gh repo view bumbleflies/web` succeeds (real API data, correct PAT), `gh` resolves to `/usr/local/bin/gh`, container reaches `healthy`, hub tmux session started cleanly
+- [x] Task: Commit with Conventional Commit message; attach verification summary via `git notes` (see checkpoint below — the merge itself is the "commit"; all implementation work was already committed through Phases 1-4)
+- [x] Task: Update `plan.md` to `[x]` with commit SHA; update `conductor/tracks.md` entry to `[x]`
+- [x] Task: Conductor - User Manual Verification 'Phase 5: Production Rollout & Finalization' (Protocol in workflow.md)

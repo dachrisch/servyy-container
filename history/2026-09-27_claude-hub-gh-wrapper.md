@@ -3,9 +3,10 @@
 **Date:** 2026-09-27
 **Author:** Claude (via user dachrisch)
 **Type:** Bug fix
-**Status:** ✅ Verified on `servyy-test.lxd`, CI green (23/23 checks, PR
-[#158](https://github.com/dachrisch/servyy-container/pull/158), draft) — awaiting explicit
-production-deploy approval.
+**Status:** ✅ Merged (PR [#158](https://github.com/dachrisch/servyy-container/pull/158),
+`3c2bb1d`, 23/23 CI checks green) and deployed to production `codey.lehel.xyz` —
+`claude-hub.hub` restarted, reached `healthy`, hub tmux session resumed cleanly;
+`gh repo view` verified working for both orgs with the correct PAT.
 
 ## Summary
 
