@@ -1,0 +1,90 @@
+---
+# Converge: install the claude-hub gh wrapper exactly the way
+# claude-hub/scripts/startup.sh does (copy to /usr/local/bin/gh, chmod +x),
+# against a *fake* real gh binary at /usr/bin/gh that just records its
+# invocation instead of talking to GitHub. This scenario doesn't exercise
+# any docker_service role logic -- the wrapper is a plain bind-mounted
+# script, not an Ansible template (see spec.md) -- Molecule is only reused
+# here as the test harness/CI hook the issue asked for.
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    repo_root: "{{ playbook_dir }}/../../../../../.."
+    gh_log: /tmp/gh-real-invocations.log
+
+  tasks:
+    - name: Ensure /usr/local/bin exists
+      ansible.builtin.file:
+        path: /usr/local/bin
+        state: directory
+        mode: "0755"
+
+    - name: Remove any stale invocation log from a previous run
+      ansible.builtin.file:
+        path: "{{ gh_log }}"
+        state: absent
+
+    - name: Install fake real gh binary at /usr/bin/gh (records argv + GH_TOKEN, always succeeds)
+      ansible.builtin.copy:
+        dest: /usr/bin/gh
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          {
+            echo "ARGS:$*"
+            echo "GH_TOKEN:${GH_TOKEN:-}"
+          } >> {{ gh_log }}
+          exit 0
+
+    - name: Install the real gh-wrapper.sh from the repo at /usr/local/bin/gh
+      ansible.builtin.copy:
+        src: "{{ repo_root }}/claude-hub/scripts/gh-wrapper.sh"
+        dest: /usr/local/bin/gh
+        mode: "0755"
+
+    - name: Create a git checkout with a dachrisch-owned origin (https form)
+      ansible.builtin.file:
+        path: /home/molecule/gh-wrapper/git-dachrisch
+        state: directory
+        mode: "0755"
+
+    - name: Init dachrisch git checkout
+      ansible.builtin.command:
+        cmd: git init -q
+        chdir: /home/molecule/gh-wrapper/git-dachrisch
+        creates: /home/molecule/gh-wrapper/git-dachrisch/.git
+
+    - name: Add dachrisch origin remote
+      ansible.builtin.command:
+        cmd: git remote add origin https://github.com/dachrisch/servyy-container.git
+        chdir: /home/molecule/gh-wrapper/git-dachrisch
+      register: add_dachrisch_origin
+      changed_when: add_dachrisch_origin.rc == 0
+      failed_when: add_dachrisch_origin.rc != 0 and 'already exists' not in add_dachrisch_origin.stderr
+
+    - name: Create a git checkout with a bumbleflies-owned origin (SCP-like form)
+      ansible.builtin.file:
+        path: /home/molecule/gh-wrapper/git-bumbleflies
+        state: directory
+        mode: "0755"
+
+    - name: Init bumbleflies git checkout
+      ansible.builtin.command:
+        cmd: git init -q
+        chdir: /home/molecule/gh-wrapper/git-bumbleflies
+        creates: /home/molecule/gh-wrapper/git-bumbleflies/.git
+
+    - name: Add bumbleflies origin remote
+      ansible.builtin.command:
+        cmd: git remote add origin git@github.com:bumbleflies/somerepo.git
+        chdir: /home/molecule/gh-wrapper/git-bumbleflies
+      register: add_bumbleflies_origin
+      changed_when: add_bumbleflies_origin.rc == 0
+      failed_when: add_bumbleflies_origin.rc != 0 and 'already exists' not in add_bumbleflies_origin.stderr
+
+    - name: Create a plain directory with no git checkout at all
+      ansible.builtin.file:
+        path: /home/molecule/gh-wrapper/no-git
+        state: directory
+        mode: "0755"
