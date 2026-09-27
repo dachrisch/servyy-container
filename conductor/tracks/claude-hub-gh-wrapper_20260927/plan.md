@@ -46,6 +46,10 @@
 2. After that fix, `gh auth status` reached real `gh` correctly but real `gh` itself still reports "not logged in" (skip-list exports no token for `auth`) — accepted as-is per user decision; acceptance criteria in spec.md reworded to not require it report as logged in.
 3. Also hit unrelated pre-existing dirty state on servyy-test.lxd (a stale untracked `opencode/scripts/tui.json` from a prior session blocked the branch checkout) and a local git-crypt diff-stat false alarm (`ansible/plays/roles/user/defaults/main.yaml` — confirmed via manual decrypt to be a no-op, unrelated to this track, left untouched).
 
+CI re-confirmed green for the fix commit (a18bcdd): all 23 checks pass on PR #158, including `Molecule Test (docker_service/gh-wrapper)`.
+
+**Checkpoint:** 502d5dfec84554d75f7e0aba1982f22514798c59
+
 ## Phase 4: Production Approval & Documentation
 
 - [ ] Task: Write `history/2026-09-27_claude-hub-gh-wrapper.md` (problem, solution, files changed, test results)
