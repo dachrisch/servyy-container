@@ -283,6 +283,8 @@ jobs:
             scenario: docker-only
           - role: docker_service
             scenario: default
+          - role: docker_service
+            scenario: gh-wrapper
     steps:
       - uses: actions/checkout@v7
 

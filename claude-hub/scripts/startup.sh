@@ -45,8 +45,20 @@ git config --global credential.https://github.com.helper '/usr/local/bin/gh-cred
 # into its default case. Must be set for per-org PAT selection to work.
 git config --global credential.useHttpPath true
 
+echo "[startup] installing gh wrapper..."
+# 5. Install the per-org `gh` CLI wrapper the same way as the credential
+#    helper above: copy from the read-only /scripts mount to a writable,
+#    executable path, so dispatched sessions get a working `gh` (git
+#    push/pull already works via the credential helper; `gh` itself only
+#    reads GH_TOKEN/GITHUB_TOKEN, which nothing sets otherwise -- see
+#    history/2026-09-27_claude-hub-gh-wrapper.md). /usr/local/bin precedes
+#    the apk-installed /usr/bin/gh on PATH, so the real binary is shadowed,
+#    never renamed.
+cp /scripts/gh-wrapper.sh /usr/local/bin/gh
+chmod +x /usr/local/bin/gh
+
 echo "[startup] seeding ~/.claude/settings.json..."
-# 5. Idempotently merge {"remoteControlAtStartup": true} into
+# 6. Idempotently merge {"remoteControlAtStartup": true} into
 #    ~/.claude/settings.json, preserving any other keys already present.
 #    Best-effort: never let a JSON parse failure abort startup.
 mkdir -p "$HOME/.claude"
@@ -64,7 +76,7 @@ fs.writeFileSync(path, JSON.stringify(settings, null, 2) + "\n");
 ' || true
 
 echo "[startup] writing ~/.claude/claude-hub.json..."
-# 6. Non-interactively write the config the vendored dispatch/lifecycle scripts read (see
+# 7. Non-interactively write the config the vendored dispatch/lifecycle scripts read (see
 #    claude-hub/vendor/VENDORED.md) -- the equivalent of running june-hub's own interactive
 #    hub-setup skill, but generated from Ansible-templated env vars every boot instead. Always
 #    fully overwritten (unlike the settings.json merge above): nothing else ever writes this
@@ -98,11 +110,11 @@ fs.writeFileSync(path, JSON.stringify(config, null, 2) + "\n");
 ' || echo "[startup] failed to write claude-hub.json (continuing)"
 
 echo "[startup] provisioning repo checkouts..."
-# 7. Provision dev checkouts (infra repo + gh-dash-tagged repos). Best-effort.
+# 8. Provision dev checkouts (infra repo + gh-dash-tagged repos). Best-effort.
 sh /scripts/provision-repos.sh || echo "[startup] provision-repos.sh reported issues (continuing)"
 
 echo "[startup] starting hub session..."
-# 8. Start (or resume) the persistent "hub" tmux session, then keep the
+# 9. Start (or resume) the persistent "hub" tmux session, then keep the
 #    container alive. Guarded by `tmux has-session` so a restart that
 #    somehow finds tmux already running (unlikely -- tmux dies with the
 #    container -- but kept for defensive idempotency) doesn't spawn a
@@ -114,7 +126,7 @@ echo "[startup] starting hub session..."
 # against a live installed CLI as part of this implementation. Check
 # `claude --help` before relying on this at the first real deploy.
 HUB_DIR="$HOME/dev/${INFRA_REPO:-dachrisch/servyy-container}"
-# provision-repos.sh (step 6 above) is best-effort and can fail silently to
+# provision-repos.sh (step 8 above) is best-effort and can fail silently to
 # clone/anchor $HUB_DIR. Without this check, `tmux new-session -c "$HUB_DIR"`
 # on a missing directory either falls back to $HOME (the workspace-trust
 # failure mode) or, worse, dies here under `set -e` -- which would loop the

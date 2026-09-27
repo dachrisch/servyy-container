@@ -1,0 +1,221 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  vars:
+    gh_log: /tmp/gh-real-invocations.log
+    test_env:
+      GITHUB_PAT_DACHRISCH: test-pat-dachrisch
+      GITHUB_PAT_BUMBLEFLIES: test-pat-bumbleflies
+  tasks:
+    - name: Wrapper resolves before the real gh binary on PATH
+      ansible.builtin.command:
+        cmd: sh -c 'command -v gh'
+      environment:
+        PATH: /usr/local/bin:/usr/bin:/bin
+      register: gh_which
+      changed_when: false
+
+    - name: Verify PATH resolution picked the wrapper, not the real binary
+      ansible.builtin.assert:
+        that: gh_which.stdout == '/usr/local/bin/gh'
+        fail_msg: "gh resolved to {{ gh_which.stdout }}, expected the wrapper at /usr/local/bin/gh"
+
+    # -- Case 1: -R space form, bumbleflies owner --------------------------
+    - name: Remove any stale invocation log (case 1)
+      ansible.builtin.file:
+        path: "{{ gh_log }}"
+        state: absent
+
+    - name: "Case 1: gh -R bumbleflies/foo pr list"
+      ansible.builtin.command:
+        cmd: gh -R bumbleflies/foo pr list
+        chdir: /home/molecule/gh-wrapper/no-git
+      environment: "{{ test_env }}"
+      changed_when: false
+
+    - name: Verify case 1 exported the bumbleflies PAT
+      ansible.builtin.command:
+        cmd: grep -q '^GH_TOKEN:test-pat-bumbleflies$' {{ gh_log }}
+      changed_when: false
+
+    # -- Case 2: --repo=owner/repo equals form, dachrisch owner ------------
+    - name: Remove any stale invocation log (case 2)
+      ansible.builtin.file:
+        path: "{{ gh_log }}"
+        state: absent
+
+    - name: "Case 2: gh issue list --repo=dachrisch/servyy-container"
+      ansible.builtin.command:
+        cmd: gh issue list --repo=dachrisch/servyy-container
+        chdir: /home/molecule/gh-wrapper/no-git
+      environment: "{{ test_env }}"
+      changed_when: false
+
+    - name: Verify case 2 exported the dachrisch PAT
+      ansible.builtin.command:
+        cmd: grep -q '^GH_TOKEN:test-pat-dachrisch$' {{ gh_log }}
+      changed_when: false
+
+    # -- Case 3: --repo space form, unknown owner defaults to dachrisch ----
+    - name: Remove any stale invocation log (case 3)
+      ansible.builtin.file:
+        path: "{{ gh_log }}"
+        state: absent
+
+    - name: "Case 3: gh --repo someoneelse/repo pr list"
+      ansible.builtin.command:
+        cmd: gh --repo someoneelse/repo pr list
+        chdir: /home/molecule/gh-wrapper/no-git
+      environment: "{{ test_env }}"
+      changed_when: false
+
+    - name: Verify case 3 (unknown owner) defaulted to the dachrisch PAT
+      ansible.builtin.command:
+        cmd: grep -q '^GH_TOKEN:test-pat-dachrisch$' {{ gh_log }}
+      changed_when: false
+
+    # -- Case 4: no -R, owner from git remote (https form, dachrisch) -----
+    - name: Remove any stale invocation log (case 4)
+      ansible.builtin.file:
+        path: "{{ gh_log }}"
+        state: absent
+
+    - name: "Case 4: gh pr list inside the dachrisch-owned checkout"
+      ansible.builtin.command:
+        cmd: gh pr list
+        chdir: /home/molecule/gh-wrapper/git-dachrisch
+      environment: "{{ test_env }}"
+      changed_when: false
+
+    - name: Verify case 4 resolved the owner from origin (dachrisch)
+      ansible.builtin.command:
+        cmd: grep -q '^GH_TOKEN:test-pat-dachrisch$' {{ gh_log }}
+      changed_when: false
+
+    # -- Case 5: no -R, owner from git remote (SCP-like form, bumbleflies) -
+    - name: Remove any stale invocation log (case 5)
+      ansible.builtin.file:
+        path: "{{ gh_log }}"
+        state: absent
+
+    - name: "Case 5: gh pr list inside the bumbleflies-owned checkout"
+      ansible.builtin.command:
+        cmd: gh pr list
+        chdir: /home/molecule/gh-wrapper/git-bumbleflies
+      environment: "{{ test_env }}"
+      changed_when: false
+
+    - name: Verify case 5 resolved the owner from origin (bumbleflies)
+      ansible.builtin.command:
+        cmd: grep -q '^GH_TOKEN:test-pat-bumbleflies$' {{ gh_log }}
+      changed_when: false
+
+    # -- Case 6: caller-set GH_TOKEN must survive untouched ----------------
+    - name: Remove any stale invocation log (case 6)
+      ansible.builtin.file:
+        path: "{{ gh_log }}"
+        state: absent
+
+    - name: "Case 6: gh auth status with a caller-set GH_TOKEN, no -R, no git repo"
+      ansible.builtin.command:
+        cmd: gh auth status
+        chdir: /home/molecule/gh-wrapper/no-git
+      environment: "{{ test_env | combine({'GH_TOKEN': 'explicit-caller-token'}) }}"
+      changed_when: false
+
+    - name: Verify case 6 left the caller's GH_TOKEN untouched
+      ansible.builtin.command:
+        cmd: grep -q '^GH_TOKEN:explicit-caller-token$' {{ gh_log }}
+      changed_when: false
+
+    # -- Case 7: no -R, no positional owner/repo, no git repo -- must fail
+    #    before reaching real gh. `pr list` (unlike `repo view`) takes no
+    #    positional repo argument, so this genuinely has zero signal.
+    - name: Remove any stale invocation log (case 7)
+      ansible.builtin.file:
+        path: "{{ gh_log }}"
+        state: absent
+
+    - name: "Case 7: gh pr list with no owner determinable"
+      ansible.builtin.command:
+        cmd: gh pr list
+        chdir: /home/molecule/gh-wrapper/no-git
+      environment: "{{ test_env }}"
+      register: case7
+      changed_when: false
+      failed_when: false
+
+    - name: Verify case 7 failed instead of guessing a token
+      ansible.builtin.assert:
+        that:
+          - case7.rc != 0
+          - "'could not determine the repo owner' in case7.stderr"
+        fail_msg: "expected a non-zero exit and an owner-detection error, got rc={{ case7.rc }} stderr={{ case7.stderr }}"
+
+    - name: Verify case 7 never invoked the real gh binary
+      ansible.builtin.stat:
+        path: "{{ gh_log }}"
+      register: case7_log
+      failed_when: case7_log.stat.exists
+
+    # -- Case 8: positional owner/repo (gh repo view takes it positionally,
+    #    not via -R/--repo) -- the gap found on servyy-test.lxd, where
+    #    `gh repo view dachrisch/servyy-container` hard-failed because only
+    #    the flag form was originally handled -----------------------------
+    - name: Remove any stale invocation log (case 8)
+      ansible.builtin.file:
+        path: "{{ gh_log }}"
+        state: absent
+
+    - name: "Case 8: gh repo view dachrisch/servyy-container (positional)"
+      ansible.builtin.command:
+        cmd: gh repo view dachrisch/servyy-container
+        chdir: /home/molecule/gh-wrapper/no-git
+      environment: "{{ test_env }}"
+      changed_when: false
+
+    - name: Verify case 8 resolved the owner from the positional argument
+      ansible.builtin.command:
+        cmd: grep -q '^GH_TOKEN:test-pat-dachrisch$' {{ gh_log }}
+      changed_when: false
+
+    - name: Remove any stale invocation log (case 9)
+      ansible.builtin.file:
+        path: "{{ gh_log }}"
+        state: absent
+
+    - name: "Case 9: gh repo view bumbleflies/somerepo (positional)"
+      ansible.builtin.command:
+        cmd: gh repo view bumbleflies/somerepo
+        chdir: /home/molecule/gh-wrapper/no-git
+      environment: "{{ test_env }}"
+      changed_when: false
+
+    - name: Verify case 9 resolved the owner from the positional argument
+      ansible.builtin.command:
+        cmd: grep -q '^GH_TOKEN:test-pat-bumbleflies$' {{ gh_log }}
+      changed_when: false
+
+    # -- Case 10: owner-agnostic subcommand skip-list ----------------------
+    # `gh auth status` has no repo context at all -- no -R, no positional,
+    # and (as found on servyy-test.lxd, where claude-hub's checkoutRoot
+    # itself isn't a single repo's git checkout) often no git remote either.
+    # It must reach real gh, with GH_TOKEN left untouched (empty here),
+    # rather than being blocked by the owner-detection gate.
+    - name: Remove any stale invocation log (case 10)
+      ansible.builtin.file:
+        path: "{{ gh_log }}"
+        state: absent
+
+    - name: "Case 10: gh auth status (owner-agnostic skip-list)"
+      ansible.builtin.command:
+        cmd: gh auth status
+        chdir: /home/molecule/gh-wrapper/no-git
+      environment: "{{ test_env }}"
+      changed_when: false
+
+    - name: Verify case 10 reached real gh with no GH_TOKEN override
+      ansible.builtin.command:
+        cmd: grep -q '^GH_TOKEN:$' {{ gh_log }}
+      changed_when: false
