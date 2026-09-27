@@ -48,12 +48,6 @@
     - user.repo
   when: with_containers | default(false)
 
-- import_tasks: bumbleflies.yml
-  tags:
-    - user.docker.bumbleflies
-    - user.docker
-  when: with_containers | default(false)
-
 - import_tasks: docker_setup.yml
   tags:
     - user.docker.setup
