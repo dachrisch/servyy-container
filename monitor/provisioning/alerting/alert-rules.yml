@@ -1376,7 +1376,10 @@ groups:
           severity: medium
         isPaused: false
 
-      # MEDIUM: all containers down at once (broader signal than individual)
+      # CRITICAL: majority of monitored containers down at once (host-wide signal,
+      # distinct from single-container failures covered by container_not_running).
+      # Uses the average running fraction so one or two dead containers do not
+      # page; a Docker daemon failure or host-wide outage drives it to 0.
       - uid: containers_all_down
         title: All Containers Down
         condition: C
@@ -1388,7 +1391,7 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
-              expr: system_container_all_running
+              expr: avg(system_container_running)
               intervalMs: 1000
               maxDataPoints: 43200
               refId: A
@@ -1415,8 +1418,8 @@ groups:
         execErrState: Error
         for: 5m
         annotations:
-          summary: 'All monitored containers are down'
-          description: 'No monitored container is running - Docker daemon may be down or the host is under stress.'
+          summary: 'Majority of monitored containers are down'
+          description: 'Less than half of the monitored containers are running - Docker daemon may be down or the host is under stress. Check container_not_running alerts for per-container detail.'
         labels:
           severity: critical
         isPaused: false
