@@ -743,6 +743,18 @@
         - user.docker.leagues-finance
         - user.docker
 
+    - name: Detect leagues-finance mongo on mongo 8 image
+      ansible.builtin.set_fact:
+        lf_mongo_is_v8: "{{ (lf_mongo_container.Config.Image | default('')) is match('^(docker.io/)?(library/)?mongo:8') }}"
+      vars:
+        lf_mongo_container: >-
+          {{ ((lf_mongo_upgraded_info | default({})).container | default(none, true))
+          or ((lf_mongo_info | default({})).container | default(none, true)) or {} }}
+      when: "'leagues-finance' in (services | default([]))"
+      tags:
+        - user.docker.leagues-finance
+        - user.docker
+
     - name: Set leagues-finance mongo featureCompatibilityVersion to 8.0
       community.docker.docker_container_exec:
         container: leagues-finance.mongo
@@ -759,6 +771,7 @@
       when:
         - "'leagues-finance' in (services | default([]))"
         - lf_mongo_post_fcv.stdout | default('') | trim == '7.0'
+        - lf_mongo_is_v8 | default(false)
       tags:
         - user.docker.leagues-finance
         - user.docker
@@ -798,6 +811,16 @@
         - user.docker.job-search
         - user.docker
 
+    - name: Detect job-search mongo on mongo 8 image
+      ansible.builtin.set_fact:
+        js_mongo_is_v8: "{{ (js_mongo_container.Config.Image | default('')) is match('^(docker.io/)?(library/)?mongo:8') }}"
+      vars:
+        js_mongo_container: "{{ ((js_mongo_info | default({})).container | default(none, true)) or {} }}"
+      when: "'job-search' in (services | default([]))"
+      tags:
+        - user.docker.job-search
+        - user.docker
+
     - name: Set job-search mongo featureCompatibilityVersion to 8.0
       community.docker.docker_container_exec:
         container: job-search-mongodb
@@ -814,6 +837,7 @@
       when:
         - "'job-search' in (services | default([]))"
         - js_mongo_post_fcv.stdout | default('') | trim == '7.0'
+        - js_mongo_is_v8 | default(false)
       tags:
         - user.docker.job-search
         - user.docker
