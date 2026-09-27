@@ -1,0 +1,8 @@
+{
+  "track_id": "claude-hub-gh-wrapper_20260927",
+  "type": "bug",
+  "status": "new",
+  "created_at": "2026-09-27T00:00:00Z",
+  "updated_at": "2026-09-27T00:00:00Z",
+  "description": "claude-hub: gh CLI unauthenticated in dispatched sessions (add per-org gh wrapper) — GitHub issue dachrisch/servyy-container#152"
+}
