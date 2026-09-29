@@ -88,3 +88,15 @@
         path: /home/molecule/gh-wrapper/no-git
         state: directory
         mode: "0755"
+
+    # -- configure-git.sh: container-global git config incl. ssh->https rewrite
+    - name: Install the real configure-git.sh from the repo
+      ansible.builtin.copy:
+        src: "{{ repo_root }}/claude-hub/scripts/configure-git.sh"
+        dest: /usr/local/bin/configure-git.sh
+        mode: "0755"
+
+    - name: Run configure-git.sh the way startup.sh does
+      ansible.builtin.command:
+        cmd: sh /usr/local/bin/configure-git.sh /usr/local/bin/gh-cred-helper.sh
+      changed_when: true
