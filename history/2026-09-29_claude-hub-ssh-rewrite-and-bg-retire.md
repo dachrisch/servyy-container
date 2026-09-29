@@ -114,6 +114,15 @@ the session. While npm swapped the `/usr/local/bin/claude` symlink, though, CLI 
 `npm install -g` at container boot is the only upgrade path, so the CLI version changes on
 each redeploy/restart.
 
+**Observation from the session that did this work (`2b02ddb2`):** it had a one-shot cron
+pending and then waited about **3 h** (06:58 → 09:56 UTC) on an `AskUserQuestion` under the
+same low-memory conditions. It was **never retired** and got the answer. 5dc0038b was
+retired after 2 min. There is a confound: `AskUserQuestion` keeps the turn open (the state
+stayed `working`, never settled), while 5dc0038b ended its turn with a *plain-text*
+question. So either lever may have kept 2b02ddb2 alive. Both are worth putting in the
+task-session rule: "ask through `AskUserQuestion`, not as the last text of a turn", **and**
+keep the cron for the case where a turn does end waiting.
+
 ## Not verified here
 - **servyy-test.lxd:** not reachable from inside the claude-hub container (no ssh, lxc or
   ansible). Needs to be run from a workstation:
