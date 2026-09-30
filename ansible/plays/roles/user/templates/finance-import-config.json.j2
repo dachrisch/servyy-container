@@ -31,9 +31,31 @@
     "pending_transactions": false,
     "access_token": "",
     "accounts": {
-        "{{ finance.import_config.account_uuid }}": {{ finance.import_config.account_id }}
+        "8898962a-b0ce-4013-8c89-12c977b92452": 0,
+        "b3649be5-1e42-4a9e-b486-fdc8f7481dbc": 0
     },
-    "new_accounts": [],
+    "new_accounts": {
+        "8898962a-b0ce-4013-8c89-12c977b92452": {
+            "create": "1",
+            "name": "bumbleflies UG (haftungsbeschränkt)",
+            "type": "asset",
+            "account_role": "defaultAsset",
+            "liability_type": "debt",
+            "liability_direction": "credit",
+            "opening_balance": null,
+            "currency": "EUR"
+        },
+        "b3649be5-1e42-4a9e-b486-fdc8f7481dbc": {
+            "create": "1",
+            "name": "Christian Dähn",
+            "type": "asset",
+            "account_role": "defaultAsset",
+            "liability_type": "debt",
+            "liability_direction": "credit",
+            "opening_balance": null,
+            "currency": "EUR"
+        }
+    },
     "date_range": "all",
     "date_range_number": 30,
     "date_range_unit": "d",

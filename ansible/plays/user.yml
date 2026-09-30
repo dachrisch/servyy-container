@@ -53,11 +53,15 @@
         - user.docker.env
         - user.docker.env.finance
 
+    # slurp returns base64 of the whole file, so decode first, then strip the
+    # PEM armor: the importer expects the bare base64 body and adds the
+    # -----BEGIN/END PRIVATE KEY----- headers itself.
     - name: Set Enable Banking private key fact
       ansible.builtin.set_fact:
         enable_banking_private_key_b64: >-
-          {{ pem_file['content'] | regex_replace('-----BEGIN PRIVATE KEY-----\n|-----END PRIVATE KEY-----\n', '')
-          | regex_replace('\n', '') }}
+          {{ pem_file['content'] | b64decode
+          | regex_replace('-----BEGIN PRIVATE KEY-----\n|-----END PRIVATE KEY-----\n', '')
+          | regex_replace('\n', '') | trim }}
       tags:
         - user.docker.env
         - user.docker.env.finance
