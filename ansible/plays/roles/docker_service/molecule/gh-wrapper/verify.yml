@@ -219,3 +219,66 @@
       ansible.builtin.command:
         cmd: grep -q '^GH_TOKEN:$' {{ gh_log }}
       changed_when: false
+
+    # -- configure-git.sh: ssh->https rewrite (the shared /root/dev checkouts
+    #    carry opencode's git@github.com: origins; claude-hub has no ssh) ----
+    - name: Re-run configure-git.sh (every container boot runs it again)
+      ansible.builtin.command:
+        cmd: sh /usr/local/bin/configure-git.sh /usr/local/bin/gh-cred-helper.sh
+      changed_when: false
+
+    - name: Read the insteadOf rewrites after two runs
+      ansible.builtin.command:
+        cmd: git config --global --get-all url.https://github.com/.insteadOf
+      register: insteadof
+      changed_when: false
+
+    - name: Verify both SSH spellings are rewritten exactly once (idempotent)
+      ansible.builtin.assert:
+        that:
+          - insteadof.stdout_lines | sort == ['git@github.com:', 'ssh://git@github.com/']
+        fail_msg: "unexpected insteadOf values: {{ insteadof.stdout_lines }}"
+
+    - name: Read credential helper config
+      ansible.builtin.command:
+        cmd: git config --global --get {{ item }}
+      loop:
+        - credential.https://github.com.helper
+        - credential.useHttpPath
+      register: credcfg
+      changed_when: false
+
+    - name: Verify credential helper + useHttpPath survived the refactor
+      ansible.builtin.assert:
+        that:
+          - credcfg.results[0].stdout == '/usr/local/bin/gh-cred-helper.sh'
+          - credcfg.results[1].stdout == 'true'
+
+    - name: Resolve the SCP-like (git@github.com:) origin as git would use it
+      ansible.builtin.command:
+        cmd: git ls-remote --get-url origin
+        chdir: /home/molecule/gh-wrapper/git-bumbleflies
+      register: scp_url
+      changed_when: false
+
+    - name: Resolve an ssh:// URL as git would use it
+      ansible.builtin.command:
+        cmd: git ls-remote --get-url ssh://git@github.com/dachrisch/servyy-container.git
+        chdir: /home/molecule/gh-wrapper/no-git
+      register: ssh_url
+      changed_when: false
+
+    - name: Verify both SSH forms are fetched/pushed over HTTPS
+      ansible.builtin.assert:
+        that:
+          - scp_url.stdout == 'https://github.com/bumbleflies/somerepo.git'
+          - ssh_url.stdout == 'https://github.com/dachrisch/servyy-container.git'
+        fail_msg: "rewrite failed: {{ scp_url.stdout }} / {{ ssh_url.stdout }}"
+
+    - name: Verify the checkout's own origin is left untouched (opencode still sees SSH)
+      ansible.builtin.command:
+        cmd: git config --local --get remote.origin.url
+        chdir: /home/molecule/gh-wrapper/git-bumbleflies
+      register: raw_origin
+      changed_when: false
+      failed_when: raw_origin.stdout != 'git@github.com:bumbleflies/somerepo.git'
