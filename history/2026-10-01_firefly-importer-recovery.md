@@ -96,3 +96,68 @@ rest correctly rejected as `a117` duplicates).
 
 Previous app/PAT/session values are in git history (`git show HEAD~1:...`). To disable:
 remove the `ofelia.*` labels from `finance/docker-compose.yml` and redeploy.
+
+## Runbook: refreshing an expired Enable Banking session
+
+Do this when the daily import starts failing with EB errors (`SESSION_DOES_NOT_EXIST`,
+consent-expired, or 401s from `api.enablebanking.com` in `docker logs finance.importer`).
+Current consent for session `1a486b13…` is valid until **2026-12-28**. Takes ~10 min, most
+of it waiting on the bank login. Endpoints are singular (`/auth`, `/sessions`) — NOT
+`/auths`.
+
+Prerequisites: repo checked out with git-crypt unlocked; `ENABLE_BANKING_APP_ID` from
+`ansible/plays/vars/secrets.yml`.
+
+1. **Mint a 1h app JWT** (private key never leaves the server — this uses the deployed
+   `ENABLE_BANKING_PRIVATE_KEY` inside the importer container, which bundles
+   `firebase/php-jwt`):
+   ```bash
+   cat > /tmp/eb-jwt.php <<'EOF'
+   <?php
+   require '/var/www/html/vendor/autoload.php';
+   $body = getenv('ENABLE_BANKING_PRIVATE_KEY');
+   $key = "-----BEGIN PRIVATE KEY-----\n" . implode("\n", str_split($body, 64)) . "\n-----END PRIVATE KEY-----\n";
+   $now = time();
+   $payload = ['iss' => 'enablebanking.com', 'aud' => 'api.enablebanking.com', 'iat' => $now, 'exp' => $now + 3600];
+   echo Firebase\JWT\JWT::encode($payload, $key, 'RS256', getenv('ENABLE_BANKING_APP_ID'));
+   EOF
+   ssh servy.lehel.xyz "docker exec -i finance.importer php" < /tmp/eb-jwt.php > /tmp/eb-jwt.txt
+   ```
+2. **Start the bank authorization** (valid 89 days, same redirect the importer expects):
+   ```bash
+   JWT=$(cat /tmp/eb-jwt.txt); VALID_UNTIL=$(date -d "+89 days" +%Y-%m-%dT%H:%M:%S%:z)
+   curl -s -X POST -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
+     -d "{\"access\":{\"valid_until\":\"$VALID_UNTIL\"},\"aspsp\":{\"name\":\"GLS Gemeinschaftsbank\",\"country\":\"DE\"},\"state\":\"manual-$(date +%Y%m%d)\",\"redirect_url\":\"https://finance-importer.lehel.xyz/eb-callback\",\"psu_type\":\"personal\"}" \
+     https://api.enablebanking.com/auth
+   ```
+   Save the returned `authorization_id` and open the returned `url`.
+3. **User completes GLS login + consent** in the browser. The redirect lands on the
+   importer's `/eb-callback`, which shows an error page ("no import job") — expected,
+   harmless. Nothing else is needed from the browser.
+4. **Grab the code** (single-use, expires in minutes) from the importer access log and
+   **exchange it immediately**:
+   ```bash
+   ssh servy.lehel.xyz "docker logs finance.importer --since 10m 2>&1 | grep -a 'eb-callback' | tail -n 1"
+   # → GET /eb-callback?state=...&code=<CODE>
+   JWT=$(cat /tmp/eb-jwt.txt)
+   curl -s -X POST -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
+     -d '{"code":"<CODE>"}' https://api.enablebanking.com/sessions | head -c 600
+   # → {"session_id":"<NEW>","accounts":[...]}
+   ```
+5. **Update `ansible/plays/vars/secrets.yml`** (`finance.import_config`): new
+   `banking_auth_id` (step 2) + `banking_session` (step 4). If the response shows
+   **different account UIDs** than `finance-import-config.json.j2` has, update
+   `accounts`/`new_accounts` there too.
+6. **Deploy + verify** (repo tag syncs compose files, env tag re-renders config):
+   ```bash
+   cd ansible && ./servyy.sh --limit servy.lehel.xyz --tags "user.docker.repo,user.docker.env,user.docker.finance"
+   sleep 45  # let finance containers settle if recreated
+   ssh servy.lehel.xyz "docker exec finance.importer /bin/bash -c /import/run-import.sh"  # expect HTTP 200
+   ssh servy.lehel.xyz "docker logs finance.importer --since 10m 2>&1 | grep -a -E 'TransactionsResponse: count|Zero transactions|POST.*autoupload' | tail -n 5"
+   ```
+   Success = `TransactionsResponse: count N` per account, `POST /autoupload … 200`,
+   Firefly `/api/v1/transactions` total grows.
+7. **Clean up + commit:** `rm /tmp/eb-jwt.php /tmp/eb-jwt.txt`; commit/push the
+   `secrets.yml` (+ template if touched) change.
+8. If anything looks off, the Ofelia job now fails loudly (`curl --fail`), so
+   `docker logs portainer.ofelia | grep daily-import` shows it next morning.
