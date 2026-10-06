@@ -19,8 +19,8 @@ prod:
           leagues-finance: true
           finance: true
           # Shared data layer (mongo/valkey/postgres for leagues-finance,
-          # finance, queen). Queen app itself stays OFF on prod until explicit
-          # approval: finance_services excludes it below.
+          # finance, queen). Queen enabled on prod (2026-10-06): GLS #1 +
+          # Drive folder set, image bumblecode/queen:latest.
           shared: true
           searxng: true
           thore: false
@@ -31,8 +31,8 @@ prod:
           me: false
           monitor: true
           leaguesphere: true
-        # finance_services omits queen = prod gate (test enables queen only).
-        finance_services: [firefly, importer]
+        # queen enabled on prod (test enables queen only before).
+        finance_services: [firefly, importer, queen]
     codey.lehel.xyz:
         domain: lehel.xyz
         with_docker: true
