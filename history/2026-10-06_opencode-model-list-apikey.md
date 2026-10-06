@@ -1,6 +1,6 @@
 # 2026-10-06 — opencode: API-key clients may list models
 
-**Status:** 🟡 Deployed to servyy-test (routing verified); production pending
+**Status:** 🔁 #170 targeted the wrong router; corrected in the follow-up (see Correction below)
 
 ## Problem
 job-search calls opencode with `X-Api-Key`. The `opencode_apikey` router only matched
@@ -55,3 +55,23 @@ curl -s -o /dev/null -w '%{http_code}\n' -H "X-Api-Key: $K" https://code.lehel.x
 - Add `opencode-authgate: true` to `ansible/testing`, so API-key routes can be tested on servyy-test.
 - The local DNS entry for `opencode.servyy-test.lxd` resolves to `10.185.182.233` rather than servyy-test (`.250`).
 - servyy-test's job-search `api.env` points `OPENCODE_BASE_URL` at production `code.lehel.xyz`.
+
+## Correction (same day)
+#170 changed the wrong router and had no effect for job-search. It edited the
+`opencode_apikey@docker` router in `opencode/docker-compose.yml`, which matches
+`Host(${SERVICE_HOST})` = `opencode.lehel.xyz`. That hostname is retired: its DNS points
+at servy, not codey. The public endpoint `code.lehel.xyz` is served by the file-provider
+router `opencode-apikey-code` in `traefik/dynamic.yaml`. After the #170 deploy to codey,
+Traefik's access log showed `GET /api/model` with a key still landing on `opencode_root@docker` → 401.
+
+The follow-up fix:
+- removes the stale `${SERVICE_NAME}_apikey` router labels from `opencode/docker-compose.yml`
+  (no consumer uses `opencode.lehel.xyz`: checked repos under `~/dev`, the `*.env` files and
+  container envs on servy and codey; only opencode's own `SERVICE_HOST` still names it)
+- adds `(Path(/api/model) && Method(GET))` to `opencode-apikey-code` in `traefik/dynamic.yaml`
+
+Lesson: before changing routing, find the router that actually receives the traffic
+(Traefik access log `RouterName`), not the one that looks right in compose.
+
+Still open: opencode's plain `${SERVICE_NAME}` router also matches the retired
+`opencode.lehel.xyz` through `SERVICE_HOST`. It is left untouched here.
