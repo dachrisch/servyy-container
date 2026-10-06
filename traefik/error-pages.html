@@ -124,43 +124,6 @@
       font-size: .85em;
       opacity: 0.75;
     }
-
-    /* {{ if .Config.ShowRequestDetails }} */
-    table.details {
-      table-layout: fixed;
-      width: 100%;
-      opacity: .6;
-    }
-
-    table.details td {
-      white-space: nowrap;
-      font-size: 0.7em;
-    }
-
-    table.details .name,
-    table.details .value {
-      width: 50%;
-    }
-
-    table.details .name::first-letter,
-    table.details .value::first-letter {
-      font-weight: bold;
-    }
-
-    table.details .name {
-      text-align: right;
-      padding-right: .4em;
-      width: 50%;
-    }
-
-    table.details .value {
-      text-align: left;
-      padding-left: .4em;
-      font-family: monospace;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    /* {{ end }} */
   </style>
 </head>
 <body>
@@ -309,57 +272,11 @@
     <!-- {{- end -}} -->
   </nav>
 
-  <!-- {{- if .Config.ShowRequestDetails -}} -->
-  <table class="details">
-    <tbody>
-    <!-- {{- if .Host -}} -->
-    <tr>
-      <td class="name" data-l10n>Host</td>
-      <td class="value">{{ .Host }}</td>
-    </tr>
-    <!-- {{- end }}{{ if .OriginalURI -}} -->
-    <tr>
-      <td class="name" data-l10n>Original URI</td>
-      <td class="value">{{ .OriginalURI }}</td>
-    </tr>
-    <!-- {{- end }}{{ if .ForwardedFor -}} -->
-    <tr>
-      <td class="name" data-l10n>Forwarded for</td>
-      <td class="value">{{ .ForwardedFor }}</td>
-    </tr>
-    <!-- {{- end }}{{ if .Namespace -}} -->
-    <tr>
-      <td class="name" data-l10n>Namespace</td>
-      <td class="value">{{ .Namespace }}</td>
-    </tr>
-    <!-- {{- end }}{{ if .IngressName -}} -->
-    <tr>
-      <td class="name" data-l10n>Ingress name</td>
-      <td class="value">{{ .IngressName }}</td>
-    </tr>
-    <!-- {{- end }}{{ if .ServiceName -}} -->
-    <tr>
-      <td class="name" data-l10n>Service name</td>
-      <td class="value">{{ .ServiceName }}</td>
-    </tr>
-    <!-- {{- end }}{{ if .ServicePort -}} -->
-    <tr>
-      <td class="name" data-l10n>Service port</td>
-      <td class="value">{{ .ServicePort }}</td>
-    </tr>
-    <!-- {{- end }}{{ if .RequestID -}} -->
-    <tr>
-      <td class="name" data-l10n>Request ID</td>
-      <td class="value">{{ .RequestID }}</td>
-    </tr>
-    <!-- {{- end -}} -->
-    <tr>
-      <td class="name" data-l10n>Timestamp</td>
-      <td class="value">{{ now.Unix }}</td>
-    </tr>
-    </tbody>
-  </table>
-  <!-- {{- end -}} -->
+  <!-- NOTE: no request-details table in this fork. SHOW_DETAILS=true is
+       required so the server populates .Host (used for the dispatch above),
+       but the details themselves (client IP, headers) are deliberately never
+       rendered — the page stays clean and leak-free. -->
+
 </article>
 
 <!-- {{- if (not .Config.L10nDisabled) -}} -->
