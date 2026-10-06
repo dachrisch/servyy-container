@@ -124,23 +124,41 @@ Hard-won findings:
   effect (content changes are invisible to plain `up`) — same restart
   caveat as the base change.
 
-## Production rollout (needs explicit approval, NOT done)
-1. Code is on master already (`94f405b`); no merge needed.
-2. `cd ansible && ./servyy.sh --tags user.docker.traefik,user.docker.repo`
-   (refreshes the remote checkout, recreates/starts error-pages).
-3. Restart the traefik project on each host running it (servy + codey —
-   verify via inventory) with the ad-hoc restart command above
-   (static entrypoint middlewares only load on start).
-4. Verify: unknown host → branded 404 (with correct status); known hosts →
-   200; `docker logs traefik.traefik` clean; watch http-errors dashboard
-   (catchall appears as new `error-pages@file` service label).
-5. Rollback: `git revert 94f405b a7e0825`, redeploy same tags, restart.
+## Production rollout — DONE (servy + codey, verified live)
+Deploy: `./servyy.sh --tags user.docker.traefik,user.docker.repo` (failed=0
+both hosts), then project restart on both hosts (static entrypoint
+middlewares only load on start — same caveat as test). Verified: unknown
+hosts on :80/:443 → branded 404 on both hosts; search.lehel.xyz → 200;
+code.lehel.xyz → 401 (authgate normal, untouched — 401 not in middleware
+scope); middleware 404s → branded pages with status preserved; containers
+healthy; checkouts current.
+
+Correction to the design assumption: the errors-middleware path does NOT
+forward the original Host (verified live: known-host backend 404 rendered
+the generic variant despite mapped host; consistent with upstream v1 code
+copying headers but not Host). Per-service dispatch therefore fires on the
+catchall-direct path only (original Host preserved through normal routing).
+Down-service (middleware) pages render generic-but-branded. True
+per-service DOWN pages would need an identity header plumbed per router
+(headers middleware setting X-Service-Name + template branching on
+.ServiceName) — i.e. label edits across services. Parked unless requested.
+
+Known upstream issue observed on prod: error-pages v4.2.4 panics
+(per-connection, recovered, process stays healthy) with `invalid
+WriteHeader code 1` when the catchall routes scanner-style numeric paths
+(e.g. `/1.php` on unknown hosts → parsed as status 1, below valid HTTP
+range). Impact: log spam + reset conn for the scanner; legit pages
+unaffected (full correct bodies delivered in the same window). Middleware
+path can never trigger it (status list is all ≥100). Options: live with it
++ report upstream, or exclude numeric paths in the catchall rule (needs
+rule-syntax verification on test first).
+Rollback if ever needed: `git revert` the traefik commits, redeploy the
+same tags on both hosts, restart the traefik projects.
 
 ## Follow-ups (not done, optional)
 - Wildcard cert (`*.lehel.xyz`) so unknown HTTPS hosts skip the cert
   warning before the branded 404.
 - Consider a `restart traefik` notify/handler for mounted-config changes
   (currently a manual step — pre-existing gap, not introduced here).
-- Live 502 test (stop a backend briefly) — skipped on purpose; the 502
-  render path is proven via direct `/502.html` + identical middleware code
-  path as the proven 404 case.
+- Per-service DOWN pages via identity header (see correction above).
+- Upstream report for the WriteHeader(1) panic on numeric paths.
