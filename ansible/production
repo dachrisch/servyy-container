@@ -22,8 +22,6 @@ prod:
           # finance, queen). Queen app itself stays OFF on prod until explicit
           # approval: finance_services excludes it below.
           shared: true
-        # finance_services omits queen = prod gate (test enables queen only).
-        finance_services: [firefly, importer]
           searxng: true
           thore: false
           job-search: true
@@ -33,6 +31,8 @@ prod:
           me: false
           monitor: true
           leaguesphere: true
+        # finance_services omits queen = prod gate (test enables queen only).
+        finance_services: [firefly, importer]
     codey.lehel.xyz:
         domain: lehel.xyz
         with_docker: true
