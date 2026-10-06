@@ -33,7 +33,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, hostname } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { claudeDir, HubConfigError, resolveSettings } from '../../../scripts/lib/hub-config.mjs';
 import { installLauncher, launcherPath } from '../../../scripts/lib/launcher-install.mjs';
@@ -212,6 +212,29 @@ function gitFacts(cwd) {
       last_commits: g('log', '-3', '--format=%h %s').text.split('\n').filter(Boolean),
     };
   });
+}
+
+// Does `path` currently appear as one of `repoSource`'s own registered worktrees, and on which
+// branch? Running git directly inside `path` instead (as gitFacts does) blindly trusts whatever
+// its `.git` file happens to point at - fine normally, but once a workspace's admin-dir entry
+// (`<repoSource>/.git/worktrees/<name>`) is pruned, a *later, unrelated* spinup on the same repo
+// can get that same name back (git names it from the plain repo basename, which repeats across
+// every task on that repo), and the old workspace's `.git` file then resolves into the new
+// worktree's index/HEAD while its own working-tree files are untouched - `git status` there
+// reports hundreds of bogus "dirty" files and the wrong branch. Asking the SOURCE repo what it
+// thinks is registered is the one place that hijack cannot hide. See close, below, and
+// history/2026-10-06_claude-hub-reaper-fixes.md.
+function registeredWorktree(repoSource, path) {
+  const r = run('git', ['-C', repoSource, 'worktree', 'list', '--porcelain']);
+  if (!r.ok) return null;
+  const entries = [];
+  let cur = null;
+  for (const line of r.text.split(/\r?\n/)) {
+    if (line.startsWith('worktree ')) { if (cur) entries.push(cur); cur = { path: line.slice(9), branch: '' }; }
+    else if (line.startsWith('branch ') && cur) cur.branch = line.slice(7).replace(/^refs\/heads\//, '');
+  }
+  if (cur) entries.push(cur);
+  return entries.find((e) => samePath(e.path, path)) ?? null;
 }
 
 // ---------------------------------------------------------------- inputs
@@ -451,29 +474,71 @@ if (action === 'close') {
     fail(CEV, 'not_closable', `${o.id} (${a.name}) is ${a.kind !== 'background' ? `a ${a.kind} session` : 'the hub'} - only background task sessions can be closed`);
   }
   const ws = a.cwd;
+  if (!existsSync(ws)) {
+    // The workspace directory is already gone - e.g. hand-removed after a corrupted-worktree
+    // close refused it under the old code (see the registeredWorktree check below). There is no
+    // worktree or file left to clean up, but the agent itself still is: without this, it lingers
+    // in `claude agents` forever with a cwd that no longer resolves (`not_a_spinup_workspace` on
+    // every retry, since .spinup.json went with the directory). Finish the other half of close.
+    if (dryRun) {
+      emit({ event: 'close-planned', id: o.id, name: a.name, workspace: ws, repos: [], warnings: [], branches: [],
+        will: [isRunning(a) ? `claude stop ${o.id}` : 'session is not running', `${ws} no longer exists - nothing else to remove`],
+        keeps: 'nothing - the workspace was already gone', reopen: null });
+      process.exit(0);
+    }
+    if (isRunning(a)) {
+      const r = claude('stop', o.id);
+      const after = waitAgent(o.id, false, 20);
+      if (!r.ok || (after && isRunning(after))) fail(CEV, 'stop_failed', `claude stop ${o.id} failed: ${r.text}`, { id: o.id });
+    }
+    addLedger({ event: 'closed', at: new Date().toISOString(), machine, id: o.id, name: a.name, cwd: ws,
+      sessionId: a.sessionId ?? null, git: [], spinup: null, reopen: null, reaper_version: REAPER_VERSION,
+      note: 'workspace directory was already gone before close' });
+    emit({ event: 'session-closed', id: o.id, name: a.name, workspace: ws, removed: [], kept: [], failed: [], warnings: [], branches: [], reopen: null });
+    process.exit(0);
+  }
   const meta = readJson(join(ws, '.spinup.json'));
   if (!meta?.repos) fail(CEV, 'not_a_spinup_workspace', `${ws} has no .spinup.json - close only removes workspaces spinup-session created`);
 
   const facts = gitFacts(ws);
   const repos = meta.repos.map((r) => {
+    if (!existsSync(r.path)) {
+      return { repo: r.repo, path: r.path, branch: r.branch, source: r.source, exists: false,
+        dirty_files: 0, unpushed: null, no_upstream: false, corrupted: false };
+    }
+    // See registeredWorktree's comment: a path whose source repo no longer registers it (or
+    // registers it under a different branch) isn't reporting ITS OWN git state below - it is
+    // either unregistered or showing whatever other job's worktree now owns that admin-dir name.
+    const reg = registeredWorktree(r.source, r.path);
+    if (!reg || reg.branch !== r.branch) {
+      return { repo: r.repo, path: r.path, branch: r.branch, source: r.source, exists: true,
+        dirty_files: 0, unpushed: null, no_upstream: false, corrupted: true,
+        corrupted_reason: reg ? `${r.source} now registers it under branch '${reg.branch}', not '${r.branch}'` : `${r.source} no longer registers it as a worktree` };
+    }
     const g = facts.find((x) => samePath(x.path, r.path));
     let unpushed = g?.unpushed ?? null;
     let noUpstream = false;
     if (g && g.upstream === null && r.base) {
-      noUpstream = true;
-      const n = run('git', ['-C', r.path, 'rev-list', '--count', `${r.base}..HEAD`]);
+      run('git', ['-C', r.source, 'fetch', 'origin', '--quiet']);
+      const hasRemoteBranch = run('git', ['-C', r.source, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${r.branch}`]).ok;
+      const n = hasRemoteBranch
+        ? run('git', ['-C', r.path, 'rev-list', '--count', `origin/${r.branch}..HEAD`])
+        : run('git', ['-C', r.path, 'rev-list', '--count', `${r.base}..HEAD`]);
       unpushed = n.ok ? Number(n.stdout) : null;
+      noUpstream = !hasRemoteBranch;
     }
-    return { repo: r.repo, path: r.path, branch: r.branch, source: r.source, exists: existsSync(r.path),
-      dirty_files: g?.dirty_files ?? 0, unpushed, no_upstream: noUpstream };
+    return { repo: r.repo, path: r.path, branch: r.branch, source: r.source, exists: true,
+      dirty_files: g?.dirty_files ?? 0, unpushed, no_upstream: noUpstream, corrupted: false };
   });
-  const dirty = repos.filter((r) => r.dirty_files > 0);
+  const corrupted = repos.filter((r) => r.corrupted);
+  const dirty = repos.filter((r) => !r.corrupted && r.dirty_files > 0);
   if (dirty.length) {
     fail(CEV, 'dirty_worktree', `uncommitted changes in ${dirty.map((r) => `${r.repo} (${r.dirty_files} file(s))`).join(', ')} - commit or discard them first; nothing was stopped or removed`, { id: o.id, repos });
   }
   const warnings = repos.filter((r) => r.unpushed > 0).map((r) => (r.no_upstream
-    ? `${r.repo}: branch ${r.branch} has no upstream; its ${r.unpushed} local commit(s) stay on the branch`
+    ? `${r.repo}: branch ${r.branch} has no upstream and no matching branch on origin; its ${r.unpushed} local commit(s) stay on the branch`
     : `${r.repo}: ${r.unpushed} local commit(s) not pushed; branch ${r.branch} keeps them`));
+  warnings.push(...corrupted.map((r) => `${r.repo}: worktree registration is stale (${r.corrupted_reason}) - removing the directory directly, without git worktree remove; the branch is untouched`));
   const branches = repos.map((r) => ({ repo: r.repo, branch: r.branch, source: r.source }));
   const reopen = reopenCmd(meta);
   const files = ['TASK.md', 'CLAUDE.md', '.spinup.json'].map((f) => join(ws, f));
@@ -481,8 +546,10 @@ if (action === 'close') {
   if (dryRun) {
     emit({ event: 'close-planned', id: o.id, name: a.name, workspace: ws, repos, warnings, branches,
       will: [isRunning(a) ? `claude stop ${o.id}` : 'session is not running',
-        ...repos.filter((r) => r.exists).map((r) => `git -C "${r.source}" worktree remove "${r.path}"`),
-        `remove ${files.map((f) => basename(f)).join(', ')} and the workspace directory if nothing else is in it`],
+        ...repos.filter((r) => r.exists).map((r) => (r.corrupted
+          ? `rm -rf "${r.path}" (${r.corrupted_reason} - not safe to run git worktree remove)`
+          : `git -C "${r.source}" worktree remove "${r.path}"`)),
+        `remove ${files.map((f) => basename(f)).join(', ')} and any now-empty parent directories under the workspace`],
       keeps: 'every branch and commit; the conversation (claude --resume)', reopen });
     process.exit(0);
   }
@@ -498,12 +565,30 @@ if (action === 'close') {
   const removed = [];
   const failed = [];
   for (const r of repos.filter((x) => x.exists)) {
+    if (r.corrupted) {
+      try { rmSync(r.path, { recursive: true, force: true }); removed.push(r.path); }
+      catch (e) { failed.push({ path: r.path, message: String(e.message ?? e) }); }
+      continue;
+    }
     const rm = run('git', ['-C', r.source, 'worktree', 'remove', r.path]);
     if (rm.ok) removed.push(r.path);
     else failed.push({ path: r.path, message: rm.text });
   }
   // The workspace files stay while a worktree is still there, so it keeps explaining itself.
   if (!failed.length) for (const f of files) if (existsSync(f)) { rmSync(f); removed.push(f); }
+  // Remove now-empty directories bottom-up - e.g. the <owner>/ parent left behind once
+  // <owner>/<repo> itself is gone - up to but not past the workspace root (handled next).
+  for (const r of repos) {
+    let dir = dirname(r.path);
+    while (dir !== ws && dir.startsWith(ws + sep)) {
+      try {
+        if (readdirSync(dir).length) break;
+        rmdirSync(dir);
+        removed.push(dir);
+        dir = dirname(dir);
+      } catch { break; }
+    }
+  }
   let kept = [];
   try { kept = readdirSync(ws).map((n) => join(ws, n)); } catch { kept = []; }
   if (!kept.length && existsSync(ws)) { rmdirSync(ws); removed.push(ws); } // only ever an empty directory
