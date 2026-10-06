@@ -126,6 +126,50 @@ All test branches, the one real GitHub push, and the resulting stale worktree re
 were deleted afterward; servyy-test.lxd was left clean (verified: no leftover workspace
 dirs, no leftover agents beyond the hub itself, no stray worktree registrations).
 
+## Follow-up: Bug 2's fix used the wrong command
+
+Found immediately after deploying the above: closing the five real zombie agents in
+production reported `session-closed` for all five, but `claude agents --json` still
+listed every one of them afterward, unchanged.
+
+**Cause:** the `!existsSync(ws)` branch called `claude stop <id>` only when `isRunning(a)`
+was true. Every real zombie has neither `pid` nor `status` at all — `isRunning` was false
+for all five, so `stop` was never even attempted, and the branch ledgered a "closed" event
+that never touched the actual agent registry. `claude stop` only works on a worker that is
+still running; these had already been settled by the daemon's own low-memory retire (not
+an explicit `stop`), which evidently leaves a different, still-listed kind of entry behind.
+
+Separately, `claude rm <id>` — the CLI's own documented tool for "an already-exited
+session" — failed in production with `couldn't remove <id> — the background service may
+be restarting`, consistently, across two different ids and several retries over 40+
+seconds, with no corresponding entry in `~/.claude/daemon.log` at all (unlike `claude
+agents --json`, which was logging and succeeding throughout). Not root-caused; stopped
+retrying against production once it was clearly not a quick transient and reported it
+instead of continuing to poke at a live container.
+
+**Fix:** switch to `claude rm <id>`, unconditionally (not gated on `isRunning`), with up
+to 4 attempts (3 s apart) and — critically — verify the id is actually gone from `claude
+agents` before reporting success, rather than trusting `rm`'s exit code alone. If it's
+still listed after all attempts, `close` now fails loudly (`rm_failed`) instead of
+ledgering a close that didn't happen.
+
+**Verified on servyy-test.lxd:** the natural low-memory idle-retire that produced the
+production zombies doesn't reproduce there (16 GB RAM, miles above the ~1 GB threshold —
+confirmed via `free -h`), so the exact shape was reproduced by hand instead: start a real
+background session, `kill -9` its actual OS process directly (not `claude stop`, which
+deregisters cleanly on its own and would not reproduce the bug), remove its workspace
+directory. The result matched production exactly - no `pid`, no `status`, only `state:
+"blocked"`. `claude rm` cleanly removed it both directly and through the fixed `close`
+action; confirmed gone from `claude agents --json` afterward. Four such repro sessions
+were created and fully cleaned up (worktrees, branches, directories) on servyy-test
+afterward.
+
+**Not yet re-applied to production** as of this commit: the five pre-existing zombies
+(`1987`, `1988`, `2029`, `2042 review pr 2042 scope`, `fix stale eslint code scanning`)
+are still listed in production's `claude agents` - the earlier, buggy `close` run against
+them ledgered "closed" without actually deregistering anything. Re-running `close --id
+<id>` for each once this fix is deployed is the remaining step.
+
 ## Not done in this PR
 
 - The admin-dir-uniqueness root cause (see Bug 1's "known limitation").

@@ -482,15 +482,26 @@ if (action === 'close') {
     // every retry, since .spinup.json went with the directory). Finish the other half of close.
     if (dryRun) {
       emit({ event: 'close-planned', id: o.id, name: a.name, workspace: ws, repos: [], warnings: [], branches: [],
-        will: [isRunning(a) ? `claude stop ${o.id}` : 'session is not running', `${ws} no longer exists - nothing else to remove`],
+        will: [`claude rm ${o.id} (already exited - no worktree left to remove)`, `${ws} no longer exists - nothing else to remove`],
         keeps: 'nothing - the workspace was already gone', reopen: null });
       process.exit(0);
     }
-    if (isRunning(a)) {
-      const r = claude('stop', o.id);
-      const after = waitAgent(o.id, false, 20);
-      if (!r.ok || (after && isRunning(after))) fail(CEV, 'stop_failed', `claude stop ${o.id} failed: ${r.text}`, { id: o.id });
+    // `claude stop` only works on a running worker (isRunning(a) is false for every one of these
+    // in practice - the daemon's own low-memory retire already settled them, unlike an explicit
+    // `claude stop`, which deregisters cleanly on its own). `claude rm` is the documented tool for
+    // an already-exited session; it was seen to intermittently fail here with "the background
+    // service may be restarting" (not reproduced as a persistent failure on servyy-test - see
+    // history/2026-10-06_claude-hub-reaper-fixes.md), so retry a few times before giving up, and
+    // verify the id is actually gone rather than trusting `rm`'s own exit code alone.
+    let rmText = '';
+    let deregistered = false;
+    for (let attempt = 0; attempt < 4 && !deregistered; attempt++) {
+      if (attempt) sleepMs(3000);
+      const r = claude('rm', o.id);
+      rmText = r.text;
+      deregistered = r.ok || !getAgents().some((x) => x.id === o.id);
     }
+    if (!deregistered) fail(CEV, 'rm_failed', `claude rm ${o.id} failed: ${rmText}`, { id: o.id });
     addLedger({ event: 'closed', at: new Date().toISOString(), machine, id: o.id, name: a.name, cwd: ws,
       sessionId: a.sessionId ?? null, git: [], spinup: null, reopen: null, reaper_version: REAPER_VERSION,
       note: 'workspace directory was already gone before close' });
