@@ -32,7 +32,12 @@ prod:
           monitor: true
           leaguesphere: true
         # queen enabled on prod (test enables queen only before).
+        # bumbleflies.de is NOT in Porkbun API scope (DNS-01 fails with
+        # INVALID_DOMAIN), so queen uses the HTTP-01 resolver like
+        # bumbleflies_prod and leagues-finance do. A record already points
+        # queen.bumbleflies.de at servy — no Porkbun entry needed.
         finance_services: [firefly, importer, queen]
+        queen_traefik_certresolver: letsencrypthttpresolver
     codey.lehel.xyz:
         domain: lehel.xyz
         with_docker: true
