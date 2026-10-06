@@ -81,6 +81,13 @@ Superseded same day (`b1e8e82`): service directory links removed again —
 internal services stay unlisted per owner request. Final state: only
 "Go to homepage" → https://bumbleflies.de. Verified rendered single href
 + screenshot on servyy-test.
+Superseded same day (`4e18e58`): generic homepage link hidden via empty
+`HOMEPAGE_URL` (verified honored-empty in upstream flag parsing); two
+custom links instead — "Buzz back home" → bumbleflies.de and "Fly with us
+on GitHub" → github.com/bumbleflies (org URL confirmed from bumbleflies.de
+footer). Verified rendered hrefs + screenshot on servyy-test. Note: custom
+labels carry the theme's auto-translate flag, so DE browsers will translate
+the wordplay (meaning survives).
 
 ## Production rollout (needs explicit approval, NOT done)
 1. Code is on master already (`94f405b`); no merge needed.
