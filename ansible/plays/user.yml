@@ -103,6 +103,25 @@
       tags:
         - user.docker.searxng
 
+    # Consolidation (shared project): data containers moved out of the
+    # leagues-finance / finance projects. Remove the ORPHANED originals
+    # (containers only — volumes and bind mounts stay) BEFORE the shared role
+    # starts equivalents on the same data. Without this, two mongos would
+    # write to one volume (compose does not remove orphans). No-op once done.
+    - name: Remove superseded pre-consolidation data containers
+      community.docker.docker_container:
+        name: "{{ item }}"
+        state: absent
+        keep_volumes: true
+      loop:
+        - leagues-finance.mongo
+        - leagues-finance.redis
+        - finance.db
+      when: "'shared' in (services | default([]))"
+      tags:
+        - user.docker.shared
+        - user.docker
+
     # One-time MongoDB auth migration for leagues-finance (DBS-1820 fix).
     # Must run before the docker_service role below recreates the container
     # with `command: ["--auth"]` — MONGO_INITDB_ROOT_USERNAME only creates the
@@ -675,9 +694,9 @@
       tags: [user.docker, user.docker.monitor]
 
   post_tasks:
-    - name: Wait for leagues-finance mongo to become healthy
+    - name: Wait for shared mongo to become healthy
       community.docker.docker_container_info:
-        name: "leagues-finance.mongo"
+        name: "shared.mongo"
       register: lf_mongo_info
       until: >
         lf_mongo_info.container is not none and
@@ -686,25 +705,26 @@
       retries: 15
       delay: 2
       failed_when: false
-      when: "'leagues-finance' in (services | default([]))"
+      when: "'shared' in (services | default([]))"
       tags:
         - user.docker.leagues-finance
+        - user.docker.shared
         - user.docker
 
-    # Never wipe the volume during the 7 -> 8 upgrade: mongo 8 may need longer to
+    # Never wipe the volume during an upgrade: mongo 8 may need longer to
     # come up on existing data, and an unhealthy container here means the upgrade
     # failed, not that the volume is corrupt. The dedicated wait below fails loudly.
     - name: Remove corrupted mongo volume and restart if unhealthy
       when: >
-        'leagues-finance' in (services | default([])) and
+        'shared' in (services | default([])) and
         not (lf_mongo_upgrading | default(false)) and (
         lf_mongo_info.container is none or
         lf_mongo_info.container.State.Health.Status != 'healthy')
       block:
-        - name: Remove leagues-finance containers
+        - name: Remove shared containers
           community.docker.docker_compose_v2:
-            project_src: "{{ (docker.remote_dir, 'leagues-finance') | path_join }}"
-            project_name: leagues-finance
+            project_src: "{{ (docker.remote_dir, 'shared') | path_join }}"
+            project_name: shared
             state: absent
 
         - name: Remove leagues-finance mongo_data volume
@@ -712,15 +732,15 @@
             name: leagues-finance_mongo_data
             state: absent
 
-        - name: Restart leagues-finance containers
+        - name: Restart shared containers
           community.docker.docker_compose_v2:
-            project_src: "{{ (docker.remote_dir, 'leagues-finance') | path_join }}"
-            project_name: leagues-finance
+            project_src: "{{ (docker.remote_dir, 'shared') | path_join }}"
+            project_name: shared
             state: present
 
         - name: Wait for mongo after volume reset
           community.docker.docker_container_info:
-            name: "leagues-finance.mongo"
+            name: "shared.mongo"
           register: lf_mongo_retry
           until: >
             lf_mongo_retry.container is not none and
@@ -729,6 +749,7 @@
           delay: 2
       tags:
         - user.docker.leagues-finance
+        - user.docker.shared
         - user.docker
 
     - name: Wait for leagues-finance mongo after 7 -> 8 upgrade
@@ -747,6 +768,7 @@
         - user.docker
 
     # Idempotent: also finishes an upgrade whose FCV bump was interrupted on a previous run.
+    # Skipped once consolidated: the legacy leagues-finance.mongo container is gone.
     - name: Read leagues-finance mongo featureCompatibilityVersion
       community.docker.docker_container_exec:
         container: leagues-finance.mongo
@@ -762,7 +784,10 @@
           - 'db.adminCommand({getParameter: 1, featureCompatibilityVersion: 1}).featureCompatibilityVersion.version'
       register: lf_mongo_post_fcv
       changed_when: false
-      when: "'leagues-finance' in (services | default([]))"
+      when:
+        - "'leagues-finance' in (services | default([]))"
+        # Legacy 7->8 upgrade path only (false once consolidated).
+        - lf_mongo_upgrading | default(false)
       tags:
         - user.docker.leagues-finance
         - user.docker
