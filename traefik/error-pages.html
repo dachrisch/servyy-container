@@ -172,7 +172,7 @@
        HTML-escaped there anyway, so a malicious Host header cannot break out
        of the href. Unknown or empty hosts fall through to the generic ghost
        rendering below. -->
-  <!-- {{ $host := .Host }} -->
+  <!-- {{ $reqHost := .Host }} -->
   <!-- {{ $h := $host | lower }} -->
   <!-- {{ $name := "" }} -->
   <!-- {{ $slogan := "" }} -->
@@ -295,7 +295,7 @@
   <p class="description" data-l10n><!-- {{ if $slogan }} --><!-- {{ if ge .StatusCode 500 }} -->{{ $name }} — {{ $slogan }}<!-- {{ else }} -->{{ $name }} can't find that page.<!-- {{ end }} --><!-- {{ else }} -->{{ .Description }}<!-- {{ end }} --></p>
 
   <nav class="links" aria-label="Additional links">
-    <!-- {{ if and $host (ge .StatusCode 500) }} -->
+    <!-- {{ if and $reqHost (ge .StatusCode 500) }} -->
     <!-- {{ if $name }} -->
     <a href="https://{{ $h | escape }}/" data-l10n>Try {{ $name }} again</a>
     <!-- {{ end }} -->
