@@ -394,6 +394,11 @@
     - role: docker_service
       vars:
         service_dir: bumbleflies
+        env_templates:
+          - src: docker.env.j2
+            dest: .env
+          - src: bumbleflies/bnb.env.j2
+            dest: bnb.env
       when: "'bumbleflies' in (services | default([]))"
       tags: [user.docker, user.docker.bumbleflies]
 
