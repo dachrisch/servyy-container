@@ -18,11 +18,17 @@ prod:
           groceries: true
           leagues-finance: true
           finance: true
+          # Shared data layer (mongo/valkey/postgres for leagues-finance,
+          # finance, queen). Queen app itself stays OFF on prod until explicit
+          # approval: finance_services excludes it below.
+          shared: true
+        # finance_services omits queen = prod gate (test enables queen only).
+        finance_services: [firefly, importer]
           searxng: true
-          thore: true
+          thore: false
           job-search: true
           dontforget: true
-          platzler-heid: true
+          platzler-heid: false
           dns: false
           me: false
           monitor: true
@@ -47,4 +53,4 @@ prod:
           # picked up by the user.yml docker_service block). Exposed at
           # h.code.lehel.xyz via Porkbun A/AAAA records → codey (217.217.227.124).
           devhub: true
-          claude-hub: true
+          claude-hub: false

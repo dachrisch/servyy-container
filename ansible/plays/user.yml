@@ -521,6 +521,18 @@
 
     - role: docker_service
       vars:
+        service_dir: shared
+        env_templates:
+          - src: docker.env.j2
+            dest: .env
+          - src: shared/.env.j2
+            dest: shared.env
+        compose_services: "{{ shared_services | default([]) }}"
+      when: "'shared' in (services | default([]))"
+      tags: [user.docker, user.docker.shared]
+
+    - role: docker_service
+      vars:
         service_dir: leagues-finance
         env_templates:
           - src: docker.env.j2
@@ -538,6 +550,9 @@
             dest: .env
           - src: finance/.env.j2
             dest: finance.env
+          - src: finance/queen.env.j2
+            dest: queen.env
+        compose_services: "{{ finance_services | default([]) }}"
       when: "'finance' in (services | default([]))"
       tags: [user.docker, user.docker.finance]
 

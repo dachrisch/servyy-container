@@ -5,5 +5,6 @@
     project_name: "{{ project_name | default(service_name) }}"
     files:
       - "{{ compose_file }}"
+    services: "{{ compose_services }}"
     state: present
   tags: [molecule-notest]

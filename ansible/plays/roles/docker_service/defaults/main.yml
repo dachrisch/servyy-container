@@ -19,6 +19,9 @@ env_templates:
   - src: docker.env.j2
     dest: .env
 compose_file: docker-compose.yml
+# Subset of compose services to deploy (empty = all). Lets a host run part of
+# a compose file, e.g. queen from the finance file without Firefly.
+compose_services: []
 manual: false
 # Docker volumes to ensure exist before `docker compose up` (e.g. volumes
 # referenced as `external: true` by this service but owned by another compose
