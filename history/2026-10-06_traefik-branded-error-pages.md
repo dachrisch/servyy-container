@@ -77,6 +77,10 @@ directory (Search/Git/Code/Photos/Passwords, all absolute). Verified
 rendered hrefs + screenshot on servyy-test. Rollout note: env change
 recreates the error-pages container via compose automatically — no
 Traefik restart needed for this one.
+Superseded same day (`b1e8e82`): service directory links removed again —
+internal services stay unlisted per owner request. Final state: only
+"Go to homepage" → https://bumbleflies.de. Verified rendered single href
++ screenshot on servyy-test.
 
 ## Production rollout (needs explicit approval, NOT done)
 1. Code is on master already (`94f405b`); no merge needed.
