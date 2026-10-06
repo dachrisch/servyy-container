@@ -89,6 +89,41 @@ footer). Verified rendered hrefs + screenshot on servyy-test. Note: custom
 labels carry the theme's auto-translate flag, so DE browsers will translate
 the wordplay (meaning survives).
 
+## Per-service pages (`bf9a20a`, `cc23a2c`, `7e79053`, verified on test)
+New `traefik/error-pages.html`: fork of the ghost theme with a host-based
+dispatch chain (bumbleflies → leaguesphere → bricksnbytes → password →
+search → opencode → hub, in that priority order; everything else falls back
+to generic ghost). Each known service gets its own inline SVG illustration
+(zero external dependencies), slogan, and name in the heading. Wording is
+status-aware: 5xx → "{Name} is down"-style + slogan + "Try {Name} again"
+(same-host retry link, 5xx only); 404 on a known host → "{Name} can't find
+that page" (service is up, never claim downtime); unknown host → generic.
+Wired via read-only volume mount + `HTML_TEMPLATE` env (no new containers,
+no Traefik changes; compose auto-recreates on deploy).
+
+Hard-won findings:
+- Upstream parses templates with text/template + a naive v3-token shim
+  that rewrites bare words ANYWHERE (even `$host` → `$.Host`, breaking
+  assignment). Fix: `$reqHost` + case-normalized `$h` compare. A local Go
+  harness replicating the exact shim + engine now gates the template and
+  reproduces upstream errors byte-for-byte (it caught this pre-deploy).
+- `.Host` is only populated when showDetails=true (upstream handler code),
+  so `SHOW_DETAILS=true` is required for dispatch — but our fork renders
+  NO details table, so nothing (client IP, headers) leaks into the page.
+- Host matching is case-normalized (`lower`); Try-again href is escaped and
+  only renders for exact-match hosts (injection-proof by construction).
+- 5xx test without stopping backends: the error container renders
+  `/{code}.html` honoring any Host header — full 7-services × statuses
+  matrix verified live via direct hits (slogans, icons, Try links, XSS
+  probe with malicious Host, empty-host and unmapped-host fallbacks, zero
+  template leakage). End-to-end also proven through Traefik: catchall with
+  mapped host renders the service branch; middleware 502 path renders
+  branded pages with status preserved (one controlled ~2 min stop of
+  bumbleflies.www on test for the true 502 path; backend restored healthy).
+- Env/volume-only changes need `compose ... recreate=always` to take
+  effect (content changes are invisible to plain `up`) — same restart
+  caveat as the base change.
+
 ## Production rollout (needs explicit approval, NOT done)
 1. Code is on master already (`94f405b`); no merge needed.
 2. `cd ansible && ./servyy.sh --tags user.docker.traefik,user.docker.repo`
