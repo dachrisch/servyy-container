@@ -418,6 +418,8 @@
             dest: .env
           - src: bumbleflies/bnb.env.j2
             dest: bnb.env
+          - src: bumbleflies/live.env.j2
+            dest: live.env
       when: "'bumbleflies' in (services | default([]))"
       tags: [user.docker, user.docker.bumbleflies]
 
