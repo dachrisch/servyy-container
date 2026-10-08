@@ -1,0 +1,30 @@
+---
+- name: "Verify (codey shape: all probes cleaned, none deployed)"
+  hosts: all
+  become: true
+  tasks:
+    - name: Check stale probe files are gone
+      stat:
+        path: "{{ item }}"
+      loop:
+        - /home/testuser/.config/systemd/user/system-log-freshness.service
+        - /home/testuser/.config/systemd/user/system-log-freshness.timer
+        - /home/testuser/.system-probes/system-log-freshness.sh
+        - /home/testuser/.config/systemd/user/system-restic-snapshots.service
+        - /home/testuser/.config/systemd/user/system-restic-snapshots.timer
+        - /home/testuser/.system-probes/system-restic-snapshots.sh
+        - /home/testuser/.config/systemd/user/system-storagebox.service
+        - /home/testuser/.config/systemd/user/system-storagebox.timer
+        - /home/testuser/.system-probes/system-storagebox.sh
+        - /home/testuser/.config/systemd/user/system-container-health.service
+        - /home/testuser/.config/systemd/user/system-container-health.timer
+        - /home/testuser/.system-probes/system-container-health.sh
+      register: stale_files
+
+    - name: Assert every stale probe file was removed
+      assert:
+        that:
+          - not item.stat.exists
+      loop: "{{ stale_files.results }}"
+      loop_control:
+        label: "{{ item.item }}"

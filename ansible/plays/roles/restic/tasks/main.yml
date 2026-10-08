@@ -89,6 +89,20 @@
 #        mariadb:latest mariadb-backup --copy-back --target-dir=/backup
 #   4. chown -R 999:999 /var/jail/home/leaguesphere/container/deployed/mysql-data
 #   5. docker compose -p leaguesphere start db ; verify health
+# The jail (and its mysql-backup/current target) is created by the leaguesphere
+# play, which runs AFTER the restic play. On a host that will run LeagueSphere
+# but has no jail yet (first test deploy), there is nothing to restore into —
+# skip instead of failing. Hosts WITH a jail but no snapshots still fail fast
+# via restore.yml's test-env guard (intended backup-tripwire behavior).
+- name: Check if LeagueSphere jail exists (db restore target)
+  stat:
+    path: "/var/jail/home/leaguesphere/container/deployed"
+  register: ls_jail_stat
+  when: leaguesphere_enabled | default(false) | bool
+  tags:
+    - restic
+    - restic.restore
+
 - name: Restore LeagueSphere Prod DB Backup
   include_tasks: restore.yml
   vars:
@@ -122,7 +136,10 @@
       Until copy-back runs, leaguesphere.db serves an EMPTY schema.
       Full runbook: docs/leaguesphere-environments.md → "Prod DB restore procedure"
       ════════════════════════════════════════════════════════════════════
-  when: (with_containers | default(false)) | bool
+  when:
+    - (with_containers | default(false)) | bool
+    - leaguesphere_enabled | default(false) | bool
+    - ls_jail_stat.stat.exists | default(false)
   tags:
     - restic
     - restic.restore

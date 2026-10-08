@@ -1,0 +1,74 @@
+---
+- name: "Verify (servy shape: all probes deployed, db entries included)"
+  hosts: all
+  become: true
+  vars:
+    probe_dir: /home/testuser/.system-probes
+    unit_dir: /home/testuser/.config/systemd/user
+  tasks:
+    - name: Check probe scripts exist and are executable
+      stat:
+        path: "{{ probe_dir }}/{{ item }}"
+      loop:
+        - system-log-freshness.sh
+        - system-restic-snapshots.sh
+        - system-storagebox.sh
+        - system-container-health.sh
+      register: probe_scripts
+
+    - name: Assert probe scripts deployed executable
+      assert:
+        that:
+          - item.stat.exists
+          - item.stat.executable
+      loop: "{{ probe_scripts.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Check timer units exist
+      stat:
+        path: "{{ unit_dir }}/{{ item }}.timer"
+      loop:
+        - system-log-freshness
+        - system-restic-snapshots
+        - system-storagebox
+        - system-container-health
+      register: probe_timers
+
+    - name: Assert timer units deployed
+      assert:
+        that:
+          - item.stat.exists
+      loop: "{{ probe_timers.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Read log-freshness script
+      slurp:
+        src: "{{ probe_dir }}/system-log-freshness.sh"
+      register: log_freshness_script
+
+    - name: Assert ls-db log entry present (LeagueSphere host)
+      assert:
+        that:
+          - "'restic-backup-ls-db' in (log_freshness_script.content | b64decode)"
+
+    - name: Read snapshot-age script
+      slurp:
+        src: "{{ probe_dir }}/system-restic-snapshots.sh"
+      register: snapshot_script
+
+    - name: Assert db repo entry present (LeagueSphere host)
+      assert:
+        that:
+          - "'/etc/restic/env.db' in (snapshot_script.content | b64decode)"
+
+    - name: Read container-health script
+      slurp:
+        src: "{{ probe_dir }}/system-container-health.sh"
+      register: container_script
+
+    - name: Assert fixture container resolved from compose file
+      assert:
+        that:
+          - "'probetest.app' in (container_script.content | b64decode)"

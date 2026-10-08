@@ -1,0 +1,43 @@
+---
+- name: "Verify (non-LeagueSphere host: db timers cleaned, home/root kept)"
+  hosts: all
+  become: true
+  vars:
+    unit_dir: /home/testuser/.config/systemd/user
+    script_dir: /home/testuser/.backup-scripts
+  tasks:
+    - name: Check stale db files are gone
+      stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ unit_dir }}/mariadb-backup-ls.service"
+        - "{{ unit_dir }}/mariadb-backup-ls.timer"
+        - "{{ script_dir }}/mariadb-backup-ls.sh"
+        - "{{ unit_dir }}/restic-backup-ls-db.service"
+        - "{{ unit_dir }}/restic-backup-ls-db.timer"
+        - "{{ script_dir }}/restic-backup-ls-db.sh"
+      register: stale_db_files
+
+    - name: Assert every stale db file was removed
+      assert:
+        that:
+          - not item.stat.exists
+      loop: "{{ stale_db_files.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Check home/root timers still deployed
+      stat:
+        path: "{{ unit_dir }}/{{ item }}.timer"
+      loop:
+        - restic-backup-home
+        - restic-backup-root
+      register: kept_timers
+
+    - name: Assert home/root timers kept
+      assert:
+        that:
+          - item.stat.exists
+      loop: "{{ kept_timers.results }}"
+      loop_control:
+        label: "{{ item.item }}"

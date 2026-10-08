@@ -1,0 +1,41 @@
+---
+# Servy shape: LeagueSphere enabled. Home/root/db backup timers (plus the
+# mariadb dump timer) must deploy; no cleanup may remove them.
+- name: Converge
+  hosts: all
+  become: true
+  become_user: testuser
+  vars:
+    create_user: testuser
+    remote_user_home: /home/testuser
+    remote_user_systemd: /home/testuser/.config/systemd/user
+    leaguesphere_enabled: true
+    ls_prod:
+      app:
+        db_backup_user: test_backup_user
+        db_backup_password: test_backup_password
+    restic:
+      home:
+        source_path: /home/testuser
+      root:
+        source_path: /
+      db:
+        source_path: /var/jail/home/leaguesphere/container/deployed/mysql-backup/current
+      schedules:
+        backup_home: hourly
+        backup_root: daily
+        backup_ls_db: hourly
+        backup_ls_db_dump: '*-*-* *:40:00'
+      logs:
+        backup_home: /var/log/restic/backup-home.log
+        backup_root: /var/log/restic/backup-root.log
+        backup_ls_db: /var/log/restic/backup-ls-db.log
+        forget: /var/log/restic/forget.log
+        check: /var/log/restic/check.log
+      exclude_caches: true
+  tasks:
+    - name: Run restic backup schedules  # noqa: role-name[path]
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../../"
+        tasks_from: backup
+      tags: [restic.backup]

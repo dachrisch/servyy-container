@@ -50,7 +50,7 @@ apply_retention "/etc/restic/env.root" "root" \
     --keep-daily {{ restic.retention.root.daily }} \
     --keep-weekly {{ restic.retention.root.weekly }} \
     --keep-monthly {{ restic.retention.root.monthly }} || FAILED=1
-{% if restic.db.enabled | default(false) %}
+{% if leaguesphere_enabled | default(false) | bool %}
 apply_retention "/etc/restic/env.db" "db" \
     --keep-last {{ restic.retention.db.last }} \
     --keep-hourly {{ restic.retention.db.hourly }} \

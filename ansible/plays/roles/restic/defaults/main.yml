@@ -37,3 +37,15 @@ restic_vaultwarden_items:
   - name: "restic - ls_db (lehel.xyz)"
     secret: "{{ restic_password_ls_db }}"
     notes: "RESTIC_PASSWORD for /etc/restic/env.ls_db (copy of Ansible seed vars/.restic_password_ls_db)"
+
+# --- Leaguesphere-scoped repo lists -----------------------------------------
+# The `db` repo exists only where LeagueSphere runs. These derived lists are the
+# gating mechanism for every loop over repos (env files, sftp mkdir, init,
+# verify, log files). Each is a single Jinja expression so Ansible preserves
+# the list type at loop sites; the leaguesphere flag is coerced with `| bool`.
+restic_repo_names_enabled: "{{ ['home', 'root'] + (['db'] if (leaguesphere_enabled | default(false) | bool) else []) }}"
+restic_repos_enabled: "{{ [restic.home, restic.root] + ([restic.db] if (leaguesphere_enabled | default(false) | bool) else []) }}"
+restic_log_paths_enabled: >-
+  {{ restic.logs | dict2items | rejectattr('key', 'equalto', 'backup_ls_db')
+     | map(attribute='value') | list
+     + (([restic.logs.backup_ls_db] if (leaguesphere_enabled | default(false) | bool) else [])) }}

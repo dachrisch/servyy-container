@@ -285,6 +285,14 @@ jobs:
             scenario: default
           - role: docker_service
             scenario: gh-wrapper
+          - role: system_probe
+            scenario: default
+          - role: system_probe
+            scenario: no-sink
+          - role: restic
+            scenario: default
+          - role: restic
+            scenario: no-leaguesphere
     steps:
       - uses: actions/checkout@v7
 

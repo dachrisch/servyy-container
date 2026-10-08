@@ -119,6 +119,8 @@
         - job-search/.env
         - job-search/api.env
         - job-search/crawler.env
+        - monitor/.env
+        - monitor/grafana.env
 
     - name: Check manual service .env exists (env IS rendered even for manual)
       ansible.builtin.stat:
@@ -246,3 +248,29 @@
       register: ch_id_github_present
       changed_when: false
       failed_when: ch_id_github_present.rc == 0
+
+    - name: Check monitor grafana.env exists
+      ansible.builtin.stat:
+        path: /home/molecule/monitor/grafana.env
+      register: monitor_grafana_env
+      failed_when: not monitor_grafana_env.stat.exists
+
+    - name: Verify grafana.env carries vaulted admin password (not literal admin)
+      ansible.builtin.command:
+        cmd: grep -q '^GF_SECURITY_ADMIN_PASSWORD=test-grafana-admin-pw$' /home/molecule/monitor/grafana.env
+      changed_when: false
+
+    - name: Verify grafana.env carries vaulted SMTP password
+      ansible.builtin.command:
+        cmd: grep -q '^GF_SMTP_PASSWORD=test-gmail-smtp-pw$' /home/molecule/monitor/grafana.env
+      changed_when: false
+
+    - name: Verify grafana.env carries vaulted admin email as SMTP user/from
+      ansible.builtin.command:
+        cmd: grep -q '^GF_SMTP_USER=monitor-test@example.org$' /home/molecule/monitor/grafana.env
+      changed_when: false
+
+    - name: Verify grafana.env carries vaulted admin email as from address
+      ansible.builtin.command:
+        cmd: grep -q '^GF_SMTP_FROM_ADDRESS=monitor-test@example.org$' /home/molecule/monitor/grafana.env
+      changed_when: false
