@@ -22,6 +22,10 @@ prod:
           # finance, queen). Queen enabled on prod (2026-10-06): GLS #1 +
           # Drive folder set, image bumblecode/queen:latest.
           shared: true
+          # bnb-office (BricksnBytes IBS, issue #105): image bumblecode/ibs
+          # must exist on Docker Hub and the Strato record for
+          # ibs.bricksnbytes.de must point at servy before first deploy.
+          bnb-office: true
           searxng: true
           thore: false
           job-search: true

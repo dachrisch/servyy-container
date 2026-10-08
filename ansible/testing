@@ -16,12 +16,17 @@ test:
         # + queen app only (subset of the finance file, no Firefly).
         shared: true
         finance: true
+        bnb-office: true
       shared_services: [mongo, redis]
       finance_services: [queen]
       queen_service_host: queen.servyy-test.lxd
       queen_traefik_entrypoint: web
       queen_traefik_tls: "false"
       queen_traefik_certresolver: ""
+      bnb_office_service_host: ibs.bricksnbytes.servyy-test.lxd
+      bnb_office_traefik_entrypoint: web
+      bnb_office_traefik_tls: "false"
+      bnb_office_traefik_certresolver: ""
       searxng_service_host: search.servyy-test.lxd
       searxng_traefik_entrypoint: web
       searxng_traefik_tls: "false"
