@@ -653,7 +653,7 @@
         service_name: bnb-office
         service_host: "{{ bnb_office_service_host | default('ibs.bricksnbytes.de') }}"
         env_templates:
-          - src: bnb-office/.env.j2
+          - src: bnb-office.env.j2
             dest: .env
           - src: bnb-office/app.env.j2
             dest: app.env
