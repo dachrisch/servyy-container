@@ -12,7 +12,10 @@ system_probe_pushgateway_url: "http://localhost:9091"
 # --- Log-freshness probe -----------------------------------------------------
 # Each entry: name (metric label), path (log file), threshold_seconds.
 # Thresholds mirrored from monit.system.check.j2.
-system_probe_log_checks:
+# The ls-db log entry is appended below only where the db repo is enabled
+# (prod): on other hosts the file does not exist and the probe would report
+# the log as missing.
+system_probe_log_checks_base:
   - name: docker-cleanup
     path: /var/log/docker-cleanup.log
     threshold_seconds: 691200        # 8 days
@@ -31,6 +34,32 @@ system_probe_log_checks:
   - name: restic-check
     path: "{{ restic.logs.check }}"
     threshold_seconds: 691200        # 8 days
+
+# Scheduler-dead signal for the ls-db backup (a FAILING backup still touches
+# its log hourly, so real success is measured by the snapshot-age probe below).
+system_probe_log_checks: >-
+  {{ system_probe_log_checks_base + ([{'name': 'restic-backup-ls-db',
+  'path': restic.logs.backup_ls_db, 'threshold_seconds': 7200}]
+  if (restic.db.enabled | default(false)) else []) }}
+
+# --- Restic snapshot-age probe -------------------------------------------------
+# Measures the age of the NEWEST snapshot per repo (actual backup success),
+# not log mtime (a failing job still touches its log every hour). Thresholds
+# are mirrored into the `restic-snapshot-alerts` Grafana group in
+# monitor/provisioning/alerting/alert-rules.yml — keep both in sync.
+# The db entry only exists where the db repo is enabled (prod).
+system_probe_restic_repos_base:
+  - name: home
+    env_file: "/etc/restic/env.home"
+    threshold_seconds: 7200          # 2 hours (hourly backup)
+  - name: root
+    env_file: "/etc/restic/env.root"
+    threshold_seconds: 90000         # 25 hours (daily backup)
+
+system_probe_restic_repos: >-
+  {{ system_probe_restic_repos_base + ([{'name': 'db',
+  'env_file': '/etc/restic/env.db', 'threshold_seconds': 7200}]
+  if (restic.db.enabled | default(false)) else []) }}
 
 # --- Storagebox probe --------------------------------------------------------
 system_probe_storagebox_mount: "{{ storagebox.mount | default('') }}"
