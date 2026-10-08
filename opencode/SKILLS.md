@@ -10,6 +10,7 @@ This directory is the source of truth for skills on the opencode server
 - `docstash-artifacts/` — DocStash MCP workflow (MCP endpoint is configured
   in `scripts/opencode.json.template`; no plugin needed).
 - `opencode-contribution/`, `opencode-dependency/`, `opencode-deployment/`
+- `session-messaging/` — directed messaging between independent opencode sessions (`session_register/list/send/check` tools in `plugins/session-messaging.js`, JSON name→ID registry).
 - `release-please/` — release-please workflows (single `SKILL.md`, no deps).
 
 ## Vendored skills (do NOT hand-edit, refresh from upstream)
