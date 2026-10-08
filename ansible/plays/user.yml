@@ -642,6 +642,26 @@
       when: "'platzler-heid' in (services | default([]))"
       tags: [user.docker, user.docker.platzler-heid]
 
+    # bnb-office — BricksnBytes office app (IBS, PHP + MariaDB sidecar in its
+    # own compose project). Public host is her Strato domain (host vars:
+    # bnb_office_service_host = ibs.bricksnbytes.de on prod), so HTTP-01
+    # resolver, and she flips the Strato record before go-live. Tests get a
+    # local-qualified host with TRAEFIK_TLS=false from the testing inventory.
+    - role: docker_service
+      vars:
+        service_dir: bnb-office
+        service_name: bnb-office
+        service_host: "{{ bnb_office_service_host | default('ibs.bricksnbytes.de') }}"
+        env_templates:
+          - src: bnb-office/.env.j2
+            dest: .env
+          - src: bnb-office/app.env.j2
+            dest: app.env
+          - src: bnb-office/db.env.j2
+            dest: db.env
+      when: "'bnb-office' in (services | default([]))"
+      tags: [user.docker, user.docker.bnb-office]
+
     # DevHub — personal dev command board (Next.js + SQLite). Runs on codey so it
     # can dispatch opencode on code.lehel.xyz. Public DNS h.code.lehel.xyz must point
     # to codey (217.217.227.124) via Porkbun before the first deploy.
