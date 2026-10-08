@@ -1,5 +1,8 @@
 git/htpasswd filter=git-crypt diff=git-crypt
 docker-compose.yml filter=git-crypt diff=git-crypt
+# Molecule fixtures must stay plaintext: CI (and molecule) read them via
+# lookup('file') without the git-crypt key, so an encrypted blob breaks parsing.
+ansible/plays/roles/system_probe/molecule/default/files/probetest/docker-compose.yml !filter !diff
 *.yaml filter=git-crypt diff=git-crypt
 secrets.* filter=git-crypt diff=git-crypt
 secret_* filter=git-crypt diff=git-crypt
