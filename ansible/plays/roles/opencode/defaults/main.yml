@@ -5,7 +5,17 @@ vw_server: "https://pass.lehel.xyz"
 # Pinned upstream commit for superpowers skills (obra/superpowers).
 # Refresh: bump this SHA, redeploy, and re-check the SERVER PATCH in
 # opencode/plugins/superpowers.js still applies cleanly.
+# NOTE: this SHA is the single shared pin — setup-home's agent_config role
+# reads it live from this file for the dev-machine clone. Never duplicate it.
 opencode_superpowers_version: 06b92f36820f38175b2ed6ff3f8df45157d54731
+# Canonical skills source: setup-home agent-config (private home.git) holds ALL
+# skills; this role copies controller-side from that checkout. Override when
+# the checkout lives elsewhere on the controller.
+agent_config_skills_src: "{{ lookup('env', 'HOME') }}/dev/infrastructure/setup-home/agent-config/skills"
+# Shared canonical skills shipped to the server (dev-only ones stay out).
+opencode_server_shared_skills:
+  - gh-stack
+  - release-please
 # Guard against silent GitHub SSH key rotation: generating a new key when the
 # seed file is missing silently replaces the production key (which GitHub
 # still trusts) and breaks container git access. Keep false; set true only
