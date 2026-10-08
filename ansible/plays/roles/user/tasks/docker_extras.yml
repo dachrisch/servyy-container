@@ -143,7 +143,7 @@
       schedule: 'Mon..Sun *-*-* 02:30'
       command: >-
         docker exec bnb-office.db sh -c 'exec mariadb-dump --single-transaction
-        -uroot -p"$MARIADB_ROOT_PASSWORD" {{ vault_bnb_office_db_name }}'
+        -uroot -p"$MARIADB_ROOT_PASSWORD" {{ bnb_office.db_name }}'
         | gzip > {{ (docker.remote_dir, 'bnb-office', '.backup') | path_join }}/bnboffice-$(date +%Y%m%dT%H%M%SZ).sql.gz
         && find {{ (docker.remote_dir, 'bnb-office', '.backup') | path_join }}
         -name 'bnboffice-*.sql.gz' -type f -mtime +35 -delete
