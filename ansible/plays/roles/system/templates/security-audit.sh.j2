@@ -51,8 +51,20 @@ run_lynis() {
 
 # Docker Bench Security - CIS Docker Benchmark
 run_docker_bench() {
+    # The docker/docker-bench-security image ships an ancient Docker client (v18.06, API 1.38)
+    # whose default API version is below the daemon's minimum (>= 1.44), which makes every
+    # `docker` call inside the container fail with "client version ... is too old".
+    # Pin the client API version to the server's so the bundled client can talk to the daemon.
+    local api_version
+    api_version="$(docker version --format '{% raw %}{{.Server.APIVersion}}{% endraw %}' 2>/dev/null || true)"
+    local -a api_env=()
+    if [[ -n "${api_version}" ]]; then
+        api_env=(-e "DOCKER_API_VERSION=${api_version}")
+    fi
+
     docker run --rm --privileged --net host --pid host --userns host --cap-add audit_control \
         -e DOCKER_CONTENT_TRUST="${DOCKER_CONTENT_TRUST:-}" \
+        "${api_env[@]}" \
         -v /var/lib:/var/lib:ro \
         -v /var/run/docker.sock:/var/run/docker.sock:ro \
         -v /usr/lib/systemd:/usr/lib/systemd \
@@ -79,9 +91,18 @@ run_trivy() {
             echo ',' >> "${LOG_DIR}/trivy-results.json"
         fi
 
-        # Scan image and wrap result with target name
+        # Scan image and wrap result with target name. The scan JSON must be redirected into
+        # the results file (stdout otherwise lands in the tool log and the file stays empty).
         echo "{\"target\": \"${IMAGE}\", \"result\": " >> "${LOG_DIR}/trivy-results.json"
-        trivy image --format json --severity HIGH,CRITICAL "${IMAGE}" 2>/dev/null || echo '{}'
+        if trivy image --format json --severity HIGH,CRITICAL "${IMAGE}" \
+                > "${LOG_DIR}/.trivy-image.json" 2>/dev/null \
+                && [[ -s "${LOG_DIR}/.trivy-image.json" ]] \
+                && python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "${LOG_DIR}/.trivy-image.json" 2>/dev/null; then
+            cat "${LOG_DIR}/.trivy-image.json" >> "${LOG_DIR}/trivy-results.json"
+        else
+            echo '{}' >> "${LOG_DIR}/trivy-results.json"
+        fi
+        rm -f "${LOG_DIR}/.trivy-image.json"
         echo '}' >> "${LOG_DIR}/trivy-results.json"
     done
 
@@ -127,6 +148,8 @@ run_testssl() {
 
     for HOST in "${HOSTS[@]}"; do
         log "  Testing TLS: ${HOST}"
+        # testssl.sh refuses to write a non-empty --jsonfile (fails on same-day re-runs)
+        rm -f "${LOG_DIR}/testssl-${HOST}.json"
         "${TESTSSL_DIR}/testssl.sh" --jsonfile "${LOG_DIR}/testssl-${HOST}.json" \
             --quiet "${HOST}" 2>&1 | tee -a "${LOG_DIR}/testssl.log" || true
     done
