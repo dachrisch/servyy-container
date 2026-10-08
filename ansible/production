@@ -42,6 +42,10 @@ prod:
         # queen.bumbleflies.de at servy — no Porkbun entry needed.
         finance_services: [firefly, importer, queen]
         queen_traefik_certresolver: letsencrypthttpresolver
+        # bnb-office reachable at this second host too (owner-facing stopgap
+        # until the Strato DNS for ibs.bricksnbytes.de is flipped). DNS for
+        # ibs.bumbleflies.de already points at servy; own Traefik router/cert.
+        bnb_office_alt_host: ibs.bumbleflies.de
     codey.lehel.xyz:
         domain: lehel.xyz
         with_docker: true
