@@ -61,4 +61,11 @@
           Next steps:
           1. Remove from git: git rm -r {{ service_to_remove }}/
           2. Update inventory: Set services_enabled[{{ service_to_remove }}] = false
-          3. Deploy changes: ./servyy.sh --limit {{ inventory_hostname }}
+          3. Clean Pushgateway stale series (POST-merge legacy / pre-PUT probes):
+             ssh {{ inventory_hostname }} "curl -sf -X DELETE http://localhost:9091/metrics/job/system_container_health && sudo -u {{ create_user | default('cda') }} ~/.system-probes/system-container-health.sh"
+             # After the PUT fix this is self-healing on the next timer run (5min),
+             # but run once manually so Grafana stops firing container_not_running immediately.
+          4. Redeploy probes + verify Grafana: ./servyy.sh --limit {{ inventory_hostname }} --tags "system.probe"
+             # Check Grafana: no system_container_running{name="{{ service_to_remove }}.*"} series,
+             # container_not_running alert OK, Services Overview shows no ghost service.
+          5. Deploy changes: ./servyy.sh --limit {{ inventory_hostname }}

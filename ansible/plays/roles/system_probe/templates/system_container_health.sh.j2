@@ -20,7 +20,7 @@ if ! docker info >/dev/null 2>&1; then
   {
     echo "# TYPE system_container_health_probe_success gauge"
     echo "system_container_health_probe_success ${probe_success}"
-  } | curl -sf --max-time 15 --connect-timeout 5 --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}"
+  } | curl -sf -X PUT --max-time 15 --connect-timeout 5 --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}"
   echo "container-health probe_success=0 (docker unreachable)"
   exit 0
 fi
@@ -41,6 +41,10 @@ check_container() {
 # curl: each pipeline stage runs in a subshell, so assignments to all_running
 # inside check_container would be lost to the parent shell and the log line
 # below would always report all_running=1 even when 0 was pushed.
+# PUT (not POST): replaces the whole job group so retired containers disappear
+# from Pushgateway/Grafana on the next run instead of lingering as stale series
+# (e.g. bumbleflies.repository/archive retired 2026-09-27 kept firing
+# container_not_running until manually deleted).
 payload_file=$(mktemp)
 {
   echo "# TYPE system_container_running gauge"
@@ -57,7 +61,7 @@ payload_file=$(mktemp)
   echo "system_container_health_probe_success ${probe_success}"
 } > "${payload_file}"
 
-if curl -sf --max-time 15 --connect-timeout 5 --data-binary @"${payload_file}" "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}"; then
+if curl -sf -X PUT --max-time 15 --connect-timeout 5 --data-binary @"${payload_file}" "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}"; then
   echo "container-health all_running=${all_running} probe_success=${probe_success} pushed=1"
 else
   echo "container-health all_running=${all_running} probe_success=${probe_success} pushed=0 (pushgateway push failed)"
