@@ -254,14 +254,34 @@
     opencode_skills_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/skills') | path_join }}"
   tags: [user.docker.opencode]
 
-- name: Deploy OpenCode skills
+- name: Deploy shared canonical skills to OpenCode server
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../../opencode/skills/"
-    dest: "{{ opencode_skills_dir }}"
+    src: "{{ (agent_config_skills_src, item) | path_join }}/"
+    dest: "{{ (opencode_skills_dir, item) | path_join }}"
     owner: "{{ create_user }}"
     group: "{{ create_user }}"
     mode: '0644'
     directory_mode: '0755'
+  loop: "{{ opencode_server_shared_skills }}"
+  vars:
+    opencode_skills_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/skills') | path_join }}"
+  notify: restart opencode container
+  tags: [user.docker.opencode]
+
+- name: Deploy server-only canonical skills to OpenCode server
+  ansible.builtin.copy:
+    src: "{{ (agent_config_skills_src, 'server', item) | path_join }}/"
+    dest: "{{ (opencode_skills_dir, item) | path_join }}"
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0644'
+    directory_mode: '0755'
+  loop:
+    - opencode-deployment
+    - opencode-contribution
+    - opencode-dependency
+    - docstash-artifacts
+    - session-messaging
   vars:
     opencode_skills_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/skills') | path_join }}"
   notify: restart opencode container
