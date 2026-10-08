@@ -26,7 +26,9 @@ else
   probe_success=0
 fi
 
-cat <<EOF | curl -sf --max-time 15 --connect-timeout 5 --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}"
+# PUT (not POST): replaces the whole job group so stale series disappear
+# from Pushgateway/Grafana instead of lingering after config changes.
+cat <<EOF | curl -sf -X PUT --max-time 15 --connect-timeout 5 --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}"
 # TYPE system_storagebox_mounted gauge
 system_storagebox_mounted ${mounted}
 # TYPE system_storagebox_usage_pct gauge

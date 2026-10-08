@@ -119,6 +119,23 @@ services:
   notify: restart service container
 ```
 
+### ❌ Pitfall: Forgetting Grafana/Pushgateway on Service Removal
+**Problem**: Removed container keeps firing `container_not_running` in Grafana
+because Pushgateway merges POSTs — the retired `system_container_running{name="..."}`
+series lingers after the probe template stops emitting it
+(e.g. `bumbleflies.repository`/`bumbleflies.archive` retired 2026-09-27).
+Probes now use `PUT` (replace) so this is self-healing, but always verify.
+**Solution**: Removal checklist — redeploy probes + purge stale series
+```bash
+# After git rm + services_enabled=false, redeploy probes
+./servyy.sh --limit servy.lehel.xyz --tags "system.probe"
+
+# If alert still fires (pre-PUT stale series), delete job once, timer repopulates in 5min
+ssh servy.lehel.xyz "curl -sf -X DELETE http://localhost:9091/metrics/job/system_container_health"
+
+# Verify in Grafana: no system_container_running{name="removed.*"}, alert OK
+```
+
 ### ❌ Pitfall: GitHub Host Key Changed
 **Problem**: SSH clones fail after GitHub rotates keys
 **Solution**: Update SSH known_hosts in startup script
@@ -373,6 +390,15 @@ roles:
 - [ ] Service responds to health checks
 - [ ] External URLs work (if applicable)
 - [ ] Monitoring shows activity
+
+### Service Removal Checklist (prevents stale Grafana alerts)
+
+- [ ] `git rm -r <service>/` + remove secrets block
+- [ ] `ansible/production`: `services_enabled[<service>]: false`
+- [ ] `docker rm -f <project>.<svc>` orphans + compose `--remove-orphans` deploy
+- [ ] Redeploy probes: `--tags "system.probe"` (PUT semantics drop retired series)
+- [ ] Grafana: no `system_container_running{name="<removed>.*"}`, `container_not_running` OK
+- [ ] DNS/TLS: remove dead A records + Traefik routers if service was exposed
 
 ## Service Naming Convention
 
