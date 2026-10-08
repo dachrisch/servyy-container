@@ -114,7 +114,10 @@
       loop:
         - {src: 'promtail.yml', mode: '0644'}
         - {src: 'provisioning/datasources/datasources.yml', mode: '0644'}
-        - {src: 'provisioning/alerting/contact-points.yml', mode: '0600'}
+        # Grafana (uid 472, gid root) reads this provisioning file from inside
+        # the container; it must be world-readable (group is `docker`, not
+        # root), else Grafana crash-loops on "permission denied".
+        - {src: 'provisioning/alerting/contact-points.yml', mode: '0644'}
       when: "'monitor' in (services | default([]))"
       tags:
         - user.docker.monitor
