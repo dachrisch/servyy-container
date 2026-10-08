@@ -41,12 +41,11 @@ restic_vaultwarden_items:
 # --- Leaguesphere-scoped repo lists -----------------------------------------
 # The `db` repo exists only where LeagueSphere runs. These derived lists are the
 # gating mechanism for every loop over repos (env files, sftp mkdir, init,
-# verify, log files). Consume directly; each already applies `| bool`.
-# NOTE: Jinja renders these as strings at definition — `| bool` at the
-# consumption site (as done below) keeps them correct.
+# verify, log files). Each is a single Jinja expression so Ansible preserves
+# the list type at loop sites; the leaguesphere flag is coerced with `| bool`.
 restic_repo_names_enabled: "{{ ['home', 'root'] + (['db'] if (leaguesphere_enabled | default(false) | bool) else []) }}"
 restic_repos_enabled: "{{ [restic.home, restic.root] + ([restic.db] if (leaguesphere_enabled | default(false) | bool) else []) }}"
 restic_log_paths_enabled: >-
   {{ restic.logs | dict2items | rejectattr('key', 'equalto', 'backup_ls_db')
      | map(attribute='value') | list
-     + (([restic.logs.backup_ls_db] if (leaguesphere_enabled | default(false) | bool) else [])) }}"
+     + (([restic.logs.backup_ls_db] if (leaguesphere_enabled | default(false) | bool) else [])) }}

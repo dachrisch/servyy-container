@@ -3,6 +3,11 @@ test:
     servyy-test.lxd:
       ansible_host: servyy-test.lxd
       root_user: ubuntu
+      # Base domain for service hostnames ({service}.servyy-test.lxd).
+      # Matches production pattern (every prod host defines `domain`) and the
+      # docker_service fallback (inventory_hostname). Required by user/dns.yml
+      # and user/host_ping.yml, which have no fallback.
+      domain: servyy-test.lxd
       with_containers: true
       with_docker: false
       skip_storagebox: true
