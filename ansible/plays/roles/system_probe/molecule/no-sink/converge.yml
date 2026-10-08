@@ -1,0 +1,64 @@
+---
+# Codey shape: no monitor sink, no LeagueSphere, storagebox mount configured,
+# containers enabled. Stale probe units (pre-seeded below, simulating a host
+# that previously had the sink) must be removed; nothing may be deployed.
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    create_user: testuser
+    remote_user_home: /home/testuser
+    remote_user_systemd: /home/testuser/.config/systemd/user
+    leaguesphere_enabled: false
+    skip_storagebox: false
+    with_containers: true
+    services_enabled:
+      devhub: true
+    storagebox:
+      mount: /mnt/storagebox
+    restic:
+      logs:
+        backup_home: /var/log/restic/backup-home.log
+        backup_root: /var/log/restic/backup-root.log
+        backup_ls_db: /var/log/restic/backup-ls-db.log
+        forget: /var/log/restic/forget.log
+        check: /var/log/restic/check.log
+  tasks:
+    - name: Create stale probe directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: testuser
+        group: testuser
+        mode: "0755"
+      loop:
+        - /home/testuser/.config/systemd/user
+        - /home/testuser/.system-probes
+      tags: [system.probe]
+
+    - name: Pre-seed stale probe units and scripts
+      copy:
+        dest: "{{ item }}"
+        content: "# stale fixture\n"
+        owner: testuser
+        group: testuser
+        mode: "0644"
+      loop:
+        - /home/testuser/.config/systemd/user/system-log-freshness.service
+        - /home/testuser/.config/systemd/user/system-log-freshness.timer
+        - /home/testuser/.system-probes/system-log-freshness.sh
+        - /home/testuser/.config/systemd/user/system-restic-snapshots.service
+        - /home/testuser/.config/systemd/user/system-restic-snapshots.timer
+        - /home/testuser/.system-probes/system-restic-snapshots.sh
+        - /home/testuser/.config/systemd/user/system-storagebox.service
+        - /home/testuser/.config/systemd/user/system-storagebox.timer
+        - /home/testuser/.system-probes/system-storagebox.sh
+        - /home/testuser/.config/systemd/user/system-container-health.service
+        - /home/testuser/.config/systemd/user/system-container-health.timer
+        - /home/testuser/.system-probes/system-container-health.sh
+      tags: [system.probe]
+
+    - name: Run system_probe role  # noqa: role-name[path]
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../../"
+      tags: [system.probe]

@@ -62,12 +62,15 @@
 
 # LeagueSphere prod DB backup (mariadb-backup -> prepared current set).
 # Scoped to LeagueSphere hosts only (leaguesphere_enabled): other hosts have no
-# jail path to dump from.
+# jail path to dump from. `ls_prod` may be injected by the caller (molecule);
+# otherwise it is loaded from the (git-crypt encrypted) secret_main.yaml.
 - name: Load prod app vars for backup creds
   include_vars:
     file: "{{ playbook_dir }}/roles/ls_app/vars/secret_main.yaml"
     name: ls_prod
-  when: leaguesphere_enabled | default(false) | bool
+  when:
+    - leaguesphere_enabled | default(false) | bool
+    - ls_prod is not defined
   tags: [restic.backup]
 
 - name: Deploy mariadb-backup script

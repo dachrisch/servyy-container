@@ -1,0 +1,33 @@
+---
+# Servy shape: monitor sink present, LeagueSphere enabled, storagebox mounted,
+# containers enabled. All four probes must deploy with db entries included.
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    create_user: testuser
+    remote_user_home: /home/testuser
+    remote_user_systemd: /home/testuser/.config/systemd/user
+    leaguesphere_enabled: true
+    skip_storagebox: false
+    with_containers: true
+    services_enabled:
+      monitor: true
+    storagebox:
+      mount: /mnt/storagebox
+    restic:
+      logs:
+        backup_home: /var/log/restic/backup-home.log
+        backup_root: /var/log/restic/backup-root.log
+        backup_ls_db: /var/log/restic/backup-ls-db.log
+        forget: /var/log/restic/forget.log
+        check: /var/log/restic/check.log
+    docker:
+      services:
+        - dir: probetest
+    system_probe_docker_local_dir: "{{ playbook_dir }}/files"
+  tasks:
+    - name: Run system_probe role  # noqa: role-name[path]
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../../"
+      tags: [system.probe]

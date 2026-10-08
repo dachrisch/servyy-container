@@ -12,6 +12,9 @@
     job_search_searxng_url: https://search.lehel.xyz
     vault_job_search_mongo_root_username: test-mongo-root-user
     vault_job_search_mongo_root_password: test-mongo-root-pass
+    vault_gmail_smtp_password: test-gmail-smtp-pw
+    vault_monitor_grafana_admin_password: test-grafana-admin-pw
+    monitor_admin_email: monitor-test@example.org
     opencode:
       server_password: test-opencode-pass
       api_key: test-opencode-api-key
@@ -40,6 +43,7 @@
         - manual-svc
         - opencode
         - claude-hub
+        - monitor
 
   tasks:
     - name: Deploy simple service
@@ -104,3 +108,16 @@
             dest: .env
           - src: claude-hub/.env.j2
             dest: claude-hub.env
+
+    - name: Deploy monitor service env (grafana secrets, no compose)
+      ansible.builtin.include_role:
+        name: docker_service
+        tasks_from: main.yml
+      vars:
+        service_dir: monitor
+        manual: true
+        env_templates:
+          - src: docker.env.j2
+            dest: .env
+          - src: monitor/grafana.env.j2
+            dest: grafana.env

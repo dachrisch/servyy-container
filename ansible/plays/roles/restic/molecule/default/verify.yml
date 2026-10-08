@@ -1,0 +1,55 @@
+---
+- name: "Verify (LeagueSphere host: all backup timers deployed)"
+  hosts: all
+  become: true
+  vars:
+    unit_dir: /home/testuser/.config/systemd/user
+    script_dir: /home/testuser/.backup-scripts
+  tasks:
+    - name: Check backup timer units exist
+      stat:
+        path: "{{ unit_dir }}/{{ item }}.timer"
+      loop:
+        - restic-backup-home
+        - restic-backup-root
+        - restic-backup-ls-db
+        - mariadb-backup-ls
+      register: backup_timers
+
+    - name: Assert all backup timers deployed
+      assert:
+        that:
+          - item.stat.exists
+      loop: "{{ backup_timers.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Check backup scripts exist and are executable
+      stat:
+        path: "{{ script_dir }}/{{ item }}.sh"
+      loop:
+        - restic-backup-home
+        - restic-backup-root
+        - restic-backup-ls-db
+        - mariadb-backup-ls
+      register: backup_scripts
+
+    - name: Assert backup scripts deployed executable
+      assert:
+        that:
+          - item.stat.exists
+          - item.stat.executable
+      loop: "{{ backup_scripts.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Read ls-db backup script
+      slurp:
+        src: "{{ script_dir }}/restic-backup-ls-db.sh"
+      register: ls_db_script
+
+    - name: Assert ls-db script targets the db repo
+      assert:
+        that:
+          - "'backup_type=\"db\"' in (ls_db_script.content | b64decode)"
+          - "'/etc/restic/env.db' in (ls_db_script.content | b64decode)"
