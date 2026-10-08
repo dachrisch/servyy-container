@@ -10,6 +10,11 @@ vars/.restic_password_ls_db
 plays/vars/.vaultwarden_admin_token
 vars/.vaultwarden_admin_token
 
+# Grafana admin password seed (generated and persisted by Ansible via
+# lookup('password', 'vars/.monitor_grafana_admin_password ...'))
+plays/vars/.monitor_grafana_admin_password
+vars/.monitor_grafana_admin_password
+
 # Vaultwarden master password, manually dropped here for one-off runs - never commit
 .vw_master_pw
 __pycache__/
