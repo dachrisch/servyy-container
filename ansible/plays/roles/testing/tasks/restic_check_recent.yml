@@ -7,3 +7,25 @@
   tags:
     - testing.restic.check_recent
     - never
+
+# The db repo only exists where restic.db is enabled (prod). Without the guard
+# this check would fail on hosts without /etc/restic/env.db — which is exactly
+# how the 4-week ls-db outage escaped the manual verification path.
+- name: Check db repo env file exists
+  stat:
+    path: /etc/restic/env.db
+  register: restic_env_db
+  become: true
+  changed_when: false
+  tags:
+    - testing.restic.check_recent
+    - never
+
+- name: Check recent db snapshots (< 24h)
+  include_tasks: _restic_check_single.yml
+  vars:
+    item: db
+  when: restic_env_db.stat.exists
+  tags:
+    - testing.restic.check_recent
+    - never

@@ -31,6 +31,29 @@
     - system.probe
     - system.probe.log
 
+- name: Deploy restic snapshot-age probe script
+  template:
+    src: restic_snapshot_freshness.sh.j2
+    dest: "{{ (system_probe_scripts_dir, 'system-restic-snapshots.sh') | path_join }}"
+    mode: '0750'
+  become_user: "{{ create_user }}"
+  tags:
+    - system.probe
+    - system.probe.restic
+
+- name: Deploy restic snapshot-age timer
+  import_tasks: oneshot_include.yml
+  become_user: "{{ create_user }}"
+  vars:
+    service:
+      name: system-restic-snapshots
+      description: 'Check age of newest restic snapshot per repo'
+      schedule: '*-*-* *:0/30:00'
+      command: "{{ (system_probe_scripts_dir, 'system-restic-snapshots.sh') | path_join }}"
+  tags:
+    - system.probe
+    - system.probe.restic
+
 - name: Deploy storagebox probe script
   template:
     src: system_storagebox.sh.j2

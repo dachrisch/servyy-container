@@ -997,8 +997,9 @@ groups:
     interval: 1m
     rules:
       # MEDIUM: a maintenance/backup log is stale. The staleness thresholds per log
-      # (8d docker-cleanup, 32d kernel-cleanup, 2h restic home, 25h restic root/forget,
-      # 8d restic check) are evaluated here, matching Monit's per-file timestamps.
+      # (8d docker-cleanup, 32d kernel-cleanup, 2h restic home, 2h restic ls-db,
+      # 25h restic root/forget, 8d restic check) are evaluated here, matching
+      # Monit's per-file timestamps.
       - uid: stale_maintenance_log
         title: Stale Maintenance/Backup Log
         condition: C
@@ -1014,6 +1015,7 @@ groups:
                 system_log_freshness_seconds{log="docker-cleanup"} > 691200 or
                 system_log_freshness_seconds{log="kernel-cleanup"} > 2764800 or
                 system_log_freshness_seconds{log="restic-backup-home"} > 7200 or
+                system_log_freshness_seconds{log="restic-backup-ls-db"} > 7200 or
                 system_log_freshness_seconds{log="restic-backup-root"} > 90000 or
                 system_log_freshness_seconds{log="restic-forget"} > 90000 or
                 system_log_freshness_seconds{log="restic-check"} > 691200
@@ -1135,6 +1137,206 @@ groups:
         annotations:
           summary: 'Log-freshness probe has not pushed metrics recently'
           description: 'No successful push from system-log-freshness.timer in over 90 minutes - the timer may have stopped running.'
+        labels:
+          severity: medium
+        isPaused: false
+
+  # Restic snapshot-age monitoring (2026-10-08: log mtime cannot prove a backup
+  # succeeded — a failing job still touches its log hourly. The 2026-09-10 stale
+  # exclusive lock on restic-ls-db blocked every backup for 4 weeks with a
+  # freshly-written log. These rules evaluate the newest-SNAPSHOT age pushed by
+  # system-restic-snapshots.sh, so they fire on actual backup staleness.
+  # Thresholds mirror system_probe/defaults/main.yml `system_probe_restic_repos`.
+  - orgId: 1
+    name: restic-snapshot-alerts
+    folder: Infrastructure
+    interval: 1m
+    rules:
+      # HIGH: prod DB has no successful backup in 2h. The `< 0` clause catches
+      # the unverifiable state (restic error, unreachable repo) — the probe
+      # reports -1 exactly so an uncheckable DB alerts instead of going quiet.
+      - uid: stale_restic_db_snapshot
+        title: Stale Restic DB Snapshot
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: >-
+                restic_snapshot_age_seconds{repo="db"} > 7200 or
+                restic_snapshot_age_seconds{repo="db"} < 0
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: 'No recent successful LeagueSphere DB backup'
+          description: '{{ if $labels.repo }}The {{ $labels.repo }} restic repo has no successful snapshot within its threshold{{ else }}A restic repo has no successful snapshot within its threshold - backups may be failing (check for stale locks: restic list locks){{ end }}. Check system-restic-snapshots.sh on the host.'
+        labels:
+          severity: high
+        isPaused: false
+
+      # MEDIUM: home/root have no successful backup within their thresholds
+      # (2h home hourly, 25h root daily).
+      - uid: stale_restic_snapshot
+        title: Stale Restic Snapshot
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: >-
+                restic_snapshot_age_seconds{repo="home"} > 7200 or
+                restic_snapshot_age_seconds{repo="home"} < 0 or
+                restic_snapshot_age_seconds{repo="root"} > 90000 or
+                restic_snapshot_age_seconds{repo="root"} < 0
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: 'No recent successful restic backup (home/root)'
+          description: '{{ if $labels.repo }}The {{ $labels.repo }} restic repo has no successful snapshot within its threshold{{ else }}A restic repo has no successful snapshot within its threshold - backups may be failing (check for stale locks: restic list locks){{ end }}. Check system-restic-snapshots.sh on the host.'
+        labels:
+          severity: medium
+        isPaused: false
+
+      # MEDIUM: the snapshot-age probe itself is broken (restic/python3 missing)
+      - uid: restic_snapshot_probe_failure
+        title: Restic Snapshot Probe Failing
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: restic_snapshot_probe_success
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: lt
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: 'Restic snapshot-age probe is failing'
+          description: 'The snapshot-age probe could not run properly for 10+ minutes (restic or python3 missing on the host).'
+        labels:
+          severity: medium
+        isPaused: false
+
+      # MEDIUM: the snapshot-age probe has stopped running entirely
+      - uid: restic_snapshot_probe_stale
+        title: Restic Snapshot Probe Stale
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: time() - push_time_seconds{job="restic_snapshot_freshness"}
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [5400]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: 'Restic snapshot-age probe has not pushed metrics recently'
+          description: 'No successful push from system-restic-snapshots.timer in over 90 minutes - the timer may have stopped running.'
         labels:
           severity: medium
         isPaused: false
