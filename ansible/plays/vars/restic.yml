@@ -1,5 +1,18 @@
 ---
-# Restic backup configuration
+# Restic backup configuration.
+#
+# OWNERSHIP: the restic role owns this file. It is kept at play level (rather
+# than in roles/restic/defaults/) because three roles consume it in the same
+# play without including each other: `restic` (backup/init), `system`
+# (restic_maintenance forget/check scripts), and `system_probe`
+# (log-freshness + snapshot-age probes). Role defaults are invisible across
+# roles, so this file is the documented cross-role contract. Thresholds that
+# Grafana evaluates are mirrored in monitor/provisioning/alerting/alert-rules.yml.
+#
+# DB SCOPING: the `db` repo (LeagueSphere prod DB under /var/jail/...) exists
+# ONLY where LeagueSphere runs. Its presence is governed by `leaguesphere_enabled`
+# (vars/default.yml, derived from services_enabled.leaguesphere) — NOT by a flag
+# in this file. Every db consumer must gate on that flag.
 restic:
   # Home directory backup (hourly)
   home:
@@ -80,9 +93,11 @@ restic:
       - 'swap.img'
       - '*.swap'
 
-  # LeagueSphere prod DB backup (hourly)
+  # LeagueSphere prod DB backup (hourly).
+  # Scoped by `leaguesphere_enabled`, not by a flag here: there is deliberately
+  # NO `enabled` key on this repo — consumers (restic init/backup tasks,
+  # system_probe defaults, forget/check templates) gate on that flag instead.
   db:
-    enabled: true
     repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-ls-db"
     password: "{{ restic_password_ls_db }}"
     source_path: "/var/jail/home/leaguesphere/container/deployed/mysql-backup/current"

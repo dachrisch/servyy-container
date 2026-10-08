@@ -60,11 +60,14 @@
   tags:
     - restic.backup
 
-# LeagueSphere prod DB backup (mariadb-backup -> prepared current set)
+# LeagueSphere prod DB backup (mariadb-backup -> prepared current set).
+# Scoped to LeagueSphere hosts only (leaguesphere_enabled): other hosts have no
+# jail path to dump from.
 - name: Load prod app vars for backup creds
   include_vars:
     file: "{{ playbook_dir }}/roles/ls_app/vars/secret_main.yaml"
     name: ls_prod
+  when: leaguesphere_enabled | default(false) | bool
   tags: [restic.backup]
 
 - name: Deploy mariadb-backup script
@@ -77,6 +80,7 @@
     ls_backup_user: "{{ ls_prod.app.db_backup_user }}"
     ls_backup_password: "{{ ls_prod.app.db_backup_password }}"
   no_log: true
+  when: leaguesphere_enabled | default(false) | bool
   tags: [restic.backup]
 
 - import_tasks: oneshot_include.yml
@@ -86,6 +90,7 @@
       description: 'mariadb-backup of leaguesphere prod db'
       schedule: '{{ restic.schedules.backup_ls_db_dump | default("*-*-* *:40:00") }}'
       command: "{{ remote_user_home }}/.backup-scripts/mariadb-backup-ls.sh"
+  when: leaguesphere_enabled | default(false) | bool
   tags: [restic.backup]
 
 # LeagueSphere prod DB restic backup (hourly, reads prepared current set)
@@ -100,6 +105,7 @@
     exclude_caches: false
     log_file: "{{ restic.logs.backup_ls_db }}"
     with_sudo: true
+  when: leaguesphere_enabled | default(false) | bool
   tags:
     - restic.backup
 
@@ -110,5 +116,38 @@
       description: 'Restic backup - leaguesphere prod db'
       schedule: '{{ restic.schedules.backup_ls_db }}'
       command: "{{ remote_user_home }}/.backup-scripts/restic-backup-ls-db.sh"
+  when: leaguesphere_enabled | default(false) | bool
   tags:
     - restic.backup
+
+# Clean up DB backup timers on hosts where LeagueSphere is not enabled
+# (e.g. codey): they were deployed unconditionally before the leaguesphere
+# scoping, and would otherwise keep failing against the missing jail path.
+- name: Clean up LeagueSphere DB backup timers
+  when: not (leaguesphere_enabled | default(false) | bool)
+  block:
+    - name: Stop DB backup timers
+      systemd:
+        scope: user
+        name: "{{ item }}.timer"
+        state: stopped
+        enabled: false
+      loop:
+        - mariadb-backup-ls
+        - restic-backup-ls-db
+      ignore_errors: true
+      tags:
+        - restic.backup
+    - name: Remove DB backup units and scripts
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ (remote_user_systemd, 'mariadb-backup-ls.service') | path_join }}"
+        - "{{ (remote_user_systemd, 'mariadb-backup-ls.timer') | path_join }}"
+        - "{{ (remote_user_home, '.backup-scripts', 'mariadb-backup-ls.sh') | path_join }}"
+        - "{{ (remote_user_systemd, 'restic-backup-ls-db.service') | path_join }}"
+        - "{{ (remote_user_systemd, 'restic-backup-ls-db.timer') | path_join }}"
+        - "{{ (remote_user_home, '.backup-scripts', 'restic-backup-ls-db.sh') | path_join }}"
+      tags:
+        - restic.backup

@@ -25,11 +25,8 @@
 
 - name: Check for existing restic environment files
   stat:
-    path: "/etc/restic/env.{{ item.name }}"
-  loop:
-    - {name: 'home'}
-    - {name: 'root'}
-    - {name: 'db'}
+    path: "/etc/restic/env.{{ item }}"
+  loop: "{{ restic_repo_names_enabled }}"
   register: restic_env_stats
   become: true
   become_user: root
@@ -38,7 +35,7 @@
 
 - name: Slurp existing restic environment files
   slurp:
-    src: "/etc/restic/env.{{ item.item.name }}"
+    src: "/etc/restic/env.{{ item.item }}"
   loop: "{{ restic_env_stats.results }}"
   when: item.stat.exists
   register: slurped_restic_envs
@@ -50,7 +47,7 @@
 - name: Verify restic password integrity
   fail:
     msg: |
-      CRITICAL: Password mismatch for restic-{{ item.item.item.name }}!
+      CRITICAL: Password mismatch for restic-{{ item.item.item }}!
       The password in Ansible variables does NOT match the password currently on the host.
       Overwriting would break backups/restores as the repository is already encrypted with the existing password.
       To fix this, you must either:
@@ -60,7 +57,7 @@
   vars:
     existing_content: "{{ item.content | b64decode }}"
     existing_pass: "{{ existing_content | regex_findall('export RESTIC_PASSWORD=\"(.*)\"') | first | default('') }}"
-    expected_pass: "{{ (item.item.item.name == 'home') | ternary(restic.home.password, (item.item.item.name == 'root') | ternary(restic.root.password, restic.db.password)) }}"
+    expected_pass: "{{ (item.item.item == 'home') | ternary(restic.home.password, (item.item.item == 'root') | ternary(restic.root.password, restic.db.password)) }}"
   loop: "{{ slurped_restic_envs.results }}"
   when:
     - item.skipped is not defined
@@ -72,31 +69,29 @@
 - name: Deploy restic environment files (system-wide)
   template:
     src: restic_env.j2
-    dest: "/etc/restic/env.{{ item.name }}"
+    dest: "/etc/restic/env.{{ item }}"
     owner: root
     group: root
     mode: '0644'
   vars:
-    env_name: "{{ item.env_name }}"
-    repository: "{{ item.repository }}"
-    password: "{{ item.password }}"
-  loop:
-    - name: home
-      repository: "{{ restic.home.repository }}"
-      password: "{{ restic.home.password }}"
-      env_name: "home"
-    - name: root
-      repository: "{{ restic.root.repository }}"
-      password: "{{ restic.root.password }}"
-      env_name: "root"
-    - name: db
-      repository: "{{ restic.db.repository }}"
-      password: "{{ restic.db.password }}"
-      env_name: "db"
+    env_name: "{{ item }}"
+    repository: "{{ restic[item].repository }}"
+    password: "{{ restic[item].password }}"
+  loop: "{{ restic_repo_names_enabled }}"
   register: restic_env_files
   become: true
   become_user: root
   notify: Push restic passwords to Vaultwarden
+  tags:
+    - restic.init
+
+- name: Remove stale db environment file where LeagueSphere is not enabled
+  file:
+    path: /etc/restic/env.db
+    state: absent
+  when: not (leaguesphere_enabled | default(false) | bool)
+  become: true
+  become_user: root
   tags:
     - restic.init
 
@@ -198,7 +193,9 @@
     sftp {{ restic.sftp.host_alias }} <<'EOF' 2>&1
     -mkdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-home
     -mkdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-root
+    {% if leaguesphere_enabled | default(false) | bool %}
     -mkdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-ls-db
+    {% endif %}
     EOF
   register: sftp_mkdir
   failed_when: false
@@ -215,10 +212,7 @@
     else
       echo "repository already initialized"
     fi
-  loop:
-    - "{{ restic.home }}"
-    - "{{ restic.root }}"
-    - "{{ restic.db }}"
+  loop: "{{ restic_repos_enabled }}"
   register: restic_init
   when: restic_env_files.changed or sftp_mkdir.changed
   changed_when: "'created restic repository' in restic_init.stdout"
@@ -231,17 +225,13 @@
     export RESTIC_REPOSITORY="{{ item.repository }}"
     export RESTIC_PASSWORD="{{ item.password }}"
     restic cat config
-  loop:
-    - "{{ restic.home }}"
-    - "{{ restic.root }}"
-    - "{{ restic.db }}"
+  loop: "{{ restic_repos_enabled }}"
   loop_control:
     label: "{{ item.repository }}"
   register: restic_access_check
   changed_when: false
   failed_when: false
   no_log: true
-  when: item.enabled | default(true)
   become: true
   become_user: root
   tags:
@@ -282,7 +272,17 @@
     mode: '0644'
     modification_time: preserve
     access_time: preserve
-  loop: "{{ restic.logs | dict2items | map(attribute='value') | list }}"
+  loop: "{{ restic_log_paths_enabled }}"
+  become: true
+  become_user: root
+  tags:
+    - restic.init
+
+- name: Remove stale ls-db log file where LeagueSphere is not enabled
+  file:
+    path: "{{ restic.logs.backup_ls_db }}"
+    state: absent
+  when: not (leaguesphere_enabled | default(false) | bool)
   become: true
   become_user: root
   tags:

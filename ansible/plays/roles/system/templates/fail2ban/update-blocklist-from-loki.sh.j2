@@ -13,7 +13,11 @@ if [[ -n "$LOKI_DOCKER_IP" ]]; then
 else
     LOKI_URL="https://monitor.lehel.xyz/loki"
 fi
-LOKI_TENANT_ID="servyy-logs-k8x9m2p4q7"
+{% endraw %}
+# Centralized tenant (monitor.loki_tenant). The rest of this file stays inside
+# a raw block (see below) so Go-template / curl / jq quoting survives Jinja.
+LOKI_TENANT_ID="{{ monitor.loki_tenant }}"
+{% raw %}
 BLOCKLIST_LOG="/var/log/fail2ban-loki.log"
 MIN_ATTEMPTS=10
 TIME_RANGE="24h"

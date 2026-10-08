@@ -100,3 +100,19 @@ mkcert:
     - "localhost"
     - "127.0.0.1"
     - "::1"
+
+# --- Cross-role topology flags (single source of truth) ---------------------
+# leaguesphere_enabled: does this host run LeagueSphere (jail + prod DB)?
+# Owns ALL db/ls-db scoping: restic db repo + backup timers, system_probe db
+# entries, restic forget/check db sections. Derived from inventory
+# `services_enabled.leaguesphere` (servy: true, codey: absent/false) — the same
+# guard `leaguesphere.yml` uses for end_host.
+# NOTE: renders as a string via Jinja; ALWAYS consume with `| bool`.
+leaguesphere_enabled: "{{ services_enabled.leaguesphere | default(false) }}"
+
+# Monitor stack identity (non-secret).
+# NOTE: the admin email lives in vars/secrets.yml as `monitor_admin_email` —
+# this file is public (not git-crypt encrypted), so no email addresses here.
+# The Loki tenant ID is already public (docs, promtail/datasource configs).
+monitor:
+  loki_tenant: "servyy-logs-k8x9m2p4q7"

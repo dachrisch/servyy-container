@@ -19,4 +19,5 @@ datasources:
       maxLines: 1000
       httpHeaderName1: X-Scope-OrgID
     secureJsonData:
-      httpHeaderValue1: servyy-logs-k8x9m2p4q7
+      # ansible-rendered (plays/user.yml pre_tasks) from centralized monitor.loki_tenant
+      httpHeaderValue1: {{ monitor.loki_tenant }}

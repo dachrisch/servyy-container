@@ -122,7 +122,9 @@
       Until copy-back runs, leaguesphere.db serves an EMPTY schema.
       Full runbook: docs/leaguesphere-environments.md → "Prod DB restore procedure"
       ════════════════════════════════════════════════════════════════════
-  when: (with_containers | default(false)) | bool
+  when:
+    - (with_containers | default(false)) | bool
+    - leaguesphere_enabled | default(false) | bool
   tags:
     - restic
     - restic.restore

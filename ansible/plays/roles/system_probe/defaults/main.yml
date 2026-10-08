@@ -4,17 +4,29 @@
 # Migrates Monit's system checks (monit.system.check.j2, monit.storagebox.check.j2,
 # monit.container.check.j2, check_docker_compose.sh.j2) to the probe -> Pushgateway ->
 # Grafana alert pattern established by ls_maintenance_probe.
+#
+# SCOPING (single source of truth lives in plays/vars/default.yml):
+# - `leaguesphere_enabled` gates the db/ls-db entries below (db repo exists only
+#   where LeagueSphere runs). ALWAYS consume with `| bool` (Jinja string caveat).
+# - `skip_storagebox` (inventory/Test) empties the storagebox mount so the probe
+#   is not deployed where no mount is configured.
+# - `system_probe_push_enabled` gates ALL probes: they PUT to a local Pushgateway
+#   that only exists where the `monitor` service runs (servy). Hosts without it
+#   (codey) must not run the timers — pushes would fail into the void.
 
 # Where probe scripts are deployed (mirrors ls_maintenance_probe / docker_cleanup layout).
 system_probe_scripts_dir: "{{ remote_user_home }}/.system-probes"
 system_probe_pushgateway_url: "http://localhost:9091"
 
+# True only on hosts running the monitor stack (Pushgateway sink present).
+# Handles both inventory shapes: bare `monitor: true` and `monitor: {enabled: true}`.
+# NOTE: renders as a string; ALWAYS consume with `| bool`.
+system_probe_push_enabled: "{{ (services_enabled.monitor | default(false) == true) or (services_enabled.monitor.enabled | default(false) | bool) }}"
+
 # --- Log-freshness probe -----------------------------------------------------
 # Each entry: name (metric label), path (log file), threshold_seconds.
 # Thresholds mirrored from monit.system.check.j2.
-# The ls-db log entry is appended below only where the db repo is enabled
-# (prod): on other hosts the file does not exist and the probe would report
-# the log as missing.
+# The ls-db log entry exists only where LeagueSphere runs (see header).
 system_probe_log_checks_base:
   - name: docker-cleanup
     path: /var/log/docker-cleanup.log
@@ -40,14 +52,14 @@ system_probe_log_checks_base:
 system_probe_log_checks: >-
   {{ system_probe_log_checks_base + ([{'name': 'restic-backup-ls-db',
   'path': restic.logs.backup_ls_db, 'threshold_seconds': 7200}]
-  if (restic.db.enabled | default(false)) else []) }}
+  if (leaguesphere_enabled | default(false) | bool) else []) }}
 
 # --- Restic snapshot-age probe -------------------------------------------------
 # Measures the age of the NEWEST snapshot per repo (actual backup success),
 # not log mtime (a failing job still touches its log every hour). Thresholds
 # are mirrored into the `restic-snapshot-alerts` Grafana group in
 # monitor/provisioning/alerting/alert-rules.yml — keep both in sync.
-# The db entry only exists where the db repo is enabled (prod).
+# The db entry exists only where LeagueSphere runs (see header).
 system_probe_restic_repos_base:
   - name: home
     env_file: "/etc/restic/env.home"
@@ -59,10 +71,12 @@ system_probe_restic_repos_base:
 system_probe_restic_repos: >-
   {{ system_probe_restic_repos_base + ([{'name': 'db',
   'env_file': '/etc/restic/env.db', 'threshold_seconds': 7200}]
-  if (restic.db.enabled | default(false)) else []) }}
+  if (leaguesphere_enabled | default(false) | bool) else []) }}
 
 # --- Storagebox probe --------------------------------------------------------
-system_probe_storagebox_mount: "{{ storagebox.mount | default('') }}"
+# Empty when the host skips the storagebox mount (e.g. skip_storagebox on test),
+# so the probe is neither deployed nor expected there.
+system_probe_storagebox_mount: "{{ '' if (skip_storagebox | default(false) | bool) else (storagebox.mount | default('')) }}"
 system_probe_storagebox_threshold_pct: 50
 
 # --- Container-health probe --------------------------------------------------

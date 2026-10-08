@@ -7,7 +7,8 @@ positions:
 
 clients:
   - url: http://loki:3100/loki/api/v1/push
-    tenant_id: servyy-logs-k8x9m2p4q7
+    # ansible-rendered (plays/user.yml pre_tasks) from centralized monitor.loki_tenant
+    tenant_id: {{ monitor.loki_tenant }}
 
 scrape_configs:
   # Docker container logs via Docker API

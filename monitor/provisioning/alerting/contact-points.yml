@@ -1,10 +1,13 @@
 apiVersion: 1
 
+# NOTE: ansible-rendered (plays/user.yml pre_tasks, monitor files). The
+# `addresses` below are Jinja placeholders filled from the encrypted
+# `monitor_admin_email` var — do not commit real addresses here.
 # Contact points define where alert notifications are sent
 # Email SMTP is already configured in docker-compose.yml:
 #   - SMTP host: smtp.gmail.com:587
-#   - From: dachrischx+monitor@gmail.com
-#   - Password: (configured via environment variable)
+#   - From: (monitor_admin_email, via grafana.env)
+#   - Password: (vault-rendered grafana.env)
 
 contactPoints:
   # Standard email notifications for all alerts
@@ -14,7 +17,7 @@ contactPoints:
       - uid: email-admin
         type: email
         settings:
-          addresses: dachrischx+monitor@gmail.com
+          addresses: {{ monitor_admin_email }}
         disableResolveMessage: false
 
   # Critical alerts with faster repeat interval
@@ -24,9 +27,12 @@ contactPoints:
       - uid: email-critical
         type: email
         settings:
-          addresses: dachrischx+monitor@gmail.com
+          addresses: {{ monitor_admin_email }}
           singleEmail: true
-          subject: '[{{ .Status | toUpper }}] {{ .CommonLabels.severity | toUpper }}: {{ .GroupLabels.rulename }}'
+          # NOTE: the double-brace expressions in subject are Grafana
+          # templating, not Jinja — the quoted-brace escapes below keep the
+          # ansible render from parsing them.
+          subject: '[{{ '{{' }} .Status | toUpper }}] {{ '{{' }} .CommonLabels.severity | toUpper }}: {{ '{{' }} .GroupLabels.rulename }}'
         disableResolveMessage: false
 
 # Do not delete any existing contact points

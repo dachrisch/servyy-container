@@ -14,6 +14,7 @@
     dest: "{{ (system_probe_scripts_dir, 'system-log-freshness.sh') | path_join }}"
     mode: '0750'
   become_user: "{{ create_user }}"
+  when: system_probe_push_enabled | default(false) | bool
   tags:
     - system.probe
     - system.probe.log
@@ -27,6 +28,7 @@
       description: 'Check staleness of maintenance/backup log files'
       schedule: '*-*-* *:0/30:00'
       command: "{{ (system_probe_scripts_dir, 'system-log-freshness.sh') | path_join }}"
+  when: system_probe_push_enabled | default(false) | bool
   tags:
     - system.probe
     - system.probe.log
@@ -37,6 +39,7 @@
     dest: "{{ (system_probe_scripts_dir, 'system-restic-snapshots.sh') | path_join }}"
     mode: '0750'
   become_user: "{{ create_user }}"
+  when: system_probe_push_enabled | default(false) | bool
   tags:
     - system.probe
     - system.probe.restic
@@ -50,6 +53,7 @@
       description: 'Check age of newest restic snapshot per repo'
       schedule: '*-*-* *:0/30:00'
       command: "{{ (system_probe_scripts_dir, 'system-restic-snapshots.sh') | path_join }}"
+  when: system_probe_push_enabled | default(false) | bool
   tags:
     - system.probe
     - system.probe.restic
@@ -60,7 +64,9 @@
     dest: "{{ (system_probe_scripts_dir, 'system-storagebox.sh') | path_join }}"
     mode: '0750'
   become_user: "{{ create_user }}"
-  when: system_probe_storagebox_mount | length > 0
+  when:
+    - system_probe_storagebox_mount | length > 0
+    - system_probe_push_enabled | default(false) | bool
   tags:
     - system.probe
     - system.probe.storagebox
@@ -74,7 +80,9 @@
       description: 'Check storagebox mount presence and disk usage'
       schedule: '*-*-* *:00:00'
       command: "{{ (system_probe_scripts_dir, 'system-storagebox.sh') | path_join }}"
-  when: system_probe_storagebox_mount | length > 0
+  when:
+    - system_probe_storagebox_mount | length > 0
+    - system_probe_push_enabled | default(false) | bool
   tags:
     - system.probe
     - system.probe.storagebox
@@ -85,7 +93,9 @@
     dest: "{{ (system_probe_scripts_dir, 'system-container-health.sh') | path_join }}"
     mode: '0750'
   become_user: "{{ create_user }}"
-  when: with_containers | default(false)
+  when:
+    - with_containers | default(false)
+    - system_probe_push_enabled | default(false) | bool
   tags:
     - system.probe
     - system.probe.container
@@ -99,7 +109,9 @@
       description: 'Check running state of docker-compose containers'
       schedule: '*-*-* *:0/5:00'
       command: "{{ (system_probe_scripts_dir, 'system-container-health.sh') | path_join }}"
-  when: with_containers | default(false)
+  when:
+    - with_containers | default(false)
+    - system_probe_push_enabled | default(false) | bool
   tags:
     - system.probe
     - system.probe.container
@@ -159,3 +171,45 @@
       tags:
         - system.probe
         - system.probe.storagebox
+
+# Clean up all probes where no Pushgateway sink exists (hosts without the
+# monitor service, e.g. codey): their timers would only push into the void.
+# Units + scripts are removed so a later monitor enablement redeploys cleanly.
+- name: Clean up all probes when Pushgateway sink is absent
+  when: not (system_probe_push_enabled | default(false) | bool)
+  block:
+    - name: Stop probe timers without sink
+      systemd:
+        scope: user
+        name: "{{ item }}.timer"
+        state: stopped
+        enabled: no
+      become_user: "{{ create_user }}"
+      ignore_errors: true
+      loop:
+        - system-log-freshness
+        - system-restic-snapshots
+        - system-storagebox
+        - system-container-health
+      tags:
+        - system.probe
+    - name: Remove probe units and scripts without sink
+      file:
+        path: "{{ item }}"
+        state: absent
+      become_user: "{{ create_user }}"
+      loop:
+        - "{{ (remote_user_systemd, 'system-log-freshness.service') | path_join }}"
+        - "{{ (remote_user_systemd, 'system-log-freshness.timer') | path_join }}"
+        - "{{ (system_probe_scripts_dir, 'system-log-freshness.sh') | path_join }}"
+        - "{{ (remote_user_systemd, 'system-restic-snapshots.service') | path_join }}"
+        - "{{ (remote_user_systemd, 'system-restic-snapshots.timer') | path_join }}"
+        - "{{ (system_probe_scripts_dir, 'system-restic-snapshots.sh') | path_join }}"
+        - "{{ (remote_user_systemd, 'system-storagebox.service') | path_join }}"
+        - "{{ (remote_user_systemd, 'system-storagebox.timer') | path_join }}"
+        - "{{ (system_probe_scripts_dir, 'system-storagebox.sh') | path_join }}"
+        - "{{ (remote_user_systemd, 'system-container-health.service') | path_join }}"
+        - "{{ (remote_user_systemd, 'system-container-health.timer') | path_join }}"
+        - "{{ (system_probe_scripts_dir, 'system-container-health.sh') | path_join }}"
+      tags:
+        - system.probe

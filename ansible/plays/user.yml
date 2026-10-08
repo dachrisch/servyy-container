@@ -103,6 +103,24 @@
       tags:
         - user.docker.searxng
 
+    # Monitor provisioning configs are Jinja in git (tenant/email centralized in
+    # vars) and rendered over the checked-out service dir before compose starts
+    # (source: controller checkout, like the service sync itself).
+    - name: Render monitor provisioning configs from centralized vars
+      ansible.builtin.template:
+        src: "{{ docker.local_dir }}/monitor/{{ item.src }}"
+        dest: "{{ docker.remote_dir }}/monitor/{{ item.src }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - {src: 'promtail.yml', mode: '0644'}
+        - {src: 'provisioning/datasources/datasources.yml', mode: '0644'}
+        - {src: 'provisioning/alerting/contact-points.yml', mode: '0600'}
+      when: "'monitor' in (services | default([]))"
+      tags:
+        - user.docker.monitor
+        - user.docker.env
+        - user.docker.env.monitor
+
     # Consolidation (shared project): data containers moved out of the
     # leagues-finance / finance projects. Remove the ORPHANED originals
     # (containers only — volumes and bind mounts stay) BEFORE the shared role
@@ -712,6 +730,11 @@
     - role: docker_service
       vars:
         service_dir: monitor
+        env_templates:
+          - src: docker.env.j2
+            dest: .env
+          - src: monitor/grafana.env.j2
+            dest: grafana.env
       when: "'monitor' in (services | default([]))"
       tags: [user.docker, user.docker.monitor]
 
