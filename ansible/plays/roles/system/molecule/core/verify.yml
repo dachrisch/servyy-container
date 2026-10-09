@@ -96,3 +96,21 @@
         that:
           - issue_file.stat.exists
         fail_msg: "legal banner /etc/issue not found"
+
+    # Regression guard: YAML booleans (no/yes) must render as sshd yes/no, not
+    # Python True/False (which `sshd -t` rejects as "unsupported option").
+    - name: Read rendered sshd hardening sample
+      ansible.builtin.slurp:
+        src: /tmp/sshd-hardening-render.conf
+      register: sshd_render
+
+    - name: Verify sshd hardening template renders YAML booleans as yes/no
+      ansible.builtin.assert:
+        that:
+          - "'TCPKeepAlive no' in (sshd_render.content | b64decode)"
+          - "'AllowAgentForwarding no' in (sshd_render.content | b64decode)"
+          - "'LogLevel VERBOSE' in (sshd_render.content | b64decode)"
+          - "'MaxAuthTries 3' in (sshd_render.content | b64decode)"
+          - "'False' not in (sshd_render.content | b64decode)"
+          - "'True' not in (sshd_render.content | b64decode)"
+        fail_msg: "sshd hardening template rendered YAML booleans instead of sshd yes/no"

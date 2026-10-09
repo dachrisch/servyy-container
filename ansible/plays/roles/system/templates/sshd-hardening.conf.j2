@@ -2,5 +2,5 @@
 # Sits alongside disablePasswordAuth.conf. The ls_dbeaver_access Match block
 # (dbeaver-stage.conf) overrides AllowTcpForwarding for dbeaver_stage, so the
 # LeagueSphere stage tunnel keeps local forwarding.
-{% for key, value in hardening.ssh.items() %}{{ key }} {{ value }}
+{% for key, value in hardening.ssh.items() %}{{ key }} {{ ('yes' if value else 'no') if value is boolean else value }}
 {% endfor %}
