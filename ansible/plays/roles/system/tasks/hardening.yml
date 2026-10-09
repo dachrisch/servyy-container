@@ -127,7 +127,9 @@
 
 - name: Install AIDE
   apt:
-    name: aide
+    name:
+      - aide
+      - aide-common
     state: present
   become: true
   when: hardening.aide | default(true)
@@ -138,7 +140,7 @@
 - name: Initialise AIDE database
   ansible.builtin.shell: |
     set -e
-    aide --init
+    aide --config /etc/aide/aide.conf --init
     mv -f /var/lib/aide/aide.db.new /var/lib/aide/aide.db
   args:
     creates: /var/lib/aide/aide.db
