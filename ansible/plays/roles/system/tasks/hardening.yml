@@ -58,6 +58,18 @@
     - system.hardening
     - system.hardening.banner
 
+- name: Ensure modprobe.d directory exists
+  file:
+    path: /etc/modprobe.d
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  become: true
+  tags:
+    - system.hardening
+    - system.hardening.modprobe
+
 - name: Disable rare network protocols
   template:
     src: modprobe-disable-protocols.conf.j2
