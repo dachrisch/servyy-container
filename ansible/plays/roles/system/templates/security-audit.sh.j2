@@ -40,6 +40,48 @@ run_tool() {
     fi
 }
 
+# Discover public HTTPS hostnames from the named services' Traefik router labels.
+# A router is public when it terminates TLS (traefik.http.routers.<name>.tls=true);
+# its Host(`...`) rule yields the hostname(s). www.<apex> aliases are dropped.
+discover_hosts() {
+    for cid in $(docker ps -q 2>/dev/null); do
+        docker inspect "$cid" --format '{% raw %}{{range $k,$v := .Config.Labels}}{{$k}}={{$v}}{{"\n"}}{{end}}{% endraw %}' 2>/dev/null
+    done | python3 -c '
+import re, sys
+rules, tls = {}, set()
+for line in sys.stdin:
+    if "=" not in line:
+        continue
+    key, val = line.rstrip("\n").split("=", 1)
+    m = re.match(r"traefik\.http\.routers\.(.+)\.rule$", key)
+    if m:
+        rules[m.group(1)] = val
+    m = re.match(r"traefik\.http\.routers\.(.+)\.tls$", key)
+    if m and val.strip().lower() == "true":
+        tls.add(m.group(1))
+hosts = set()
+for name, rule in rules.items():
+    if name not in tls:
+        continue
+    hosts.update(re.findall(r"Host\(`([^`]+)`\)", rule))
+for h in sorted(hosts):
+    if h.startswith("www.") and h[4:] in hosts:
+        continue
+    print(h)
+'
+}
+
+# Public host list shared by testssl/humble/nuclei, derived from the live services.
+AUDIT_HOSTS=()
+load_audit_hosts() {
+    while IFS= read -r host; do
+        if [[ -n "${host}" ]]; then
+            AUDIT_HOSTS+=("${host}")
+        fi
+    done < <(discover_hosts || true)
+    log "Discovered {% raw %}${#AUDIT_HOSTS[@]}{% endraw %} public host(s) from Traefik routers"
+}
+
 # Lynis - Host OS hardening audit
 run_lynis() {
     if ! command -v lynis &>/dev/null; then
@@ -137,16 +179,13 @@ run_testssl() {
         return 1
     fi
 
-    # Test known public endpoints
-    local HOSTS=(
-        "servy.lehel.xyz"
-        "traefik.lehel.xyz"
-        "git.lehel.xyz"
-        "grafana.lehel.xyz"
-        "portainer.lehel.xyz"
-    )
+    # Test the public endpoints discovered from the live services
+    if [[ {% raw %}${#AUDIT_HOSTS[@]}{% endraw %} -eq 0 ]]; then
+        echo "ERROR: no public hosts discovered"
+        return 1
+    fi
 
-    for HOST in "${HOSTS[@]}"; do
+    for HOST in "${AUDIT_HOSTS[@]}"; do
         log "  Testing TLS: ${HOST}"
         # testssl.sh refuses to write a non-empty --jsonfile (fails on same-day re-runs)
         rm -f "${LOG_DIR}/testssl-${HOST}.json"
@@ -163,15 +202,13 @@ run_humble() {
         return 1
     fi
 
-    local HOSTS=(
-        "servy.lehel.xyz"
-        "traefik.lehel.xyz"
-        "git.lehel.xyz"
-        "grafana.lehel.xyz"
-        "portainer.lehel.xyz"
-    )
+    # Check the public endpoints discovered from the live services
+    if [[ {% raw %}${#AUDIT_HOSTS[@]}{% endraw %} -eq 0 ]]; then
+        echo "ERROR: no public hosts discovered"
+        return 1
+    fi
 
-    for HOST in "${HOSTS[@]}"; do
+    for HOST in "${AUDIT_HOSTS[@]}"; do
         log "  Checking headers: ${HOST}"
         python3 "${HUMBLE_DIR}/humble.py" -u "https://${HOST}" -b \
             2>&1 | tee -a "${LOG_DIR}/humble.log" || true
@@ -185,15 +222,14 @@ run_nuclei() {
         return 1
     fi
 
-    # Use known public endpoints
+    # Use the public endpoints discovered from the live services
+    if [[ {% raw %}${#AUDIT_HOSTS[@]}{% endraw %} -eq 0 ]]; then
+        echo "ERROR: no public hosts discovered"
+        return 1
+    fi
+
     local TARGETS="${LOG_DIR}/nuclei-targets.txt"
-    cat > "${TARGETS}" <<'HOSTS'
-https://servy.lehel.xyz
-https://traefik.lehel.xyz
-https://git.lehel.xyz
-https://grafana.lehel.xyz
-https://portainer.lehel.xyz
-HOSTS
+    printf 'https://%s\n' "${AUDIT_HOSTS[@]}" > "${TARGETS}"
 
     nuclei -l "${TARGETS}" -severity critical,high,medium \
         -je "${LOG_DIR}/nuclei-results.json" 2>&1 | \
@@ -250,6 +286,9 @@ EOF
 # Main execution
 log "Security audit started - ${DATE}"
 log "Results directory: ${LOG_DIR}"
+
+# Resolve the public host list once from the live services (used by testssl/humble/nuclei)
+load_audit_hosts
 
 log "=========================================="
 log "Phase 1: Host OS Audit"
