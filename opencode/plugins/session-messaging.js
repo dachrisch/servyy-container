@@ -82,11 +82,71 @@ export function writeRegistry(registryPath = defaultRegistryPath(), data = {}) {
   }
 }
 
+const SESSION_ID_RE = /^(ses_[A-Za-z0-9]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+
+export function looksLikeSessionID(value) {
+  return typeof value === 'string' && SESSION_ID_RE.test(value.trim());
+}
+
+// Resolve to a registry name -> session ID, or a raw session ID passthrough.
+// Returns null when `to` is neither, so the caller can attempt a title lookup.
 export function resolveTarget(to, registry = {}) {
   if (typeof to !== 'string' || !to.trim()) throw new Error('target session must not be empty');
   const key = to.trim();
   if (registry[key] && registry[key].sessionID) return registry[key].sessionID;
-  return key; // raw session UUID passthrough
+  if (looksLikeSessionID(key)) return key; // raw session ID passthrough
+  return null;
+}
+
+// Match live, top-level sessions by title, in tiers: exact (case-sensitive) ->
+// case-insensitive -> substring. Returns [] if nothing matches any tier.
+export function matchSessionsByTitle(sessions, query, { excludeId } = {}) {
+  const q = typeof query === 'string' ? query.trim() : '';
+  if (!q) return [];
+  const candidates = (Array.isArray(sessions) ? sessions : []).filter(
+    (s) => s && s.id && !s.parentID && s.id !== excludeId && typeof s.title === 'string' && s.title
+  );
+  const tiers = [
+    (s) => s.title === q,
+    (s) => s.title.toLowerCase() === q.toLowerCase(),
+    (s) => s.title.toLowerCase().includes(q.toLowerCase()),
+  ];
+  for (const predicate of tiers) {
+    const hits = candidates.filter(predicate);
+    if (hits.length) return hits;
+  }
+  return [];
+}
+
+// Resolve `to` to a target session ID: registered name -> raw ID -> live title.
+async function resolveTargetLive(to, registry, client, context) {
+  const direct = resolveTarget(to, registry);
+  if (direct) return direct;
+
+  const key = to.trim();
+  let sessions = [];
+  try {
+    const res = await client.session.list();
+    sessions = res.data || res || [];
+  } catch {
+    sessions = [];
+  }
+
+  const matches = matchSessionsByTitle(sessions, key, { excludeId: context && context.sessionID });
+  if (matches.length === 1) return matches[0].id;
+  if (matches.length > 1) {
+    const list = matches.map((s) => `${s.id} "${s.title}"`).join(', ');
+    throw new Error(`target "${key}" is ambiguous; match one of: ${list}`);
+  }
+
+  const available = sessions
+    .filter((s) => s && s.id && !s.parentID && s.id !== (context && context.sessionID))
+    .slice(0, 20)
+    .map((s) => `${s.id} "${s.title || 'untitled'}"`)
+    .join(', ');
+  throw new Error(
+    `no session matches "${key}". ${available ? `live sessions: ${available}` : 'no live sessions; use session_register first'}`
+  );
 }
 
 function nameForSessionID(registry, sessionID) {
@@ -130,9 +190,9 @@ export const SessionMessagingPlugin = async ({ client }) => {
       }),
 
       session_list: tool({
-        description: 'List known sessions by name with IDs and titles.',
+        description: 'List registered sessions by name plus unregistered live sessions (by title and ID).',
         args: {},
-        async execute() {
+        async execute(_args, context) {
           const registry = readRegistry();
           let sessions = [];
           try {
@@ -142,19 +202,36 @@ export const SessionMessagingPlugin = async ({ client }) => {
             sessions = [];
           }
           const byId = new Map(sessions.map((s) => [s.id, s]));
+          const registeredIds = new Set(
+            Object.values(registry).map((e) => e && e.sessionID).filter(Boolean)
+          );
+
           const lines = Object.entries(registry).map(([name, e]) => {
             const live = byId.get(e.sessionID);
             return `- ${name} -> ${e.sessionID}${e.title ? ` "${e.title}"` : ''}${live && live.title ? ` (live: "${live.title}")` : ''}`;
           });
-          if (lines.length === 0) return 'no registered sessions; use session_register first';
-          return lines.join('\n');
+
+          const unregistered = sessions
+            .filter(
+              (s) => s && s.id && !registeredIds.has(s.id) && !s.parentID && s.id !== (context && context.sessionID)
+            )
+            .sort((a, b) => ((b.time && b.time.updated) || 0) - ((a.time && a.time.updated) || 0))
+            .slice(0, 20)
+            .map((s) => `- (unregistered) ${s.id} "${s.title || 'untitled'}"${s.directory ? ` [${s.directory}]` : ''}`);
+
+          const parts = [];
+          parts.push(lines.length ? lines.join('\n') : 'no registered sessions; use session_register first');
+          if (unregistered.length) {
+            parts.push(`Unregistered live sessions (addressable by raw id or title):\n${unregistered.join('\n')}`);
+          }
+          return parts.join('\n\n');
         },
       }),
 
       session_send: tool({
-        description: 'Send a message to another session. notify (default) injects context; ask triggers a model turn.',
+        description: 'Send a message to another session. Target by registered name, raw session ID, or live title. notify (default) injects context; ask triggers a model turn.',
         args: {
-          to: tool.schema.string().describe('Target session name from session_list, or raw session ID'),
+          to: tool.schema.string().describe('Target: registered session name, raw session ID, or a live session title'),
           text: tool.schema.string().describe('Message body: task, evidence refs, next action'),
           mode: tool.schema.string().optional().describe('notify (default) or ask'),
           thread: tool.schema.string().optional().describe('Thread/topic id for grouping'),
@@ -164,7 +241,7 @@ export const SessionMessagingPlugin = async ({ client }) => {
           if (!args.text || !args.text.trim()) throw new Error('message text must not be empty');
           const mode = normalizeMode(args.mode);
           const registry = readRegistry();
-          const targetID = resolveTarget(args.to, registry);
+          const targetID = await resolveTargetLive(args.to, registry, client, context);
           const from = nameForSessionID(registry, context.sessionID);
           const envelope = formatEnvelope({
             from: from === 'unknown' ? 'unknown' : from,
