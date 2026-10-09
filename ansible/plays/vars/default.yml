@@ -91,6 +91,54 @@ security_audit:
     humble: true
     nuclei: true
 
+# Host hardening (Lynis-driven). See docs/plans/2026-10-08-host-hardening-p6.md
+hardening:
+  enabled: true
+  # Optional monitoring/integrity tooling (medium risk) - toggle per host.
+  audit: true
+  aide: true
+  malware: true
+  # Docker-safe sysctl values. Deliberately excludes net.ipv4.conf.all.forwarding
+  # (Docker needs it) and kernel.modules_disabled (breaks dynamic module load).
+  sysctl:
+    fs.protected_fifos: 2
+    fs.suid_dumpable: 0
+    kernel.kptr_restrict: 2
+    kernel.sysrq: 0
+    net.core.bpf_jit_harden: 2
+    net.ipv4.conf.all.log_martians: 1
+    net.ipv4.conf.all.rp_filter: 1
+    net.ipv4.conf.all.send_redirects: 0
+    net.ipv4.conf.default.accept_redirects: 0
+    net.ipv4.conf.default.log_martians: 1
+    net.ipv6.conf.all.accept_redirects: 0
+    net.ipv6.conf.default.accept_redirects: 0
+  ssh:
+    PermitRootLogin: prohibit-password
+    MaxAuthTries: 3
+    MaxSessions: 2
+    ClientAliveCountMax: 2
+    LogLevel: VERBOSE
+    TCPKeepAlive: no
+    # local (not no): blocks remote (-R) forwarding but keeps local (-L) tunnels
+    # for admins and the dbeaver_stage Match block.
+    AllowTcpForwarding: local
+    AllowAgentForwarding: no
+  login_defs:
+    UMASK: "027"
+    PASS_MIN_DAYS: "1"
+    PASS_MAX_DAYS: "365"
+  disabled_protocols:
+    - dccp
+    - sctp
+    - rds
+    - tipc
+  packages:
+    - debsums
+    - apt-show-versions
+    - libpam-tmpdir
+    - libpam-pwquality
+
 # mkcert - Local CA for test environments
 mkcert:
   cert_dir: /etc/ssl/mkcert

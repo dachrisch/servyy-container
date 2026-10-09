@@ -41,6 +41,27 @@
         check: "/var/log/restic-check.log"
     storagebox:
       mount: "/mnt/storagebox"
+    hardening:
+      enabled: true
+      # Container-incompatible tooling stays off in molecule
+      audit: false
+      aide: false
+      malware: false
+      # No sshd in the test container -> skip the SSH drop-in
+      ssh: {}
+      sysctl:
+        fs.protected_fifos: 2
+        kernel.kptr_restrict: 2
+        net.ipv4.conf.all.rp_filter: 1
+      login_defs:
+        UMASK: "027"
+        PASS_MIN_DAYS: "1"
+        PASS_MAX_DAYS: "365"
+      disabled_protocols:
+        - dccp
+        - sctp
+      packages:
+        - debsums
   tasks:
     # Core system configuration tasks (no Docker dependencies)
 
@@ -70,3 +91,9 @@
       # - docker_cleanup: Disabled with docker_cleanup.enabled=false
       # - kernel_cleanup: Disabled with kernel_cleanup.enabled=false
       # - restic_maintenance: Requires restic repository setup
+
+    - name: Run hardening tasks  # noqa: role-name[path]
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../../"
+        tasks_from: hardening
+      tags: [system.hardening]

@@ -102,6 +102,32 @@
     - system.security_audit
     - system.security_audit.scripts
 
+- name: Create Lynis config directory
+  file:
+    path: /etc/lynis
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  become: true
+  when: security_audit.tools.lynis | default(true)
+  tags:
+    - system.security_audit
+    - system.security_audit.scripts
+
+- name: Deploy Lynis custom profile
+  template:
+    src: lynis-custom.prf.j2
+    dest: /etc/lynis/custom.prf
+    mode: '0644'
+    owner: root
+    group: root
+  become: true
+  when: security_audit.tools.lynis | default(true)
+  tags:
+    - system.security_audit
+    - system.security_audit.scripts
+
 - name: Clone testssl.sh
   git:
     repo: https://github.com/drwetter/testssl.sh.git

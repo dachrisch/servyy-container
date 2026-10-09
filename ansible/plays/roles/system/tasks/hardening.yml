@@ -1,0 +1,205 @@
+---
+# Host hardening (Lynis-driven). See docs/plans/2026-10-08-host-hardening-p6.md
+
+- name: Deploy sysctl hardening drop-in
+  template:
+    src: sysctl-hardening.conf.j2
+    dest: /etc/sysctl.d/99-hardening.conf
+    mode: '0644'
+    owner: root
+    group: root
+  become: true
+  notify: reload sysctl
+  tags:
+    - system.hardening
+    - system.hardening.sysctl
+
+- name: Deploy SSH hardening drop-in
+  template:
+    src: sshd-hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/99-hardening.conf
+    mode: '0644'
+    owner: root
+    group: root
+    validate: 'sshd -t -f %s'
+  become: true
+  notify: reload sshd
+  when: hardening.ssh | default({}) | length > 0
+  tags:
+    - system.hardening
+    - system.hardening.ssh
+
+- name: Harden login.defs
+  ansible.builtin.lineinfile:
+    path: /etc/login.defs
+    regexp: "^\\s*{{ item.key }}\\s"
+    line: "{{ item.key }}\t{{ item.value }}"
+    state: present
+  loop: "{{ hardening.login_defs | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  become: true
+  tags:
+    - system.hardening
+    - system.hardening.login_defs
+
+- name: Deploy legal banner
+  template:
+    src: issue.j2
+    dest: "{{ item }}"
+    mode: '0644'
+    owner: root
+    group: root
+  loop:
+    - /etc/issue
+    - /etc/issue.net
+  become: true
+  tags:
+    - system.hardening
+    - system.hardening.banner
+
+- name: Ensure modprobe.d directory exists
+  file:
+    path: /etc/modprobe.d
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  become: true
+  tags:
+    - system.hardening
+    - system.hardening.modprobe
+
+- name: Disable rare network protocols
+  template:
+    src: modprobe-disable-protocols.conf.j2
+    dest: /etc/modprobe.d/disable-rare-protocols.conf
+    mode: '0644'
+    owner: root
+    group: root
+  become: true
+  tags:
+    - system.hardening
+    - system.hardening.modprobe
+
+- name: Install hardening packages
+  apt:
+    name: "{{ hardening.packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+  tags:
+    - system.hardening
+    - system.hardening.packages
+
+- name: Purge obsolete packages
+  apt:
+    autoremove: true
+    purge: true
+  become: true
+  tags:
+    - system.hardening
+    - system.hardening.packages
+
+- name: Install auditd and process accounting
+  apt:
+    name:
+      - auditd
+      - acct
+    state: present
+  become: true
+  when: hardening.audit | default(true)
+  tags:
+    - system.hardening
+    - system.hardening.audit
+
+- name: Enable auditd
+  service:
+    name: auditd
+    enabled: true
+    state: started
+  become: true
+  when: hardening.audit | default(true)
+  tags:
+    - system.hardening
+    - system.hardening.audit
+
+- name: Install AIDE
+  apt:
+    name: aide
+    state: present
+  become: true
+  when: hardening.aide | default(true)
+  tags:
+    - system.hardening
+    - system.hardening.aide
+
+- name: Initialise AIDE database
+  ansible.builtin.shell: |
+    set -e
+    aide --init
+    mv -f /var/lib/aide/aide.db.new /var/lib/aide/aide.db
+  args:
+    creates: /var/lib/aide/aide.db
+  become: true
+  when: hardening.aide | default(true)
+  tags:
+    - system.hardening
+    - system.hardening.aide
+
+- name: Deploy AIDE check service
+  template:
+    src: aide-check.service.j2
+    dest: /etc/systemd/system/aide-check.service
+    mode: '0644'
+  become: true
+  notify: reload systemd
+  when: hardening.aide | default(true)
+  tags:
+    - system.hardening
+    - system.hardening.aide
+
+- name: Deploy AIDE check timer
+  template:
+    src: aide-check.timer.j2
+    dest: /etc/systemd/system/aide-check.timer
+    mode: '0644'
+  become: true
+  notify: reload systemd
+  when: hardening.aide | default(true)
+  tags:
+    - system.hardening
+    - system.hardening.aide
+
+- name: Enable AIDE check timer
+  systemd:
+    name: aide-check.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+  when: hardening.aide | default(true)
+  tags:
+    - system.hardening
+    - system.hardening.aide
+
+- name: Install rkhunter
+  apt:
+    name: rkhunter
+    state: present
+  become: true
+  when: hardening.malware | default(true)
+  tags:
+    - system.hardening
+    - system.hardening.malware
+
+- name: Update rkhunter properties database
+  command: rkhunter --propupd --quiet
+  args:
+    creates: /var/lib/rkhunter/db/rkhunter.dat
+  become: true
+  when: hardening.malware | default(true)
+  tags:
+    - system.hardening
+    - system.hardening.malware

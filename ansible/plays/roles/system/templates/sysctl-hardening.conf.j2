@@ -1,0 +1,4 @@
+# Managed by Ansible - system.hardening. Do not edit by hand.
+# Docker-safe sysctl hardening. See docs/plans/2026-10-08-host-hardening-p6.md
+{% for key, value in hardening.sysctl.items() %}{{ key }} = {{ value }}
+{% endfor %}

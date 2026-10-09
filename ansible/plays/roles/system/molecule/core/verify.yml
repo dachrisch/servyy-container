@@ -65,3 +65,34 @@
           - monit_conf_dir.stat.exists
           - monit_conf_dir.stat.isdir
         fail_msg: "monit config directory not found"
+
+    # Verify hardening task results
+    - name: Check sysctl hardening drop-in exists
+      stat:
+        path: /etc/sysctl.d/99-hardening.conf
+      register: sysctl_dropin
+
+    - name: Verify sysctl hardening drop-in was created
+      assert:
+        that:
+          - sysctl_dropin.stat.exists
+        fail_msg: "sysctl hardening drop-in not found"
+
+    - name: Verify login.defs umask hardened
+      command: grep -E '^UMASK[[:space:]]+027' /etc/login.defs
+      changed_when: false
+
+    - name: Verify rare network protocols are blacklisted
+      command: grep -E '^install (dccp|sctp)' /etc/modprobe.d/disable-rare-protocols.conf
+      changed_when: false
+
+    - name: Check legal banner exists
+      stat:
+        path: /etc/issue
+      register: issue_file
+
+    - name: Verify legal banner was deployed
+      assert:
+        that:
+          - issue_file.stat.exists
+        fail_msg: "legal banner /etc/issue not found"

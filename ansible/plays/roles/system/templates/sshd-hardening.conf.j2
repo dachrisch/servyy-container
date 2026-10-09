@@ -1,0 +1,6 @@
+# Managed by Ansible - system.hardening. Do not edit by hand.
+# Sits alongside disablePasswordAuth.conf. The ls_dbeaver_access Match block
+# (dbeaver-stage.conf) overrides AllowTcpForwarding for dbeaver_stage, so the
+# LeagueSphere stage tunnel keeps local forwarding.
+{% for key, value in hardening.ssh.items() %}{{ key }} {{ value }}
+{% endfor %}
