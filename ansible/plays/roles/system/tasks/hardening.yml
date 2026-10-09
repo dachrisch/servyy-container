@@ -44,7 +44,7 @@
     - system.hardening.login_defs
 
 - name: Deploy legal banner
-  ansible.builtin.copy:
+  template:
     src: issue.j2
     dest: "{{ item }}"
     mode: '0644'
