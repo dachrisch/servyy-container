@@ -97,3 +97,22 @@
         name: "{{ playbook_dir }}/../../"
         tasks_from: hardening
       tags: [system.hardening]
+
+    # Regression guard: the container has no sshd, so the SSH drop-in deploy
+    # (with its `sshd -t` validate) is skipped via `ssh: {}`. Render the template
+    # directly with YAML-boolean values (`no`) to assert they emit sshd `no`,
+    # not the Python `False` that broke `sshd -t` on the first real deploy.
+    - name: Render sshd hardening template with boolean values  # noqa: no-relative-paths
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../../templates/sshd-hardening.conf.j2"
+        dest: /tmp/sshd-hardening-render.conf
+        mode: '0644'
+      vars:
+        hardening:
+          ssh:
+            PermitRootLogin: prohibit-password
+            MaxAuthTries: 3
+            TCPKeepAlive: no
+            AllowAgentForwarding: no
+            LogLevel: VERBOSE
+      tags: [system.hardening]
