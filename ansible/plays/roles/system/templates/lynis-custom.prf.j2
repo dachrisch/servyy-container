@@ -1,0 +1,13 @@
+# Managed by Ansible - accepted risks for this host.
+# Rationale: docs/plans/2026-10-08-host-hardening-p6.md
+skip-test=BOOT-5122                                  # GRUB password - Hetzner cloud, no OOB boot access
+skip-test=FILE-6310                                  # separate /home,/var - single cloud volume
+skip-test=KRNL-6000:net.ipv4.conf.all.forwarding     # required by Docker
+skip-test=KRNL-6000:kernel.modules_disabled          # would break dynamic module load
+skip-test=KRNL-6000:kernel.unprivileged_bpf_disabled # already stricter (2 > 1)
+skip-test=LOGG-2154                                  # external logging - provided by Loki/Promtail
+skip-test=USB-1000                                   # no USB bus on cloud VM
+skip-test=SSH-7408:Port                              # keep SSH on 22
+skip-test=BOOT-5180
+skip-test=BOOT-5264
+skip-test=HRDN-7222                                  # compilers intentionally present

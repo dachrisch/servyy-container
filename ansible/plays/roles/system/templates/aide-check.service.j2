@@ -1,0 +1,7 @@
+[Unit]
+Description=AIDE file integrity check
+Documentation=man:aide(1)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/aide --check

@@ -88,7 +88,8 @@ run_lynis() {
         echo "ERROR: lynis not installed"
         return 1
     fi
-    lynis audit system --quick --cronjob --quiet --report-file "${LOG_DIR}/lynis-report.dat" 2>&1 || true
+    lynis audit system --quick --cronjob --quiet --profile /etc/lynis/custom.prf \
+        --report-file "${LOG_DIR}/lynis-report.dat" 2>&1 || true
 }
 
 # Docker Bench Security - CIS Docker Benchmark

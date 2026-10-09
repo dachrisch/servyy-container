@@ -1,0 +1,3 @@
+# Managed by Ansible - system.hardening. Rare protocols not used on this host.
+{% for proto in hardening.disabled_protocols %}install {{ proto }} /bin/true
+{% endfor %}
