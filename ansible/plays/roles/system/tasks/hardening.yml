@@ -137,13 +137,26 @@
     - system.hardening
     - system.hardening.aide
 
+- name: Deploy AIDE configuration
+  template:
+    src: aide-hardening.conf.j2
+    dest: /etc/aide/aide-hardening.conf
+    mode: '0644'
+    owner: root
+    group: root
+  become: true
+  when: hardening.aide | default(true)
+  tags:
+    - system.hardening
+    - system.hardening.aide
+
 - name: Initialise AIDE database
   ansible.builtin.shell: |
     set -e
-    aide --config /etc/aide/aide.conf --init
-    mv -f /var/lib/aide/aide.db.new /var/lib/aide/aide.db
+    aide --config /etc/aide/aide-hardening.conf --init
+    mv -f /var/lib/aide/aide-hardening.db.new /var/lib/aide/aide-hardening.db
   args:
-    creates: /var/lib/aide/aide.db
+    creates: /var/lib/aide/aide-hardening.db
   become: true
   when: hardening.aide | default(true)
   tags:
