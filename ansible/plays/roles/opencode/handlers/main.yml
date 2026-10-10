@@ -1,14 +1,14 @@
 ---
 - name: restart opencode container
-  # NOTE: previously used community.docker.docker_container with just
-  # {name, state: started, restart: yes}. That module compares the given
-  # (mostly unspecified) parameters against the running container and, on
-  # any perceived drift, RECREATES it using only the params in this task --
-  # silently dropping docker-compose's volumes/env/networks/labels entirely.
-  # docker_compose_v2 with state=restarted maps to `docker compose restart`,
-  # which never recreates containers, so it can't destroy compose-managed
-  # config -- it just re-execs the entrypoint (re-running startup.sh), which
-  # is all this handler is meant to do.
+  # NOTE: this must stay on docker_compose_v2 with state=restarted, which maps
+  # to `docker compose restart` and never recreates the container. An earlier
+  # version used a bare container-module task with only {name, state, restart};
+  # that module compared those (mostly unspecified) params against the running
+  # container and, on any perceived drift, RECREATED it using only the params
+  # given there -- silently dropping compose's volumes/env/networks/labels and
+  # taking code.lehel.xyz off the proxy network (incident #109/#110).
+  # `docker compose restart` cannot do that: it only re-execs the entrypoint
+  # (re-running startup.sh), which is all this handler is meant to do.
   community.docker.docker_compose_v2:
     project_src: "{{ ('/home/', create_user, 'servyy-container/opencode') | path_join }}"
     project_name: opencode
