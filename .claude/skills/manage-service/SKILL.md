@@ -201,8 +201,17 @@ mkdir -p service-name
 # Create ansible/plays/roles/service/defaults/main.yml
 ```
 
-### 2. Add to Ansible Deployment
-Edit `ansible/plays/user.yml`:
+### 2. Enable the service per host
+Edit `ansible/production` (`services_enabled:` per host — the deploy-time
+source of truth) and `ansible/testing` if servyy-test needs it:
+```yaml
+services_enabled:
+  service-name: true    # or a dict like opencode's {enabled, dns_short_name, dns_expose}
+```
+
+### 3. Add to Ansible Deployment
+Edit `ansible/plays/user.yml` (role invocation gates on the `services`
+fact built from `services_enabled`):
 ```yaml
 - role: docker_service
   vars:
@@ -210,25 +219,37 @@ Edit `ansible/plays/user.yml`:
     env_templates:
       - src: docker.env.j2
         dest: .env
+  when: "'service-name' in (services | default([]))"
   tags: [user.docker, user.docker.service-name]
 ```
 
-### 3. Create Environment Template
+### 4. Create Environment Template
 Create `ansible/plays/roles/docker_service/templates/service-name/.env.j2`:
 ```jinja2
 SERVICE_VAR={{ service.some_var }}
 ANOTHER_VAR={{ another_value }}
 ```
 
-### 4. Add Secrets (if needed)
-Update `ansible/plays/vars/secrets.yml`:
+### 5. Register the service in every list (easy to forget one)
+- `ansible/plays/vars/secrets.yml` → `docker.services[]` entry (`- {name, dir}`)
+  — drives the servy container-health probe (`system_container_health.sh.j2`),
+  Pi-hole `dns.yml`, `host_ping.yml` test URLs, and `testing` `/etc/hosts`
+  entries. Omit codey-only services here (e.g. `opencode` was removed
+  2026-10-10: it runs on codey, the probe runs on servy, and the stale
+  entry kept firing `container_not_running` for `opencode.web`).
+  Codey-only/test-only DNS goes to `ansible/servyy.yml` `testing.extra_hosts`.
+- `ansible/plays/roles/user/tasks/docker_extras.yml` → `forall_docker_services.sh`
+  hardcoded list (`- {dir: service-name}`).
+- Secrets block in `ansible/plays/vars/secrets.yml` (if needed):
 ```yaml
 service:
   var1: "value1"
   var2: "value2"
 ```
+- DNS/Traefik: Porkbun record via `dns-master` + `Host()` router labels
+  (`${SERVICE_NAME}`/`${SERVICE_HOST}`) in the service's `docker-compose.yml`.
 
-### 5. Test on servyy-test
+### 6. Test on servyy-test
 ```bash
 # Initialize test environment
 cd scripts && ./setup_test_container.sh
@@ -241,7 +262,7 @@ ssh servyy-test.lxd "docker ps | grep service"
 ssh servyy-test.lxd "docker logs service.name --tail 20"
 ```
 
-### 6. Deploy to Production
+### 7. Deploy to Production
 ```bash
 # Get approval first
 ./servyy.sh --tags "user.docker.service-name"
@@ -393,12 +414,21 @@ roles:
 
 ### Service Removal Checklist (prevents stale Grafana alerts)
 
-- [ ] `git rm -r <service>/` + remove secrets block
-- [ ] `ansible/production`: `services_enabled[<service>]: false`
+- [ ] `git rm -r <service>/` + remove secrets block in `ansible/plays/vars/secrets.yml`
+- [ ] `ansible/production`: `services_enabled[<service>]: false` (every host);
+  `ansible/testing` too if the test host enabled it
+- [ ] `ansible/plays/user.yml`: remove the `docker_service` role invocation
+- [ ] `ansible/plays/vars/secrets.yml`: remove the `docker.services[]` entry
+  (probe/dns/host_ping/testing hosts) + `ansible/servyy.yml`
+  `testing.extra_hosts` entry if one was added
+- [ ] `ansible/plays/roles/user/tasks/docker_extras.yml`: remove from the
+  `forall_docker_services.sh` list
 - [ ] `docker rm -f <project>.<svc>` orphans + compose `--remove-orphans` deploy
+  (or `ansible-playbook plays/remove_service.yml -e "target_host=..."`)
 - [ ] Redeploy probes: `--tags "system.probe"` (PUT semantics drop retired series)
 - [ ] Grafana: no `system_container_running{name="<removed>.*"}`, `container_not_running` OK
 - [ ] DNS/TLS: remove dead A records + Traefik routers if service was exposed
+- [ ] Docs: update `.claude/skills/check-server-status/SKILL.md` enabled-services table
 
 ## Service Naming Convention
 
@@ -492,9 +522,13 @@ docker exec container_name command
 
 | Path | Purpose |
 |------|---------|
-| `ansible/plays/user.yml` | Main deployment orchestration |
+| `ansible/plays/user.yml` | Main deployment orchestration (per-service `docker_service` roles) |
+| `ansible/production` | Per-host `services_enabled` (deploy-time source of truth) |
+| `ansible/testing` | Test-host `services_enabled` |
+| `ansible/servyy.yml` | `testing.extra_hosts` (test DNS for services absent from `docker.services`) |
 | `ansible/plays/roles/*/` | Reusable role definitions |
-| `ansible/plays/vars/secrets.yml` | Encrypted credentials |
+| `ansible/plays/vars/secrets.yml` | Encrypted credentials + `docker.services[]` (probe/dns/host_ping/testing hosts) |
+| `ansible/plays/roles/user/tasks/docker_extras.yml` | `forall_docker_services.sh` service list |
 | `opencode/docker-compose.yml` | Service definition |
 | `opencode/scripts/startup.sh` | Container initialization |
 | `.github/workflows/ci.yml` | Automated testing pipeline |
