@@ -1,0 +1,44 @@
+# Managed by Ansible - system.hardening. Do not edit by hand.
+#
+# The distro baseline (/etc/aide/aide.conf from aide-common) selects "/" with
+# the "Full" attribute set, so a run scans /mnt (network storage), /var/lib
+# data and /home while computing ~9 hashes per file. On servy the init never
+# completed (>45 min). This config restricts monitoring to the system-integrity
+# roots and uses two hashes, so a run finishes in a couple of minutes.
+database_in=file:/var/lib/aide/aide-hardening.db
+database_out=file:/var/lib/aide/aide-hardening.db.new
+database_new=file:/var/lib/aide/aide-hardening.db.new
+gzip_dbout=yes
+report_url=stdout
+
+Checksums = sha256+sha512
+OwnerMode = p+u+g+ftype
+Full = OwnerMode+n+i+s+Checksums
+
+# Monitored roots (system integrity)
+/boot Full
+/etc Full
+/bin Full
+/sbin Full
+/lib Full
+/lib64 Full
+/usr Full
+/opt Full
+/root Full
+/var/spool Full
+
+# Excluded: volatile, large or network-backed paths
+!/mnt
+!/media
+!/home
+!/srv
+!/tmp
+!/var/tmp
+!/var/log
+!/var/cache
+!/var/lib
+!/var/backups
+!/proc
+!/sys
+!/dev
+!/run
