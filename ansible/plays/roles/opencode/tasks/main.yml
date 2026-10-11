@@ -150,10 +150,13 @@
     mode: '0600'
     owner: "{{ create_user }}"
     group: "{{ create_user }}"
-  # The docker_service opencode task that renders .env from docker.env.j2 is
-  # skipped on prod because services_enabled.opencode is a dict, not `true`.
-  # This guarantees the variable (used by docker-compose.yml root-host routers)
-  # is always present, matching docker.env.j2's default.
+  # services_enabled.opencode is a dict (dns_short_name/dns_expose), not a bare
+  # `true`. user.yml's compatibility layer still includes dict-shaped services
+  # with enabled: true, so the docker_service opencode instance DOES run on
+  # codey and re-renders .env from docker.env.j2 with service_root_host set.
+  # This task runs earlier (in the opencode role) and keeps SERVICE_ROOT_HOST
+  # present for any path where that .env render has not happened yet, matching
+  # docker.env.j2's default for the docker-compose.yml root-host routers.
   tags: [user.docker.opencode]
   vars:
     opencode_env_file: "{{ ('/home/', create_user, 'servyy-container/opencode/.env') | path_join }}"
