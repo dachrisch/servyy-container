@@ -411,6 +411,16 @@ git rm -r {service}/
 # Just remove from git index if tracked
 git status | grep "deleted:" # Verify removal
 
+# Remove EVERY registry entry (missing one causes stale Grafana alerts
+# or silent re-deploys) — see the manage-service skill's Service Removal
+# Checklist for the full list:
+# - ansible/plays/user.yml: docker_service role invocation
+# - ansible/plays/vars/secrets.yml: docker.services[] entry + secrets block
+# - ansible/plays/roles/user/tasks/docker_extras.yml: forall list entry
+# - ansible/servyy.yml: testing.extra_hosts entry (if added)
+# - ansible/testing: services_enabled entry (if present)
+# - DNS records + check-server-status skill table
+
 # Re-commit with service directory removal if applicable
 git commit --amend -m "chore: remove {service} service
 
@@ -426,11 +436,12 @@ git push origin master
 Deploy to confirm service is no longer deployed on next run:
 
 ```bash
-cd ansible && ./servyy.sh --limit servy.lehel.xyz
+cd ansible && ./servyy.sh --limit servy.lehel.xyz --tags "system.probe"
 
 # Verify in output:
 # - Service role should be skipped (when condition: service not in enabled list)
 # - No "Deploy {service}" task should run
+# - Grafana: no system_container_running{name="{service}.*"}, container_not_running OK
 ```
 
 ### Recovery (if needed)
@@ -954,12 +965,16 @@ networks:
 ```
 ⚠️ **NEVER use "app" as service name** - causes DNS conflicts with other services
 
-2. Add a role invocation to `ansible/plays/user.yml` using the `docker_service` role:
+2. Enable it per host in `ansible/production` (`services_enabled:`) and in
+`ansible/testing` if servyy-test needs it.
+
+3. Add a role invocation to `ansible/plays/user.yml` using the `docker_service` role:
 ```yaml
 # Simple service (single .env from docker.env.j2)
 - role: docker_service
   vars:
     service_dir: my-service
+  when: "'my-service' in (services | default([]))"
   tags: [user.docker, user.docker.my-service]
 
 # Service with extra env templates
@@ -971,12 +986,25 @@ networks:
         dest: .env
       - src: my-service/.env.j2
         dest: service.env
+  when: "'my-service' in (services | default([]))"
   tags: [user.docker, user.docker.my-service]
 ```
 
-3. Add the service to the script list in `ansible/plays/roles/user/tasks/docker_extras.yml`.
+4. Register the service in every list (missing one causes silent gaps or
+stale alerts):
+- `ansible/plays/vars/secrets.yml` → `docker.services[]` (`- {name, dir}`):
+  drives the servy container-health probe, Pi-hole `dns.yml`,
+  `host_ping.yml`, and testing `/etc/hosts`. Skip codey-only services
+  here (e.g. `opencode` was removed 2026-10-10 — it runs on codey while
+  the probe runs on servy); put test-only DNS in `ansible/servyy.yml`
+  `testing.extra_hosts` instead.
+- `ansible/plays/roles/user/tasks/docker_extras.yml` → `forall_docker_services.sh` list.
+- Secrets block in `ansible/plays/vars/secrets.yml` + env template under
+  `ansible/plays/roles/docker_service/templates/<service>/` if needed.
+- DNS via `dns-master` + Traefik `Host()` labels; update the
+  `check-server-status` skill's enabled-services table.
 
-4. Deploy: `cd ansible && ./servyy.sh --tags "docker" --limit servy.lehel.xyz`
+5. Deploy: `cd ansible && ./servyy.sh --tags "docker" --limit servy.lehel.xyz`
 
 5. Verify:
 ```bash

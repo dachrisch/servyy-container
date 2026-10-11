@@ -86,10 +86,11 @@ infra repo's current checkout), run from `~/dev/infrastructure/container`:
 ```bash
 cd ~/dev/infrastructure/container && ./ansible/servyy-test.sh --tags user.docker.<service>
 ```
-Caveat: the `testing` inventory has no `services_enabled`, so the
-`user.docker.<service>` task's `when: "'<service>' in services"` may skip —
-prefer the direct `docker compose up` above unless you've confirmed the
-inventory enables the service.
+Caveat: the `testing` inventory (`ansible/testing`) has its own
+`services_enabled` — the `user.docker.<service>` task's
+`when: "'<service>' in services"` skips when the service isn't enabled
+there. Prefer the direct `docker compose up` above unless you've confirmed
+the testing inventory enables the service.
 
 ## Step 3b — Preview mode (isolated instance)
 

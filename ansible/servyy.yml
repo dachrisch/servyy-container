@@ -37,3 +37,9 @@
         - [{dir: 'pihole.dns'}, '']
         - [{dir: 'leaguesphere'}, '.lxd']
         - [{dir: 'stage.leaguesphere'}, '.lxd']
+        # opencode runs on codey + servyy-test but not on servy, so it was
+        # removed from the global docker.services list (which drives the
+        # servy container-health probe). Keep test DNS resolution via
+        # extra_hosts instead.
+        - [{dir: 'opencode'}, '']
+        - [{dir: 'opencode'}, '.lxd']
