@@ -161,6 +161,18 @@
         cmd: grep -q '^GIT_CRYPT_KEY_B64=.\+$' /home/molecule/opencode/opencode.env
       changed_when: false
 
+    - name: Verify opencode.env carries OMNIROUTE_API_KEY
+      ansible.builtin.command:
+        cmd: grep -q '^OMNIROUTE_API_KEY=test-omniroute-api-key$' /home/molecule/opencode/opencode.env
+      changed_when: false
+
+    - name: Verify opencode.env carries no OAuth/cookie provider vars
+      ansible.builtin.command:
+        cmd: grep -qiE 'oauth|cookie' /home/molecule/opencode/opencode.env
+      register: oauth_cookie_present
+      changed_when: false
+      failed_when: oauth_cookie_present.rc == 0
+
     - name: Verify opencode.env no longer carries static DEV_REPOS_B64 (gh-dash auto-discovery)
       ansible.builtin.command:
         cmd: grep -q '^DEV_REPOS_B64=' /home/molecule/opencode/opencode.env
