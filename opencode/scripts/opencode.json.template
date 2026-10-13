@@ -27,6 +27,25 @@
         "apiKey": "$OPENCODE_GO_API_KEY"
       }
     },
+    "omniroute": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "OmniRoute Free Pool",
+      "options": {
+        "baseURL": "http://localhost:20128/v1",
+        "apiKey": "$OMNIROUTE_API_KEY"
+      },
+      "models": {
+        "omniroute-auto": {
+          "name": "OmniRoute Auto (free first)"
+        },
+        "omniroute-cheap": {
+          "name": "OmniRoute Cheap (free first)"
+        },
+        "omniroute-coding": {
+          "name": "OmniRoute Coding (free first)"
+        }
+      }
+    },
     "bailian-payg": {
       "npm": "@ai-sdk/openai-compatible",
       "name": "Alibaba Cloud Model Studio",
