@@ -284,7 +284,6 @@
     - opencode-contribution
     - opencode-dependency
     - docstash-artifacts
-    - session-messaging
   vars:
     opencode_skills_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/skills') | path_join }}"
   notify: restart opencode container
@@ -331,6 +330,21 @@
     group: "{{ create_user }}"
     mode: '0644'
     directory_mode: '0755'
+  vars:
+    opencode_plugins_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/plugins') | path_join }}"
+  notify: restart opencode container
+  tags: [user.docker.opencode]
+
+- name: Deploy session-messaging plugin (canonical in setup-home agent-config)
+  # Single copy lives in setup-home; same file is fanned out to dev homes by the
+  # setup-home agent_config role. Container-owned plugins (superpowers.js) ship
+  # via the task above.
+  ansible.builtin.copy:
+    src: "{{ (agent_config_plugins_src, 'session-messaging.js') | path_join }}"
+    dest: "{{ (opencode_plugins_dir, 'session-messaging.js') | path_join }}"
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0644'
   vars:
     opencode_plugins_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/plugins') | path_join }}"
   notify: restart opencode container

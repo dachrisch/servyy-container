@@ -12,10 +12,16 @@ opencode_superpowers_version: 06b92f36820f38175b2ed6ff3f8df45157d54731
 # skills; this role copies controller-side from that checkout. Override when
 # the checkout lives elsewhere on the controller.
 agent_config_skills_src: "{{ lookup('env', 'HOME') }}/dev/infrastructure/setup-home/agent-config/skills"
+# Canonical plugins source (setup-home agent-config). The session-messaging
+# plugin ships from here so the skill + plugin share one owner; the container's
+# own opencode/plugins/ (superpowers.js server patch) stays container-owned and
+# is tied to opencode_superpowers_version.
+agent_config_plugins_src: "{{ lookup('env', 'HOME') }}/dev/infrastructure/setup-home/agent-config/plugins"
 # Shared canonical skills shipped to the server (dev-only ones stay out).
 opencode_server_shared_skills:
   - gh-stack
   - release-please
+  - session-messaging
 # Guard against silent GitHub SSH key rotation: generating a new key when the
 # seed file is missing silently replaces the production key (which GitHub
 # still trusts) and breaks container git access. Keep false; set true only

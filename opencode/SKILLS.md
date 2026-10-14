@@ -14,9 +14,20 @@ explicit list (`opencode_server_shared_skills` + full `server/` contents);
 superpowers still deploys live from upstream at `opencode_superpowers_version`
 (that pin is shared with setup-home — never duplicate it).
 
+Plugins: `session-messaging.js` is canonical in setup-home
+(`agent-config/plugins/`) and shipped to the server by the role
+(`agent_config_plugins_src`), the same single copy fan-out to dev homes. Only
+the container-owned `superpowers.js` server patch still lives in this repo's
+`opencode/plugins/`.
+
 Refresh procedures (edit canonical, then redeploy
 `--tags user.docker.opencode` after servyy-test):
-- Owned/server skills: edit in setup-home `agent-config/skills/server/`.
+- Server-only skills (`opencode-deployment`, `opencode-contribution`,
+  `opencode-dependency`, `docstash-artifacts`): edit in setup-home
+  `agent-config/skills/server/`.
+- `session-messaging/` (shared skill) + `plugins/session-messaging.js`
+  (plugin): single copy owned in setup-home `agent-config/` — linked into dev
+  homes by the setup-home role and deployed to the server by this role.
 - `release-please/`: single copy owned in setup-home canonical (absorbed
   this directory's copy including its frontmatter fix) — edit there.
 - `gh-stack/`: upstream snapshot (`github/gh-stack` tag `v0.1.0`) — copy
