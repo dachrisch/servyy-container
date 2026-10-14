@@ -15,6 +15,24 @@
         "CIRCLECI_BASE_URL": "$CIRCLECI_BASE_URL"
       }
     },
+    "chrome-devtools": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "chrome-devtools-mcp@latest",
+        "--headless",
+        "--viewport",
+        "1920x1080",
+        "--isolated",
+        "--executablePath",
+        "/usr/lib/chromium/chromium",
+        "--chrome-arg=--no-sandbox",
+        "--chrome-arg=--disable-dev-shm-usage",
+        "--no-usage-statistics"
+      ],
+      "enabled": true
+    },
     "docstash": {
       "type": "remote",
       "url": "https://mcp.docstash.ai",
