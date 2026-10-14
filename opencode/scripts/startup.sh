@@ -10,6 +10,22 @@ echo "📦 [Startup] Installing system packages..."
 apk update
 apk add git curl github-cli nodejs npm python3 py3-pip openssh git-crypt gettext
 
+# 1b. Headless browser for the chrome-devtools MCP (record-tutorial & co.).
+# The ghcr.io/anomalyco/opencode:latest image does not ship chromium, but
+# chrome-devtools-mcp needs a Chrome/Chromium to launch. Alpine's `chromium`
+# apk provides /usr/lib/chromium/chromium, which the MCP is pointed at via
+# --executablePath (see scripts/opencode.json.template). Idempotent, and
+# guarded so a transient apk failure can't kill the whole boot: the MCP would
+# be unavailable, but every other session still works.
+if [ ! -x /usr/lib/chromium/chromium ]; then
+    echo "🌐 [Startup] Installing chromium for the chrome-devtools MCP..."
+    apk add --no-cache chromium \
+        && echo "📍 [Startup] chromium installed" \
+        || echo "⚠️ [Startup] chromium install failed (chrome-devtools MCP unavailable)"
+else
+    echo "📍 [Startup] chromium already present"
+fi
+
 # 2. GitHub SSH Setup
 echo "🔑 [Startup] Updating GitHub SSH host key (GitHub rotates keys periodically)..."
 ssh-keygen -R github.com 2>/dev/null || true
