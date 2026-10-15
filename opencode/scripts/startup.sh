@@ -32,7 +32,7 @@ fi
 # within a boot and keeps the whole boot alive if PyPI is unreachable.
 if ! python3 -c 'import googleapiclient.discovery, google_auth_oauthlib.flow, google_auth_httplib2' 2>/dev/null; then
     echo "🐍 [Startup] Installing YouTube upload Python deps..."
-    pip install --no-cache-dir --break-system-packages \
+    python3 -m pip install --no-cache-dir --break-system-packages \
         google-api-python-client google-auth-oauthlib google-auth-httplib2 \
         && echo "📍 [Startup] YouTube upload deps installed" \
         || echo "⚠️ [Startup] YouTube upload deps install failed (yt_upload.py unavailable)"
