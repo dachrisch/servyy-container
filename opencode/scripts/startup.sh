@@ -26,6 +26,20 @@ else
     echo "📍 [Startup] chromium already present"
 fi
 
+# 1c. Python deps for LeagueSphere's record-tutorial yt_upload.py (server-side
+# YouTube upload). google-* live in the image rootfs (not the persistent
+# volume), so this re-installs on recreate; the import guard makes it a no-op
+# within a boot and keeps the whole boot alive if PyPI is unreachable.
+if ! python3 -c 'import googleapiclient.discovery, google_auth_oauthlib.flow, google_auth_httplib2' 2>/dev/null; then
+    echo "🐍 [Startup] Installing YouTube upload Python deps..."
+    python3 -m pip install --no-cache-dir --break-system-packages \
+        google-api-python-client google-auth-oauthlib google-auth-httplib2 \
+        && echo "📍 [Startup] YouTube upload deps installed" \
+        || echo "⚠️ [Startup] YouTube upload deps install failed (yt_upload.py unavailable)"
+else
+    echo "📍 [Startup] YouTube upload deps already present"
+fi
+
 # 2. GitHub SSH Setup
 echo "🔑 [Startup] Updating GitHub SSH host key (GitHub rotates keys periodically)..."
 ssh-keygen -R github.com 2>/dev/null || true

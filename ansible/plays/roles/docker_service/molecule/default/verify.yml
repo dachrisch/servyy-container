@@ -168,6 +168,19 @@
       changed_when: false
       failed_when: dev_repos_present.rc == 0
 
+    - name: Verify opencode.env carries YOUTUBE_OAUTH_TOKEN_B64
+      ansible.builtin.command:
+        cmd: grep -q '^YOUTUBE_OAUTH_TOKEN_B64=.\+$' /home/molecule/opencode/opencode.env
+      changed_when: false
+
+    - name: Verify YOUTUBE_OAUTH_TOKEN_B64 decodes to JSON carrying refresh_token
+      ansible.builtin.command:
+        cmd: >-
+          python3 -c "import base64,json,sys;
+          raw=[l for l in open('/home/molecule/opencode/opencode.env') if l.startswith('YOUTUBE_OAUTH_TOKEN_B64=')][0].split('=',1)[1].strip();
+          assert json.loads(base64.b64decode(raw))['refresh_token']=='test-refresh-token'"
+      changed_when: false
+
     - name: Verify opencode.env has mode 0600
       ansible.builtin.stat:
         path: /home/molecule/opencode/opencode.env

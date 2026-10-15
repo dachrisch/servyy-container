@@ -78,6 +78,20 @@
     opencode_key_path: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/id_github') | path_join }}"
   notify: push opencode ssh key to vaultwarden
 
+- name: Back up opencode YouTube OAuth token to Vaultwarden
+  # Idempotent: push_items.yml only creates the item when missing and updates
+  # it when the secret changed, so running on every deploy is safe. Not
+  # handler-driven because the token has no change event (unlike the SSH key).
+  ansible.builtin.include_tasks: vaultwarden_push.yml
+  vars:
+    opencode_vaultwarden_items:
+      - name: "opencode - YouTube OAuth token (bumble:tube)"
+        secret: "{{ opencode.youtube_oauth_token_json }}"
+        notes: "OAuth token JSON (client_id/client_secret/refresh_token) for unattended uploads to bumble:tube (UCbp6-pIVMxhvI7m3tarMK6w). Source: secrets.yml opencode.youtube_oauth_token_json."
+  when:
+    - inventory_hostname == 'codey.lehel.xyz'
+    - opencode.youtube_oauth_token_json | default('') | length > 0
+
 - name: Ensure GitHub is in known_hosts
   ansible.builtin.lineinfile:
     path: "{{ opencode_known_hosts }}"

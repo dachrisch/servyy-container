@@ -20,4 +20,9 @@
 - name: push opencode ssh key to vaultwarden
   ansible.builtin.include_tasks: vaultwarden_push.yml
   listen: push opencode ssh key to vaultwarden
+  vars:
+    opencode_vaultwarden_items:
+      - name: "opencode - GitHub SSH key (lehel.xyz)"
+        secret: "{{ opencode_github_ssh_key }}"
+        notes: "SSH private key for git@github.com authentication in OpenCode (copy of Ansible seed vars/.opencode_github_ssh_key). Public key: {{ opencode_github_ssh_pubkey }}"
   when: inventory_hostname == 'codey.lehel.xyz'
