@@ -126,10 +126,15 @@ Local validation on the controller (this branch):
 (`./servyy.sh --limit codey.lehel.xyz --tags user.opencode,user.docker.opencode`,
 entering the Vaultwarden master password so the backup push runs) and the live
 verification that the rendered `opencode.env` carries `YOUTUBE_OAUTH_TOKEN_B64`
-and is at mode `0600`, and that the Vaultwarden item exists. Note a deploy
-re-renders `opencode.env` but the running container may keep a stale environment
-until it is recreated — verify the env **inside** the container (or force a
-recreate), not just the file on disk. The in-container `yt_upload.py channel`
+and is at mode `0600`, and that the Vaultwarden item exists. **Env pickup
+requires a recreate, not a restart:** the role's own handler
+`restart opencode container` runs `docker compose restart`, which re-execs the
+entrypoint without recreating the container and so will **not** pick up a
+re-rendered `opencode.env`. On first provisioning and on any rotation, force a
+recreate (`docker compose up -d --force-recreate opencode`, or remove/redeploy
+the container), then verify the value **inside** the container
+(`docker exec opencode.web printenv YOUTUBE_OAUTH_TOKEN_B64`), not just the file
+on disk. The in-container `yt_upload.py channel`
 check (printing `bumble:tube`) additionally requires the `leaguesphere`
 companion change above and cannot succeed before it lands. See the plan's Task
 A6 steps 3–5 for the exact commands.
@@ -143,8 +148,15 @@ A6 steps 3–5 for the exact commands.
   `record-tutorial`'s `yt_upload.py auth`, replace
   `opencode.youtube_oauth_token_json` in `secrets.yml`, and redeploy. A deploy
   re-renders `opencode.env` but the container must be recreated to pick up the
-  new value; a changed `refresh_token` replaces the on-disk token. Vaultwarden
-  is updated by the backup task.
+  new value (see the recreate caveat under Verification); a changed
+  `refresh_token` replaces the on-disk token. Vaultwarden is updated by the
+  backup task.
+- **Operational risk — refresh-token lifetime:** if the Google Cloud OAuth
+  client (project `bumble-live`) is not in "In production" publishing status,
+  refresh tokens expire after ~7 days and unattended uploads start failing with
+  `invalid_grant`. The operator should confirm the client's publishing status
+  (or otherwise re-run the token flow periodically). This is the main
+  operational risk of committing a static refresh token.
 - **Rollback:** remove `opencode.youtube_oauth_token_json` from `secrets.yml`,
   the `YOUTUBE_OAUTH_TOKEN_B64` line from `templates/opencode/.env.j2`, and the
   "Back up opencode YouTube OAuth token to Vaultwarden" task; then redeploy
