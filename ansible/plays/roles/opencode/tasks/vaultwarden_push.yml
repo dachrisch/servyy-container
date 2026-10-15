@@ -1,6 +1,8 @@
 ---
 # Push OpenCode secrets to Vaultwarden as backup copies.
 # Caller sets opencode_vaultwarden_items: list of {name, secret, notes}.
+# Plain relative path (not {{ playbook_dir }}) on purpose: ansible-lint resolves
+# the include relative to this file's directory this way.
 - name: Push OpenCode secrets to Vaultwarden
   ansible.builtin.include_tasks: ../../vaultwarden/tasks/push_items.yml
   vars:
