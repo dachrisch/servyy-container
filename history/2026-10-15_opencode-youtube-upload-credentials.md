@@ -6,9 +6,11 @@ Let the server-side opencode container (`codey.lehel.xyz`, container
 `opencode.web`) upload `record-tutorial` videos to the **bumble:tube** YouTube
 channel unattended, by provisioning the existing OAuth token (currently
 `~/.config/leaguesphere/youtube_token.json` on the developer's box) into the
-container and teaching `yt_upload.py` to consume it. Plan:
-`docs/plans/2026-10-15-opencode-youtube-upload-credentials.md` (Part A here,
-Part B in the `leaguesphere` repo).
+container. The token is consumed by a **companion change in the separate
+`leaguesphere` repo** (its own branch/PR) that teaches `yt_upload.py` to read
+it — that change is **not** part of this repo's branch and is not yet merged.
+Plan: `docs/plans/2026-10-15-opencode-youtube-upload-credentials.md` (Part A in
+this repo; Part B in `leaguesphere`).
 
 The token is self-contained (`client_id` + `client_secret` + `refresh_token` +
 `token_uri`), so `google-auth` refreshes it non-interactively; the Desktop
@@ -36,17 +38,28 @@ throughout (git-crypt, `0600`, Vaultwarden backup).
 
 The token JSON is **base64-encoded** for transport. This survives `env_file`
 quoting/newlines unchanged (raw JSON contains `"`, `{`, `}`). The variable name
-is fixed and shared with the consumer.
+is fixed and shared with the consumer. The stored access `token`/`expiry` in
+that JSON may be stale and is irrelevant — only `refresh_token` matters
+(`google-auth` refreshes the access token non-interactively).
 
-### `yt_upload.py` consume behavior (leaguesphere, Part B)
+### Companion change — `yt_upload.py` consume behavior (`leaguesphere` repo, NOT in this branch)
 
-`leaguesphere/.claude/skills/record-tutorial/scripts/yt_upload.py` base64-decodes
-`YOUTUBE_OAUTH_TOKEN_B64` and writes it to
+**This change lives in the separate `leaguesphere` repo (its own branch/PR) and
+is not yet implemented or merged.** It is described here for context only;
+nothing in this repo's branch ships it.
+
+When it lands, `leaguesphere/.claude/skills/record-tutorial/scripts/yt_upload.py`
+will base64-decode `YOUTUBE_OAUTH_TOKEN_B64`, write it to
 `~/.config/leaguesphere/youtube_token.json` on the persistent `opencode_root`
-volume, then refreshes non-interactively. A token already present with the same
-`refresh_token` is left untouched (so refreshed access tokens are not clobbered);
-a genuinely rotated token (different `refresh_token`) replaces it.
-`--client-secret` becomes optional when a token is present.
+volume, and refresh non-interactively. A token already present with the same
+`refresh_token` would be left untouched (so refreshed access tokens are not
+clobbered); a genuinely rotated token (different `refresh_token`) would replace
+it. `--client-secret` would become optional when a token is present.
+
+**Until that companion change lands,** the container ignores
+`YOUTUBE_OAUTH_TOKEN_B64` entirely, uploads still require `--client-secret`, and
+the end-to-end in-container verification (`yt_upload.py channel`, below) cannot
+yet succeed.
 
 ### Vaultwarden backup
 
@@ -85,6 +98,9 @@ rootfs, so they re-install on container recreate.
 - `opencode/scripts/startup.sh` — install YouTube upload deps at boot.
 - `history/2026-10-15_opencode-youtube-upload-credentials.md` (this file).
 
+Part B (`yt_upload.py`) lives in the separate `leaguesphere` repo and is **not**
+part of this branch.
+
 ## Verification
 
 Local validation on the controller (this branch):
@@ -110,25 +126,34 @@ Local validation on the controller (this branch):
 (`./servyy.sh --limit codey.lehel.xyz --tags user.opencode,user.docker.opencode`,
 entering the Vaultwarden master password so the backup push runs) and the live
 verification that the rendered `opencode.env` carries `YOUTUBE_OAUTH_TOKEN_B64`
-once at mode `0600`, that the Vaultwarden item exists, and that the token
-materializes + refreshes inside the container (`yt_upload.py channel` printing
-`bumble:tube`). See the plan's Task A6 steps 3–5 for the exact commands.
+and is at mode `0600`, and that the Vaultwarden item exists. Note a deploy
+re-renders `opencode.env` but the running container may keep a stale environment
+until it is recreated — verify the env **inside** the container (or force a
+recreate), not just the file on disk. The in-container `yt_upload.py channel`
+check (printing `bumble:tube`) additionally requires the `leaguesphere`
+companion change above and cannot succeed before it lands. See the plan's Task
+A6 steps 3–5 for the exact commands.
 
 ## Impact / rollback
 
-- Enables unattended uploads from `record-tutorial` on the server; the token is
-  a live grant to `bumble:tube` and lives in the container at boot.
+- Once the `leaguesphere` companion change lands, enables unattended uploads
+  from `record-tutorial` on the server; the token is a live grant to
+  `bumble:tube` and lives in the container at boot.
 - **Rotation:** regenerate `~/.config/leaguesphere/youtube_token.json` via
   `record-tutorial`'s `yt_upload.py auth`, replace
-  `opencode.youtube_oauth_token_json` in `secrets.yml`, and redeploy. The
-  container picks up the new value on recreate; a changed `refresh_token`
-  replaces the on-disk token. Vaultwarden is updated by the backup task.
+  `opencode.youtube_oauth_token_json` in `secrets.yml`, and redeploy. A deploy
+  re-renders `opencode.env` but the container must be recreated to pick up the
+  new value; a changed `refresh_token` replaces the on-disk token. Vaultwarden
+  is updated by the backup task.
 - **Rollback:** remove `opencode.youtube_oauth_token_json` from `secrets.yml`,
   the `YOUTUBE_OAUTH_TOKEN_B64` line from `templates/opencode/.env.j2`, and the
-  "Back up opencode YouTube OAuth token to Vaultwarden" task; redeploy
-  `--tags user.docker.opencode`. Optionally delete the Vaultwarden item
-  `opencode - YouTube OAuth token (bumble:tube)`. The `yt_upload.py` changes are
-  backward compatible (var absent → old `--client-secret` flow).
+  "Back up opencode YouTube OAuth token to Vaultwarden" task; then redeploy
+  `--tags user.opencode,user.docker.opencode`. Delete the materialized token on
+  the persistent `opencode_root` volume (`~/.config/leaguesphere/youtube_token.json`)
+  — it is a live upload grant — and optionally delete the Vaultwarden item
+  `opencode - YouTube OAuth token (bumble:tube)`. The `leaguesphere` companion
+  change, once it lands, is expected to be backward compatible (var absent → old
+  `--client-secret` flow).
 
 ## Follow-up
 
