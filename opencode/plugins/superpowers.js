@@ -3,38 +3,16 @@
  *
  * Injects superpowers bootstrap context via system prompt transform.
  * Skills are discovered via OpenCode's native skill tool from symlinked directory.
- *
- * PROVENANCE (server fork of upstream):
- *   Upstream: https://github.com/obra/superpowers
- *   File:     .opencode/plugins/superpowers.js
- *   Pinned:   06b92f36820f38175b2ed6ff3f8df45157d54731 (2026-01-30)
- *   Refresh:  bump `opencode_superpowers_version` in
- *             ansible/plays/roles/opencode/defaults/main.yml, redeploy,
- *             then re-apply the SERVER PATCH below if upstream changed
- *             these lines.
- *
- * SERVER PATCH (2 lines vs upstream — do NOT drop on refresh):
- *   1. `superpowersSkillsDir`: upstream uses '../../skills' (valid only
- *      when this file lives inside the clone at
- *      <clone>/.opencode/plugins/). On the server the file lives at
- *      /root/.config/opencode/plugins/, so '../../skills' would wrongly
- *      resolve to /root/.config/skills. Patched to '../skills', which
- *      resolves to /root/.config/opencode/skills/ where Ansible deploys
- *      the 14 superpowers skills FLAT (documented discovery:
- *      skills/<name>/SKILL.md).
- *   2. Tool-mapping message: upstream points agents at
- *      `<configDir>/skills/superpowers/` (the laptop symlink). Patched
- *      to `<configDir>/skills/` (flat server layout).
  */
 
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { fileURLToPath } from 'url';
+import { Plugin } from '@opencode/plugin';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Simple frontmatter extraction (avoid dependency on skills-core for bootstrap)
 const extractAndStripFrontmatter = (content) => {
   const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!match) return { frontmatter: {}, content };
@@ -55,7 +33,6 @@ const extractAndStripFrontmatter = (content) => {
   return { frontmatter, content: body };
 };
 
-// Normalize a path: trim whitespace, expand ~, resolve to absolute
 const normalizePath = (p, homeDir) => {
   if (!p || typeof p !== 'string') return null;
   let normalized = p.trim();
@@ -68,22 +45,22 @@ const normalizePath = (p, homeDir) => {
   return path.resolve(normalized);
 };
 
-export const SuperpowersPlugin = async ({ client, directory }) => {
-  const homeDir = os.homedir();
-  const superpowersSkillsDir = path.resolve(__dirname, '../skills');
-  const envConfigDir = normalizePath(process.env.OPENCODE_CONFIG_DIR, homeDir);
-  const configDir = envConfigDir || path.join(homeDir, '.config/opencode');
+export default Plugin.define({
+  id: 'superpowers',
+  async setup(ctx) {
+    const homeDir = os.homedir();
+    const superpowersSkillsDir = path.resolve(__dirname, '../../skills');
+    const envConfigDir = normalizePath(process.env.OPENCODE_CONFIG_DIR, homeDir);
+    const configDir = envConfigDir || path.join(homeDir, '.config/opencode');
 
-  // Helper to generate bootstrap content
-  const getBootstrapContent = () => {
-    // Try to load using-superpowers skill
-    const skillPath = path.join(superpowersSkillsDir, 'using-superpowers', 'SKILL.md');
-    if (!fs.existsSync(skillPath)) return null;
+    const getBootstrapContent = () => {
+      const skillPath = path.join(superpowersSkillsDir, 'using-superpowers', 'SKILL.md');
+      if (!fs.existsSync(skillPath)) return null;
 
-    const fullContent = fs.readFileSync(skillPath, 'utf8');
-    const { content } = extractAndStripFrontmatter(fullContent);
+      const fullContent = fs.readFileSync(skillPath, 'utf8');
+      const { content } = extractAndStripFrontmatter(fullContent);
 
-    const toolMapping = `**Tool Mapping for OpenCode:**
+      const toolMapping = `**Tool Mapping for OpenCode:**
 When skills reference tools you don't have, substitute OpenCode equivalents:
 - \`TodoWrite\` → \`update_plan\`
 - \`Task\` tool with subagents → Use OpenCode's subagent system (@mention)
@@ -91,10 +68,10 @@ When skills reference tools you don't have, substitute OpenCode equivalents:
 - \`Read\`, \`Write\`, \`Edit\`, \`Bash\` → Your native tools
 
 **Skills location:**
-Superpowers skills are in \`${configDir}/skills/\`
+Superpowers skills are in \`${configDir}/skills/superpowers/\`
 Use OpenCode's native \`skill\` tool to list and load skills.`;
 
-    return `<EXTREMELY_IMPORTANT>
+      return `<EXTREMELY_IMPORTANT>
 You have superpowers.
 
 **IMPORTANT: The using-superpowers skill content is included below. It is ALREADY LOADED - you are currently following it. Do NOT use the skill tool to load "using-superpowers" again - that would be redundant.**
@@ -103,15 +80,16 @@ ${content}
 
 ${toolMapping}
 </EXTREMELY_IMPORTANT>`;
-  };
+    };
 
-  return {
-    // Use system prompt transform to inject bootstrap (fixes #226 agent reset bug)
-    'experimental.chat.system.transform': async (_input, output) => {
+    await ctx.session.hook('context', (event) => {
       const bootstrap = getBootstrapContent();
       if (bootstrap) {
-        (output.system ||= []).push(bootstrap);
+        event.system = event.system || [];
+        event.system.push({ type: 'text', text: bootstrap });
       }
-    }
-  };
-};
+    });
+
+    return () => {};
+  },
+});
