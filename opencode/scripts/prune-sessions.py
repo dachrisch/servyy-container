@@ -1,17 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""Prune old opencode sessions, stale tool output, and stale checkpoint
+"""Prune old OpenCode V2 sessions, stale tool output, and stale checkpoint
 snapshots.
 
 Runs inside the opencode.web container via an Ofelia job-exec label
 (schedule: 0 4 * * *). Deletes sessions older than OPENCODE_PRUNE_HOURS
-(default 24) together with all dependent rows, purges tool-output files
-past retention, removes checkpoint snapshot repos untouched since before
-that retention window, and vacuums the database only when rows were
-actually deleted. Designed to be idempotent and to never interfere with
-the running web server: it uses a generous busy_timeout and logs a
-one-line summary that ends up in `docker logs portainer.ofelia`.
+(default 24) from the V2 `session_v2` table together with all dependent
+rows, purges tool-output files past retention, removes checkpoint snapshot
+repos untouched since before that retention window, and vacuums the
+database only when rows were actually deleted. Designed to be idempotent
+and to never interfere with the running web server: it uses a generous
+busy_timeout and logs a one-line summary that ends up in
+`docker logs portainer.ofelia`.
+
+After an in-place V1 -> V2 migration the legacy V1 tables (`session`,
+`part`, `message`, `todo`, `session_share`, `session_input`,
+`session_context_epoch`) still sit in the file, dead weight that V2 never
+reads. They are cleaned as a defensive extra when present; a fresh V2
+install has none of them, so the cleanup is skipped there. Pruning the V2
+tables is what actually bounds database growth.
 """
 
 import os
@@ -25,17 +33,30 @@ TOOL_OUTPUT_DIR = os.environ.get("OPENCODE_TOOL_OUTPUT", "/root/.local/share/ope
 SNAPSHOT_DIR = os.environ.get("OPENCODE_SNAPSHOT_DIR", "/root/.local/share/opencode/snapshot")
 RETENTION_HOURS = float(os.environ.get("OPENCODE_PRUNE_HOURS", "24"))
 
-DEPENDENT_TABLES = [
-    ("part", "session_id"),
-    ("message", "session_id"),
+SESSION_TABLE = "session_v2"
+
+# Tables that reference a live session and must lose their rows before the
+# session row itself is deleted.
+V2_DEPENDENT_TABLES = [
     ("session_message", "session_id"),
-    ("session_input", "session_id"),
-    ("session_context_epoch", "session_id"),
-    ("todo", "session_id"),
-    ("session_share", "session_id"),
+    ("session_inbox", "session_id"),
+    ("session_pending", "session_id"),
+    ("instruction_entry", "session_id"),
+    ("instruction_state", "session_id"),
     ("event", "aggregate_id"),
     ("event_sequence", "aggregate_id"),
 ]
+
+# Left behind by the V1 -> V2 migration, keyed by the legacy `session` table.
+LEGACY_DEPENDENT_TABLES = [
+    ("part", "session_id"),
+    ("message", "session_id"),
+    ("todo", "session_id"),
+    ("session_share", "session_id"),
+    ("session_input", "session_id"),
+    ("session_context_epoch", "session_id"),
+]
+LEGACY_SESSION_TABLE = "session"
 
 
 def log(message):
@@ -43,25 +64,89 @@ def log(message):
     print(time.strftime("%Y-%m-%d %H:%M:%S"), message, flush=True)
 
 
+def _existing_tables(con):
+    """Return the set of table names present in the database file."""
+    return {
+        row[0]
+        for row in con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+    }
+
+
+def _delete_rows(con, table, column, values, counts):
+    """Delete `values` from table.column, recording a non-zero row count."""
+    if not values:
+        return 0
+    placeholders = ",".join("?" * len(values))
+    deleted = con.execute(
+        "DELETE FROM %s WHERE %s IN (%s)" % (table, column, placeholders), values
+    ).rowcount
+    if deleted > 0:
+        counts.append("%s=%d" % (table, deleted))
+    return deleted
+
+
 def prune_sessions(con, cutoff):
-    """Delete sessions older than cutoff (ms epoch) and all dependent rows."""
-    session_ids = [row[0] for row in con.execute("SELECT id FROM session WHERE time_created < ?", (cutoff,))]
-    if not session_ids:
+    """Delete sessions older than cutoff (ms epoch) and all dependent rows.
+
+    Returns the number of distinct session rows deleted (V2 plus legacy-only
+    V1 leftovers); anything above zero means the caller should vacuum.
+    """
+    tables = _existing_tables(con)
+    if SESSION_TABLE not in tables:
+        # A missing session_v2 means the schema is not what this script
+        # expects (e.g. an un-migrated V1 database). Fail loudly instead of
+        # logging a successful no-op forever.
+        raise sqlite3.Error("table %s not found; database is not an OpenCode V2 schema" % SESSION_TABLE)
+
+    session_ids = [
+        row[0]
+        for row in con.execute(
+            "SELECT id FROM %s WHERE time_created < ?" % SESSION_TABLE, (cutoff,)
+        )
+    ]
+
+    # Legacy V1 rows are only cleaned for sessions that are not still live in
+    # V2, so the defensive cleanup can never touch a current session.
+    legacy_ids = []
+    if LEGACY_SESSION_TABLE in tables:
+        surviving = {
+            row[0]
+            for row in con.execute(
+                "SELECT id FROM %s WHERE time_created >= ?" % SESSION_TABLE, (cutoff,)
+            )
+        }
+        legacy_ids = [
+            row[0]
+            for row in con.execute(
+                "SELECT id FROM %s WHERE time_created < ?" % LEGACY_SESSION_TABLE, (cutoff,)
+            )
+            if row[0] not in surviving
+        ]
+
+    if not session_ids and not legacy_ids:
         log("no sessions older than %.0fh, nothing to do" % RETENTION_HOURS)
         return 0
-    placeholders = ",".join("?" * len(session_ids))
+
     counts = []
     con.execute("BEGIN")
-    for table, column in DEPENDENT_TABLES:
-        cursor = con.execute("DELETE FROM %s WHERE %s IN (%s)" % (table, column, placeholders), session_ids)
-        if cursor.rowcount > 0:
-            counts.append("%s=%d" % (table, cursor.rowcount))
-    session_count = con.execute(
-        "DELETE FROM session WHERE id IN (%s)" % placeholders, session_ids
-    ).rowcount
+    for table, column in V2_DEPENDENT_TABLES:
+        if table in tables:
+            _delete_rows(con, table, column, session_ids, counts)
+    _delete_rows(con, SESSION_TABLE, "id", session_ids, counts)
+
+    # Sessions that only ever existed in the legacy tables (V1 rows the
+    # migration left behind) are counted once, not twice: the same id can
+    # appear in both tables.
+    if legacy_ids:
+        for table, column in LEGACY_DEPENDENT_TABLES:
+            if table in tables:
+                _delete_rows(con, table, column, legacy_ids, counts)
+        _delete_rows(con, LEGACY_SESSION_TABLE, "id", legacy_ids, counts)
     con.commit()
-    log("pruned %d sessions: %s" % (session_count, ", ".join(counts)))
-    return session_count
+    pruned_ids = set(session_ids)
+    pruned = len(session_ids) + sum(1 for session_id in legacy_ids if session_id not in pruned_ids)
+    log("pruned %d sessions: %s" % (pruned, ", ".join(counts) or "no dependent rows"))
+    return pruned
 
 
 def vacuum(con):
