@@ -232,6 +232,19 @@
   notify: restart opencode container
   tags: [user.docker.opencode]
 
+- name: Deploy OpenCode session pruner
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../opencode/scripts/prune-sessions.py"
+    dest: "{{ ('/home/', create_user, 'servyy-container/opencode/scripts/prune-sessions.py') | path_join }}"
+    mode: '0755'
+  # No restart handler: Ofelia runs this file inside the container on its next
+  # schedule, and ./scripts is a bind mount, so the new file is picked up
+  # without a recreate. Without this task the pruner only arrived via the repo
+  # checkout sync in play 1 (tag user.docker.repo), which
+  # `--tags user.docker.opencode` skips — leaving the V1 pruner running against
+  # a V2 database, i.e. deleting live session_message rows for legacy sessions.
+  tags: [user.docker.opencode]
+
 - name: Deploy OpenCode config template
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../../opencode/scripts/opencode.json.template"

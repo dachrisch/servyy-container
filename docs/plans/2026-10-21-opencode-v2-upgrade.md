@@ -66,22 +66,6 @@ What the native channel does and does not do: it restores *durable, curated* gui
 
 ---
 
-## Phase 0 — Decisions to confirm before starting
-
-| Decision | Recommendation | Why |
-|---|---|---|
-| Image reference | pin `ghcr.io/anomalyco/opencode:2.1.2`, never `:latest` again | `latest` is the V1 line (#1/#2); a pinned tag makes Renovate and rollback meaningful |
-| Renovate behaviour | add a `packageRule` for `ghcr.io/anomalyco/opencode` with `automerge: false` | V2 changed the plugin + server API; a weekend minor bump should be a reviewed PR, not an auto-merge |
-| Memory plugin (`opencode-working-memory`) | **drop it** | V1-only (#12), no V2 release; revisit a replacement separately |
-| Todos | add `"experimental": { "todo": true }` | V2 off by default (#14); codey sessions use `todowrite` (20 calls in the current DB) |
-| `external_directory` permission | keep V2 default (allowed) | an `ask` rule on an unattended server stalls sessions; the container is already a sandbox |
-| TUI config (`tui.json`) | stop deploying it; delete the file | V2 terminal config is `cli.json`; the container runs no TUI, so the file is dead weight |
-| V1 config shapes (`provider`, `mcp`, models) | keep for this change, convert later | explicitly optional per the migration guide (#13); smaller blast radius |
-
-**Critical decision:** is losing `opencode-working-memory` acceptable? If not, stop and evaluate a V2 replacement *before* the upgrade, because there is no version that runs on both.
-
----
-
 ## Phase 1 — Repository changes
 
 ### Task 1: Pin the image and fix the healthcheck
@@ -229,17 +213,13 @@ Replaces the dropped V1-only memory plugin with the V2-native instructions chann
 
 Keep it short and factual — host layout, what this instance is for, verification commands, and any conventions that must survive a compaction. Everything in it is loaded into every session on codey, so no secrets and no volatile state.
 
-```markdown
-# Global instructions (codey.lehel.xyz)
+The landed file is `opencode/scripts/AGENTS.md` — do not duplicate it here. It must cover, and must not contradict:
 
-This OpenCode server runs on `codey.lehel.xyz` as `opencode.web`, reachable at
-https://code.lehel.xyz behind Basic auth, with the shared checkouts under `/root/dev`.
-
-- Repos in `/root/dev` carry their own `AGENTS.md`; read those before changing code.
-- Deployment changes go through the `infrastructure/container` repo and Ansible — no manual edits on the host.
-- Verify with `docker ps --filter name=opencode.web` and `curl -s http://localhost:4096/health`.
-- Session pruning runs nightly at 04:00 (Ofelia); logs land in `docker logs portainer.ofelia`.
-```
+- the host (`codey.lehel.xyz`, container `opencode.web`), the public URL + Basic auth, and the `/root/dev` checkouts with their own `AGENTS.md`;
+- that infrastructure changes go through the repo and Ansible, never manual host edits;
+- **in-container** verification via loopback (`curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4096/health` → 200) — the container has no docker CLI or socket, so `docker ps` / `docker exec` / `docker logs` must never be suggested without the `ssh codey.lehel.xyz "…"` host prefix, including the Ofelia prune log (`ssh codey.lehel.xyz "docker logs portainer.ofelia"`);
+- the session DB path and the nightly 04:00 prune;
+- that the repo file is the source of truth: `startup.sh` re-copies it on every boot, so in-container edits are lost on restart.
 
 **Step 2: copy it during startup**
 
@@ -369,10 +349,15 @@ Expected: version `2.1.2`; `/api/plugin` lists `superpowers.js` and `session-mes
 **Step 4: verify the pruner against real data**
 
 ```bash
-ssh servyy-test.lxd "docker exec opencode.web sh -c 'OPENCODE_PRUNE_HOURS=0 python3 /scripts/prune-sessions.py; echo exit=\$?'"
+# copy the migrated DB, then run the pruner against the COPY — never the live file
+ssh servyy-test.lxd "docker exec opencode.web python3 -c \"import sqlite3 as s; a=s.connect('/root/.local/share/opencode/opencode.db'); b=s.connect('/root/dev/prune-copy.db'); a.backup(b); b.close(); a.close()\""
+ssh servyy-test.lxd "docker exec opencode.web sh -c 'OPENCODE_DB=/root/dev/prune-copy.db OPENCODE_PRUNE_HOURS=0 python3 /scripts/prune-sessions.py; echo exit=\$?'"
+ssh servyy-test.lxd "docker exec opencode.web rm -f /root/dev/prune-copy.db"
 ```
 
-Expected: exit 0, log line naming `session_v2` and the dependent tables (not `session`). This is a destructive dry-run on the test host only.
+Expected: exit 0, log line naming `session_v2` and the dependent tables (not `session`).
+
+**This is destructive, not a dry-run.** `OPENCODE_PRUNE_HOURS=0` deletes every session older than *now* — i.e. essentially all of them — plus their `tool-output/` files and snapshots. Run it **last** on the test host, on the copy above, and only after the Step 0 migration-fidelity checks have passed; never point it at a DB you still need (`OPENCODE_DB` is what redirects it; the default path is the live DB — `tool-output/` and `snapshot/` are still the test host's live dirs, which is fine there and never acceptable in production).
 
 **Step 5: verify MCP + a real turn**
 
@@ -388,7 +373,23 @@ ssh servyy-test.lxd "cd /home/cda/servyy-container/opencode && docker compose do
 
 ## Phase 3 — Production deploy on codey
 
-### Task 5: Back up the V1 database (must be an online `sqlite3` backup)
+### Task 5: Pre-flight disk check, then back up the V1 database (must be an online `sqlite3` backup)
+
+The in-place V2 migration plus the pruner's `VACUUM` both need working room, and codey had **2.7 GB free at 91 %** (#15) before this change:
+
+```bash
+ssh codey.lehel.xyz "df -h /"    # record the free-space figure in the history doc
+```
+
+If `Avail` is under ~2 GB, free space first. `docker image prune` is *not* the answer (the container's npm cache is already cleared weekly and old snapshots are pruned nightly). The honest option is to stop the container, `VACUUM` the V1 DB, then continue with this task:
+
+```bash
+ssh codey.lehel.xyz "docker stop opencode.web"
+ssh codey.lehel.xyz "docker run --rm -v opencode_root:/data alpine sh -c 'apk add -q sqlite && sqlite3 /data/.local/share/opencode/opencode.db VACUUM;'"
+ssh codey.lehel.xyz "docker start opencode.web"    # the backup below runs `docker exec`
+```
+
+Re-check `df -h /` after the vacuum and before continuing.
 
 A live `docker cp` produces a corrupt file (#8) — use the backup API, then copy the finished file:
 
@@ -411,10 +412,20 @@ Expected: `('ok',)`.
 
 ### Task 6: Deploy
 
+**Pre-pull the image first — this ordering matters:**
+
+```bash
+ssh codey.lehel.xyz "docker pull ghcr.io/anomalyco/opencode:2.1.2"
+```
+
+Reason: the `restart opencode container` handlers (fired by the `startup.sh` / config / AGENTS.md copy tasks) run **before** the `docker_service` recreate, so the host briefly runs the new `startup.sh` (`exec opencode serve`) against the **old V1 image**, which has no `serve` subcommand. That is a short crash/502 window — and it becomes permanent if the play dies between the handler and play 3. Pre-pulling does not remove the window, but it removes the pull from it and makes the whole sequence as short as possible; keep the play running to completion and do not abort it in between.
+
 ```bash
 cd /home/cda/dev/infrastructure/container
 cd ansible && ./servyy.sh --limit codey.lehel.xyz --tags user.docker.opencode
 ```
+
+With the new "Deploy OpenCode session pruner" task this tag is sufficient for everything under `opencode/scripts/` (startup.sh, opencode.json.template, AGENTS.md, prune-sessions.py).
 
 Notes:
 - `docker_service` runs `docker compose up -d` (`state: present`) so the new tag is pulled and the container is **recreated** — the `restart opencode container` handler alone would never switch images.
@@ -432,6 +443,15 @@ curl -s -o /dev/null -w '%{http_code}\n' https://code.lehel.xyz/health          
 ```
 
 Browser check on `https://code.lehel.xyz`: Basic-auth prompt (authgate), then the V2 web UI loads, a session starts, a model responds.
+
+API-consumer check (`job-search` and `devhub` both call this host — see Risks): with the `opencode.api_key` value used in `ansible/plays/roles/docker_service/templates/job-search/api.env.j2`:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -H "X-Api-Key: $KEY" https://code.lehel.xyz/api/model   # 200
+curl -s -H "X-Api-Key: $KEY" https://code.lehel.xyz/api/model | head -c 300                     # model list, not an error body
+```
+
+Then run one real operation through each consumer that goes over that API (a job-search model discovery/run, and a devhub dispatch) and confirm it succeeds rather than erroring on a missing/changed endpoint.
 
 Session-messaging check (the regression this fixes): from a session on codey run `session_list` — it must appear in the tool list and return the registry.
 
@@ -460,13 +480,15 @@ ssh codey.lehel.xyz "docker run --rm -v opencode_root:/data -v /home/cda:/backup
 ssh codey.lehel.xyz "cd /home/cda/servyy-container/opencode && docker compose up -d"
 ```
 
-3. The two local plugins stay on their V2 ports (they were already V2 before this change — rolling back to V1 keeps session messaging broken, as today). If that must be restored, redeploy the pre-`6658674` (setup-home) copies.
+3. After a rollback to V1, the **V2 pruner now deployed by the Ansible role** will exit 1 on the V1 schema instead of pruning — that failure is intended (it refuses to guess), but it means the nightly 04:00 job logs an error and nothing is pruned. Restore the pre-upgrade `prune-sessions.py` on the host alongside the DB restore (`opencode/scripts/` is bind-mounted, so the file swap takes effect on the next Ofelia run).
+
+4. The two local plugins stay on their V2 ports (they were already V2 before this change — rolling back to V1 keeps session messaging broken, as today). If that must be restored, redeploy the pre-`6658674` (setup-home) copies.
 
 ## Risks
 
 | Risk | Mitigation |
 |---|---|
-| V1 web UI bookmarks / clients that speak the V1 API break | nothing on the host calls the V1 API except the healthcheck (fixed); clients are browsers and the V2-capable laptop CLI |
+| V1 web UI bookmarks / clients that speak the V1 API break | the V1 API has **two in-cluster consumers**, not just the healthcheck: `job-search` and `devhub` both set `OPENCODE_BASE_URL=https://code.lehel.xyz` (`ansible/plays/roles/docker_service/templates/job-search/api.env.j2`, `.../devhub/web.env.j2`) and call `/api/model` / `/api/session*` — job-search with an API key (`OPENCODE_API_KEY`, via the `opencode-apikey-code` router in `traefik/dynamic.yaml`), devhub with Basic auth (`OPENCODE_BASIC_USER`/`OPENCODE_BASIC_PASSWORD`). Both are smoke-tested in Task 7; a browser client that speaks V1 is out of our control |
 | First boot migration on a 150 MB DB takes longer than the healthcheck window | raise `start_period`; verify with `docker logs` before declaring failure |
 | `provider`/`mcp` V1 shapes behave subtly differently in V2 (e.g. per-model `options.thinking` on bailian) | covered by Task 7 model checks; fix in a follow-up config conversion if needed |
 | Todos / `external_directory` default changes alter agent behaviour | `experimental.todo: true` added; permission default accepted deliberately (Phase 0) |

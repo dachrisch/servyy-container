@@ -30,3 +30,5 @@ key
 ansible/plays/vars/.opencode_github_ssh_key
 ansible/plays/vars/.opencode_github_ssh_key.pub
 ansible/plays/vars/.servyy_container_deploy_key
+# python bytecode (test suites under bind-mounted service dirs, e.g. opencode/scripts)
+__pycache__/
