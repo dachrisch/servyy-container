@@ -240,6 +240,14 @@
   notify: restart opencode container
   tags: [user.docker.opencode]
 
+- name: Deploy OpenCode global AGENTS.md (cross-session memory)
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../opencode/scripts/AGENTS.md"
+    dest: "{{ ('/home/', create_user, 'servyy-container/opencode/scripts/AGENTS.md') | path_join }}"
+    mode: '0644'
+  notify: restart opencode container
+  tags: [user.docker.opencode]
+
 - name: Remove legacy V1 TUI config (V2 uses cli.json)
   ansible.builtin.file:
     path: "{{ ('/home/', create_user, 'servyy-container/opencode/scripts/tui.json') | path_join }}"

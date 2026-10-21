@@ -98,6 +98,13 @@ if [ -f "/scripts/opencode.json.template" ]; then
     envsubst '$CIRCLECI_TOKEN $CIRCLECI_BASE_URL $DASHSCOPE_API_KEY $OPENCODE_GO_API_KEY' < /scripts/opencode.json.template > "$CONFIG_DIR/opencode.json"
 fi
 
+# Global AGENTS.md: the zero-dependency, V2-native cross-session memory channel.
+# Loaded into every session and combined with each repo's own AGENTS.md.
+if [ -f "/scripts/AGENTS.md" ]; then
+    echo "🧠 [Startup] Deploying global AGENTS.md..."
+    cp /scripts/AGENTS.md "$CONFIG_DIR/AGENTS.md"
+fi
+
 # Cleanup legacy files from removed plugins and superseded configs (one-way,
 # idempotent). The V1 tui.json is superseded by the V2 cli.json; this
 # deployment is headless, so a stale file left in the volume must not linger.
