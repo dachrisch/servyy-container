@@ -259,6 +259,11 @@ jobs:
           cd ansible/library
           python -m unittest discover -s tests -p "test_*.py" -v
 
+      - name: Run opencode script tests
+        run: |
+          cd opencode/scripts
+          python -m unittest test_prune_sessions -v
+
   molecule-test:
     name: Molecule Test (${{ matrix.role }}/${{ matrix.scenario }})
     needs: [lint-yaml, lint-ansible, lint-python, syntax-check]
