@@ -98,13 +98,11 @@ if [ -f "/scripts/opencode.json.template" ]; then
     envsubst '$CIRCLECI_TOKEN $CIRCLECI_BASE_URL $DASHSCOPE_API_KEY $OPENCODE_GO_API_KEY' < /scripts/opencode.json.template > "$CONFIG_DIR/opencode.json"
 fi
 
-if [ -f "/scripts/tui.json" ]; then
-    echo "⚙️ [Startup] Deploying tui.json..."
-    cp /scripts/tui.json "$CONFIG_DIR/tui.json"
-fi
-
-# Cleanup legacy files from removed plugins (one-way, idempotent).
+# Cleanup legacy files from removed plugins and superseded configs (one-way,
+# idempotent). The V1 tui.json is superseded by the V2 cli.json; this
+# deployment is headless, so a stale file left in the volume must not linger.
 rm -f "$CONFIG_DIR/opencode-mem.jsonc"
+rm -f "$CONFIG_DIR/tui.json"
 
 # 4b. Configure git to prefer SSH over HTTPS for github.com
 git config --global --add safe.directory '*'
@@ -123,5 +121,7 @@ if [ -f /scripts/provision-dev.sh ]; then
 fi
 
 echo "🚀 [Startup] Setup complete. Launching application..."
-# Execute the original command passed to the container, or default
-exec opencode web --hostname 0.0.0.0 --port 4096
+# V2 has no `web` subcommand (it would be parsed as a directory); `serve` is the
+# foreground V2 API + web server. Basic auth still comes from
+# OPENCODE_SERVER_PASSWORD.
+exec opencode serve --hostname 0.0.0.0 --port 4096
