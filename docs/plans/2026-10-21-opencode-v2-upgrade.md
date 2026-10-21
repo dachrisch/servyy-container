@@ -478,7 +478,7 @@ With the new "Deploy OpenCode session pruner" task this tag is sufficient for ev
 Notes:
 - `docker_service` runs `docker compose up -d` (`state: present`) so the new tag is pulled and the container is **recreated** — the `restart opencode container` handler alone would never switch images.
 - The first V2 boot runs the in-place DB migration (#7); expect a slower start on a 150 MB DB. Watch `docker logs -f opencode.web` rather than redeploying on the first unhealthy reading — and do **not** bump `start_period` without re-checking the `2m` watchtower gate in Task 1.
-- The first nightly prune after the upgrade is a one-way mass delete: on the current data at the production 168 h window it removes ~292 of 347 sessions (≈15k `session_message`, ≈60k `part`) and then `VACUUM`s the file. Task 5's backup is the only rollback for that, so do not skip it. To decouple the two risky events, run the pruner by hand once (Task 7) immediately after the migration and confirm the numbers before the 04:00 schedule does it unattended.
+- The first nightly prune after the upgrade could in principle be a one-way mass delete, so Task 5's backup is the only rollback and must not be skipped. Measured on codey after the migration: the DB holds only the last 7 days (116 sessions, oldest `time_created` 2026-10-15), so the run is a **no-op** — `no sessions idle for more than 168h, nothing to do`, exit 0. (The "~292 of 347 sessions" figure this plan quoted earlier came from a developer laptop's DB, not from codey.) Still run the pruner by hand once (Task 7) before the 04:00 schedule does it unattended.
 
 ### Task 7: Post-deploy verification
 
@@ -547,6 +547,14 @@ ssh codey.lehel.xyz "cd /home/cda/servyy-container/opencode && docker compose up
 | Todos / `external_directory` default changes alter agent behaviour | `experimental.todo: true` added; permission default accepted deliberately (Phase 0) |
 | `opencode-working-memory` disappears | replaced by the V2-native global `AGENTS.md` channel (Task 3b); durable facts are curated, not auto-captured — accepted in Phase 0 |
 | A later 2.x minor changes plugin/server behaviour again | Renovate keeps automerging minor/patch by owner decision; the container is pinned, so every bump is a reviewable PR and a fresh, revertible deploy |
+
+## Outcome (executed 2026-10-22)
+
+The upgrade ran on `servyy-test.lxd` first and then on codey. Verified results, the two
+corrections to this plan (production session count, stale plugin file on the test host) and the
+API-bridge smoke test are recorded in `history/2026-10-22_opencode-v2-upgrade.md`.
+
+---
 
 ## Out of scope
 
