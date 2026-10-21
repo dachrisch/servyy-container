@@ -99,15 +99,24 @@ What the native channel does and does not do: it restores *durable, curated* gui
 
 ```yaml
     healthcheck:
-      # V2 answers /health with 200 without auth; V1 answered 401 and this test
-      # greps for the 401. Keep the probe auth-free so a rotated
-      # OPENCODE_SERVER_PASSWORD cannot mask a dead server.
-      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://localhost:4096/health"]
+      # Two assertions: liveness, then the auth contract. V2 answers /health
+      # 200 without auth (V1 answered 401), so the old `grep '401 Unauthorized'`
+      # probe both conflated liveness with auth and hid curl's exit status
+      # behind the pipeline. An unauthenticated /api/info must still be 401 —
+      # that is what catches a boot with a missing or rotated
+      # OPENCODE_SERVER_PASSWORD.
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:4096/health && curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4096/api/info | grep -qx 401"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 20s
 ```
+
+Timings stay as they are on purpose: the watchtower health gate is a fixed
+`WATCHTOWER_HEALTH_CHECK_TIMEOUT: "2m"` (`portainer/docker-compose.yml:66`), and the
+current worst case is already `20 + 3 × (30 + 10) = 140 s`. Raising `start_period`
+would push it further past that gate, so first-boot time is measured on the test
+host instead (Phase 2) and the timings are revisited only with data.
 
 **Step 3: verify the file still parses**
 
@@ -177,7 +186,6 @@ git commit -m "feat(opencode): run V2 serve command and drop V1 tui.json"
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugins": [],
   "experimental": {
     "todo": true
   },
@@ -187,7 +195,7 @@ git commit -m "feat(opencode): run V2 serve command and drop V1 tui.json"
 ```
 
 Notes:
-- `plugin` (string array with `opencode-working-memory@1.6.9`) becomes `plugins` (#13); the memory plugin is dropped (#12) and its durable-facts role moves to the global `AGENTS.md` in Task 3b. Local plugin files under `/root/.config/opencode/plugins` are auto-discovered and need no config entry.
+- The `plugin` key is removed entirely rather than renamed to an empty `plugins: []` — an empty array carries no information. `plugin` is deprecated in the V2 schema in favour of `plugins`; local plugin files under `/root/.config/opencode/plugins` are auto-discovered and need no config entry. The memory plugin is dropped (#12) and its durable-facts role moves to the global `AGENTS.md` in Task 3b.
 - `provider`/`mcp` stay in V1 shape on purpose.
 
 **Step 2: confirm the template still renders**
@@ -279,65 +287,55 @@ git commit -m "feat(opencode): add global AGENTS.md as the cross-session memory 
 **Files:**
 - Modify: `opencode/scripts/prune-sessions.py`
 - Test: `opencode/scripts/test_prune_sessions.py` (new)
+- Modify: `.github/workflows/ci.yml` (run the suite in the Python test job)
 
-The pruner deletes by table today: `part`, `message`, `session_message`, `session_input`, `session_context_epoch`, `todo`, `session_share` keyed by `session_id`, then `session` by `time_created`. Under V2 (#9) the live rows are `session_v2` + `session_message` (+ `session_pending`, `session_inbox`), and the legacy tables — if they still exist after a migration — are history, not live data.
+The V1 pruner deletes from `part`, `message`, `session_message`, `session_input`, `session_context_epoch`, `todo`, `session_share` and then `session`. Under V2 (#9) live rows are `session_v2` + `session_message` (+ `session_inbox`, `session_pending`, `instruction_entry`, `instruction_state`) with `event`/`event_sequence` keyed by `aggregate_id`; the V1 tables survive a migration but are dead weight. Left alone, the nightly job would keep "pruning" the legacy `session` table, delete nothing live, and log success while the DB grows.
 
-**Step 1: write the failing test**
+**Implemented (as landed, `e4b2c7e` + `4eb20dc`):**
 
-Create `opencode/scripts/test_prune_sessions.py` that builds a throwaway SQLite DB with the **V2** tables (`session_v2`, `session_message`, `session_inbox`, `session_pending`, `event`, `event_sequence`), inserts one old and one fresh session, runs `prune_sessions()`, and asserts:
-- the old session is gone from `session_v2` and all its `session_message`/`session_inbox` rows are gone,
-- the fresh session and its messages survive,
-- a legacy-only `session`/`part` table (if present) is left untouched.
+1. **Selection is by inactivity, not creation**: both `time_created < cutoff` **and** `time_updated < cutoff`, with the live test as the exact complement (`time_created >= ? OR time_updated >= ?`). This came out of review: creation-only selection would have deleted a session created 74 h ago but active 0.9 h ago under the default window, and one session on the production 168 h window. Deleting a session mid-turn can also break the server's next write (FK to `session_v2`).
+2. **Legacy cleanup is defensive**: tables are existence-checked via `sqlite_master` (a fresh V2 DB has none of them, and `session_input`/`session_context_epoch` are absent from some migrated DBs — the old script would have crashed there). Legacy rows are deleted only for ids that are **not** live in `session_v2`, and child rows are cleaned for **all** deleted ids, including V2-only sessions.
+3. **Failure is loud**: a DB without `session_v2` exits 1 instead of silently succeeding. Deletes run in one transaction with an explicit `rollback()` on error.
+4. **Counts are distinct sessions** (a session present in both tables is logged once), the `pruned N sessions: …` log format is unchanged, and `vacuum` still runs only when rows were deleted.
+5. **`tool-output/` and `snapshot/<project>/<repo>/` pruning is untouched** (#10).
 
-**Step 2: run it, watch it fail**
-
-```bash
-cd /home/cda/dev/infrastructure/container/opencode/scripts && python3 -m unittest test_prune_sessions -v
-```
-
-Expected: FAIL (`no such table: session` / assertion on missing deletes).
-
-**Step 3: implement**
-
-- Replace the table/column map with the V2 set, keeping the legacy names only in an *optional* cleanup list that is applied only when the table exists (`sqlite_master` check), e.g.:
-
-```python
-V2_DEPENDENT_TABLES = [
-    ("session_message", "session_id"),
-    ("session_inbox", "session_id"),
-    ("session_pending", "session_id"),
-    ("event", "aggregate_id"),
-    ("event_sequence", "aggregate_id"),
-]
-V2_SESSION_TABLE = "session_v2"
-LEGACY_TABLES = [("part", "session_id"), ("message", "session_id"), ("todo", "session_id"),
-                 ("session_share", "session_id"), ("session_input", "session_id"),
-                 ("session_context_epoch", "session_id")]
-```
-
-- Delete sessions from `session_v2` by `time_created < cutoff` (ms epoch — verified same unit), delete dependents, then legacy rows for the same ids **only if the table exists**.
-- Leave `tool-output/` and `snapshot/` logic unchanged (#10).
-
-**Step 4: run the test again**
+**Tests (`opencode/scripts/test_prune_sessions.py`, 17 cases, stdlib `unittest`)** build throwaway SQLite DBs and assert real deletes, including the guards that mutation testing proved were previously unpinned: a legacy row whose `session_v2` twin is live survives; a partially migrated schema runs cleanly; a V2-only stale session is pruned (pins selection from the right table); a long-lived-but-active session survives; `main()` keeps fresh sessions and only vacuums when it deleted something; dependent-table cases iterate the script's own `V2_DEPENDENT_TABLES` so a newly added table cannot slip through.
 
 ```bash
-cd /home/cda/dev/infrastructure/container/opencode/scripts && python3 -m unittest test_prune_sessions -v
+cd opencode/scripts && python3 -m unittest test_prune_sessions -v     # 17 tests, OK
 ```
 
-Expected: PASS.
+The same command is now a step in CI's `test-custom-modules` job, so the suite actually runs on PRs instead of depending on memory.
 
-**Step 5: commit**
-
-```bash
-git add opencode/scripts/prune-sessions.py opencode/scripts/test_prune_sessions.py
-git commit -m "fix(opencode): prune V2 session tables (session_v2/session_message)"
-```
+**Known limitations (recorded, not fixed):**
+- A session that is the parent of a still-active child can be pruned, orphaning the child (`parent_id` is not consulted). Low probability at a 168 h window; verify on the test host with the query in Phase 2.
+- The schema mapping is hardcoded and only existence-checked, so a renamed dependent table would silently leak orphan rows (no data loss) rather than fail.
+- `instruction_blob` is content-addressed and never pruned — an unbounded-growth concern for later, unchanged by this task.
 
 ---
 
 ## Phase 2 — Validate on servyy-test.lxd
 
 Use the `servyy-branch-deploy` skill. The testing inventory does not enable `opencode`, so drive compose directly rather than the Ansible tag.
+
+**Step 0: pre-flight facts to confirm on the test host** (each one guards data, not uptime)
+
+Run these against the **test host's** pre-upgrade DB copy (the migration runs in place on first V2 boot, so take the copy from the running V1 container with the `sqlite3` backup API as in Task 5, not with `docker cp`):
+
+```bash
+# 1. Every legacy session must exist in session_v2 after migration. Anything else
+#    is a session whose content the pruner would delete with no V2 copy behind it.
+sqlite3 opencode.db "select count(*) from session s where not exists (select 1 from session_v2 v where v.id = s.id)"   # expect 0
+
+# 2. time_updated must actually move on activity — the inactivity guard is vacuous if it does not.
+sqlite3 opencode.db "select id, datetime(time_created/1000,'unixepoch') c, datetime(time_updated/1000,'unixepoch') u from session_v2 order by time_updated desc limit 5"
+#    then use one of those sessions in the test web UI and re-run the query: time_updated must advance.
+
+# 3. Parents whose children would outlive them (pruner does not consult parent_id).
+sqlite3 opencode.db "select count(*) from session_v2 p where p.parent_id is null and p.time_updated < strftime('%s','now','-168 hours')*1000 and exists (select 1 from session_v2 c where c.parent_id = p.id and c.time_updated >= strftime('%s','now','-168 hours')*1000)"   # expect 0
+```
+
+All three must be 0 / confirmed before the pruner is allowed to run in production. If (1) is non-zero, do not deploy — the migration dropped sessions and the V1 DB copy is the only remaining source.
 
 **Step 1: build/sync the branch config onto the test host**
 
@@ -420,7 +418,8 @@ cd ansible && ./servyy.sh --limit codey.lehel.xyz --tags user.docker.opencode
 
 Notes:
 - `docker_service` runs `docker compose up -d` (`state: present`) so the new tag is pulled and the container is **recreated** — the `restart opencode container` handler alone would never switch images.
-- The first V2 boot runs the in-place DB migration (#7); expect a slower start on a 150 MB DB. If the healthcheck flaps, bump `start_period` to `60s` and redeploy.
+- The first V2 boot runs the in-place DB migration (#7); expect a slower start on a 150 MB DB. Watch `docker logs -f opencode.web` rather than redeploying on the first unhealthy reading — and do **not** bump `start_period` without re-checking the `2m` watchtower gate in Task 1.
+- The first nightly prune after the upgrade is a one-way mass delete: on the current data at the production 168 h window it removes ~292 of 347 sessions (≈15k `session_message`, ≈60k `part`) and then `VACUUM`s the file. Task 5's backup is the only rollback for that, so do not skip it. To decouple the two risky events, run the pruner by hand once (Task 7) immediately after the migration and confirm the numbers before the 04:00 schedule does it unattended.
 
 ### Task 7: Post-deploy verification
 
