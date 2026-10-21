@@ -140,6 +140,51 @@ global `AGENTS.md` channel, and gate the cutover on a test-host run plus a pause
   (query included in the plan's Phase 2 pre-flight, returns 0 today).
 - `instruction_blob` rows are never garbage-collected.
 
+## Operational notes
+
+### Re-authenticating the `docstash` MCP (next use the token dies)
+
+MCP OAuth is loopback-only by design (RFC 8252; V2's `oauth.redirect_uri` must be a *loopback*
+URI, and opencode's CIMD document only registers `http://127.0.0.1/callback` and
+`http://localhost/callback`). Docstash's authorization server (`https://api.docstash.ai`) offers
+only `authorization_code` + PKCE + DCR — no device flow — so a headless host cannot complete the
+browser redirect, and the callback **cannot** be pointed at `code.lehel.xyz`.
+
+**Chosen procedure (option B, credential transplant).** Reuse a credential from a machine where
+the browser sign-in works (the developer laptop):
+
+1. In that client's DB, read the credential for the integration id (both hosts share it:
+   `mcp_c9d63cfacaf48c53`):
+   `select value from credential where integration_id='mcp_c9d63cfacaf48c53'`
+2. Verify the token still works before transplanting:
+   `POST https://mcp.docstash.ai` with `Authorization: Bearer <access>` and an MCP `initialize`
+   body → expect 200.
+3. Create it on the server through the API (no DB surgery):
+   `POST /api/credential` with `{"integrationID": "<id>", "label": "docstash", "value": <value>, "activate": true}`
+   → 200.
+4. Reconnect: `POST /api/experimental/mcp/docstash/connect` → 204, then `GET /api/mcp` →
+   `docstash -> connected`.
+
+Keep the token out of shell history and logs; pass it as a file (`--data @file`) with `0600`
+permissions and delete it afterwards.
+
+*Alternative (option A, not implemented):* pin `oauth.callback_port` (e.g. 19876), publish
+`127.0.0.1:19876` on codey's compose file, and `ssh -L 19876:127.0.0.1:19876 codey.lehel.xyz`
+while signing in via `/mcps`. The published loopback port is required — the container publishes
+nothing, so a plain SSH tunnel cannot reach the callback listener.
+
+### WAL growth after the in-place migration
+
+The V1→V2 migration wrote heavily, leaving a **1.2 GB `opencode.db-wal`** next to a 160 MB
+database on a host that was already 94% full. `PRAGMA wal_checkpoint(TRUNCATE)` from inside the
+container reclaimed it (WAL → 0), and `npm cache clean --force` reclaimed another ~1.8 GB
+(the weekly Ofelia job had not run yet). Disk went 99% → 87% (3.7 GB free).
+
+Worth a follow-up: have `prune-sessions.py` checkpoint the WAL (and periodically truncate it)
+rather than only vacuuming when rows were deleted — this migration shows a no-op prune can still
+leave a huge WAL.
+
+
 ## Related Decisions
 
 - `history/2026-08-08_opencode-api-key-forwardauth.md` — the API-key bridge this upgrade had to
