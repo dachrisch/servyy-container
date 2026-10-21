@@ -64,6 +64,54 @@ Candidates checked against the registry on 2026-10-21:
 
 What the native channel does and does not do: it restores *durable, curated* guidance across sessions (project facts, conventions, decisions) and beats the old plugin on portability and inspectability, but it does **not** auto-capture facts from a conversation. The task below migrates the durable part; if automatic capture is later judged necessary, `@mathew-cf/opencode-memory` is the pre-vetted option — and it should be benchmarked on codey's RAM before adopting.
 
+
+---
+
+## The API bridge: what survives, what breaks
+
+The public API door is not just the healthcheck. `code.lehel.xyz` is consumed by three
+services, and the `opencode-authgate` Caddy container is the bridge that lets two of them in
+without the human password:
+
+| Consumer | Auth | Calls |
+|---|---|---|
+| `dontforget` | `X-Api-Key` → forwardAuth injects Basic | `POST /api/session`, `POST /api/session/{id}/prompt`, `GET /api/session/{id}/message` (`src/search/opencodeClient.ts`) |
+| `job-search` | same | the above plus `GET /api/model` for model discovery (`packages/api/src/ai/opencode.ts`) |
+| `devhub` | Basic directly | create/prompt/message, `GET /api/model`, SSE `GET /api/session/{id}/event`, best-effort `POST /api/session/{id}/abort` (`src/lib/opencode.ts`) |
+
+**The bridge itself needs no change.** V2's `serve` still accepts the Basic credentials
+`OPENCODE_SERVER_PASSWORD` provides (verified: 401 without / 200 with), the authgate only
+translates `X-Api-Key` into that same header, and every path the Traefik router allows
+(`POST /api/session`, `/api/session/ses_*/...`, `GET /api/model`) exists in V2's API.
+
+**The contract behind it does.** Compared against the live V1 spec (`/doc` on the running
+1.19.3, 162 paths) and the V2 OpenAPI (121 paths, only **40 in common**):
+
+| Call | V1 1.19.3 | V2 2.1.2 | Effect |
+|---|---|---|---|
+| `POST /api/session/{id}/prompt` | body `{prompt: {...}}`, `prompt` required | body `{text: "..."}`, `text` required | **breaks all three consumers** (400). Both schemas are `additionalProperties: false`, so no request body works on both versions |
+| `POST /api/session` | `{id?, agent?, model?, location?}` | same set plus `parentID`/`title`/`metadata` | compatible |
+| `GET /api/session/{id}/message` | `{data: [SessionMessage], cursor}` | `{data: [Session.Message.Info], cursor}`; assistant keeps `type`/`finish`/`content[]`/`error` | shape-compatible; **ordering and default page size must be verified live** — the pollers read `data[0]` as "newest" |
+| `GET /api/model` | `{location, data: [ModelV2Info]}` | `{location, data: [Model.Info]}` — superset including `id`, `providerID`, `cost`, `status`, `enabled` | compatible |
+| `POST /api/session/{id}/interrupt` | present | present | fine (use this instead of `/abort`) |
+| `POST /api/session/{id}/abort` | absent | absent | already a no-op today; `devhub` should switch to `/interrupt` |
+| `GET /api/session/{id}/event` (SSE) | present | absent (V2 streams `GET /api/event`) | `devhub`'s live progress view degrades to poll-only; it already treats SSE as best-effort |
+
+**Sequencing.** Because the prompt body is mutually exclusive, the cutover cannot be made
+backward compatible by sending both keys. Two workable options:
+
+1. **Version-detect in the clients (recommended, zero downtime).** `GET /api/plugin` exists only
+   in V2 (V1 answers 404; `/api/health` is the inverse, V1-only). Have each client probe once,
+   cache the result, and send `{text}` on V2 / `{prompt:{text}}` on V1. Ship the clients first —
+   they keep working against 1.19.3 — then upgrade OpenCode with no ordering constraint.
+2. **Lockstep + pause.** Stop the `dontforget` and `job-search` schedulers, upgrade, deploy the
+   fixed clients, restart them. Simpler, but a 400 during the window can mark models unhealthy in
+   `job-search`'s cooldown registry, so it needs the schedulers genuinely paused, not just lucky
+   timing.
+
+Either way the client change is one line per repo at the prompt call, plus `abort` → `interrupt`
+in `devhub`, plus a live check that `GET /api/session/{id}/message` returns newest-first.
+
 ---
 
 ## Phase 1 — Repository changes
@@ -443,6 +491,11 @@ curl -s -o /dev/null -w '%{http_code}\n' https://code.lehel.xyz/health          
 ```
 
 Browser check on `https://code.lehel.xyz`: Basic-auth prompt (authgate), then the V2 web UI loads, a session starts, a model responds.
+
+API-consumer check — see "The API bridge" above. The bridge itself needs no change, but each
+consumer must be verified end-to-end: one real `dontforget` extraction, one `job-search` run
+(including its `GET /api/model` discovery), one `devhub` develop run. Before those clients are
+migrated, the prompt call fails with 400 — that is the expected state, not a regression to chase.
 
 API-consumer check (`job-search` and `devhub` both call this host — see Risks): with the `opencode.api_key` value used in `ansible/plays/roles/docker_service/templates/job-search/api.env.j2`:
 
