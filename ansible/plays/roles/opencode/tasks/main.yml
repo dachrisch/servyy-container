@@ -245,6 +245,19 @@
   # a V2 database, i.e. deleting live session_message rows for legacy sessions.
   tags: [user.docker.opencode]
 
+- name: Deploy OpenCode dev provisioning script
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../opencode/scripts/provision-dev.sh"
+    dest: "{{ ('/home/', create_user, 'servyy-container/opencode/scripts/provision-dev.sh') | path_join }}"
+    mode: '0755'
+  # No restart handler: startup.sh runs this from the bind-mounted ./scripts on
+  # every boot, so the new file is picked up at the next container start.
+  # Without this task the script only arrived via the repo checkout sync in
+  # play 1 (tag user.docker.repo), which `--tags user.docker.opencode` skips —
+  # leaving a tagged deploy running a stale copy of the script that provisions
+  # dev checkouts and SSH/git-crypt credentials.
+  tags: [user.docker.opencode]
+
 - name: Deploy OpenCode config template
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../../opencode/scripts/opencode.json.template"
