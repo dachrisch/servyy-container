@@ -132,6 +132,29 @@ restored instantly on the host without a revert: write the old
 (bind mount source in `~/servyy-container/traefik/`) — the file provider picks
 it up within seconds.
 
+## Result (deployed 2026-10-22, commit `a23f85d`)
+
+Deployed with `./servyy.sh --tags "user.docker.repo,user.docker.traefik"`
+(repo sync + traefik only), both `servy.lehel.xyz` and `codey.lehel.xyz`,
+`failed=0`. Each traefik container was recreated once (the mount/label change
+requires it) and came back healthy.
+
+| Check | servy | codey (via `--resolve …:217.217.227.124`) |
+|---|---|---|
+| anonymous `/dashboard/` | 401 | 401 |
+| `traefik:<passphrase>` | 200 | 200 |
+| `admin:admin` | 401 | 401 |
+| wrong password for `traefik` | 401 | — |
+
+- `PORKBUN_API_KEY`/`PORKBUN_SECRET_API_KEY` present in both containers
+  (`env_file` works) — certificate renewal path unchanged.
+- Vaultwarden: exactly one item `traefik - dashboard basic auth
+  (traefik.lehel.xyz)`, username `traefik`, password matches the seed.
+- No new Traefik errors; the only `level=error` line is the pre-existing,
+  documented `error-pages@file does not exist` startup race for `acme-http`.
+- Other vhosts unaffected (`pass.lehel.xyz` 200, `leaguesphere.app` 301,
+  `code.lehel.xyz` 200).
+
 ## Follow-ups
 
 - The two Porkbun key pairs (`porkbun_api` vs `traefik.porkbun_*`) should be
