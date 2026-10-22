@@ -67,9 +67,12 @@ Push it to Vaultwarden on every deploy, from the `opencode` role
   the YouTube notes line is unchanged from HEAD).
 - `ansible-lint --show-relpath` on the file: `Passed: 0 failure(s), 0 warning(s)`.
 - `ansible-playbook servyy.yml --syntax-check -i testing`: parses.
-- Deploy `./servyy.sh --limit codey.lehel.xyz --tags "user.repo,user.opencode"` →
-  push task reported `created`; item `opencode - server password` present in
-  `pass.lehel.xyz`.
+- Deploy `./servyy.sh --limit codey.lehel.xyz --tags user.opencode` (the new task runs from the
+  controller's checkout, so no repo sync was needed): the item was created on the first run
+  and reported `unchanged` on a second (idempotency confirmed).
+- Independent check with `bw list items --search opencode` after unlocking: item
+  `opencode - server password` exists and its password equals
+  `secrets.yml opencode.server_password` (compared in-process, not printed).
 
 ### Known Issues
 
@@ -77,6 +80,11 @@ Push it to Vaultwarden on every deploy, from the `opencode` role
   without codey in the limit will not refresh the item.
 - `bw` must be logged in / loginable via the API key on the controller; a missing
   `~/.ssh/vw.key` silently skips the whole push (`vw_master_password` gate).
+- The first deploy failed at `bw sync` inside the `vaultwarden` role's unlock step
+  (no_log hid the cause); a rerun synced fine and the item was already created by the run
+  that "failed". The push happens before the handlers, so a late sync failure reports the
+  play as failed even though the write succeeded. `bw sync` in `roles/vaultwarden/tasks/
+  unlock.yml` has no retry around a flaky self-hosted sync.
 
 ## Alternatives Considered
 
