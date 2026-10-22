@@ -48,3 +48,22 @@
     content: "{{ servyy_deploy_key_content }}"
     dest: "~/.ssh/id_servyy_container_deploy"
     mode: '0600'
+
+# The git module above passes key_file only for the duration of an Ansible run.
+# An interactive `git pull` in the same checkout runs plain ssh, which offers
+# the default identities (id_rsa/id_ed25519/agent) and never this deploy key,
+# so a git@github.com: remote fails with "Permission denied (publickey)".
+# This block makes the deploy key the identity for github.com outside Ansible
+# too, so the SSH remote works interactively and survives redeployment.
+- name: Configure ssh to use the deploy key for github.com
+  ansible.builtin.blockinfile:
+    path: "~/.ssh/config"
+    create: true
+    mode: '0600'
+    marker: "# {mark} ANSIBLE MANAGED - servyy-container GitHub deploy key"
+    block: |
+      Host github.com
+          HostName github.com
+          User git
+          IdentityFile ~/.ssh/id_servyy_container_deploy
+          IdentitiesOnly yes
