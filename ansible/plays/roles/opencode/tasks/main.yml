@@ -92,6 +92,31 @@
     - inventory_hostname == 'codey.lehel.xyz'
     - opencode.youtube_oauth_token_json | default('') | length > 0
 
+- name: Back up opencode server password to Vaultwarden
+  # The server password has no change event (unlike the SSH key), so push on
+  # every deploy; push_items.yml only creates the item when missing and updates
+  # it when the value changed. Pushed once, without a host suffix: the value is
+  # a single global secret (secrets.yml opencode.server_password), so every host
+  # running opencode shares it. Kept because it is the operator's login for the
+  # V2 web UI/app ("Use password" on the pairing screen) and is otherwise only
+  # recoverable from the git-crypt'd secrets.yml.
+  ansible.builtin.include_tasks: vaultwarden_push.yml
+  vars:
+    opencode_vaultwarden_items:
+      - name: "opencode - server password"
+        secret: "{{ opencode.server_password }}"
+        notes: >-
+          HTTP Basic auth password for the OpenCode server (OPENCODE_SERVER_PASSWORD) and,
+          since the V2 upgrade (2026-10-22), the operator's web UI/app login: the pairing
+          screen's "Use password" fallback when `opencode pair` is unavailable. Source:
+          secrets.yml opencode.server_password; rendered to opencode.env by the opencode
+          role. Same value on every host running opencode (codey, servyy-test). Changing it
+          signs out every connected web/app session (30-day cookies) and must be followed by
+          a redeploy so opencode.env and this item stay in sync.
+  when:
+    - inventory_hostname == 'codey.lehel.xyz'
+    - opencode.server_password | default('') | length > 0
+
 - name: Ensure GitHub is in known_hosts
   ansible.builtin.lineinfile:
     path: "{{ opencode_known_hosts }}"
