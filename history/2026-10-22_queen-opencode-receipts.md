@@ -35,4 +35,10 @@ The first real click ("Beleg auslesen", 09:22 UTC) failed: `opencode POST /api/s
 - End-to-end with the shipped code (Drive → PDF text → prompt → strict parse, no DB write) on the Augustiner receipt of the failed transaction: 367 text chars, paid model, **8.9 s**, valid reading (`totalCents: 2520`, 19 %, account 6640).
 - The transaction keeps its cached `failed` reading until it is read again: a click re-reads it (failed readings always retry), and the nightly reconcile reads it too. Because the receipt is 25.20 € against a 54.60 € transaction, the row will show the intended amount-mismatch hint.
 
+### Multi-receipt follow-up (same day, queen 0.24.1)
+
+That transaction is backed by **two** receipts: `… 08/2026.pdf` (25,20 €) and `… 08_2/2026.pdf` (29,40 €) — 54,60 € together. queen 0.23.0 (`bumbleflies/queen` PR #151) reads the attached file, the clear Drive match and its `_2` siblings, then matches the smallest set whose totals add up exactly. 0.24.1 (PR #154) fixes the file name on a reused legacy reading. No infra change; the image rolls via `bumblecode/queen:latest`.
+
+Verified on production with the shipped 0.24.1 code: candidates `08/2026` + `08_2/2026`, readings 2520 + 2940, match 5460 with lines 19 % 4240 and 7 % 1220 on 6640; the row now suggests exactly that split ("aus 2 Belegen gelesen: Augustiner Keller").
+
 Not yet exercised: an actual "Beleg auslesen" run on a receipt PDF (needs an upload in the UI).
