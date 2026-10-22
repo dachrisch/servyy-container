@@ -28,4 +28,11 @@ PR #216 → merged as `fdd84cf`.
 
 The first real click ("Beleg auslesen", 09:22 UTC) failed: `opencode POST /api/session/ses_…/prompt failed: 400`. code.lehel.xyz runs OpenCode **V2**, which takes `{ text }` on the prompt endpoint, while queen 0.22.1 still sent the V1 `{ prompt: { text } }`. V2 also prepends `idle` entries to the session message list, so the poller's `data[0]` check would have timed out next. Fixed in `bumbleflies/queen` PR #148 → 0.22.2 (`QUEEN_OPENCODE_FREE_MODELS` comes from that release).
 
+### Rollout of 0.22.2 + paid-only chain (PR #217, merged `8333112`)
+
+- Test: deployed, `finance.queen` recreated on 0.22.2 with `QUEEN_OPENCODE_FREE_MODELS=false`; the shipped `opencodeFromEnv().modelChain()` is exactly `[opencode-go:deepseek-v4.1-flash]` and a live `ask()` answered in 17.7 s.
+- Production: same deploy path (`user.docker.repo,user.docker.env.finance,user.docker.finance`), container healthy on 0.22.2, `/health` ok, `QUEEN_OPENCODE_FREE_MODELS=false` present.
+- End-to-end with the shipped code (Drive → PDF text → prompt → strict parse, no DB write) on the Augustiner receipt of the failed transaction: 367 text chars, paid model, **8.9 s**, valid reading (`totalCents: 2520`, 19 %, account 6640).
+- The transaction keeps its cached `failed` reading until it is read again: a click re-reads it (failed readings always retry), and the nightly reconcile reads it too. Because the receipt is 25.20 € against a 54.60 € transaction, the row will show the intended amount-mismatch hint.
+
 Not yet exercised: an actual "Beleg auslesen" run on a receipt PDF (needs an upload in the UI).
