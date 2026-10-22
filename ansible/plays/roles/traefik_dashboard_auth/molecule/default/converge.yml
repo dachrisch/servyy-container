@@ -1,0 +1,43 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    traefik_dashboard_password: "Test-Passphrase-Alpha-Bravo-7"
+    traefik_dashboard_push_vaultwarden: false
+    # Consumed by docker_service/templates/traefik/traefik.env.j2
+    traefik:
+      porkbun_api_key: "pk1_test"
+      porkbun_secret_api_key: "sk1_test"
+
+  pre_tasks:
+    - name: Create the service directory
+      ansible.builtin.file:
+        path: /home/molecule/traefik
+        state: directory
+        mode: "0755"
+
+  tasks:
+    - name: Compute the dashboard htpasswd entry
+      ansible.builtin.include_role:
+        name: traefik_dashboard_auth
+
+    - name: Render the traefik env templates (no compose, like `manual` services)
+      ansible.builtin.include_role:
+        name: docker_service
+        tasks_from: main.yml
+      vars:
+        service_dir: traefik
+        domain: example.org
+        manual: true
+        docker:
+          remote_dir: /home/molecule
+        extension_drive:
+          path: /var/lib
+        env_templates:
+          - src: docker.env.j2
+            dest: .env
+          - src: traefik/traefik.env.j2
+            dest: traefik.env
+          - src: traefik/dashboard-auth.htpasswd.j2
+            dest: dashboard-auth.htpasswd

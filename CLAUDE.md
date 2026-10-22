@@ -645,7 +645,7 @@ When responding to requests like "deploy X" or "fix error in X":
 
 | Service | Container Name | URL | Purpose |
 |---------|---------------|-----|---------|
-| traefik | traefik.traefik | traefik.lehel.xyz | Reverse proxy, SSL |
+| traefik | traefik.traefik | traefik.lehel.xyz | Reverse proxy, SSL. Dashboard is behind HTTP basic auth (`traefik-auth` file-provider middleware, credentials in Vaultwarden — see `history/2026-10-22_traefik-dashboard-password-rotation.md`) |
 | monitor | monitor.{grafana,prometheus,loki,promtail} | monitor.lehel.xyz | Observability stack |
 | photoprism | photoprism.photoprism | photoprism.lehel.xyz | Photo library |
 | git | git.gitea | git.lehel.xyz | Git hosting |
@@ -1033,6 +1033,7 @@ curl -I https://{service}.lehel.xyz
 | `/var/log/fail2ban-loki.log` | fail2ban blocklist log |
 | `ansible/plays/vars/secrets.yml` | Encrypted Ansible secrets (incl. `vaultwarden_api` API key) |
 | `ansible/plays/vars/.restic_password_{home,root,ls_db}` | Restic password seed files (**source of truth**) |
+| `ansible/plays/vars/.traefik_dashboard_password` | Traefik dashboard passphrase seed (**source of truth**, gitignored; hashed into `traefik/dashboard-auth.htpasswd`) |
 | `ansible/plays/roles/restic/tasks/vaultwarden_push.yml` | Push restic passwords into Vaultwarden (handler-driven backup copy) |
 | `ansible/plays/roles/docker_service/templates/docker.env.j2` | Default service .env template |
 | `ansible/plays/roles/docker_service/templates/{service}/` | Per-service env templates |
@@ -1087,7 +1088,7 @@ ssh lehel.xyz "docker exec leaguesphere-demo.demo-app /bin/bash -c 'rm -f /app/.
 4. **Off-host Password Backup (Vaultwarden)**
    - The restic passwords are mirrored into Vaultwarden (`pass.lehel.xyz`) as a human-readable backup copy
    - **Source of truth stays the seed files** `ansible/plays/vars/.restic_password_*` — Vaultwarden is a *copy*, not the master
-   - **Automatic, handler-driven:** the restic play (`plays/restic.yml`) prompts for the Vaultwarden master password at the start of every run (press enter to skip). The push fires only when `init.yml` actually writes/updates an `/etc/restic/env.*` file, and only on production (`lehel.xyz`). Idempotent — creates missing Login items only. API key from `secrets.yml` (`vaultwarden_api`).
+   - **Automatic, handler-driven:** the play resolves the Vaultwarden master password at the start of every run — read from `~/.ssh/vw.key` (mode 0600) when present, otherwise prompted (press enter to skip; `-e vw_master_password=…` always wins). The push fires only when `init.yml` actually writes/updates an `/etc/restic/env.*` file, and only on production (`lehel.xyz`). Idempotent — creates missing Login items only. API key from `secrets.yml` (`vaultwarden_api`).
    - To force a push when nothing changed, re-run with the env files dirty (or temporarily touch them) — there is no standalone playbook.
    - ⚠️ Do **not** make Vaultwarden the source restic reads from at deploy time — restic backs up Vaultwarden, so a bare-metal restore must not depend on it. Keep an offline copy of the master + restic passwords.
    - Reference: `history/2026-06-29_restic-vaultwarden-copy.md`

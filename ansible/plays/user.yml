@@ -413,9 +413,25 @@
 
   roles:
     # Simple services — generic .env only
+    # Traefik computes its dashboard basic-auth htpasswd entry first (seed:
+    # plays/vars/.traefik_dashboard_password, mirrored to Vaultwarden), then the
+    # docker_service templates below render it plus the Porkbun ACME keys.
+    - role: traefik_dashboard_auth
+      when: "'traefik' in (services | default([]))"
+      tags: [user.docker, user.docker.traefik]
+
     - role: docker_service
       vars:
         service_dir: traefik
+        env_templates:
+          - src: docker.env.j2
+            dest: .env
+          # Porkbun API keys for the DNS-01 resolver (env_file in compose).
+          - src: traefik/traefik.env.j2
+            dest: traefik.env
+          # basicAuth usersFile consumed by traefik/dynamic.yaml (`traefik-auth`).
+          - src: traefik/dashboard-auth.htpasswd.j2
+            dest: dashboard-auth.htpasswd
       when: "'traefik' in (services | default([]))"
       tags: [user.docker, user.docker.traefik]
 

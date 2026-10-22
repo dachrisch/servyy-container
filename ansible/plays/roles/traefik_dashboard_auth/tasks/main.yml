@@ -1,0 +1,77 @@
+---
+# Traefik dashboard basic auth.
+#
+# Turns the plaintext passphrase seed (traefik_dashboard_password, loaded from
+# the gitignored plays/vars/.traefik_dashboard_password via vars/secrets.yml)
+# into an htpasswd entry, and mirrors the plaintext into Vaultwarden.
+#
+# Traefik reads that entry from a mounted usersFile (traefik/dynamic.yaml,
+# middleware `traefik-auth`) rather than from Docker labels, so rotating the
+# seed only changes a file the file provider watches — the traefik container is
+# NOT recreated and there is no reverse-proxy downtime.
+#
+# The APR1 salt is derived from the passphrase itself: the rendered hash is
+# therefore stable across routine deploys (no constant file churn / reloads)
+# while a rotated seed automatically yields a different salt and hash. APR1 is
+# the format the dashboard already used; Traefik accepts it over TLS fine.
+
+- name: Assert the Traefik dashboard passphrase seed is usable
+  ansible.builtin.assert:
+    that:
+      - traefik_dashboard_password | default('') | length >= 16
+      - '":" not in traefik_dashboard_password'
+    fail_msg: >-
+      The Traefik dashboard passphrase is missing or unusable. Create the seed
+      file plays/vars/.traefik_dashboard_password (mode 0600, one line, no
+      colon — htpasswd uses ':' as the username/password separator), e.g. with
+      `bw generate --passphrase --words 5 --separator - -c --includeNumber`.
+      Keep it in the disaster-recovery backup set: the Vaultwarden item is only
+      a copy, and a lost seed means re-issuing the password.
+    quiet: true
+
+- name: Derive the APR1 salt from the passphrase (deterministic)
+  ansible.builtin.set_fact:
+    traefik_dashboard_auth_salt: "{{ (traefik_dashboard_password | hash('sha256'))[:8] }}"
+  no_log: true
+
+- name: Compute the htpasswd entry (APR1)
+  ansible.builtin.command:
+    cmd: "openssl passwd -apr1 -salt {{ traefik_dashboard_auth_salt }} -stdin"
+    stdin: "{{ traefik_dashboard_password }}"
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  register: traefik_dashboard_hash_result
+  changed_when: false
+  no_log: true
+
+- name: Expose the htpasswd entry for the traefik env templates
+  ansible.builtin.set_fact:
+    traefik_dashboard_auth_users: >-
+      {{ traefik_dashboard_username }}:{{ traefik_dashboard_hash_result.stdout | trim }}
+  no_log: true
+
+# Convenience copy only (mirrors the restic-password / opencode-key /
+# vaultwarden-admin-token pattern); the seed stays the source of truth. Skipped
+# when the operator supplied no Vaultwarden master password (or when the seed
+# came from ~/.ssh/vw.key it is always supplied — see ansible/servyy.yml), and
+# host-guarded because vw_server always points at the real pass.lehel.xyz.
+- name: Push Traefik dashboard credentials to Vaultwarden
+  ansible.builtin.include_role:
+    name: vaultwarden
+    tasks_from: push_items.yml
+  vars:
+    vaultwarden_item_username: "{{ traefik_dashboard_username }}"
+    vaultwarden_items:
+      - name: "traefik - dashboard basic auth (traefik.lehel.xyz)"
+        secret: "{{ traefik_dashboard_password }}"
+        notes: >-
+          HTTP basic auth for https://traefik.lehel.xyz — username
+          "{{ traefik_dashboard_username }}". Copy of the Ansible seed
+          plays/vars/.traefik_dashboard_password (gitignored, source of truth);
+          Traefik stores only its APR1 hash (traefik/dashboard-auth.htpasswd),
+          so this item is the recoverable plaintext.
+  when:
+    - traefik_dashboard_push_vaultwarden | bool
+    - inventory_hostname == 'servy.lehel.xyz'
+    - vw_master_password | default('') | length > 0

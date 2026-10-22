@@ -5,25 +5,45 @@
 # > usermod -aG sudo username
 # https://linuxize.com/post/how-to-add-user-to-sudoers-in-ubuntu/
 
-# Prompt for Vaultwarden master password once at the start (used by multiple plays)
-# Tagged with always so it runs even when --tags filters specific plays
-- name: Prompt for Vaultwarden credentials
+# Resolve the Vaultwarden master password once at the start (used by multiple
+# plays). It comes from ~/.ssh/vw.key when that file exists (mode 0600, one
+# line) — no prompt on every run — and only falls back to an interactive prompt
+# when the file is missing. `-e vw_master_password=…` still wins over both.
+# Tagged with always so it runs even when --tags filters specific plays.
+- name: Resolve Vaultwarden credentials
   hosts: all
   gather_facts: false
-  run_once: true
-  vars_prompt:
-    - name: vw_master_password
-      prompt: Vaultwarden master password (leave blank to skip backups to Vaultwarden)
-      private: true
-      default: ""
   tasks:
-    - name: Store vw_master_password as cacheable fact for all plays
+    - name: Read the Vaultwarden master password from ~/.ssh/vw.key (when present)
       ansible.builtin.set_fact:
-        vw_master_password: "{{ vw_master_password }}"
-        cacheable: true
+        vw_master_password: "{{ lookup('file', vw_key_path, errors='ignore') | trim }}"
+      vars:
+        vw_key_path: "{{ lookup('env', 'HOME') }}/.ssh/vw.key"
+      when: vw_master_password | default('') | length == 0
+      no_log: true
+
+    - name: Prompt for the Vaultwarden master password (no ~/.ssh/vw.key)
+      ansible.builtin.pause:
+        prompt: >-
+          Vaultwarden master password (leave blank to skip pushes to
+          Vaultwarden; create ~/.ssh/vw.key to skip this prompt next time)
+        echo: false
+      register: vw_master_prompt
+      when: vw_master_password | default('') | length == 0
+      run_once: true
+
+    # Deliberately NOT `cacheable: true`: ansible.cfg uses a jsonfile fact cache
+    # (/tmp/ansible_facts), and the master password must not be written to disk
+    # there. Plain set_fact facts already carry over to every later play in the
+    # same run, which is all this play needs.
+    - name: Store the prompted Vaultwarden master password as a fact
+      ansible.builtin.set_fact:
+        vw_master_password: "{{ vw_master_prompt.user_input | default('') }}"
+      when: vw_master_password | default('') | length == 0
       run_once: false  # Set on all hosts so fact is available everywhere
+      no_log: true
   tags:
-    - always  # Ensures password prompt runs even with --tags filtering
+    - always  # Ensures the password resolution runs even with --tags filtering
 
 - import_playbook: plays/system.yml
 - import_playbook: plays/user.yml

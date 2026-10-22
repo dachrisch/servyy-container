@@ -1,0 +1,56 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  vars:
+    traefik_dashboard_password: "Test-Passphrase-Alpha-Bravo-7"
+    expected_salt: "{{ ('Test-Passphrase-Alpha-Bravo-7' | hash('sha256'))[:8] }}"
+
+  tasks:
+    - name: Compute the expected htpasswd entry with openssl
+      ansible.builtin.command:
+        cmd: "openssl passwd -apr1 -salt {{ expected_salt }} -stdin"
+        stdin: "{{ traefik_dashboard_password }}"
+      delegate_to: localhost
+      become: false
+      check_mode: false
+      changed_when: false
+      register: expected_entry
+      no_log: true
+
+    - name: Slurp the rendered htpasswd file
+      ansible.builtin.slurp:
+        src: /home/molecule/traefik/dashboard-auth.htpasswd
+      register: htpasswd_file
+      no_log: true
+
+    - name: Assert the htpasswd entry is user:apr1-hash of the passphrase
+      ansible.builtin.assert:
+        that:
+          - (htpasswd_file.content | b64decode | trim) == ('traefik:' ~ (expected_entry.stdout | trim))
+        fail_msg: "rendered dashboard-auth.htpasswd does not match the passphrase"
+        success_msg: "htpasswd entry matches the passphrase"
+      no_log: true
+
+    - name: Assert the htpasswd file uses the APR1 scheme
+      ansible.builtin.assert:
+        that:
+          - (htpasswd_file.content | b64decode).startswith('traefik:$apr1$')
+        fail_msg: "htpasswd entry is not an APR1 hash"
+
+    - name: Check the rendered htpasswd file permissions
+      ansible.builtin.stat:
+        path: /home/molecule/traefik/dashboard-auth.htpasswd
+      register: htpasswd_stat
+      failed_when: htpasswd_stat.stat.mode != '0600'
+
+    - name: Verify traefik.env carries the Porkbun credentials (moved out of compose)
+      ansible.builtin.command:
+        cmd: grep -qx 'PORKBUN_API_KEY=pk1_test' /home/molecule/traefik/traefik.env
+      changed_when: false
+
+    - name: Verify traefik.env has mode 0600
+      ansible.builtin.stat:
+        path: /home/molecule/traefik/traefik.env
+      register: traefik_env_stat
+      failed_when: traefik_env_stat.stat.mode != '0600'

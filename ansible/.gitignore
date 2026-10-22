@@ -10,6 +10,12 @@ vars/.restic_password_ls_db
 plays/vars/.vaultwarden_admin_token
 vars/.vaultwarden_admin_token
 
+# Traefik dashboard basic-auth passphrase (generated once by hand with
+# `bw generate --passphrase ...` and read via lookup('file', …) — see
+# plays/vars/secrets.yml and roles/traefik_dashboard_auth)
+plays/vars/.traefik_dashboard_password
+vars/.traefik_dashboard_password
+
 # Grafana admin password seed (generated and persisted by Ansible via
 # lookup('password', 'vars/.monitor_grafana_admin_password ...'))
 plays/vars/.monitor_grafana_admin_password

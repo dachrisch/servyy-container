@@ -290,6 +290,8 @@ jobs:
             scenario: default
           - role: docker_service
             scenario: gh-wrapper
+          - role: traefik_dashboard_auth
+            scenario: default
           - role: system_probe
             scenario: default
           - role: system_probe
