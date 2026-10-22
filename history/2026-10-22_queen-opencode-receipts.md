@@ -8,7 +8,7 @@ queen 0.22+ (bumbleflies/queen PR #142, "booking automation") reads receipt PDFs
 - `OPENCODE_BASE_URL=https://code.lehel.xyz`
 - `OPENCODE_API_KEY={{ opencode.api_key }}`
 
-This reuses the existing key that job-search, devhub and dontforget use. opencode-authgate already accepts it, so the authgate needs no change. The model settings (`QUEEN_OPENCODE_MODELS`, `QUEEN_OPENCODE_PAID_MODEL`) are left unset, so queen's defaults apply: free registry models, then `opencode-go:deepseek-v4.1-flash` as the single paid fallback.
+This reuses the existing key that job-search, devhub and dontforget use. opencode-authgate already accepts it, so the authgate needs no change. `QUEEN_OPENCODE_FREE_MODELS=false` (queen 0.22.2+) skips the free registry models and leaves only the paid `opencode-go:deepseek-v4.1-flash`: the free models took 100 s+ per attempt, which eats the 180 s reading budget before the fallback is reached.
 
 ## Files changed
 - `ansible/plays/roles/docker_service/templates/finance/queen.env.j2`
@@ -23,5 +23,9 @@ PR #216 → merged as `fdd84cf`.
 1. servyy-test: `./servyy-test.sh --tags user.docker.env.finance,user.docker.finance`, then `docker compose pull queen && docker compose up -d queen` to pick up `bumblecode/queen:latest` (0.22.1). Verified: `finance.queen` healthy, `/health` → `{"status":"ok","db":"connected"}`, `OpencodeClient` present, and `GET https://code.lehel.xyz/api/model` with the container's key returns 200.
    Note: Traefik is not running on servyy-test right now, so the test-host URL (`queen.servyy-test.lxd`) is unreachable — verification was done via `docker exec` on the container.
 2. Production: `./servyy.sh --tags user.docker.repo,user.docker.env.finance,user.docker.finance`. Verified: `finance.queen` recreated on 0.22.1, both `OPENCODE_*` vars present, `https://queen.bumbleflies.de/health` → `{"status":"ok","db":"connected"}`, opencode `/api/model` with the container key returns 200.
+
+## Follow-up: the key alone was not enough (same day)
+
+The first real click ("Beleg auslesen", 09:22 UTC) failed: `opencode POST /api/session/ses_…/prompt failed: 400`. code.lehel.xyz runs OpenCode **V2**, which takes `{ text }` on the prompt endpoint, while queen 0.22.1 still sent the V1 `{ prompt: { text } }`. V2 also prepends `idle` entries to the session message list, so the poller's `data[0]` check would have timed out next. Fixed in `bumbleflies/queen` PR #148 → 0.22.2 (`QUEEN_OPENCODE_FREE_MODELS` comes from that release).
 
 Not yet exercised: an actual "Beleg auslesen" run on a receipt PDF (needs an upload in the UI).
