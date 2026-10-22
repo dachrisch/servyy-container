@@ -1,6 +1,9 @@
 ---
 - include_tasks: env.yml
 
+- include_tasks: permissions.yml
+  when: world_readable_paths | length > 0
+
 - name: Ensure external volumes exist for {{ service_dir }}
   community.docker.docker_volume:
     name: "{{ item }}"

@@ -78,6 +78,14 @@ noted in `ansible/production` for `bumbleflies.de`.
 
 ## Outage found in passing (not caused by the transfer)
 
+> **Corrected 2026-10-22:** the "two independent causes" conclusion below is
+> wrong. There is one chain — the deploy checkout's umask produces `0660` site
+> files, nginx (uid 101) cannot read them and answers `403`, the container goes
+> **unhealthy**, and Traefik withdraws a container's routers while it is
+> unhealthy, so requests hit the catch-all 404. The `chmod` below only held until
+> the next deploy rewrote the files. See
+> `history/2026-10-22_hoefer-permissions-outage.md`.
+
 `https://höfer-architekten.de/` returned Traefik's branded **404** from
 `catchall-websecure@file` — i.e. no router matched, requests never reached
 nginx. First occurrence in the access log: `2026-10-20T15:47:20Z`, 785 requests,

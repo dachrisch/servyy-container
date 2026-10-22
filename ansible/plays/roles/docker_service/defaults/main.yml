@@ -27,3 +27,13 @@ manual: false
 # referenced as `external: true` by this service but owned by another compose
 # project). Ordering-independent: whichever service runs first creates it.
 ensure_volumes: []
+# Paths (relative to the service dir) holding content a container has to read as
+# a *non-root* uid, typically a bind-mounted site served by an nginx worker.
+# The deploy checkout runs under umask 007 (roles/user/tasks/includes/repository.yml),
+# so tracked files land as 0660 and directories as 0770 -- readable by the
+# checkout owner and the docker group only. A container process that is neither
+# (nginx worker = uid 101) gets 403 on every request, fails its healthcheck, and
+# Traefik then withdraws the container's routers for as long as it is unhealthy
+# (the site answers with the catch-all 404 instead). Paths listed here are
+# chmod a+rX'ed after the env files are rendered: dirs 0775, files 0664.
+world_readable_paths: []

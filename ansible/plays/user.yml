@@ -463,6 +463,10 @@
     - role: docker_service
       vars:
         service_dir: achim-hoefer
+        # serve/ is bind-mounted into nginx:stable and must stay readable by the
+        # nginx worker (uid 101), which the checkout's umask 007 (0660) prevents.
+        world_readable_paths:
+          - serve
       when: "'achim-hoefer' in (services | default([]))"
       tags: [user.docker, user.docker.achim-hoefer]
 

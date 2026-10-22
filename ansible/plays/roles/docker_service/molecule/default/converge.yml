@@ -45,6 +45,22 @@
         - opencode
         - claude-hub
         - monitor
+        - static-svc
+
+    # Content a container has to read as a non-root uid, as the git checkout
+    # leaves it under umask 007 (0660/0770) -- the condition that made the
+    # höfer-architekten site answer 403 and lose its Traefik routers.
+    - name: Create 0770 bind-mount directory for static-svc
+      ansible.builtin.file:
+        path: /home/molecule/static-svc/serve
+        state: directory
+        mode: "0770"
+
+    - name: Create unreadable bind-mount content for static-svc
+      ansible.builtin.copy:
+        content: "static site\n"
+        dest: /home/molecule/static-svc/serve/index.html
+        mode: "0660"
 
   tasks:
     - name: Deploy simple service
@@ -75,6 +91,15 @@
             dest: api.env
           - src: job-search/crawler.env.j2
             dest: crawler.env
+
+    - name: Deploy static service (world-readable bind-mount content)
+      ansible.builtin.include_role:
+        name: docker_service
+        tasks_from: main.yml
+      vars:
+        service_dir: static-svc
+        world_readable_paths:
+          - serve
 
     - name: Deploy manual service (env only, no compose)
       ansible.builtin.include_role:

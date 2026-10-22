@@ -133,6 +133,12 @@
     - molecule-notest
   when: lock_state is defined and lock_state.changed
 
+# Ownership only -- modes are left as the checkout produced them. Git restores
+# tracked files as 0666 & ~umask, and this play runs under umask 007, so files
+# land as 0660 (dirs 0770): readable by create_user and the docker group only.
+# That is intentional for the git-crypt'd secret files, but content that a
+# container reads as a non-root uid needs world-read -- services declare such
+# paths via `world_readable_paths` in the docker_service role.
 - name: "Set correct ownership for {{ remote_dir }}"
   shell: |
     find "{{ remote_dir }}" -type f -exec chown "{{ create_user }}:docker" {} + 2>/dev/null || true

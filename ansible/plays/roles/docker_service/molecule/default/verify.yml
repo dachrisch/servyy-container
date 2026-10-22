@@ -25,6 +25,26 @@
         cmd: grep -q 'SERVICE_NAME=simple-svc' /home/molecule/simple-svc/.env
       changed_when: false
 
+    - name: Stat bind-mount content and its directory for world_readable_paths
+      ansible.builtin.stat:
+        path: "/home/molecule/static-svc/serve/{{ item }}"
+      loop:
+        - ""
+        - index.html
+      register: static_svc_content
+
+    - name: Verify bind-mount content is world-readable (0660 -> 0664)
+      ansible.builtin.assert:
+        that:
+          - static_svc_content.results[1].stat.mode == '0664'
+        fail_msg: "index.html is {{ static_svc_content.results[1].stat.mode }}, expected 0664"
+
+    - name: Verify bind-mount directory keeps traversal (0770 -> 0775)
+      ansible.builtin.assert:
+        that:
+          - static_svc_content.results[0].stat.mode == '0775'
+        fail_msg: "serve/ is {{ static_svc_content.results[0].stat.mode }}, expected 0775"
+
     - name: Verify domain-override service .env exists
       ansible.builtin.stat:
         path: /home/molecule/domain-svc/.env
