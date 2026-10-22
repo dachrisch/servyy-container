@@ -21,11 +21,15 @@
   set_fact:
     git_servyy_reachable: "{{ 'yes' if head_request_result.status == 200 else 'no' }}"
   when: check_git_servyy_reachable | default(false)
+  tags:
+    - user.repo.clone
 
 - name: Set reachability fact to true when check is skipped
   set_fact:
     git_servyy_reachable: "yes"
   when: not (check_git_servyy_reachable | default(false))
+  tags:
+    - user.repo.clone
 
 - name: "Check if {{ remote_dir }} is a valid git repository"
   command: "git -C {{ remote_dir }} rev-parse --git-dir"
