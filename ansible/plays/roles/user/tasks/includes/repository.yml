@@ -16,6 +16,8 @@
   register: head_request_result
   ignore_errors: yes
   when: check_git_servyy_reachable | default(false)
+  tags:
+    - user.repo.clone
 
 - name: Set reachability fact based on HEAD request result
   set_fact:
