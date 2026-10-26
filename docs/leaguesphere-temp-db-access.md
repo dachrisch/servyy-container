@@ -117,6 +117,13 @@ Compose compares the image *reference*, not the image id, so after loading a new
 `docker rm -f leaguesphere_stage.staging-app` before the deploy or the container is not recreated.
 Restart `portainer.watchtower-dev` when the rehearsal is over.
 
+**State 2026-10-26:** stage is running exactly that — the branch build of `feat/dbaccess-flow`
+(`f0ddd79`), compose pulled from the branch, `DBACCESS_ENABLED=true`, allow-list seeded, and
+`portainer.watchtower-dev` **stopped** so the build survives the 300 s poll. Restart it with
+`ssh servy.lehel.xyz 'docker start portainer.watchtower-dev'` once the branch is no longer on
+stage; the first poll then puts the registry image back.
+
+
 Stage first:
 
 ```bash
