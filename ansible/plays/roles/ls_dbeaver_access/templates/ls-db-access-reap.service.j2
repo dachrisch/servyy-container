@@ -1,0 +1,6 @@
+[Unit]
+Description=Reap expired temporary LeagueSphere DB accounts
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ls-db-access-reap

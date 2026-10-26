@@ -1,0 +1,91 @@
+---
+# Builds `dbeaver_stacks`: one entry per LeagueSphere stack that is actually
+# running on this host.
+#
+# WHY THIS EXISTS: a host can run more than one stack. servy runs prod from
+# `container` and stage from `container-stage`; servyy-test.lxd runs one stack
+# from `container`. A hardcoded path therefore provisions one stack and silently
+# skips the other - and `dba.env` is written next to the compose file that reads
+# it, so "silently skipped" means `docker compose up` fails on the stack that
+# was missed (`env file .../dba.env not found`).
+#
+# Everything below is derived from the running container, not from a path in
+# these files: the compose directory comes from the container's own
+# `com.docker.compose.project.working_dir` label, so the role does not have to
+# guess where a stack lives and a rename in leaguesphere.yml cannot break it.
+#
+# The block carries all three tags on purpose: tags on a dynamic include do not
+# propagate to the included tasks, so without this a `--tags ls.dbeaver.reap`
+# run would load this file and then skip every task in it.
+- block:
+    - name: Load {{ dbeaver_vars_file }}
+      include_vars:
+        file: "{{ (playbook_dir, 'roles', 'ls_app', 'vars', dbeaver_vars_file) | path_join }}"
+        name: dbeaver_candidate_doc
+      no_log: true
+
+    # `include_vars: name:` binds the whole document, so the app block is one
+    # level down (`dbeaver_candidate_doc.app`).
+    - name: Select the app block of {{ dbeaver_vars_file }}
+      set_fact:
+        dbeaver_candidate: "{{ dbeaver_candidate_doc.app }}"
+      no_log: true
+
+    - name: Compute the {{ dbeaver_candidate.name }} database container name
+      set_fact:
+        dbeaver_candidate_db_container: >-
+          {{ (dbeaver_candidate.name ~ '.db') if dbeaver_candidate.name == 'leaguesphere'
+             else (dbeaver_candidate.name ~ '.mysql') }}
+      no_log: true
+
+    - name: Read the {{ dbeaver_candidate_db_container }} container, if this stack runs here
+      community.docker.docker_container_info:
+        name: "{{ dbeaver_candidate_db_container }}"
+      register: dbeaver_candidate_db
+
+    - name: Read the {{ dbeaver_candidate.name }}_backend network
+      community.docker.docker_network_info:
+        name: "{{ dbeaver_candidate.name }}_backend"
+      register: dbeaver_candidate_net
+
+    - name: Record {{ dbeaver_candidate.name }} when it is really running on this host
+      set_fact:
+        dbeaver_stacks: "{{ dbeaver_stacks + [ dbeaver_stack ] }}"
+      vars:
+        dbeaver_stack:
+          name: "{{ dbeaver_candidate.name }}"
+          compose_dir: >-
+            {{ dbeaver_candidate_db.container.Config.Labels['com.docker.compose.project.working_dir'] }}
+          db_container: "{{ dbeaver_candidate_db_container }}"
+          db_name: "{{ dbeaver_candidate.db_name }}"
+          # The name the sidecar dials on the backend network. Read from the
+          # container's own network aliases (service name) rather than assumed
+          # from the stack name: aliases are [container, service, <id>], so
+          # dropping the container name and the id leaves the service name.
+          db_host_alias: >-
+            {{ (dbeaver_candidate_db.container.NetworkSettings.Networks[dbeaver_candidate.name ~ '_backend'].Aliases
+                | default([dbeaver_candidate_db_container]))
+               | reject('equalto', dbeaver_candidate_db_container)
+               | reject('match', '^[0-9a-f]{12}$')
+               | list | first | default(dbeaver_candidate_db_container) }}
+          db_root_password: "{{ dbeaver_candidate.db_root_password }}"
+          backend_network: "{{ dbeaver_candidate.name }}_backend"
+          networks: "{{ dbeaver_candidate_db.container.NetworkSettings.Networks | list }}"
+          grant_host_pattern: >-
+            {{ (dbeaver_candidate_net.network.IPAM.Config[0].Subnet.split('/')[0].split('.')[0:2]
+                | join('.')) ~ '.%' }}
+          ttl_cap_hours: "{{ dbeaver_ttl_cap_hours }}"
+          password_file: "{{ dbeaver_provisioner_local_file_prefix }}_{{ dbeaver_candidate.name }}"
+      when:
+        # The filter is deliberately NOT applied here: the list this builds also
+        # feeds the reaper, and a narrowed safety net is worse than none. The
+        # filter only gates provisioning (tasks/main.yml).
+        - dbeaver_candidate_db.exists | default(false) | bool
+        - dbeaver_candidate_db.container.State.Running | default(false) | bool
+        - dbeaver_candidate_net.exists | default(false) | bool
+        - dbeaver_candidate_db.container.Config.Labels['com.docker.compose.project.working_dir'] is defined
+      no_log: true
+  tags:
+    - ls.dbeaver
+    - ls.dbeaver.provision
+    - ls.dbeaver.reap

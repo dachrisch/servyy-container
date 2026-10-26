@@ -1,0 +1,182 @@
+#!/bin/bash
+# Managed by Ansible (ls_dbeaver_access) - do not edit by hand.
+#
+# Reaps temporary MySQL accounts that have outlived the hard cap, that the app
+# says are not active, or that exist on a host pattern other than the expected
+# one. It never trusts expires_at: the clock is created_at plus the constant
+# below, so a buggy or compromised app can shorten a session but cannot extend
+# one.
+#
+# One entry per LeagueSphere stack running on this host, as
+#   container|database|host-pattern|cap-hours
+# A host can run two stacks (servy: prod and stage). Each is swept on its own
+# and a failure in one is reported without stopping the other - the safety net
+# for stage must not depend on prod's database being reachable, or vice versa.
+#
+# Root credentials come from the container's own environment, so no secret is
+# placed on a host command line.
+set -uo pipefail
+
+STACKS=(
+{% for stack in dbeaver_stacks %}
+  "{{ stack.db_container }}|{{ stack.db_name }}|{{ stack.grant_host_pattern }}|{{ stack.ttl_cap_hours }}"
+{% endfor %}
+)
+
+log() {
+  echo "ls-db-access-reap[${DB:-?}]: $*"
+}
+
+sql() {
+  # $1 = container; SQL on stdin
+  docker exec -i "$1" sh -c \
+    'exec mariadb -h 127.0.0.1 -u root -p"$MYSQL_ROOT_PASSWORD" --batch --skip-column-names'
+}
+
+sql_str() {
+  # Escape a value for a single-quoted SQL string. Hosts and users come from
+  # mysql.user, and the human-readable reason contains quotes ("host pattern
+  # '%' is not '172.26.%'"), which broke the ledger writes until this existed.
+  printf '%s' "$1" | sed "s/'/''/g"
+}
+
+reap_one() {
+  local user="$1" host="$2" reason="$3" pid user_sql host_sql reason_sql
+
+  log "dropping ${user}@${host} (${reason})"
+
+  user_sql=$(sql_str "$user")
+  host_sql=$(sql_str "$host")
+  reason_sql=$(sql_str "$reason")
+
+  # Kill first: dropping a user does not disconnect it in MariaDB, so
+  # "revoked" would otherwise mean "until they close their client".
+  while read -r pid; do
+    case "$pid" in
+      ''|*[!0-9]*) continue ;;
+    esac
+    sql "$DB_CONTAINER" <<SQL || true
+KILL ${pid};
+SQL
+  done < <(sql "$DB_CONTAINER" <<SQL
+SELECT id FROM information_schema.processlist WHERE user='${user_sql}';
+SQL
+)
+
+  sql "$DB_CONTAINER" <<SQL || true
+DROP USER IF EXISTS '${user_sql}'@'${host_sql}';
+SQL
+
+  # The ledger only exists once the app migration has run. Before that there is
+  # nothing to record and writing anyway would print an ERROR into the journal
+  # every five minutes (the table does not exist yet).
+  if [ "${LEDGER:-0}" = "1" ]; then
+    sql "$DB_CONTAINER" <<SQL || true
+UPDATE \`${DB}\`.\`dbaccess_request\`
+   SET state='dropped', secret=NULL, dropped_at=NOW(), updated_at=NOW()
+ WHERE db_user='${user_sql}' AND state <> 'dropped';
+SQL
+
+    sql "$DB_CONTAINER" <<SQL || true
+INSERT INTO \`${DB}\`.\`dbaccess_event\` (request_id, at, actor, action, detail, from_ip)
+SELECT id, NOW(), 'reaper', 'dropped', '${reason_sql}', NULL
+  FROM \`${DB}\`.\`dbaccess_request\`
+ WHERE db_user='${user_sql}'
+ ORDER BY id DESC
+ LIMIT 1;
+SQL
+  fi
+}
+
+sweep() {
+  IFS='|' read -r DB_CONTAINER DB PATTERN CAP_H <<< "$1"
+  local has_ledger verdict user host pid LEDGER
+
+  # Fail the stack early (and loudly) if its database is not reachable, rather
+  # than reporting "nothing to reap" from an empty result set.
+  sql "$DB_CONTAINER" <<< 'SELECT 1;' >/dev/null
+
+  # The reaper is deployed before the app migration on a fresh host, and must not
+  # fail every five minutes in that window. No table means no accounts to judge;
+  # the host-pattern check below still runs.
+  has_ledger=$(
+    sql "$DB_CONTAINER" <<SQL || echo 0
+SELECT COUNT(*) FROM information_schema.tables
+ WHERE table_schema='${DB}' AND table_name='dbaccess_request';
+SQL
+  )
+
+  # reap_one and the session sweep both need this: the app migration creates the
+  # ledger, and the role runs before it.
+  LEDGER=0
+  if [ "$has_ledger" = "1" ]; then
+    LEDGER=1
+  fi
+
+  # Every dbeaver_prod_* account must be backed by an active request inside the
+  # cap. Anything else is dropped and logged with the reason.
+  while IFS=$'\t' read -r user host; do
+    [ -n "${user:-}" ] || continue
+
+    if [ "$host" != "$PATTERN" ]; then
+      reap_one "$user" "$host" "host pattern '$host' is not '$PATTERN'"
+      continue
+    fi
+
+    if [ "$has_ledger" = "0" ]; then
+      log "${DB}.dbaccess_request does not exist yet - pattern-only sweep"
+      continue
+    fi
+
+    verdict=$(sql "$DB_CONTAINER" <<SQL
+SELECT CASE
+         WHEN COUNT(*) = 0 THEN 'no-request-row'
+         WHEN SUM(state IN ('active','revoke_requested','expired')) = 0 THEN 'not-active'
+         WHEN MIN(created_at) < NOW() - INTERVAL ${CAP_H} HOUR THEN 'past-cap'
+         ELSE 'ok'
+       END
+  FROM \`${DB}\`.\`dbaccess_request\`
+ WHERE db_user='${user}';
+SQL
+)
+
+    if [ "$verdict" != "ok" ]; then
+      reap_one "$user" "$host" "$verdict"
+    fi
+  done < <(sql "$DB_CONTAINER" <<'SQL'
+SELECT user, host FROM mysql.user WHERE user LIKE 'dbeaver\_prod\_%';
+SQL
+)
+
+  # An open session outlives DROP USER in MariaDB, and the sidecar cannot kill
+  # it: KILL needs the global PROCESS privilege, which it deliberately does not
+  # have. So the kill happens here, where the reaper already talks to the
+  # database as root. Anything on a dbeaver_prod_* account whose request is no
+  # longer running (revoked, expired, dropped, failed, or gone entirely) is
+  # killed. A request that is still `active` - or `approved` and not yet
+  # activated, which is the second between CREATE USER and the row update - is
+  # left alone.
+  if [ "$LEDGER" = "1" ]; then
+    while IFS=$'\t' read -r pid user; do
+      case "${pid:-}" in ''|*[!0-9]*) continue ;; esac
+      log "killing session ${user} (pid ${pid}): no running request"
+      sql "$DB_CONTAINER" <<SQL || true
+KILL ${pid};
+SQL
+    done < <(sql "$DB_CONTAINER" <<SQL
+SELECT p.id, p.user
+  FROM information_schema.processlist p
+  LEFT JOIN \`${DB}\`.\`dbaccess_request\` r ON r.db_user = p.user
+ WHERE p.user LIKE 'dbeaver\\_prod\\_%'
+   AND (r.id IS NULL OR r.state IN ('revoke_requested','expired','dropped','failed'));
+SQL
+)
+  fi
+}
+
+fail=0
+for stack in "${STACKS[@]}"; do
+  ( set -e; sweep "$stack" ) || { echo "ls-db-access-reap: sweep failed for ${stack%%|*}"; fail=1; }
+done
+
+exit "$fail"
