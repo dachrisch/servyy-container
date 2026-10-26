@@ -92,6 +92,10 @@ One ordering rule: `dba.env` lives next to the compose file that reads it, so th
 `ls_dbeaver_access` before `ls_app`, so a combined run is safe — but a bare
 `--tags ls.app.deploy` run fails with `env file .../dba.env not found`.
 
+State as of 2026-10-26: the **stage** stack's infra half is already deployed (`dba.env` next to
+`container-stage/deployed/docker-compose.staging.yaml`, `dbaccess@'172.26.%'`, reaper covering both
+stacks). The sidecar itself arrives with the app PR; prod's half waits for the stage rehearsal.
+
 Stage first:
 
 ```bash
@@ -100,8 +104,11 @@ cd ansible
 #    sshd restart out of this run; prod's dba.env is not written either.
 ./servyy.sh --tags ls.dbeaver --skip-tags ls.dbeaver.tunnel \
   -e dbeaver_app_filter=leaguesphere_stage --limit servy.lehel.xyz
-# 2. app half for stage only. --skip-tags is required: ls_db_sync also carries ls.app.stage
-./servyy.sh --tags ls.app.stage --skip-tags ls.db.sync --limit servy.lehel.xyz
+# 2. app half for stage only. --skip-tags is required: ls_db_sync also carries ls.app.stage.
+#    The flag must be passed here - it defaults to false, so without it the stage app comes up
+#    with the surface switched off and there is nothing to validate.
+./servyy.sh --tags ls.app.stage --skip-tags ls.db.sync \
+  -e dbeaver_dbaccess_enabled=true --limit servy.lehel.xyz
 # 3. seed the allow-list in the staging app
 ssh servy.lehel.xyz "docker exec leaguesphere_stage.staging-app python manage.py dbaccess_sync_tables"
 ```

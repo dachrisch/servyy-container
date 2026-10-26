@@ -144,9 +144,10 @@ smuggled `@'%'` account being reaped, and a full request → approve → connect
 
 1. Merge both PRs.
 2. Deploy the app half for **stage only** —
-   `--tags ls.app.stage --skip-tags ls.db.sync` (without the skip, `ls_db_sync` also carries the
-   `ls.app.stage` tag and would dump/import prod into stage). That brings up the `db-access`
-   sidecar the stage `dba.env` is already waiting for. Then
+   `--tags ls.app.stage --skip-tags ls.db.sync -e dbeaver_dbaccess_enabled=true` (without the
+   skip, `ls_db_sync` also carries the `ls.app.stage` tag and would dump/import prod into stage;
+   without the flag, `DBACCESS_ENABLED` renders `false` and there is nothing to validate). That
+   brings up the `db-access` sidecar the stage `dba.env` is already waiting for. Then
    `dbaccess_sync_tables` in the staging app.
 3. Rehearse on stage: create + approve a request, watch `active` within 15 s, prove
    `UPDATE auth_user` is denied, prove the `@'%'` smuggled account is reaped, prove a live
