@@ -214,6 +214,13 @@ docker compose -p leaguesphere_stage up -d --force-recreate db-access
 The same command without `-e dbeaver_app_filter` rotates both stacks on servy (prod's file is
 `~/.dbeaver_provisioner_servy_leaguesphere`).
 
+**Never override the tunnel key file name.** It is `<tunnel>_key_<inventory_hostname_short>` -
+`dbeaver_stage_key_lehel` on servy, not `…_servy`. A run that declares a different name generates a
+*new* keypair and, because `authorized_keys` is `exclusive`, replaces the public key every operator
+is using; the tunnel then answers `Failed publickey`/`Too many authentication failures` for
+everyone. The role now asserts the name. To run one tunnel only, override `dbeaver_tunnels` with
+its *correct* entry rather than rewriting `ssh_key_filename`.
+
 **Rotate the shared tunnel key:** `./servyy.sh --tags ls.dbeaver -e dbeaver_tunnel_rotate_key=true`.
 Everyone's DBeaver profile needs the new key; existing sessions keep working until their cap.
 
