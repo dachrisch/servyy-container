@@ -92,9 +92,30 @@ One ordering rule: `dba.env` lives next to the compose file that reads it, so th
 `ls_dbeaver_access` before `ls_app`, so a combined run is safe — but a bare
 `--tags ls.app.deploy` run fails with `env file .../dba.env not found`.
 
-State as of 2026-10-26: the **stage** stack's infra half is already deployed (`dba.env` next to
-`container-stage/deployed/docker-compose.staging.yaml`, `dbaccess@'172.26.%'`, reaper covering both
-stacks). The sidecar itself arrives with the app PR; prod's half waits for the stage rehearsal.
+State as of 2026-10-26: the **stage** stack has both halves deployed and rehearsed end to end
+(request → approve → mint → reveal → revoke → drop, see
+`history/2026-10-26_temporary-prod-db-access.md`). Prod's half still waits.
+
+**Rehearsing a branch on stage.** `leaguesphere/backend:staging` is only published by the release
+tag pipeline, so a PR cannot be validated through the registry until it is merged and released.
+Until then, build the image from the branch and load it on the host, then:
+
+```bash
+# on a build host (servyy-test.lxd), from the branch checkout:
+docker build -f container/app.Dockerfile -t leaguesphere/backend:staging .
+docker save leaguesphere/backend:staging | gzip | ssh servy.lehel.xyz 'gunzip | docker load'
+# watchtower-dev (300 s poll) would put the registry image back within minutes:
+ssh servy.lehel.xyz 'docker stop portainer.watchtower-dev'
+# app.branch lives in git-crypt vars, so override the whole dict with extra vars
+# (extra vars beat the role's include_vars) and never let compose pull the tag:
+./servyy.sh --tags ls.app.stage --skip-tags ls.db.sync,ls.app.deploy.pull \
+  -e dbeaver_dbaccess_enabled=true -e app_compose_pull=never \
+  -e @/path/to/stage-app-dict.json --limit servy.lehel.xyz
+```
+
+Compose compares the image *reference*, not the image id, so after loading a new build do
+`docker rm -f leaguesphere_stage.staging-app` before the deploy or the container is not recreated.
+Restart `portainer.watchtower-dev` when the rehearsal is over.
 
 Stage first:
 

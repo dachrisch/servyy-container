@@ -160,6 +160,58 @@ full request → approve → connect → expire cycle.
 | Provisioner | `DROP USER 'dbaccess'@'172.26.%'` (stage) / `'dbaccess'@'172.25.%'` (prod) — the sidecar can then mint nothing; delete the matching controller file `~/.dbeaver_provisioner_<host>_<app>` |
 | Tunnel | `git revert` the role change and redeploy; stage is unaffected either way |
 
+## Stage rehearsal (app half), 2026-10-26
+
+The app half went to stage from the PR branch, because the registry path was closed on both ends:
+`leaguesphere/backend:staging` is only pushed by the tag pipeline's `deploy_staging` job (branch
+pipelines never push it), and the Docker Hub PAT in `~/.docker/config.json` (user `dachrisch`) is
+revoked — `docker login` and the auth endpoint both answer `401 incorrect username or password`.
+So the image was built from `feat/dbaccess-flow` on servyy-test.lxd
+(`container/app.Dockerfile`), copied to servy with `docker save | docker load`, retagged
+`leaguesphere/backend:staging`, and the compose file was pulled from the branch by overriding
+`app.branch` (extra vars beat the role's `include_vars`).
+
+Three defects surfaced that no unit test could have caught:
+
+1. **Table names disagreed with the sidecar.** `AccessRequest`/`AccessEvent` left `db_table` to
+   Django, which created `dbaccess_accessrequest` / `dbaccess_accessevent`, while
+   `deployed/dba/tick.sh` selects from `dbaccess_request` / `dbaccess_event`. Every tick logged
+   `ERROR 1146 ... Table 'leaguesphere_stage.dbaccess_request' doesn't exist` and no account was
+   ever minted — requests would have been approvable in prod with nothing happening. Fixed on the
+   branch (`f0ddd79`): explicit `db_table` in both models, the same in the never-released
+   `0001_initial`, and `test_table_names_match_the_sidecar_sql` to pin the contract.
+2. **Mounted directories were unreadable.** The ansible `git pull` runs with the deploy account's
+   umask (`0027`), so `deployed/mysql-conf` landed `0750` and `deployed/dba/tick.sh` `0750`. mysqld
+   (uid 999) could not read `/etc/mysql/conf.d` and crash-looped; the sidecar, which drops ALL
+   capabilities *including `DAC_OVERRIDE`*, could not read its own script as root
+   (`Permission denied`). Prod would have failed the same way — its compose has no `mysql-conf`
+   mount yet, so this was the first deploy that created one. Fixed in `ls_app`:
+   `app_world_readable_dirs` (`mysql-conf`, `dba`) is widened to `u=rwX,go=rX` right after the pull,
+   before `ls.env`/`dba.env` are rendered, so the secrets keep `0600`.
+3. **watchtower-dev owns the stage containers.** `portainer.watchtower-dev` polls every 300 s and,
+   within a minute, replaced the locally loaded image with the registry's (old) `:staging`. A branch
+   rehearsal therefore needs `docker stop portainer.watchtower-dev`, plus `-e app_compose_pull=never`
+   and `--skip-tags ls.app.deploy.pull` so compose does not pull the tag over the loaded image.
+
+Result of the rehearsal on `stage.leaguesphere.app` (image built from `f0ddd79`):
+
+| Step | Evidence |
+|---|---|
+| Request | form `200`, POST `302`, state `requested` |
+| Self-approval | `403 Forbidden` |
+| Approval | `302`, state `approved`, approver recorded |
+| Mint | sidecar tick → `active`, `dbeaver_prod_rehearsal@'172.26.%'` |
+| Grants | `SELECT` on `leaguesphere_stage.*`, `SELECT, UPDATE` on the requested table only; `MAX_USER_CONNECTIONS 4`, `MAX_STATEMENT_TIME 60` |
+| Login as the minted account | read on the requested table OK; `CREATE`, `INSERT`, `DELETE` denied `1142` |
+| Reveal | `200`, 24-char credential, `revealed` event |
+| Revoke | `302` → `revoke_requested` → sidecar → `dropped`, `dropped_at` set, no `dbeaver%` account left |
+
+One design gap the rehearsal made visible: the tick grants `SELECT` on the whole schema, so the
+tables on `NEVER_GRANTABLE` (`auth_user` password hashes, sessions, `django_admin_log`) are readable
+by any minted account even though the request form will not offer them. The curated list currently
+restricts only what can be *requested* and what can be *written*; if "withheld" is meant to include
+reads, the mint has to grant `SELECT` per table instead of on the schema.
+
 ## Next steps
 
 1. Merge both PRs.
