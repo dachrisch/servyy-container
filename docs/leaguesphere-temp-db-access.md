@@ -80,10 +80,52 @@ it holds itself.
 6. Two days after the session, `bak_<table>_<date>` is still in the database. Drop it once the
    fix has been verified on stage by `ls_db_sync` — not before.
 
+## Rolling it out
+
+The role provisions **every LeagueSphere stack running on the host**: servy runs prod (from
+`container`) and stage (from `container-stage`), servyy-test.lxd runs one. Each stack gets its
+own `dba.env`, its own provisioner account and its own sweep in the reaper; the compose
+directory is read from the running container's compose label, not hardcoded in the role.
+
+One ordering rule: `dba.env` lives next to the compose file that reads it, so the role must run
+**before** the deploy that introduces the `db-access` service. The play already runs
+`ls_dbeaver_access` before `ls_app`, so a combined run is safe — but a bare
+`--tags ls.app.deploy` run fails with `env file .../dba.env not found`.
+
+Stage first:
+
+```bash
+cd ansible
+# 1. infra half for stage only. --skip-tags keeps prod's tunnel account and its
+#    sshd restart out of this run; prod's dba.env is not written either.
+./servyy.sh --tags ls.dbeaver --skip-tags ls.dbeaver.tunnel \
+  -e dbeaver_app_filter=leaguesphere_stage --limit servy.lehel.xyz
+# 2. app half for stage only. --skip-tags is required: ls_db_sync also carries ls.app.stage
+./servyy.sh --tags ls.app.stage --skip-tags ls.db.sync --limit servy.lehel.xyz
+# 3. seed the allow-list in the staging app
+ssh servy.lehel.xyz "docker exec leaguesphere_stage.staging-app python manage.py dbaccess_sync_tables"
+```
+
+Prod, once stage is good — the flag stays off until the allow-list is seeded and an approver
+holds the permission:
+
+```bash
+./servyy.sh --tags ls.dbeaver --limit servy.lehel.xyz
+./servyy.sh --tags ls.app.pull,ls.app.env,ls.app.deploy \
+  -e dbeaver_dbaccess_enabled=false --limit servy.lehel.xyz
+ssh servy.lehel.xyz "docker exec leaguesphere.app python manage.py dbaccess_sync_tables"
+# grant dbaccess.approve_requests to one named human, then flip it on:
+./servyy.sh --tags ls.app.env,ls.app.deploy \
+  -e dbeaver_dbaccess_enabled=true --limit servy.lehel.xyz
+```
+
+`ls.app.env` is not optional in those commands: without it `ls.env` is never re-rendered and the
+feature stays off regardless of the flag.
+
 ## Operating it
 
-**Enable / disable.** `DBACCESS_ENABLED` in `ls.env` (rendered from `ls_app`). Off by default
-in the app; `true` on both LeagueSphere stacks. Approval additionally needs the
+**Enable / disable.** `DBACCESS_ENABLED` in `ls.env` (rendered from `ls_app`). **Off unless the
+deploy passes `-e dbeaver_dbaccess_enabled=true`.** Approval additionally needs the
 `dbaccess.approve_requests` permission — grant it in the Django admin
 (*dbaccess → Approve requests*) to a named human, not to a group that includes the requester.
 
@@ -96,19 +138,26 @@ ssh servy.lehel.xyz "docker exec leaguesphere.app python manage.py dbaccess_sync
 Identity, session and admin-log tables are inserted as `grantable=False` rather than skipped, so
 the request form can explain their absence.
 
-**Rotate the provisioner password** (the sidecar's credential):
+**Rotate a stack's provisioner password** (the sidecar's credential). One password file per
+stack on the controller:
 
 ```bash
-rm ~/.dbeaver_provisioner_servy          # controller
-cd ansible && ./servyy.sh --tags ls.dbeaver.provision --limit servy.lehel.xyz
-cd /var/jail/home/leaguesphere/container/deployed
-docker compose -p leaguesphere up -d --force-recreate db-access
+ls ~/.dbeaver_provisioner_servy_*                    # controller
+rm ~/.dbeaver_provisioner_servy_leaguesphere_stage   # the stage stack
+cd ansible && ./servyy.sh --tags ls.dbeaver.provision \
+  -e dbeaver_app_filter=leaguesphere_stage --limit servy.lehel.xyz
+cd /var/jail/home/leaguesphere/container-stage/deployed
+docker compose -p leaguesphere_stage up -d --force-recreate db-access
 ```
+
+The same command without `-e dbeaver_app_filter` rotates both stacks on servy (prod's file is
+`~/.dbeaver_provisioner_servy_leaguesphere`).
 
 **Rotate the shared tunnel key:** `./servyy.sh --tags ls.dbeaver -e dbeaver_tunnel_rotate_key=true`.
 Everyone's DBeaver profile needs the new key; existing sessions keep working until their cap.
 
-**Check the safety net is alive:**
+**Check the safety net is alive** (one unit, one sweep per stack — the journal lines are
+prefixed with the database they concern):
 
 ```bash
 ssh servy.lehel.xyz "systemctl status ls-db-access-reap.timer --no-pager | head -4"

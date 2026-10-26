@@ -7,36 +7,36 @@
 # below, so a buggy or compromised app can shorten a session but cannot extend
 # one.
 #
+# One entry per LeagueSphere stack running on this host, as
+#   container|database|host-pattern|cap-hours
+# A host can run two stacks (servy: prod and stage). Each is swept on its own
+# and a failure in one is reported without stopping the other - the safety net
+# for stage must not depend on prod's database being reachable, or vice versa.
+#
 # Root credentials come from the container's own environment, so no secret is
 # placed on a host command line.
-set -euo pipefail
+set -uo pipefail
 
-DB_CONTAINER="{{ dbeaver_db_container }}"
-DB="{{ dbeaver_db_name }}"
-PATTERN="{{ dbeaver_grant_host_pattern }}"
-CAP_H="{{ dbeaver_ttl_cap_hours }}"
+STACKS=(
+{% for stack in dbeaver_stacks %}
+  "{{ stack.db_container }}|{{ stack.db_name }}|{{ stack.grant_host_pattern }}|{{ stack.ttl_cap_hours }}"
+{% endfor %}
+)
 
-run_sql() {
-  docker exec -i "$DB_CONTAINER" sh -c \
+log() {
+  echo "ls-db-access-reap[${DB:-?}]: $*"
+}
+
+sql() {
+  # $1 = container; SQL on stdin
+  docker exec -i "$1" sh -c \
     'exec mariadb -h 127.0.0.1 -u root -p"$MYSQL_ROOT_PASSWORD" --batch --skip-column-names'
 }
 
-# The reaper is deployed before the app migration on a fresh host, and must not
-# fail every five minutes in that window. No table means no accounts to judge;
-# the host-pattern check below still runs.
-has_ledger=$(
-  run_sql <<SQL || echo 0
-SELECT COUNT(*) FROM information_schema.tables
- WHERE table_schema='${DB}' AND table_name='dbaccess_request';
-SQL
-)
+reap_one() {
+  local user="$1" host="$2" reason="$3" pid
 
-reap() {
-  user="$1"
-  host="$2"
-  reason="$3"
-
-  echo "ls-db-access-reap: dropping ${user}@${host} (${reason})"
+  log "dropping ${user}@${host} (${reason})"
 
   # Kill first: dropping a user does not disconnect it in MariaDB, so
   # "revoked" would otherwise mean "until they close their client".
@@ -44,25 +44,25 @@ reap() {
     case "$pid" in
       ''|*[!0-9]*) continue ;;
     esac
-    run_sql <<SQL || true
+    sql "$DB_CONTAINER" <<SQL || true
 KILL ${pid};
 SQL
-  done < <(run_sql <<SQL
+  done < <(sql "$DB_CONTAINER" <<SQL
 SELECT id FROM information_schema.processlist WHERE user='${user}';
 SQL
 )
 
-  run_sql <<SQL || true
+  sql "$DB_CONTAINER" <<SQL || true
 DROP USER IF EXISTS '${user}'@'${host}';
 SQL
 
-  run_sql <<SQL || true
+  sql "$DB_CONTAINER" <<SQL || true
 UPDATE \`${DB}\`.\`dbaccess_request\`
    SET state='dropped', secret=NULL, dropped_at=NOW(), updated_at=NOW()
  WHERE db_user='${user}' AND state <> 'dropped';
 SQL
 
-  run_sql <<SQL || true
+  sql "$DB_CONTAINER" <<SQL || true
 INSERT INTO \`${DB}\`.\`dbaccess_event\` (request_id, at, actor, action, detail, from_ip)
 SELECT id, NOW(), 'reaper', 'dropped', '${reason}', NULL
   FROM \`${DB}\`.\`dbaccess_request\`
@@ -72,22 +72,40 @@ SELECT id, NOW(), 'reaper', 'dropped', '${reason}', NULL
 SQL
 }
 
-# Every dbeaver_prod_* account must be backed by an active request inside the
-# cap. Anything else is dropped and logged with the reason.
-while IFS=$'\t' read -r user host; do
-  [ -n "${user:-}" ] || continue
+sweep() {
+  IFS='|' read -r DB_CONTAINER DB PATTERN CAP_H <<< "$1"
+  local has_ledger verdict user host
 
-  if [ "$host" != "$PATTERN" ]; then
-    reap "$user" "$host" "host pattern '$host' is not '$PATTERN'"
-    continue
-  fi
+  # Fail the stack early (and loudly) if its database is not reachable, rather
+  # than reporting "nothing to reap" from an empty result set.
+  sql "$DB_CONTAINER" <<< 'SELECT 1;' >/dev/null
 
-  if [ "$has_ledger" = "0" ]; then
-    echo "ls-db-access-reap: ${DB}.dbaccess_request does not exist yet - pattern-only sweep"
-    continue
-  fi
+  # The reaper is deployed before the app migration on a fresh host, and must not
+  # fail every five minutes in that window. No table means no accounts to judge;
+  # the host-pattern check below still runs.
+  has_ledger=$(
+    sql "$DB_CONTAINER" <<SQL || echo 0
+SELECT COUNT(*) FROM information_schema.tables
+ WHERE table_schema='${DB}' AND table_name='dbaccess_request';
+SQL
+  )
 
-  verdict=$(run_sql <<SQL
+  # Every dbeaver_prod_* account must be backed by an active request inside the
+  # cap. Anything else is dropped and logged with the reason.
+  while IFS=$'\t' read -r user host; do
+    [ -n "${user:-}" ] || continue
+
+    if [ "$host" != "$PATTERN" ]; then
+      reap_one "$user" "$host" "host pattern '$host' is not '$PATTERN'"
+      continue
+    fi
+
+    if [ "$has_ledger" = "0" ]; then
+      log "${DB}.dbaccess_request does not exist yet - pattern-only sweep"
+      continue
+    fi
+
+    verdict=$(sql "$DB_CONTAINER" <<SQL
 SELECT CASE
          WHEN COUNT(*) = 0 THEN 'no-request-row'
          WHEN SUM(state IN ('active','revoke_requested','expired')) = 0 THEN 'not-active'
@@ -99,10 +117,18 @@ SELECT CASE
 SQL
 )
 
-  if [ "$verdict" != "ok" ]; then
-    reap "$user" "$host" "$verdict"
-  fi
-done < <(run_sql <<'SQL'
+    if [ "$verdict" != "ok" ]; then
+      reap_one "$user" "$host" "$verdict"
+    fi
+  done < <(sql "$DB_CONTAINER" <<'SQL'
 SELECT user, host FROM mysql.user WHERE user LIKE 'dbeaver\_prod\_%';
 SQL
 )
+}
+
+fail=0
+for stack in "${STACKS[@]}"; do
+  ( set -e; sweep "$stack" ) || { echo "ls-db-access-reap: sweep failed for ${stack%%|*}"; fail=1; }
+done
+
+exit "$fail"

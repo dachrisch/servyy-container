@@ -79,17 +79,71 @@
   when: inventory_hostname in ['servy.lehel.xyz', 'servyy-test.lxd']
   tags:
     - ls.dbeaver
+    # Separate tag so a stage-only rollout can leave the prod tunnel account
+    # (and the sshd restart that comes with it) alone: --skip-tags ls.dbeaver.tunnel
+    - ls.dbeaver.tunnel
+
+- name: Start from an empty stack list for this host
+  set_fact:
+    dbeaver_stacks: []
+  when: inventory_hostname in dbeaver_provision_hosts
+  tags:
+    - ls.dbeaver
+    - ls.dbeaver.provision
+    - ls.dbeaver.reap
+
+# Discovery is tagged with the provision and reap tags too: both of them are
+# documented as standalone entry points (rotation is `--tags ls.dbeaver.provision`,
+# the safety-net check is `--tags ls.dbeaver.reap`), and both need the stack
+# list this builds.
+- name: Find the LeagueSphere stacks running on this host
+  include_tasks: discover.yml
+  loop: "{{ dbeaver_ls_vars_files }}"
+  loop_control:
+    loop_var: dbeaver_vars_file
+    label: "{{ dbeaver_vars_file }}"
+  when: inventory_hostname in dbeaver_provision_hosts
+  tags:
+    - ls.dbeaver
+    - ls.dbeaver.provision
+    - ls.dbeaver.reap
+
+- name: Report which stacks this run covers
+  debug:
+    msg: >-
+      {{ dbeaver_stacks | length }} stack(s) found on {{ inventory_hostname }}:
+      {{ dbeaver_stacks | map(attribute='name') | join(', ') | default('none', true) }}
+      - provisioning
+      {{ 'all of them' if (dbeaver_app_filter_list | length) == 0
+         else (dbeaver_stacks | map(attribute='name')
+               | select('in', dbeaver_app_filter_list) | join(', ') | default('none', true)) }}
+  when: inventory_hostname in dbeaver_provision_hosts
+  tags:
+    - ls.dbeaver
+    - ls.dbeaver.provision
+    - ls.dbeaver.reap
 
 - name: Provision the account the db-access sidecar mints with
   include_tasks: provisioner.yml
-  when: inventory_hostname in dbeaver_provision_hosts
+  loop: "{{ dbeaver_stacks }}"
+  loop_control:
+    loop_var: dbeaver_stack
+    label: "{{ dbeaver_stack.name }}"
+  when:
+    - inventory_hostname in dbeaver_provision_hosts
+    - dbeaver_stacks | length > 0
+    # A filtered run provisions only the named stacks; the reaper below always
+    # covers all of them.
+    - (dbeaver_app_filter_list | length) == 0 or (dbeaver_stack.name in dbeaver_app_filter_list)
   tags:
     - ls.dbeaver
     - ls.dbeaver.provision
 
 - name: Deploy the safety net that ends access on a clock
   include_tasks: reaper.yml
-  when: inventory_hostname in dbeaver_provision_hosts
+  when:
+    - inventory_hostname in dbeaver_provision_hosts
+    - dbeaver_stacks | length > 0
   tags:
     - ls.dbeaver
     - ls.dbeaver.reap
@@ -98,3 +152,6 @@
   include_tasks: vault_push.yml
   tags:
     - ls.dbeaver
+    # Same reason as the tunnel block: without it a stage-only run would push
+    # prod's freshly generated key while the prod tunnel does not exist yet.
+    - ls.dbeaver.tunnel

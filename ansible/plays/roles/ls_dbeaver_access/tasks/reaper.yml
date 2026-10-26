@@ -1,38 +1,46 @@
 ---
-# The safety net. Deployed on every provision host unconditionally: it must
-# exist with no active grant, because its whole job is to be the thing nobody
-# remembered to run.
-- name: Create the reap script directory target
-  file:
-    path: /usr/local/sbin
-    state: directory
-    owner: root
-    group: root
-    mode: '0755'
+# The safety net. Deployed on every provision host that runs at least one stack:
+# it must exist with no active grant, because its whole job is to be the thing
+# nobody remembered to run. One unit sweeps every stack on the host (the script
+# carries one entry per stack - see templates/ls-db-access-reap.sh.j2).
+#
+# The block carries its tags because tags on a dynamic include do not propagate
+# to the included tasks.
+- block:
+    - name: Create the reap script directory target
+      file:
+        path: /usr/local/sbin
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
 
-- name: Deploy the reap script
-  template:
-    src: ls-db-access-reap.sh.j2
-    dest: /usr/local/sbin/ls-db-access-reap
-    owner: root
-    group: root
-    mode: '0700'
+    - name: Deploy the reap script
+      template:
+        src: ls-db-access-reap.sh.j2
+        dest: /usr/local/sbin/ls-db-access-reap
+        owner: root
+        group: root
+        mode: '0700'
 
-- name: Deploy the reap service
-  template:
-    src: ls-db-access-reap.service.j2
-    dest: /etc/systemd/system/ls-db-access-reap.service
-    mode: '0644'
+    - name: Deploy the reap service
+      template:
+        src: ls-db-access-reap.service.j2
+        dest: /etc/systemd/system/ls-db-access-reap.service
+        mode: '0644'
 
-- name: Deploy the reap timer
-  template:
-    src: ls-db-access-reap.timer.j2
-    dest: /etc/systemd/system/ls-db-access-reap.timer
-    mode: '0644'
+    - name: Deploy the reap timer
+      template:
+        src: ls-db-access-reap.timer.j2
+        dest: /etc/systemd/system/ls-db-access-reap.timer
+        mode: '0644'
 
-- name: Enable and start the reap timer
-  systemd:
-    name: ls-db-access-reap.timer
-    daemon_reload: true
-    enabled: true
-    state: started
+    - name: Enable and start the reap timer
+      systemd:
+        name: ls-db-access-reap.timer
+        daemon_reload: true
+        enabled: true
+        state: started
+  tags:
+    - ls.dbeaver
+    - ls.dbeaver.reap
