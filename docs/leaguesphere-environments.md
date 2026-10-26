@@ -60,7 +60,7 @@ cd ansible
 | DB container | `leaguesphere.db` ¹ | `leaguesphere_stage.mysql` | `leaguesphere-demo.mysql` | `mysql` |
 | Web container | `leaguesphere.www` | `leaguesphere_stage.www` | `leaguesphere-demo.www` | n/a |
 | Database | container `leaguesphere.db` (db `web35_db8`) — **internal-only, no published port** ¹ | container `leaguesphere_stage.mysql` (db `leaguesphere_stage`) | container `leaguesphere-demo.mysql` | container `mysql` (db `test_db`) |
-| DB backup | `mariadb-backup` → prepared set + hourly restic repo `restic-ls-db` (Hetzner Storage Box) | n/a | n/a | n/a |
+| DB backup | `mariadb-backup` → prepared set + **binlog (2-day PITR window)** + hourly restic repo `restic-ls-db` (Hetzner Storage Box) | n/a | n/a | n/a |
 | Data | live production data | **clone of prod** (via `ls_db_sync`) | synthetic, **auto-resets nightly** | synthetic fixtures (`test_db_dump.sql`) |
 | Git branch | `master` | `master` | `master` | working tree (pytest) |
 | Compose file | `deployed/docker-compose.yaml` | `deployed/docker-compose.staging.yaml` | `deployed/docker-compose.demo.yaml` | n/a |
@@ -153,6 +153,36 @@ service being healthy before it starts.
 - A second timer (`restic-backup-ls-db`, hourly) snapshots `current/` into the dedicated
   restic repo `restic-ls-db` on the Hetzner Storage Box.
 - Environment file: `/etc/restic/env.db`; snapshots are tagged `db`.
+- **Since 2026-10-26 the set also carries the binlogs** (`binlog.00000N` +
+  `xtrabackup_binlog_info`, the coordinates the replay starts from) because
+  `mariadb-backup` runs without `--skip-binlog`. That is what makes
+  point-in-time recovery work; see below.
+
+### Reading the DB audit trail (who changed what)
+
+Two records, neither of them reachable from the web app:
+
+| Question | Where | Command |
+|---|---|---|
+| who ran what, when, from where | `/var/lib/mysql/server_audit.log` inside `leaguesphere.db` | `ssh lehel.xyz "docker exec leaguesphere.db sh -c 'grep dbeaver_prod_nn /var/lib/mysql/server_audit.log'"` |
+| which rows changed, before → after | the binlog files in the datadir | `ssh lehel.xyz "docker exec leaguesphere.db mariadb-binlog --base64-output=DECODE-ROWS -v --start-datetime='2026-10-26 14:00:00' --stop-datetime='2026-10-26 14:40:00' /var/lib/mysql/binlog.000004"` |
+
+Row events carry no user column, so the audit line answers *who* and the binlog answers *what*;
+join them on the statement text and the timestamp window.
+
+The application account (`web35_8`) is **excluded** from the audit log on purpose — otherwise
+constant Django traffic buries the person being investigated. Reads are not logged
+(`QUERY_DML_NO_SELECT`); adding them is a one-line change in the config for a session where
+"what did they look at" matters.
+
+Both files are enabled by `deployed/mysql-conf/zz-binlog-audit.cnf` in the leaguesphere repo
+(PR #2092), mounted read-only into `/etc/mysql/conf.d`. **mysqld reads it only at startup**, and
+a deploy does not recreate `db` when only the file's content changes — after editing it, restart
+deliberately (`docker compose … up -d --force-recreate db`). Rollback is removing the mount.
+
+> Both the audit log and the binlog contain literal values from the database, so the restic
+> repos now carry user data: the audit file on the daily root snapshot, the binlogs inside every
+> hourly `restic-ls-db` snapshot. Treat Storage Box access as data access.
 
 **Seeding the prod DB from external (one-time / re-seed):**
 ```bash
@@ -284,6 +314,12 @@ after a disaster** — the last prepared `mariadb-backup` set is restored from r
 > `LEAGUESPHERE DB RESTORE` notice with the exact copy-back commands below — do not consider the
 > host recovered until you have run them.
 
+> ### ⚠️ The set now also contains binlogs
+> Since 2026-10-26 `current/` holds `binlog.00000N` and `xtrabackup_binlog_info` (the replay
+> coordinates). A copy-back therefore copies the *old* binlog timeline into the restored datadir.
+> That is harmless on its own — mysqld continues from the highest number present — but those
+> files must never be mistaken for a PITR replay: they end at the moment the backup was taken.
+
 ### Fresh-container / full-disaster rebuild
 
 A from-scratch `./servyy.sh` (or `./servyy-test.sh`) provisions the host and, via the integrated
@@ -321,6 +357,34 @@ ssh lehel.xyz "
   docker inspect -f '{{.State.Health.Status}}' leaguesphere.db
 "
 ```
+
+### Point-in-time recovery (binlog replay)
+
+A restore gets you to the **backup**, not to "just before the bad statement". For that, replay the
+binlog into a **scratch** container — never into the live datadir.
+
+```bash
+# 1. what the backup knows: the coordinates to start from
+ssh lehel.xyz "sudo cat /var/jail/home/leaguesphere/container/deployed/mysql-backup/current/xtrabackup_binlog_info"
+
+# 2. copy the set aside and start a throwaway server on it (no network, no grants)
+ssh lehel.xyz "sudo cp -a /var/jail/home/leaguesphere/container/deployed/mysql-backup/current /tmp/pitr && \
+  docker run -d --name pitr --network none -v /tmp/pitr:/var/lib/mysql \
+    mariadb:latest --skip-grant-tables --skip-networking"
+
+# 3. replay up to the moment before the statement
+ssh lehel.xyz "docker exec pitr mariadb-binlog --start-position=<pos from step 1> \
+  --stop-datetime='2026-10-26 14:30:59' /var/lib/mysql/binlog.000004 | docker exec -i pitr mariadb"
+
+# 4. read the rows out, then destroy the container
+ssh lehel.xyz "docker exec pitr mariadb -e 'SELECT * FROM web35_db8.divisions'"
+ssh lehel.xyz "docker rm -f pitr && sudo rm -rf /tmp/pitr"
+```
+
+Lift the rows you need out of the scratch instance with `mysqldump --where` and import them into
+prod. **Never** copy-back a replayed datadir over the live one. The full drill, including how to
+verify the position arithmetic on the test host first, is in
+`docs/plans/2026-10-26-mariadb-binlog-and-audit.md`.
 
 ---
 
