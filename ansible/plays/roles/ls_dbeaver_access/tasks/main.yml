@@ -114,9 +114,10 @@
       {{ dbeaver_stacks | length }} stack(s) found on {{ inventory_hostname }}:
       {{ dbeaver_stacks | map(attribute='name') | join(', ') | default('none', true) }}
       - provisioning
-      {{ 'all of them' if (dbeaver_app_filter_list | length) == 0
-         else (dbeaver_stacks | map(attribute='name')
-               | select('in', dbeaver_app_filter_list) | join(', ') | default('none', true)) }}
+      {{ 'none (no stack here)' if (dbeaver_stacks | length) == 0
+         else ('all of them' if (dbeaver_app_filter_list | length) == 0
+               else (dbeaver_stacks | map(attribute='name')
+                     | select('in', dbeaver_app_filter_list) | join(', ') | default('none', true))) }}
   when: inventory_hostname in dbeaver_provision_hosts
   tags:
     - ls.dbeaver
