@@ -8,9 +8,10 @@
 # names differ on purpose. The tunnel is transport only: a key opens one
 # loopback port and carries no identity.
 #
-# `name` becomes the sshd fragment filename (dbeaver-<name>.conf), `local_port`
-# is the ONLY port that account may forward to (authorized_keys permitopen plus
-# the sshd Match block), and `hosts` limits which inventory hosts get it.
+# `name` becomes the sshd fragment filename (dbeaver-<name>.conf), the ports in
+# `local_ports` are the ONLY destinations that account may forward to
+# (authorized_keys permitopen plus the sshd Match block), and `hosts` limits
+# which inventory hosts get it. `local_port` stays as the single-port shorthand.
 # ---------------------------------------------------------------------------
 
 dbeaver_stage_tunnel:
@@ -18,6 +19,14 @@ dbeaver_stage_tunnel:
   user: dbeaver_stage
   ssh_key_filename: "dbeaver_stage_key_{{ inventory_hostname_short }}"
   local_port: "33062"
+  # 33062 is the plain mysql publish (a forwarded login arrives from the host's
+  # own address, so it only works for accounts granted from that address).
+  # 33064 is the db-tunnel socat inside the stage stack: it dials mysql over the
+  # 172.26.x network, which is what the minted `dbeaver_prod_<person>` accounts
+  # are granted from. DBeaver uses 33064.
+  local_ports:
+    - "33062"
+    - "33064"
   hosts:
     - servy.lehel.xyz
     - servyy-test.lxd

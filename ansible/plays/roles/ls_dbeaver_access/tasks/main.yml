@@ -7,6 +7,7 @@
       - item.user is match('^[a-z][a-z0-9_]{1,30}$')
       - item.name is match('^[a-z0-9-]{1,40}$')
       - item.local_port is match('^[0-9]{4,5}$')
+      - (item.local_ports | default([item.local_port]) | join(',')) is match('^[0-9]{4,5}(,[0-9]{4,5})*$')
     quiet: true
   loop: "{{ dbeaver_tunnels }}"
   loop_control:
@@ -51,7 +52,11 @@
         exclusive: true
         key: "{{ lookup('file', '~/.ssh/' + item.ssh_key_filename + '.pub') }}"
         key_options: >-
-          restrict,port-forwarding,permitopen="127.0.0.1:{{ item.local_port }}",command="/bin/false"
+          restrict,port-forwarding,{{
+          (item.local_ports | default([item.local_port]))
+          | map('regex_replace', '^', 'permitopen="127.0.0.1:')
+          | map('regex_replace', '$', '"')
+          | join(',') }},command="/bin/false"
       loop: "{{ dbeaver_tunnels }}"
       loop_control:
         label: "{{ item.user }}"
