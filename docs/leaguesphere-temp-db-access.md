@@ -9,7 +9,7 @@
 ```
 person needs live data
         │
-        ├─ staff: /dbaccess/requests/new/  → person handle, tables from the list, TTL ≤ 8 h
+        ├─ staff: /dbaccess/requests/new/  → handle from the login, tables from the list, TTL ≤ 8 h
         │                                      → state: requested, an AccessEvent
         │
         ├─ a SECOND staff user with `dbaccess.approve_requests`: approve or deny
@@ -36,10 +36,11 @@ it holds itself.
 
 ## What the person does
 
-1. Ask a staff member for a **handle** (lowercase, e.g. `nn`) — that becomes the database user
-   name, so it should identify them.
-2. Staff opens `/dbaccess/requests/new/`, picks the tables from the curated list and a TTL,
-   and gives the purpose and a ticket reference.
+1. Any staff member can ask. The handle is not typed: it is derived from the login
+   (lowercase letters and digits), so the account is `dbeaver_prod_<login>` and always names a
+   real person.
+2. They open `/dbaccess/requests/new/`, filter and pick the tables from the curated list, choose a
+   TTL, and give the purpose and a ticket reference.
 3. A second staff user approves. **This cannot be the person who asked.**
 4. Within about fifteen seconds the request page offers **Show password**. That is the only
    place the credential appears; every reveal is recorded.
@@ -106,6 +107,10 @@ docker build -f container/app.Dockerfile -t leaguesphere/backend:staging .
 docker save leaguesphere/backend:staging | gzip | ssh servy.lehel.xyz 'gunzip | docker load'
 # watchtower-dev (300 s poll) would put the registry image back within minutes:
 ssh servy.lehel.xyz 'docker stop portainer.watchtower-dev'
+# `-e app_compose_pull=never` is not enough on its own: the role's
+# `Pull Docker images for staging` task (tag `ls.app.deploy.pull`, force_source: yes)
+# re-tags :staging from the registry, and the container then runs the old published
+# image (healthy, but /dbaccess/ 404). Skip that tag too.
 # app.branch lives in git-crypt vars, so override the whole dict with extra vars
 # (extra vars beat the role's include_vars) and never let compose pull the tag:
 ./servyy.sh --tags ls.app.stage --skip-tags ls.db.sync,ls.app.deploy.pull \
@@ -118,7 +123,8 @@ Compose compares the image *reference*, not the image id, so after loading a new
 Restart `portainer.watchtower-dev` when the rehearsal is over.
 
 **State 2026-10-26:** stage is running exactly that — the branch build of `feat/dbaccess-flow`
-(`f0ddd79`), compose pulled from the branch, `DBACCESS_ENABLED=true`, allow-list seeded, and
+(`bdb6fc5e`, the UI pass, image `sha256:786c68d4a5ee`), compose pulled from the branch,
+`DBACCESS_ENABLED=true`, allow-list seeded, and
 `portainer.watchtower-dev` **stopped** so the build survives the 300 s poll. Restart it with
 `ssh servy.lehel.xyz 'docker start portainer.watchtower-dev'` once the branch is no longer on
 stage; the first poll then puts the registry image back.

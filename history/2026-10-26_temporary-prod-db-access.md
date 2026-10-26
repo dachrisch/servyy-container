@@ -230,3 +230,34 @@ reads, the mint has to grant `SELECT` per table instead of on the schema.
 5. Wire the remaining open decisions from the plan: whether `INSERT`/`DELETE` is ever granted,
    whether `QUERY_DML` (reads) should be logged during a session, and who signs off on the
    revoke.
+
+## UI pass after the stage review, 2026-10-26
+
+Walking the flow on stage turned up three defects that the rehearsal's HTTP assertions could not
+see: the request form was unstyled Django output; the "Person" field asked the requester to type a
+handle that then became a MySQL account name; and an approver was offered Approve/Deny on their own
+request, which only led to a bare `HttpResponseForbidden` page.
+
+Fixed on `feat/dbaccess-flow` (`bdb6fc5e`, image `sha256:786c68d4a5ee`):
+
+| Defect | Fix |
+|---|---|
+| no styling | widgets carry Bootstrap 5 classes from `forms.py` (`form-control`, `form-select`, `form-select` + `size=12` for the table list), fields sit in cards, `_field.html` renders label/help/error the same way everywhere |
+| "Person" was typed | removed from the form. `access_handle(username)` derives it (lowercased, alphanumeric, capped at 19 characters — `dbeaver_prod_` uses 13 of `db_user`'s 32); the form shows the resulting account name as static text and the view rejects a login with no letters or digits |
+| 112-entry list box | client-side filter input, selection counter and "clear selection" (vanilla JS, no new dependency) |
+| confirmation twice | the templates rendered `messages` in addition to `base.html`, which already renders them globally |
+| Approve/Deny on your own request | `RequestDetailView` exposes `is_mine`, and `can_approve` is now `may_approve and not is_mine and approver is None`; the page explains why instead of offering the button |
+| bare 403 | `DecideView` still answers `403` (the guard is unchanged) but renders `dbaccess/forbidden.html` inside `base.html`, with a way back |
+
+Verification on stage (`stage.leaguesphere.app`, image `sha256:786c68d4a5ee`, health `200`,
+`/dbaccess/` `302` → login): a temporary staff user saw `dbeaver_prod_stagecheck` on
+`/dbaccess/requests/new/` with no `person` input; their own request page contained no
+`/decide/` URL and the POST answered `403` with the styled page. 43 dbaccess tests pass, including
+new ones for `access_handle()` (case, symbols, 19-char cap, unusable login) and for the requester's
+absent decide controls. The temporary user and its request were deleted afterwards.
+
+**Deploy trap, worth repeating:** `-e app_compose_pull=never` alone is not enough.
+`Pull Docker images for staging` (tag `ls.app.deploy.pull`, `force_source: yes`) re-tags
+`leaguesphere/backend:staging` from the registry, so the recreated container runs the old published
+image — the symptom is a healthy container where `/dbaccess/` is `404`. Skip
+`ls.app.deploy.pull` as well, then `docker rm -f leaguesphere_stage.staging-app`.
