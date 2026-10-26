@@ -97,9 +97,23 @@ State as of 2026-10-26: the **stage** stack has both halves deployed and rehears
 (request → approve → mint → reveal → revoke → drop, see
 `history/2026-10-26_temporary-prod-db-access.md`). Prod's half still waits.
 
-**Rehearsing a branch on stage.** `leaguesphere/backend:staging` is only published by the release
-tag pipeline, so a PR cannot be validated through the registry until it is merged and released.
-Until then, build the image from the branch and load it on the host, then:
+**Rolling a branch to stage (normal route).** `leaguesphere/backend:staging` is pushed by the tag
+pipeline (CircleCI `deploy_staging`), so a PR branch is validated by cutting a throwaway staging
+release from it:
+
+```bash
+gh workflow run deploy.yaml --ref <branch> -f environment=staging -f bump_type=patch
+```
+
+That bumps the version files (`4.43.1 → 4.43.2-rc.1`), commits and tags `v4.43.2-rc.1` on the
+branch; the tag pipeline runs the full matrix, pushes `:staging` and `:v<version>`, and can fail on
+`check_release_sequence` or the test shards before anything lands. Watchtower-dev (300 s poll)
+then blue-green replaces the stage app and `www` with the new images — that is the stage rollout.
+The version commit must be reset to the master state before the branch is merged
+(`scripts/check_version_sequence.py` enforces it).
+
+**Fallback when the registry is closed** (revoked Docker Hub credential, pipeline unavailable):
+build the image from the branch and load it on the host, then:
 
 ```bash
 # on a build host (servyy-test.lxd), from the branch checkout:
@@ -122,12 +136,10 @@ Compose compares the image *reference*, not the image id, so after loading a new
 `docker rm -f leaguesphere_stage.staging-app` before the deploy or the container is not recreated.
 Restart `portainer.watchtower-dev` when the rehearsal is over.
 
-**State 2026-10-26:** stage is running exactly that — the branch build of `feat/dbaccess-flow`
-(`bdb6fc5e`, the UI pass, image `sha256:786c68d4a5ee`), compose pulled from the branch,
-`DBACCESS_ENABLED=true`, allow-list seeded, and
-`portainer.watchtower-dev` **stopped** so the build survives the 300 s poll. Restart it with
-`ssh servy.lehel.xyz 'docker start portainer.watchtower-dev'` once the branch is no longer on
-stage; the first poll then puts the registry image back.
+**State 2026-10-26 (final):** stage runs the **CI-built** image of `feat/dbaccess-flow` — tag
+`v4.43.2-rc.1`, `leaguesphere/backend:staging` = `sha256:a212f96f9e05`, pulled by
+`portainer.watchtower-dev` (running again, blue-green cutover) with the frontend image from the
+same tag. `DBACCESS_ENABLED=true`, allow-list seeded, migrations applied at container start.
 
 
 Stage first:

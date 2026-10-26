@@ -261,3 +261,34 @@ absent decide controls. The temporary user and its request were deleted afterwar
 `leaguesphere/backend:staging` from the registry, so the recreated container runs the old published
 image — the symptom is a healthy container where `/dbaccess/` is `404`. Skip
 `ls.app.deploy.pull` as well, then `docker rm -f leaguesphere_stage.staging-app`.
+
+## Proper rollout through the pipeline, 2026-10-26
+
+The local-image path above was a rehearsal crutch. The normal route was then used, and it works —
+no revoked credential is involved, because the pipeline carries its own Docker Hub token in the
+CircleCI `staging` context:
+
+```bash
+gh workflow run deploy.yaml --ref feat/dbaccess-flow -f environment=staging -f bump_type=patch
+```
+
+| Step | Evidence |
+|---|---|
+| `Deploy (Stage / Demo)` | run `40385300816`, success; `4.43.1 → 4.43.2-rc.1`, commit `116c868b`, tag `v4.43.2-rc.1` pushed on the branch |
+| CircleCI tag pipeline | full matrix (all shards + e2e + image builds + compose test) → `deploy_staging` success; pushed `leaguesphere/backend:staging` and `:v4.43.2-rc.1` |
+| Watchtower-dev | restarted, first poll at 20:31, blue-green replaced the app at 20:34 and `www` right after |
+| Running image | `sha256:a212f96f9e05`, `league_manager.__version__` = `4.43.2-rc.1` |
+| Migrations | entrypoint ran `migrate` on start: "No migrations to apply" (stage was already current) |
+| UI on stage | form `200` showing `dbeaver_prod_<login>` with no `person` field; own request page has no `/decide/` link; crafted POST → styled `403` |
+
+The branch now carries the version-bump commit **and** the tag. The tag stays (it names the image
+stage is running); the bump commit has to be reset to the master state before merge, which
+`scripts/check_version_sequence.py` enforces at PR time.
+
+Two things this settles:
+
+1. **The registry is not closed.** The revoked PAT is local to this controller's
+   `~/.docker/config.json`; CI authenticates with its own secret, so `:staging` publishes normally.
+   The `docker save | docker load` recipe stays documented as a fallback only.
+2. **Watchtower is the stage roller.** Re-enabling `portainer.watchtower-dev` is the deploy step for
+   stage: it pulled both images and cut over blue-green, health-gated. Nothing else needed to run.
