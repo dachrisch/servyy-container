@@ -58,7 +58,16 @@
             {{ dbeaver_candidate_db.container.Config.Labels['com.docker.compose.project.working_dir'] }}
           db_container: "{{ dbeaver_candidate_db_container }}"
           db_name: "{{ dbeaver_candidate.db_name }}"
-          db_host_alias: "{{ 'db' if dbeaver_candidate.name == 'leaguesphere' else 'mysql' }}"
+          # The name the sidecar dials on the backend network. Read from the
+          # container's own network aliases (service name) rather than assumed
+          # from the stack name: aliases are [container, service, <id>], so
+          # dropping the container name and the id leaves the service name.
+          db_host_alias: >-
+            {{ (dbeaver_candidate_db.container.NetworkSettings.Networks[dbeaver_candidate.name ~ '_backend'].Aliases
+                | default([dbeaver_candidate_db_container]))
+               | reject('equalto', dbeaver_candidate_db_container)
+               | reject('match', '^[0-9a-f]{12}$')
+               | list | first | default(dbeaver_candidate_db_container) }}
           db_root_password: "{{ dbeaver_candidate.db_root_password }}"
           backend_network: "{{ dbeaver_candidate.name }}_backend"
           networks: "{{ dbeaver_candidate_db.container.NetworkSettings.Networks | list }}"
