@@ -8,12 +8,7 @@
       - item.name is match('^[a-z0-9-]{1,40}$')
       - item.local_port is match('^[0-9]{4,5}$')
       - (item.local_ports | default([item.local_port]) | join(',')) is match('^[0-9]{4,5}(,[0-9]{4,5})*$')
-      # The controller key file name is not free-form: it has to be the one the
-      # vault item and every operator already hold. A wrong override (e.g.
-      # `_key_servy` where the short name is `lehel`) silently generates a NEW
-      # keypair and, because authorized_keys is exclusive, replaces the public
-      # key everyone else is using - locking them out until it is restored.
-      - item.ssh_key_filename == (item.name ~ '_key_' ~ inventory_hostname_short)
+      - item.ssh_key_filename is match('^dbeaver_' ~ item.name ~ '_key_[a-z0-9-]+$')
     quiet: true
   loop: "{{ dbeaver_tunnels }}"
   loop_control:
@@ -55,7 +50,11 @@
       authorized_key:
         user: "{{ item.user }}"
         state: present
-        exclusive: true
+        # NOT exclusive by default: a mistyped key filename used to replace the
+        # installed key, locking every operator out of the tunnel until it was
+        # restored from the vault. Rotation passes
+        # -e dbeaver_tunnel_keys_exclusive=true to prune old keys.
+        exclusive: "{{ dbeaver_tunnel_keys_exclusive | default(false) | bool }}"
         key: "{{ lookup('file', '~/.ssh/' + item.ssh_key_filename + '.pub') }}"
         key_options: >-
           restrict,port-forwarding,{{

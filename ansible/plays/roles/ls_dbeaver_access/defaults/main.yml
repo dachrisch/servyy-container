@@ -17,7 +17,11 @@
 dbeaver_stage_tunnel:
   name: stage
   user: dbeaver_stage
-  ssh_key_filename: "dbeaver_stage_key_{{ inventory_hostname_short }}"
+  # Pinned on servy: this key and its vault item were created when the host was
+  # inventoried as `lehel` (2026-08); `inventory_hostname_short` is `servy`
+  # today, and deriving the name would generate a NEW keypair and orphan the one
+  # every operator holds. servyy-test never had that history, so it derives.
+  ssh_key_filename: "{{ 'dbeaver_stage_key_lehel' if inventory_hostname_short == 'servy' else 'dbeaver_stage_key_' ~ inventory_hostname_short }}"
   local_port: "33062"
   # 33062 is the plain mysql publish (a forwarded login arrives from the host's
   # own address, so it only works for accounts granted from that address).
@@ -30,7 +34,7 @@ dbeaver_stage_tunnel:
   hosts:
     - servy.lehel.xyz
     - servyy-test.lxd
-  vault_item_name: "dbeaver stage tunnel key ({{ inventory_hostname_short }})"
+  vault_item_name: "dbeaver stage tunnel key ({{ 'lehel' if inventory_hostname_short == 'servy' else inventory_hostname_short }})"
 
 dbeaver_prod_tunnel:
   name: prod
