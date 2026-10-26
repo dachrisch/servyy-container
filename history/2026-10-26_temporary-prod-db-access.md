@@ -107,6 +107,21 @@ migration, 21 tests; `deployed/dba/tick.sh`; `db-access` in both compose files; 
 - Prod untouched: no `container/deployed/dba.env`, no `dbaccess`, `dbeaver_*` or
   `dbeaver_tunnel` account, no `dbeaver-prod.conf`, prod DB container untouched.
 
+### Credential and safety-net rehearsal on stage (no app deployed)
+
+- The sidecar's **own statements** were executed as `dbaccess@'172.26.%'` with the provisioned
+  password: `CREATE USER`, `ALTER USER … MAX_STATEMENT_TIME`, `REVOKE ALL`, `GRANT SELECT`,
+  `GRANT SELECT,UPDATE` on a named table, `CREATE TABLE bak_… AS SELECT … LIMIT 0`, `DROP USER`
+  → all OK. `DROP TABLE` on the snapshot → denied (as intended; the operator drops backups).
+- A smuggled `dbeaver_prod_probe@'%'` was planted and reaped by the deployed script
+  (`host pattern '%' is not '172.26.%'`), exit 0.
+- The ledger path was exercised on a scratch schema (`reap_probe`) with three accounts: the
+  smuggled one, one past the 8 h cap, and one fresh and active. The first two were killed and
+  dropped with correct `dbaccess_request`/`dbaccess_event` rows (including a reason containing
+  quotes); the fresh one survived. Scratch schema and accounts removed afterwards.
+- The deployed reaper now runs silently and exits 0 on both stacks (no ledger on either stack
+  yet, so the ledger writes are skipped instead of erroring).
+
 ### Bugs found while validating (all fixed in this PR)
 
 | Bug | Effect if shipped |
@@ -115,15 +130,20 @@ migration, 21 tests; `deployed/dba/tick.sh`; `db-access` in both compose files; 
 | tags on a dynamic `include_tasks` do **not** propagate | `--tags ls.dbeaver.provision` / `.reap` loaded the file and then skipped every task in it, i.e. rotation and the documented safety-net check silently did nothing. Task files are now wrapped in tagged blocks |
 | `GRANT ... ON db.dbaccess_event` | MariaDB refuses a table-level grant on a table that does not exist (ERROR 1146), and the role runs **before** the migration that creates it → the whole run aborted on a fresh host. `INSERT` is now schema-wide (without `GRANT OPTION`) |
 | the role assumed one stack and one hardcoded `container` path | on servy it wrote stage's `dba.env` nowhere, so `docker compose up` on stage failed with `env file .../dba.env not found` |
+| the provisioner had no `CREATE` on the schema | the sidecar's pre-session `bak_<table>_<date>` snapshot fails, so **every** request is parked as `failed` on the first tick (reproduced with the real credential: `CREATE command denied`) |
+| the provisioner had no `PROCESS`, so the sidecar's `KILL` is a no-op | `DROP USER` does not disconnect a session, so a revoked person kept writing and then vanished from `mysql.user` — invisible to the account sweep. The reaper now kills lingering `dbeaver_prod_*` sessions itself, as root (≤ 5 min) |
+| the reaper wrote the ledger unconditionally and interpolated values unescaped | an ERROR in the journal every five minutes on a host without the schema yet, and a failed `UPDATE`/`INSERT` whenever the reason held a quote — which the pattern reason always does |
 
-**Not verified (needs the app PR merged):** a real mint, the reaper dropping a live session, the
-smuggled `@'%'` account being reaped, and a full request → approve → connect → expire cycle.
+**Not verified (needs the app PR merged):** a mint driven by the app, a revoke driven by the app
+(the kill/drop path itself was exercised on a scratch schema, including the session kill), and the
+full request → approve → connect → expire cycle.
 
 ## Impact assessment
 
 | | |
 |---|---|
-| **Privilege** | one new MySQL account (`dbaccess`) with `CREATE USER` and schema-scoped `GRANT OPTION`. Nothing else in the stack gains privilege; the app never gets it |
+| **Privilege** | one new MySQL account (`dbaccess`) with `CREATE USER`, `PROCESS`-free, and schema-scoped `SELECT, INSERT, UPDATE, CREATE … WITH GRANT OPTION` (MariaDB merges `CREATE` into the schema grant, so it inherits the option; the sidecar's code never grants it). Nothing else in the stack gains privilege; the app never gets it |
+| **Revocation** | account dropped in ~15 s; an already-open session is killed by the reaper on its next sweep (**≤ 5 min**) — the sidecar cannot kill it without a global `PROCESS` |
 | **New container** | `db-access` per stack: no port, no volume, read-only rootfs, `cap_drop: ALL`, no-new-privileges, **no watchtower label** |
 | **New host unit** | `ls-db-access-reap.timer`, every 5 minutes, quiet when there is nothing to reap; one sweep per stack on the host |
 | **App surface** | four staff pages behind `is_staff`, approval additionally behind `dbaccess.approve_requests`; **off unless `-e dbeaver_dbaccess_enabled=true`** |

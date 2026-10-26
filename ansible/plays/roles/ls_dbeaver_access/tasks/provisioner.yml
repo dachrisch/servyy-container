@@ -15,6 +15,16 @@
 #   * It therefore also holds SELECT, INSERT and UPDATE on the schema - you can
 #     only grant what you hold. That is the honest cost: this credential is as
 #     powerful as the application credential, and only the sidecar has it.
+#   * CREATE on the schema is for the pre-session snapshot
+#     (`bak_<table>_<date>`), which tick.sh takes before it grants anything. The
+#     temporary account must not have CREATE, so this cannot be avoided either.
+#     Verified on 2026-10-26: without it every request is parked as `failed`
+#     with "CREATE command denied".
+#   * PROCESS is deliberately NOT granted. It is global - it exposes every
+#     session's query text and lets the holder kill any connection - and
+#     MariaDB has no scoped variant. The consequence is that the sidecar's own
+#     KILL is a no-op; the host reaper does the killing instead (root inside
+#     the container, see the session sweep in the reap script).
 #
 # The block carries its tags because tags on a dynamic include do not propagate
 # to the included tasks.
@@ -64,9 +74,9 @@
           ALTER USER '{{ dbeaver_provisioner_user }}'@'{{ dbeaver_stack.grant_host_pattern }}'
             IDENTIFIED BY '{{ dbeaver_provisioner_password }}';
           GRANT CREATE USER ON *.* TO '{{ dbeaver_provisioner_user }}'@'{{ dbeaver_stack.grant_host_pattern }}';
-          GRANT SELECT, UPDATE ON `{{ dbeaver_stack.db_name }}`.*
+          GRANT SELECT, INSERT, UPDATE ON `{{ dbeaver_stack.db_name }}`.*
             TO '{{ dbeaver_provisioner_user }}'@'{{ dbeaver_stack.grant_host_pattern }}' WITH GRANT OPTION;
-          GRANT INSERT ON `{{ dbeaver_stack.db_name }}`.*
+          GRANT CREATE ON `{{ dbeaver_stack.db_name }}`.*
             TO '{{ dbeaver_provisioner_user }}'@'{{ dbeaver_stack.grant_host_pattern }}';
         env:
           MYSQL_PWD: "{{ dbeaver_stack.db_root_password }}"

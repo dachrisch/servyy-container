@@ -171,6 +171,17 @@ ssh servy.lehel.xyz "systemctl status ls-db-access-reap.timer --no-pager | head 
 ssh servy.lehel.xyz "sudo journalctl -u ls-db-access-reap.service -n 20 --no-pager"
 ```
 
+**What the provisioner account may do** (and may not): `CREATE USER` globally, and
+`SELECT, INSERT, UPDATE, CREATE` on the application schema with `GRANT OPTION`, so it can take the
+`bak_<table>_<date>` snapshot and hand out `SELECT`/`UPDATE` on named tables. It deliberately has
+**no `PROCESS`**: that is global (it would expose every session's query text and allow killing any
+connection) and MariaDB has no scoped variant.
+
+Consequence for **Revoke now**: the sidecar drops the account within ~15 s, so no new connection
+can be opened, but an already-open session keeps working until the reaper's next sweep kills it —
+**within 5 minutes**. The reaper does that kill as root inside the container; it is the only
+component that can. Nothing to do by hand unless the timer is down.
+
 **Look at who holds what right now:**
 
 ```sql
@@ -188,6 +199,7 @@ SELECT person, state, db_user, grant_host, created_at, activated_at
 | row flips to `failed` | unknown table, bad person, or a failed snapshot | the reason is in `failure_reason` and in `dbaccess_event` — fix and re-request |
 | login refused with `172.24.0.x` in the error | the client is not coming from the backend network | the tunnel is the only supported path; do not add `database` to the sidecar |
 | account gone before the cap | the reaper dropped it: pattern, state or age | `journalctl -u ls-db-access-reap` names the reason |
+| revoked session still connected (≤ 5 min) | `KILL` needs the global `PROCESS` privilege the sidecar deliberately lacks, so the host reaper kills it on its next sweep | wait for the sweep, or `systemctl start ls-db-access-reap.service` |
 | password page shows nothing | `DBACCESS_SECRET_KEY` missing or rotated | re-provision; the previous credential is unreadable by design |
 | nobody can approve | permission not granted | Django admin → users → `dbaccess.approve_requests` |
 
