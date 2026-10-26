@@ -1,0 +1,53 @@
+---
+# Vaultwarden is the operator's backup of the tunnel keys - the private key the
+# controller generated. The temporary DB credentials are NOT pushed here: the
+# person reveals those once in the app, and a second copy in a vault is the
+# weaker of the two channels.
+- name: Back up {{ item.user }}'s key to Vaultwarden
+  include_role:
+    name: vaultwarden
+    tasks_from: push_items.yml
+    apply:
+      tags:
+        - ls.dbeaver
+  vars:
+    vaultwarden_item_username: ansible
+    vaultwarden_items:
+      - name: "{{ item.vault_item_name }}"
+        secret: "{{ lookup('file', '~/.ssh/' + item.ssh_key_filename) }}"
+        notes: >-
+          Private key for {{ item.user }} on {{ inventory_hostname }}.
+          authorized_keys restricts it to permitopen=127.0.0.1:{{ item.local_port }};
+          sshd Match User {{ item.user }} forces AllowTcpForwarding local, so the key
+          cannot open a shell or a reverse tunnel. The tunnel carries no identity:
+          the database account it reaches is minted per session.
+  loop: "{{ dbeaver_tunnels }}"
+  loop_control:
+    label: "{{ item.user }}"
+  when:
+    - inventory_hostname in item.hosts
+    - vw_master_password | default('') | length > 0
+  tags:
+    - ls.dbeaver
+
+- name: Back up the leaguesphere deploy key to Vaultwarden
+  include_role:
+    name: vaultwarden
+    tasks_from: push_items.yml
+    apply:
+      tags:
+        - ls.dbeaver
+  vars:
+    vaultwarden_item_username: ansible
+    vaultwarden_items:
+      - name: "leaguesphere deploy key ({{ inventory_hostname_short }})"
+        secret: "{{ lookup('file', '~/.ssh/' + ls.ssh_key_filename) }}"
+        notes: >-
+          Private key for the jailed leaguesphere deploy account on {{ inventory_hostname }}.
+          Used by ls_access/jail_ssh.yaml for app deployment (SSH chroot jail;
+          AllowTcpForwarding disabled for this account's group).
+  when:
+    - inventory_hostname in ['servy.lehel.xyz', 'servyy-test.lxd']
+    - vw_master_password | default('') | length > 0
+  tags:
+    - ls.dbeaver

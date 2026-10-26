@@ -4,6 +4,6 @@
 # layer that actually closes remote (-R) forwarding, which authorized_keys
 # options alone cannot do (there is no per-key "local-only" option, only
 # the blanket sshd AllowTcpForwarding local/remote/yes/no).
-Match User {{ dbeaver_stage_user }}
+Match User {{ tunnel.user }}
     AllowTcpForwarding local
     X11Forwarding no

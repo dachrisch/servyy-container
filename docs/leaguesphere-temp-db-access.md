@@ -1,0 +1,143 @@
+# Temporary prod DB access — the operator and user flow
+
+> Companion to `docs/plans/2026-10-25-prod-db-temp-credentials.md` (the design and
+> its evidence). This is the sheet a person follows: who asks, who approves, what
+> they get, and how it ends.
+
+## The shape of it
+
+```
+person needs live data
+        │
+        ├─ staff: /dbaccess/requests/new/  → person handle, tables from the list, TTL ≤ 8 h
+        │                                      → state: requested, an AccessEvent
+        │
+        ├─ a SECOND staff user with `dbaccess.approve_requests`: approve or deny
+        │                                      → state: approved | rejected
+        │                                        (approving your own request is refused
+        │                                         by a database constraint, not a view)
+        │
+        ├─ db-access sidecar, ≤ 15 s: re-validates, snapshots bak_<table>_<date>,
+        │                             CREATE USER dbeaver_prod_<person>@'172.25.%',
+        │                             SELECT + UPDATE on the named tables only
+        │                                      → state: active, credential handed over once
+        │
+        ├─ the person works through the shared tunnel
+        │
+        └─ ls-db-access-reap.timer, every 5 min after created_at + 8 h:
+                                    kill the sessions, DROP USER, correct the row
+                                               → state: dropped
+```
+
+The **app owns the request and the record; it does not own the account or the clock.**
+It cannot `CREATE USER` (that is a global privilege and its own grant is schema-scoped),
+and it cannot extend a session: the reaper computes expiry from `created_at` plus a constant
+it holds itself.
+
+## What the person does
+
+1. Ask a staff member for a **handle** (lowercase, e.g. `nn`) — that becomes the database user
+   name, so it should identify them.
+2. Staff opens `/dbaccess/requests/new/`, picks the tables from the curated list and a TTL,
+   and gives the purpose and a ticket reference.
+3. A second staff user approves. **This cannot be the person who asked.**
+4. Within about fifteen seconds the request page offers **Show password**. That is the only
+   place the credential appears; every reveal is recorded.
+5. DBeaver:
+
+   | Tab | Field | Value |
+   |---|---|---|
+   | SSH | Host / Port | `servy.lehel.xyz` / 22 |
+   | SSH | User | `dbeaver_tunnel` |
+   | SSH | Auth | the shared tunnel key (Vaultwarden: `dbeaver prod tunnel key (servy)`) |
+   | Main | Host / Port | `127.0.0.1` / `33063` |
+   | Main | Database / User | `web35_db8` / `dbeaver_prod_<handle>` |
+
+6. When done — same day — anyone who can see the session clicks **Revoke now**. Otherwise the
+   cap does it within five minutes of the eighth hour.
+
+## What the account can and cannot do
+
+| | |
+|---|---|
+| `SELECT` | the whole schema — a diagnosis needs context |
+| `UPDATE` | **only** the tables named on the request |
+| `CREATE` | nothing. The `bak_<table>_<date>` copies exist already, taken before the grant |
+| `INSERT` / `DELETE` / DDL | nothing |
+| connections | 4 at most; one statement is killed at 60 s |
+| hosts | `172.25.%` only — the app's private network, not the finance network |
+
+## Rules the person works under
+
+1. Auto-commit **off**. A data-grid edit emits one `UPDATE` per keystroke.
+2. Scope the rows with a `SELECT` first, in the same transaction, and state the row count.
+3. Check the snapshot exists (`SELECT COUNT(*) FROM bak_<table>_<date>`) before the first write.
+   The account has no `CREATE`, so if it is missing you must stop and ask for a new request.
+4. One table per transaction; re-run the scoping `SELECT` before `COMMIT`; prefer `ROLLBACK`
+   to debugging a committed mistake.
+5. Keep the statements in a `.sql` file and hand it over. That file plus the audit log
+   (`server_audit.log`) and the binlog are the record of what happened.
+6. Two days after the session, `bak_<table>_<date>` is still in the database. Drop it once the
+   fix has been verified on stage by `ls_db_sync` — not before.
+
+## Operating it
+
+**Enable / disable.** `DBACCESS_ENABLED` in `ls.env` (rendered from `ls_app`). Off by default
+in the app; `true` on both LeagueSphere stacks. Approval additionally needs the
+`dbaccess.approve_requests` permission — grant it in the Django admin
+(*dbaccess → Approve requests*) to a named human, not to a group that includes the requester.
+
+**Seed the table list** after a deploy and after any schema change:
+
+```bash
+ssh servy.lehel.xyz "docker exec leaguesphere.app python manage.py dbaccess_sync_tables"
+```
+
+Identity, session and admin-log tables are inserted as `grantable=False` rather than skipped, so
+the request form can explain their absence.
+
+**Rotate the provisioner password** (the sidecar's credential):
+
+```bash
+rm ~/.dbeaver_provisioner_servy          # controller
+cd ansible && ./servyy.sh --tags ls.dbeaver.provision --limit servy.lehel.xyz
+cd /var/jail/home/leaguesphere/container/deployed
+docker compose -p leaguesphere up -d --force-recreate db-access
+```
+
+**Rotate the shared tunnel key:** `./servyy.sh --tags ls.dbeaver -e dbeaver_tunnel_rotate_key=true`.
+Everyone's DBeaver profile needs the new key; existing sessions keep working until their cap.
+
+**Check the safety net is alive:**
+
+```bash
+ssh servy.lehel.xyz "systemctl status ls-db-access-reap.timer --no-pager | head -4"
+ssh servy.lehel.xyz "sudo journalctl -u ls-db-access-reap.service -n 20 --no-pager"
+```
+
+**Look at who holds what right now:**
+
+```sql
+-- as root inside the container
+SELECT person, state, db_user, grant_host, created_at, activated_at
+  FROM web35_db8.dbaccess_request
+ WHERE state IN ('approved','active','revoke_requested');
+```
+
+## Failure modes worth knowing
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| request stays `approved` | sidecar down, or no `dba.env` | `docker logs leaguesphere.db-access`; the row is untouched until a tick succeeds |
+| row flips to `failed` | unknown table, bad person, or a failed snapshot | the reason is in `failure_reason` and in `dbaccess_event` — fix and re-request |
+| login refused with `172.24.0.x` in the error | the client is not coming from the backend network | the tunnel is the only supported path; do not add `database` to the sidecar |
+| account gone before the cap | the reaper dropped it: pattern, state or age | `journalctl -u ls-db-access-reap` names the reason |
+| password page shows nothing | `DBACCESS_SECRET_KEY` missing or rotated | re-provision; the previous credential is unreadable by design |
+| nobody can approve | permission not granted | Django admin → users → `dbaccess.approve_requests` |
+
+## Deliberate absences
+
+No self-service: a second person is the control, and the constraint enforces it. No per-person
+SSH account: the tunnel is transport, the database account is identity, and attribution lives in
+`dbaccess_event` + `server_audit.log`. No extension: a second day is a new request, a new account
+and a new password.

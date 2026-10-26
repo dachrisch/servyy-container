@@ -1,0 +1,106 @@
+---
+# Creates the account the db-access sidecar uses to mint temporary MySQL users.
+#
+# This is the only new privilege in the whole design, and it is scoped as
+# tightly as MariaDB allows:
+#   * CREATE USER is a global privilege - there is no schema-scoped variant, so
+#     it cannot be avoided. It also lets the account create '%' hosts, which is
+#     why the reaper re-checks the host pattern on every sweep.
+#   * GRANT OPTION is scoped to the application schema, so the account can hand
+#     out SELECT/UPDATE there and nothing else. Verified on 2026-10-26: it
+#     cannot grant ALL on *.*, cannot touch another schema, cannot grant itself
+#     anything, and cannot even read mysql.user.
+#   * It therefore also holds SELECT+UPDATE on the schema - you can only grant
+#     what you hold. That is the honest cost: this credential is as powerful as
+#     the application credential, and only the sidecar has it.
+- name: Read the app credentials for this host
+  include_vars:
+    file: "{{ playbook_dir }}/roles/ls_app/vars/{{ 'secret_main.yaml' if inventory_hostname == 'servy.lehel.xyz' else 'secret_stage.yaml' }}"
+    name: dbeaver_app
+
+- name: Derive container names, database and grant host for this host
+  set_fact:
+    dbeaver_db_container: >-
+      {{ (dbeaver_app.name ~ '.db') if dbeaver_app.name == 'leaguesphere'
+         else (dbeaver_app.name ~ '.mysql') }}
+    dbeaver_db_name: "{{ dbeaver_app.db_name }}"
+    dbeaver_sidecar_container: "{{ dbeaver_app.name }}{{ dbeaver_sidecar_container_suffix }}"
+    dbeaver_db_host_alias: "{{ 'db' if dbeaver_app.name == 'leaguesphere' else 'mysql' }}"
+    dbeaver_compose_dir: >-
+      {{ (ssh_chroot_jail_path, 'home', ls.user, 'container',
+          dbeaver_app.container_dir) | path_join }}
+  no_log: true
+
+- name: Read the network this database is reached from
+  community.docker.docker_network_info:
+    name: "{{ dbeaver_app.name }}_backend"
+  register: dbeaver_backend_net
+
+- name: Derive the provisioner host pattern from the backend subnet
+  set_fact:
+    dbeaver_grant_host_pattern: >-
+      {{ (dbeaver_backend_net.network.IPAM.Config[0].Subnet.split('/')[0].split('.')[0:2]
+          | join('.')) ~ '.%' }}
+
+- name: Refuse to provision outside the internal backend network
+  assert:
+    that:
+      - dbeaver_grant_host_pattern == '172.25.%'
+    fail_msg: >-
+      {{ dbeaver_app.name }}_backend is
+      {{ dbeaver_backend_net.network.IPAM.Config[0].Subnet }}, not 172.25.0.0/16.
+      Re-verify which containers share that network before granting.
+    quiet: true
+  when: inventory_hostname == 'servy.lehel.xyz'
+
+- name: Generate the provisioner password once, on the controller
+  set_fact:
+    dbeaver_provisioner_password: >-
+      {{ lookup('password', dbeaver_provisioner_local_file + ' length=32 chars=ascii_letters,digits') }}
+  no_log: true
+
+- name: Create or update the provisioner account inside the DB container
+  community.docker.docker_container_exec:
+    container: "{{ dbeaver_db_container }}"
+    command: mariadb -h 127.0.0.1 -u root --batch
+    stdin: |
+      CREATE USER IF NOT EXISTS '{{ dbeaver_provisioner_user }}'@'{{ dbeaver_grant_host_pattern }}'
+        IDENTIFIED BY '{{ dbeaver_provisioner_password }}';
+      ALTER USER '{{ dbeaver_provisioner_user }}'@'{{ dbeaver_grant_host_pattern }}'
+        IDENTIFIED BY '{{ dbeaver_provisioner_password }}';
+      GRANT CREATE USER ON *.* TO '{{ dbeaver_provisioner_user }}'@'{{ dbeaver_grant_host_pattern }}';
+      GRANT SELECT, UPDATE ON `{{ dbeaver_db_name }}`.*
+        TO '{{ dbeaver_provisioner_user }}'@'{{ dbeaver_grant_host_pattern }}' WITH GRANT OPTION;
+      GRANT INSERT, UPDATE ON `{{ dbeaver_db_name }}`.`dbaccess_event`
+        TO '{{ dbeaver_provisioner_user }}'@'{{ dbeaver_grant_host_pattern }}';
+    env:
+      MYSQL_PWD: "{{ dbeaver_app.db_root_password }}"
+  no_log: true
+
+- name: Show what the provisioner actually got
+  community.docker.docker_container_exec:
+    container: "{{ dbeaver_db_container }}"
+    command: >-
+      mariadb -h 127.0.0.1 -u root --batch --skip-column-names
+      -e "SHOW GRANTS FOR '{{ dbeaver_provisioner_user }}'@'{{ dbeaver_grant_host_pattern }}'"
+    env:
+      MYSQL_PWD: "{{ dbeaver_app.db_root_password }}"
+  register: dbeaver_provisioner_grants
+  changed_when: false
+
+- name: Print the effective provisioner grants
+  debug:
+    var: dbeaver_provisioner_grants.stdout_lines
+
+- name: Write the sidecar environment file next to the compose file
+  template:
+    src: dba.env.j2
+    dest: "{{ (dbeaver_compose_dir, 'dba.env') | path_join }}"
+    owner: "{{ ls.user }}"
+    group: "{{ ls.user }}"
+    mode: '0600'
+  no_log: true
+
+# NOTE: rotating this password (deleting the controller-side file) needs the
+# sidecar restarted afterwards - it reads dba.env once, at start:
+#   cd {{ dbeaver_compose_dir }} && docker compose -p {{ dbeaver_app.name }} up -d --force-recreate db-access

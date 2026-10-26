@@ -1,70 +1,100 @@
 ---
-- name: Set up the dedicated, restricted DBeaver stage tunnel account
+# Tunnel accounts, the provisioner behind the db-access sidecar, and the reaper
+# that ends access on a clock. See docs/plans/2026-10-25-prod-db-temp-credentials.md.
+- name: Validate tunnel definitions
+  assert:
+    that:
+      - item.user is match('^[a-z][a-z0-9_]{1,30}$')
+      - item.name is match('^[a-z0-9-]{1,40}$')
+      - item.local_port is match('^[0-9]{4,5}$')
+    quiet: true
+  loop: "{{ dbeaver_tunnels }}"
+  loop_control:
+    label: "{{ item.user }}"
+  when: inventory_hostname in item.hosts
+  tags:
+    - ls.dbeaver
+
+- name: Set up restricted SSH tunnel accounts
   block:
-    - name: Create dedicated dbeaver_stage account (no shell, no extra groups)
+    - name: Create dedicated {{ item.user }} account (no shell, no extra groups)
       user:
-        name: "{{ dbeaver_stage_user }}"
+        name: "{{ item.user }}"
         state: present
         shell: /usr/sbin/nologin
         create_home: true
+      loop: "{{ dbeaver_tunnels }}"
+      loop_control:
+        label: "{{ item.user }}"
+      when: inventory_hostname in item.hosts
 
-    - name: Generate dedicated SSH keypair for the DBeaver stage tunnel
+    - name: Generate the SSH keypair for {{ item.user }}
       openssh_keypair:
-        path: "~/.ssh/{{ dbeaver_stage_ssh_key_filename }}"
+        path: "~/.ssh/{{ item.ssh_key_filename }}"
         type: rsa
         size: 4096
         state: present
-        force: no
+        # The prod tunnel is shared, so its key is rotated on demand rather than
+        # only when it happens to be missing.
+        force: "{{ (dbeaver_tunnel_rotate_key | default(false) | bool) and item.name == 'prod' }}"
       delegate_to: localhost
       become_user: "{{ local_user }}"
+      loop: "{{ dbeaver_tunnels }}"
+      loop_control:
+        label: "{{ item.user }}"
+      when: inventory_hostname in item.hosts
 
-    - name: Restrict the DBeaver tunnel key to stage-only, local-only port forwarding
+    - name: Restrict {{ item.user }} to its single permitted destination
       authorized_key:
-        user: "{{ dbeaver_stage_user }}"
+        user: "{{ item.user }}"
         state: present
         exclusive: true
-        key: "{{ lookup('file', '~/.ssh/' + dbeaver_stage_ssh_key_filename + '.pub') }}"
+        key: "{{ lookup('file', '~/.ssh/' + item.ssh_key_filename + '.pub') }}"
         key_options: >-
-          restrict,port-forwarding,permitopen="127.0.0.1:{{ dbeaver_stage_local_port }}",command="/bin/false"
+          restrict,port-forwarding,permitopen="127.0.0.1:{{ item.local_port }}",command="/bin/false"
+      loop: "{{ dbeaver_tunnels }}"
+      loop_control:
+        label: "{{ item.user }}"
+      when: inventory_hostname in item.hosts
 
-    - name: Deploy sshd Match block to close remote (-R) forwarding for this account
+    - name: Deploy sshd Match block for {{ item.user }}
       template:
-        src: dbeaver_stage_sshd.conf.j2
-        dest: /etc/ssh/sshd_config.d/dbeaver-stage.conf
+        src: dbeaver_sshd.conf.j2
+        dest: "/etc/ssh/sshd_config.d/dbeaver-{{ item.name }}.conf"
         mode: '0644'
         validate: 'sshd -t -f %s'
-      register: dbeaver_stage_sshd_conf
+      vars:
+        tunnel: "{{ item }}"
+      loop: "{{ dbeaver_tunnels }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: inventory_hostname in item.hosts
+      register: dbeaver_sshd_conf
 
-    - name: Restart sshd if the Match block changed
+    - name: Restart sshd when a Match block changed
       systemd:
         name: ssh
         state: restarted
-      when: dbeaver_stage_sshd_conf.changed
-
-    - name: Push operator SSH keys to Vaultwarden (dbeaver tunnel key + leaguesphere deploy key)
-      include_role:
-        name: vaultwarden
-        tasks_from: push_items.yml
-        apply:
-          tags:
-            - ls.dbeaver
-      vars:
-        vaultwarden_item_username: "ansible"
-        vaultwarden_items:
-          - name: "dbeaver stage tunnel key ({{ inventory_hostname_short }})"
-            secret: "{{ lookup('file', '~/.ssh/' + dbeaver_stage_ssh_key_filename) }}"
-            notes: >-
-              Private key for the dbeaver_stage account on {{ inventory_hostname }}.
-              authorized_keys restricts it to permitopen=127.0.0.1:{{ dbeaver_stage_local_port }}
-              (LeagueSphere stage DB only), local-only forwarding (restrict,port-forwarding +
-              sshd Match block), and command="/bin/false" (no shell access).
-          - name: "leaguesphere deploy key ({{ inventory_hostname_short }})"
-            secret: "{{ lookup('file', '~/.ssh/' + ls.ssh_key_filename) }}"
-            notes: >-
-              Private key for the jailed leaguesphere deploy account on {{ inventory_hostname }}.
-              Used by ls_access/jail_ssh.yaml for app deployment (SSH chroot jail;
-              AllowTcpForwarding disabled for this account's group).
-      when: vw_master_password | default('') | length > 0
+      when: dbeaver_sshd_conf.results | selectattr('changed') | list | length > 0
   when: inventory_hostname in ['servy.lehel.xyz', 'servyy-test.lxd']
+  tags:
+    - ls.dbeaver
+
+- name: Provision the account the db-access sidecar mints with
+  include_tasks: provisioner.yml
+  when: inventory_hostname in dbeaver_provision_hosts
+  tags:
+    - ls.dbeaver
+    - ls.dbeaver.provision
+
+- name: Deploy the safety net that ends access on a clock
+  include_tasks: reaper.yml
+  when: inventory_hostname in dbeaver_provision_hosts
+  tags:
+    - ls.dbeaver
+    - ls.dbeaver.reap
+
+- name: Hand the tunnel keys to Vaultwarden
+  include_tasks: vault_push.yml
   tags:
     - ls.dbeaver

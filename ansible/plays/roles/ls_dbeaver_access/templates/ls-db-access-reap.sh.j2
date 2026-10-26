@@ -1,0 +1,108 @@
+#!/bin/bash
+# Managed by Ansible (ls_dbeaver_access) - do not edit by hand.
+#
+# Reaps temporary MySQL accounts that have outlived the hard cap, that the app
+# says are not active, or that exist on a host pattern other than the expected
+# one. It never trusts expires_at: the clock is created_at plus the constant
+# below, so a buggy or compromised app can shorten a session but cannot extend
+# one.
+#
+# Root credentials come from the container's own environment, so no secret is
+# placed on a host command line.
+set -euo pipefail
+
+DB_CONTAINER="{{ dbeaver_db_container }}"
+DB="{{ dbeaver_db_name }}"
+PATTERN="{{ dbeaver_grant_host_pattern }}"
+CAP_H="{{ dbeaver_ttl_cap_hours }}"
+
+run_sql() {
+  docker exec -i "$DB_CONTAINER" sh -c \
+    'exec mariadb -h 127.0.0.1 -u root -p"$MYSQL_ROOT_PASSWORD" --batch --skip-column-names'
+}
+
+# The reaper is deployed before the app migration on a fresh host, and must not
+# fail every five minutes in that window. No table means no accounts to judge;
+# the host-pattern check below still runs.
+has_ledger=$(
+  run_sql <<SQL || echo 0
+SELECT COUNT(*) FROM information_schema.tables
+ WHERE table_schema='${DB}' AND table_name='dbaccess_request';
+SQL
+)
+
+reap() {
+  user="$1"
+  host="$2"
+  reason="$3"
+
+  echo "ls-db-access-reap: dropping ${user}@${host} (${reason})"
+
+  # Kill first: dropping a user does not disconnect it in MariaDB, so
+  # "revoked" would otherwise mean "until they close their client".
+  while read -r pid; do
+    case "$pid" in
+      ''|*[!0-9]*) continue ;;
+    esac
+    run_sql <<SQL || true
+KILL ${pid};
+SQL
+  done < <(run_sql <<SQL
+SELECT id FROM information_schema.processlist WHERE user='${user}';
+SQL
+)
+
+  run_sql <<SQL || true
+DROP USER IF EXISTS '${user}'@'${host}';
+SQL
+
+  run_sql <<SQL || true
+UPDATE \`${DB}\`.\`dbaccess_request\`
+   SET state='dropped', secret=NULL, dropped_at=NOW(), updated_at=NOW()
+ WHERE db_user='${user}' AND state <> 'dropped';
+SQL
+
+  run_sql <<SQL || true
+INSERT INTO \`${DB}\`.\`dbaccess_event\` (request_id, at, actor, action, detail, from_ip)
+SELECT id, NOW(), 'reaper', 'dropped', '${reason}', NULL
+  FROM \`${DB}\`.\`dbaccess_request\`
+ WHERE db_user='${user}'
+ ORDER BY id DESC
+ LIMIT 1;
+SQL
+}
+
+# Every dbeaver_prod_* account must be backed by an active request inside the
+# cap. Anything else is dropped and logged with the reason.
+while IFS=$'\t' read -r user host; do
+  [ -n "${user:-}" ] || continue
+
+  if [ "$host" != "$PATTERN" ]; then
+    reap "$user" "$host" "host pattern '$host' is not '$PATTERN'"
+    continue
+  fi
+
+  if [ "$has_ledger" = "0" ]; then
+    echo "ls-db-access-reap: ${DB}.dbaccess_request does not exist yet - pattern-only sweep"
+    continue
+  fi
+
+  verdict=$(run_sql <<SQL
+SELECT CASE
+         WHEN COUNT(*) = 0 THEN 'no-request-row'
+         WHEN SUM(state IN ('active','revoke_requested','expired')) = 0 THEN 'not-active'
+         WHEN MIN(created_at) < NOW() - INTERVAL ${CAP_H} HOUR THEN 'past-cap'
+         ELSE 'ok'
+       END
+  FROM \`${DB}\`.\`dbaccess_request\`
+ WHERE db_user='${user}';
+SQL
+)
+
+  if [ "$verdict" != "ok" ]; then
+    reap "$user" "$host" "$verdict"
+  fi
+done < <(run_sql <<'SQL'
+SELECT user, host FROM mysql.user WHERE user LIKE 'dbeaver\_prod\_%';
+SQL
+)
