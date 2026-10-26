@@ -17,7 +17,8 @@
         secret: "{{ lookup('file', '~/.ssh/' + item.ssh_key_filename) }}"
         notes: >-
           Private key for {{ item.user }} on {{ inventory_hostname }}.
-          authorized_keys restricts it to permitopen=127.0.0.1:{{ item.local_port }};
+          authorized_keys restricts it to
+          permitopen=127.0.0.1:{{ (item.local_ports | default([item.local_port])) | join(' and 127.0.0.1:') }};
           sshd Match User {{ item.user }} forces AllowTcpForwarding local, so the key
           cannot open a shell or a reverse tunnel. The tunnel carries no identity:
           the database account it reaches is minted per session.

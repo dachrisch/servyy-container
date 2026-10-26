@@ -44,15 +44,23 @@ it holds itself.
 3. A second staff user approves. **This cannot be the person who asked.**
 4. Within about fifteen seconds the request page offers **Show password**. That is the only
    place the credential appears; every reveal is recorded.
-5. DBeaver:
+5. DBeaver. The tunnel account is transport only — the identity is the minted MySQL user:
 
-   | Tab | Field | Value |
+   | | prod | stage |
    |---|---|---|
-   | SSH | Host / Port | `servy.lehel.xyz` / 22 |
-   | SSH | User | `dbeaver_tunnel` |
-   | SSH | Auth | the shared tunnel key (Vaultwarden: `dbeaver prod tunnel key (servy)`) |
-   | Main | Host / Port | `127.0.0.1` / `33063` |
-   | Main | Database / User | `web35_db8` / `dbeaver_prod_<handle>` |
+   | SSH host / port | `servy.lehel.xyz` / 22 | `servy.lehel.xyz` / 22 |
+   | SSH user | `dbeaver_tunnel` | `dbeaver_stage` |
+   | SSH auth | Vaultwarden: `dbeaver prod tunnel key (servy)` | Vaultwarden: `dbeaver stage tunnel key (servy)` |
+   | Main host / port | `127.0.0.1` / `33063` | `127.0.0.1` / `33064` |
+   | Database | `web35_db8` | `leaguesphere_stage` |
+   | User | `dbeaver_prod_<handle>` | `dbeaver_prod_<handle>` |
+
+   Both ports are a `db-tunnel` socat *inside* the stack, not a published mysql port: a forwarded
+   login has to enter the compose network so that mysql sees `172.25.%` / `172.26.%` and the
+   account's grant matches. Stage's plain publish (`127.0.0.1:33062`) delivers the host's address
+   instead and answers `1045` for every minted account; it stays available for anything granted
+   from the host address. The account allows 4 connections, 60 s per statement, `SELECT` on the
+   schema and `SELECT, UPDATE` on the requested tables only — no `INSERT`, `DELETE` or DDL.
 
 6. When done — same day — anyone who can see the session clicks **Revoke now**. Otherwise the
    cap does it within five minutes of the eighth hour.

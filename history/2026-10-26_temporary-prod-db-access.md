@@ -292,3 +292,40 @@ Two things this settles:
    The `docker save | docker load` recipe stays documented as a fallback only.
 2. **Watchtower is the stage roller.** Re-enabling `portainer.watchtower-dev` is the deploy step for
    stage: it pulled both images and cut over blue-green, health-gated. Nothing else needed to run.
+
+## Stage gets the same tunnel executor, 2026-10-26
+
+Handing the flow to a human exposed a hole the HTTP rehearsal could not: stage mints the
+`dbeaver_prod_<person>@'172.26.%'` accounts, but its tunnel target was the plain mysql publish
+(`127.0.0.1:33062`), and a forwarded connection arrives from the *host's* address. Measured with
+the sidecar's own provisioner account, which carries the identical grant pattern:
+
+```
+ERROR 1045 (28000): Access denied for user 'dbaccess'@'192.168.0.1'
+```
+
+So no human could have logged in to stage with a minted account. Prod never had the problem
+because its tunnel lands on a `db-tunnel` socat that dials `db:3306` from inside the compose
+network. Stage now has the same service (`deployed/docker-compose.staging.yaml`, `aa83541b`):
+`TCP-LISTEN:33064 → mysql:3306`, joined to `backend` (172.26.x) plus a publish-only `tunnel`
+network, because a port cannot be published from an internal network and `mysql` must not be
+reachable over the publishing one. The `dbeaver_stage` key was narrowed to
+`permitopen="127.0.0.1:33062"` before; `local_ports` (`9c90e69`) lets it carry both, so the old
+publish keeps working for anything granted from the host address.
+
+End-to-end through the tunnel, with a throwaway requester/approver pair (deleted afterwards):
+
+| Check | Result |
+|---|---|
+| Request → approve (second user, via the UI) | state `approved` → `active` within 25 s |
+| Minted account | `dbeaver_prod_tunnelcheck@172.26.%`, secret set |
+| Login over `127.0.0.1:33064` (same path as DBeaver) | `CURRENT_USER() = dbeaver_prod_tunnelcheck@172.26.%`, peer `172.26.0.4` |
+| Grants | `SELECT` on `leaguesphere_stage`.*, `SELECT, UPDATE` on `divisions`, `MAX_USER_CONNECTIONS 4`, `MAX_STATEMENT_TIME 60` |
+| Snapshot | `bak_divisions_20261026` exists with the same row count as the source |
+| `UPDATE` on a non-requested table | `ERROR 1142` |
+| `CREATE TABLE`, `DELETE` on a granted table | `ERROR 1142` |
+| Revoke in the app | `dropped` within 25 s, no `dbeaver%` account left in `mysql.user` |
+
+DBeaver: SSH `dbeaver_stage@servy.lehel.xyz:22` with the stage tunnel key, main host
+`127.0.0.1:33064`, database `leaguesphere_stage`, user `dbeaver_prod_<login>`, password from
+**Show password**.
