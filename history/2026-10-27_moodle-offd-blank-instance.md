@@ -12,8 +12,9 @@ FTP-only shared hosting at All-Inkl, and maintains it by unzipping release archi
 stack. This change lands the **blank instance**; the data migration and the `offd.de` cutover are
 separate, later steps.
 
-Chosen shape: a `docker_service` on `servy`, next to LeagueSphere, with its data on an attached
-Hetzner volume — not a separate VM.
+Chosen shape: a `docker_service` on `servy`, next to LeagueSphere, with its data on existing server
+storage — not a separate VM. A 100 GB Hetzner volume was built first and then **detached and deleted
+the same day**, because no new spend should happen before the real import has been measured.
 
 ## What was built
 
@@ -28,10 +29,12 @@ Hetzner volume — not a separate VM.
 | Volume mount/format/ownership | `roles/user/tasks/moodle_volume.yml`, `moodle_data_dirs.yml` |
 | Inventory (prod + test) | `ansible/production`, `ansible/testing` |
 
-**Volume:** Hetzner Cloud volume `moodle`, id `107289254`, 100 GB, fsn1, attached to `servy`
-(`/dev/disk/by-id/scsi-0HC_Volume_107289254`), mounted at `/mnt/moodle` with `nofail`, holding
-`moodledata/` (uid 33) and `mariadb/` (uid 999). Created out of band via the API; Ansible owns
-format-if-blank, fstab, mount and ownership.
+**Storage:** `<service dir>/data` on the root disk — `moodledata/` (uid 33) and `mariadb/` (uid 999),
+217 MB for a blank instance, 21 GB free on `/`. The volume support stays dormant in the repo behind
+`moodle_volume_device`; attaching one later is a two-line inventory change plus `moodle_data_root`.
+The Storage Box is deliberately excluded: it is CIFS (unsafe for InnoDB locking/fsync) *and* the
+restic destination, so it cannot also hold the only copy. `restic-home` now excludes
+`servyy-container/moodle/data` so the hourly snapshot does not try to upload a live datadir.
 
 **URL shape:** Moodle lives at `/var/www/html/offd/moodle` so the on-disk path mirrors the live
 wwwroot `https://offd.de/offd/moodle`. No rewrite rule, and the 14 GB database keeps its absolute

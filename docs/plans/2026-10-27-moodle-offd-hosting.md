@@ -14,7 +14,8 @@ FTP-only shared hosting onto this repo's infrastructure as a maintained Docker s
 with real backups, deliberate upgrades and plugin preservation.
 
 **Chosen shape (decided 2026-10-27):** *Option A* — a `docker_service` on `servy`, next to LeagueSphere,
-data on an attached Hetzner Cloud volume. Not a separate VM.
+data on existing server storage (a dedicated volume only if the measured import needs one).
+Not a separate VM.
 
 ---
 
@@ -58,9 +59,9 @@ data on an attached Hetzner Cloud volume. Not a separate VM.
    pinned image (`FROM …:8.3` + the `4.5.12` tarball) in-repo, which is Moodle's documented
    production path.
 4. **MariaDB sidecar in the project**, no published port, mirroring `bnb-office` / `leaguesphere.db`.
-5. **Data on an attached volume** (`/mnt/moodle`), not the root disk and not `/mnt/storagebox`
-   (CIFS is a backup target, never a database). `/mnt` is excluded from the root restic snapshot, so
-   moodledata needs its own repo anyway.
+5. **Data on existing server storage** (`<service dir>/data`), never the Storage Box: CIFS is a
+   backup target, not a database, and it is the restic destination — it cannot also be the only copy.
+   A dedicated volume is a deliberate later decision, taken only if the measured import needs it.
 6. **Migration runs on 4.5.12 = the current version.** Migration and the 5.x leap are separate
    projects; combining them before January is how this fails. Moodle 5.1+ additionally moves the
    docroot to `/var/www/html/public`.
@@ -69,19 +70,36 @@ data on an attached Hetzner Cloud volume. Not a separate VM.
 
 ---
 
-## Task 1: Attached volume
+## Task 1: Storage (no dedicated volume — decided 2026-10-27)
+
+**Superseded:** a 100 GB Hetzner volume was created and attached during the first build-out, then
+**detached and deleted on 2026-10-27** — no new spend until the real import has been measured.
+
+Current: `moodle_data_root = /home/cda/servyy-container/moodle/data` on the root disk
+(`moodledata/` uid 33, `mariadb/` uid 999, ~217 MB for a blank instance). Root disk: 75 GB total,
+21 GB free.
+
+**The Storage Box is not an option for these directories.** It is a CIFS mount: no safe `fsync`/
+locking semantics for InnoDB, and it is the restic target — using it as primary storage would leave
+no independent copy.
+
+**Disk reality for the import:** ~14 GB moodledata + an as-yet-unknown DB against 21 GB free. It fits
+with little headroom, so the dry run is also the sizing measurement. If it does not fit, the answers
+in order of preference are (a) prune/relocate on the host, (b) buy a volume, (c) look again at
+whether the DB can live elsewhere.
+
+The volume path stays in the repo, dormant: set `moodle_volume_device` (+ `moodle_volume_path`) in the
+prod inventory and `roles/user/tasks/moodle_volume.yml` formats-if-blank, writes fstab and mounts it;
+`moodle_data_root` is the only other value to point at it.
 
 ```bash
-# create + attach (no reboot; the volume is hot-pluggable, unlike a disk rescale)
-hcloud volume create --name moodle --size 100 --server servy --location fsn1 \
-  --format ext4 --automount
+# only if a volume is bought later
+hcloud volume create --name moodle --size 100 --server servy --location fsn1 --format ext4
 ```
-→ `/dev/disk/by-id/scsi-0HC_Volume_<id>`, mounted at `/mnt/moodle` via `ansible/plays/roles/user/tasks/moodle_volume.yml`
-(format-if-unformatted → fstab → mount → `moodledata/` owned by uid 33, `mariadb/` left to the image
-entrypoint). 100 GB ≈ €4.40/month; sized for the 14 GB now plus the "video later" question.
-
-**Not** `/mnt/10g_volume`: that path already holds ~36 GB of docker data on the root disk, and mounting
-over it would hide the layers.
+→ `/dev/disk/by-id/scsi-0HC_Volume_<id>`, mounted via `ansible/plays/roles/user/tasks/moodle_volume.yml`
+(format-if-unformatted → fstab → mount → `moodledata/` owned by uid 33, `mariadb/` owned by 999).
+100 GB ≈ €4.40/month. **Not** `/mnt/10g_volume`: that path already holds docker layers on the root
+disk and mounting over it would hide them.
 
 ---
 
@@ -123,7 +141,7 @@ Acceptance: `https://m.leaguesphere.app/offd/moodle/` serves the **installer**, 
 | Check | Result |
 |---|---|
 | Containers | `moodle.app` (healthy), `moodle.db` (healthy), `moodle.cron` |
-| Volume | `/mnt/moodle` ← `/dev/sdb` (98 GB, `scsi-0HC_Volume_107289254`), in fstab with `nofail` |
+| Volume | **none** — data on existing server storage, `/home/cda/servyy-container/moodle/data` (root disk, 21 GB free); the 100 GB volume was detached and deleted on 2026-10-27 to avoid new spend before the import is measured |
 | TLS | Let's Encrypt cert for `m.leaguesphere.app`, valid to 2027-01-25 (HTTP-01) |
 | Front page | `200 — Home \| offd` |
 | Login | `200 — Log in to the site \| offd`, form present |
@@ -175,7 +193,8 @@ Then walk the installer and record the generated `config.php` into the image/ent
 3. Plugin list (`Site administration → Plugins → Plugins overview`) — anything abandoned or patched
    will not survive a later 5.x move.
 4. Is `offd.de/` (today the Moodle front page) allowed to keep redirecting to `/offd/moodle/`?
-5. Who owns/pays: volume ~€4.40/mo, and the Open Question #1 from the sync doc.
+5. Who owns/pays — with no volume there is no new line item yet; the Open Question #1 from the sync
+   doc (AvD financing) still stands for whoever ends up owning the box.
 
 ---
 
@@ -246,7 +265,7 @@ Target: an **executed** restore drill on `servyy-test.lxd` before cutover, not j
 ## Rollback
 
 Additive and cheap at every stage: remove the `moodle` entry from `services_enabled` and
-`docker compose -p moodle down`; the volume survives untouched. Before cutover, rollback is "do nothing
+`docker compose -p moodle down`; the data directory survives untouched. Before cutover, rollback is "do nothing
 on `offd.de`" — the old host is still authoritative. After cutover it is the DNS record back plus
 `wwwroot` flipped, which is why the TTL is lowered first.
 
@@ -254,7 +273,7 @@ on `offd.de`" — the old host is still authoritative. After cutover it is the D
 
 | Task | Estimate |
 |---|---|
-| 1–3 volume + service + blank instance | ½ day |
+| 1–3 storage + service + blank instance | ½ day |
 | 4 waiting on Christoph | external |
 | 5 dry run (transfer dominant) | 1–2 days |
 | 6 cutover window | 2–3 h |
@@ -267,4 +286,4 @@ on `offd.de`" — the old host is still authoritative. After cutover it is the D
 2. Whether `www.offd.de` moves too, and whether anything else lives on that domain.
 3. SMTP: no central relay in this repo — services use a Gmail app password. Sending as `@offd.de`
    needs SPF/DKIM at KAS, so likely a transactional provider for Moodle's notification mail.
-4. Does the volume stay LeagueSphere-owned (we pay €4.40/mo) or does the Verband?
+4. If storage has to be bought later (measured after the import): LeagueSphere-owned or Verband?
