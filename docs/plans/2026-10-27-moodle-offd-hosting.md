@@ -76,7 +76,6 @@ data on an attached Hetzner Cloud volume. Not a separate VM.
 hcloud volume create --name moodle --size 100 --server servy --location fsn1 \
   --format ext4 --automount
 ```
-
 → `/dev/disk/by-id/scsi-0HC_Volume_<id>`, mounted at `/mnt/moodle` via `ansible/plays/roles/user/tasks/moodle_volume.yml`
 (format-if-unformatted → fstab → mount → `moodledata/` owned by uid 33, `mariadb/` left to the image
 entrypoint). 100 GB ≈ €4.40/month; sized for the 14 GB now plus the "video later" question.
@@ -118,6 +117,49 @@ cd ansible && ./servyy.sh --tags user.docker.moodle --limit servy.lehel.xyz
 
 Acceptance: `https://m.leaguesphere.app/offd/moodle/` serves the **installer**, the cert is real
 (HTTP-01), `docker logs moodle.app` is clean, cron ticks, `/` redirects to `/offd/moodle/`.
+
+### STATUS: DONE (2026-10-27) — blank instance live
+
+| Check | Result |
+|---|---|
+| Containers | `moodle.app` (healthy), `moodle.db` (healthy), `moodle.cron` |
+| Volume | `/mnt/moodle` ← `/dev/sdb` (98 GB, `scsi-0HC_Volume_107289254`), in fstab with `nofail` |
+| TLS | Let's Encrypt cert for `m.leaguesphere.app`, valid to 2027-01-25 (HTTP-01) |
+| Front page | `200 — Home \| offd` |
+| Login | `200 — Log in to the site \| offd`, form present |
+| Version | `4.5.12 (Build: 20260608)` — identical to live offd.de; `--is-pending` → rc 0 |
+| Cron | `Cron run completed correctly` every minute |
+| Root redirect | `308` → `https://m.leaguesphere.app/offd/moodle/` |
+| Memory | app 209 MB / db 223 MB / cron 128 MB (limits 768/768/256); host 3 GB available |
+
+The DB install was done with `admin/cli/install_database.php`, **not** the web installer: the web
+installer writes `config.php`, which is the Ansible-rendered bind mount (read-only to uid 33).
+The `admin` account created here is throwaway — the real import replaces the database.
+
+### Implementation notes — what actually bit us
+
+Each of these was a real 403/500 on the first attempt; they are the non-obvious parts of running
+Moodle behind this Traefik.
+
+1. **Do not replace the image's ENTRYPOINT.** `moodlehq/moodle-php-apache` ships
+   `moodle-docker-php-entrypoint`, which exports `APACHE_DOCUMENT_ROOT` and renders the PHP ini from
+   the environment. Bypassing it leaves the vhost's `DocumentRoot` empty → **403 on every request**.
+   Our upgrade guard runs first, then hands over to
+   `CMD ["moodle-docker-php-entrypoint", "apache2-foreground"]`.
+2. **`$CFG->reverseproxy` must stay unset.** Moodle 4.5 throws `reverseproxyabused`
+   (`lib/setuplib.php:745`) when the request `Host` equals wwwroot's host — which is exactly what a
+   standard proxy does, since Traefik preserves the Host header. Setting it → **500 on the whole
+   site**. `$CFG->sslproxy = true` (valid only with an https wwwroot) is the correct knob.
+3. **`compose_build` is needed.** `docker_compose_v2` defaults to compose's `missing` build policy,
+   so a Dockerfile change silently keeps serving the old `moodle:4.5.12` image. The role now takes an
+   opt-in `compose_build` (string `always`/`never`/`policy` — *not* a mapping).
+4. **The `docker_service` role cannot see `services`.** That variable is a `set_fact` in the play's
+   task list, which runs *after* the roles; role-level includes must read
+   `services_enabled.<name>` instead, or they silently skip.
+5. **Gate every TLS-dependent setting on `TRAEFIK_TLS`.** wwwroot scheme, `sslproxy` and the
+   http→https redirect router all follow it: `servyy-test.lxd` has no https listener, and a redirect
+   there blackholes every request.
+
 
 Then walk the installer and record the generated `config.php` into the image/entrypoint contract
 (`$CFG->wwwroot`, `$CFG->dataroot=/var/www/moodledata`, `$CFG->reverseproxy`, `$CFG->sslproxy`).
