@@ -35,11 +35,13 @@ $CFG->admin    = 'admin';
 $CFG->directorypermissions = 02777;
 
 // Traefik terminates TLS and proxies plain HTTP over the internal docker
-// network; without these two Moodle generates http:// links and redirect loops.
-// Both follow the same switch as wwwroot: the test box runs plain HTTP behind
-// its local Traefik (TRAEFIK_TLS=false), where sslproxy would bounce every
-// request to an https listener that does not exist there.
+// network; sslproxy makes Moodle treat that as https (and is only valid with an
+// https wwwroot, hence the same switch as above).
+//
+// $CFG->reverseproxy is deliberately NOT set: Moodle 4.5 throws
+// "reverseproxyabused" (lib/setuplib.php:745) when the request's Host equals
+// wwwroot's host, which is exactly what a standard proxy like Traefik does —
+// it preserves the Host header. Setting it would 500 the entire site.
 $CFG->sslproxy     = {{ 'true' if moodle_tls else 'false' }};
-$CFG->reverseproxy = true;
 
 require_once(__DIR__ . '/lib/setup.php');
