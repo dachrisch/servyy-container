@@ -69,7 +69,7 @@ it holds itself.
 
 | | |
 |---|---|
-| `SELECT` | the whole schema — a diagnosis needs context |
+| `SELECT` | every allow-listed table, granted one by one — a diagnosis needs context, but not `auth_user`, `django_session`, the OAuth2/Knox/Moodle tokens or `dbaccess_request` (which holds the plaintext credential of an unrevealed session) |
 | `UPDATE` | **only** the tables named on the request |
 | `CREATE` | nothing. The `bak_<table>_<date>` copies exist already, taken before the grant |
 | `INSERT` / `DELETE` / DDL | nothing |
@@ -193,11 +193,20 @@ deploy passes `-e dbeaver_dbaccess_enabled=true`.** Approval additionally needs 
 `dbaccess.approve_requests` permission — grant it in the Django admin
 (*dbaccess → Approve requests*) to a named human, not to a group that includes the requester.
 
-**Seed the table list** after a deploy and after any schema change:
+**Seed the table list** after a deploy and after any schema change — this is not optional
+since 4.44.2: the sidecar grants `SELECT` per table *from this list*, so a table a deploy adds is
+unreadable (a clean `1142`) until the command runs:
 
 ```bash
 ssh servy.lehel.xyz "docker exec leaguesphere.app python manage.py dbaccess_sync_tables"
+# 112 tables, 20 permanently withheld
 ```
+
+The withheld set covers identity and the audit trail (`auth_user`, `auth_*`, `django_session`,
+`django_admin_log`, `django_migrations`, `django_content_type`), every bearer credential
+(`knox_authtoken`, `oauth2_provider_*`, `officials_moodleremembertoken`) and the feature's own
+tables (`dbaccess_request`, `dbaccess_event`, `dbaccess_grantabletable`). It lives in
+`dbaccess/management/commands/dbaccess_sync_tables.py`.
 
 Identity, session and admin-log tables are inserted as `grantable=False` rather than skipped, so
 the request form can explain their absence.

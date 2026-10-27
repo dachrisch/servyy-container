@@ -383,3 +383,37 @@ Also noted: `leaguesphere`'s PRs are GitHub *stacked* PRs, so `gh pr merge` refu
 `gh api -X PUT repos/<owner>/<repo>/pulls/<n>/merge-async -f merge_method=squash` and poll
 `GET .../merge-async/<uuid>`; merging the lower PR after its base has gone retargets it to
 `master` and re-runs CI, which costs another full pipeline.
+
+## Least-privilege follow-up: reads are granted table by table, 2026-10-27
+
+The rollout shipped with `GRANT SELECT ON <db>.*`, so the curated allow-list bounded only what
+could be *requested*. Measured on prod: every minted account could read `auth_user` (password
+hashes), `django_session`, `django_admin_log`, `knox_authtoken` (274 rows), the
+`oauth2_provider_*` bearer tokens (0 rows that day, live the moment an OAuth client logs in),
+`officials_moodleremembertoken` — and `dbaccess_request.secret`, the **plaintext credential of any
+live session nobody had revealed yet**. Reads were also invisible: `server_audit_events` was
+`CONNECT,QUERY_DML_NO_SELECT`.
+
+Fixed in `#2102`, released as **4.44.2**:
+
+| Change | Effect |
+|---|---|
+| `tick.sh` grants `SELECT` per row of `dbaccess_grantabletable WHERE grantable=1` (one connection, ~92 statements) plus `SELECT` on the requested tables' `bak_<table>_<date>` snapshots | no schema-wide grant anywhere; the runbook's "verify the safety copy" step still works |
+| `NEVER_GRANTABLE` grew from 8 to 20: `auth_group*`, `knox_authtoken`, `oauth2_provider_{access,refresh,id}token|grant|application`, `officials_moodleremembertoken`, `dbaccess_request`, `dbaccess_event`, `dbaccess_grantabletable` | the token tables and the feature's own tables leave the allow-list |
+| `server_audit_events = CONNECT,QUERY` | a temporary session's statements — including the refused ones — are in `server_audit.log`; the app accounts stay excluded |
+
+Verified on both stacks with a real mint (then revoked and deleted):
+
+```
+grants                 94 lines, e.g. GRANT SELECT ON `leaguesphere_stage`.`divisions`
+divisions / snapshot   rows=4 / rows=4
+auth_user              1142
+dbaccess_request       1142
+knox_authtoken         1142
+oauth2_provider_accesstoken 1142
+audit   2026-10-27 09:09:09,…,dbeaver_prod_grantcheckp,…,'SELECT COUNT(*) FROM dbaccess_request',1142
+```
+
+Operational consequence: a table added by a deploy is unreadable until `dbaccess_sync_tables` runs.
+That command is already a documented post-deploy step; the failure is a loud `1142` rather than
+silent access. Both stacks now report `112 tables, 20 permanently withheld`.
