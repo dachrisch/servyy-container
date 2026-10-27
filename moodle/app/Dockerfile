@@ -9,7 +9,7 @@
 # wwwroot is https://offd.de/offd/moodle, so the on-disk path mirrors the URL
 # exactly and Traefik needs no rewrite rule: the two path segments are just
 # directories under the document root. Do not "flatten" this.
-FROM moodlehq/moodle-php-apache:8.3
+FROM moodlehq/moodle-php-apache:8.4
 
 ARG MOODLE_BRANCH=405
 ARG MOODLE_VERSION=4.5.12
