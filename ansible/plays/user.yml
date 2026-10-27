@@ -598,6 +598,11 @@
         service_dir: moodle
         service_name: moodle
         service_host: "{{ moodle_service_host | default(service_dir ~ '.' ~ domain) }}"
+        # The moodle image is built from moodle/app/Dockerfile in this repo, so a
+        # deploy must rebuild it — compose's default `missing` policy silently
+        # keeps serving the old image after a Dockerfile change.
+        compose_build:
+          policy: always
         world_readable_paths:
           # Apache workers run as uid 33 and include config.php on every request;
           # the checkout's 0660/umask-007 mode would 500 the whole site.
