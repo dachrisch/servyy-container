@@ -1576,6 +1576,13 @@ groups:
           description: 'Container {{ $labels.name }} (service {{ $labels.service }}) is not running - the service may have crashed or exited.'
         labels:
           severity: medium
+        # Alert instances are keyed per container name. When a container is
+        # retired the probe stops emitting its series, and without this the
+        # instance keeps its last state forever (job-search retirement
+        # 2026-10-27 and the opencode probe entry both left a permanent
+        # "Alerting" for a container that no longer exists). Resolve after 3
+        # consecutive missing evaluations (~3m).
+        missingSeriesEvalsToResolve: 3
         isPaused: false
 
       # CRITICAL: majority of monitored containers down at once (host-wide signal,

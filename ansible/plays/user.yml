@@ -671,6 +671,20 @@
             dest: .env
           - src: monitor/grafana.env.j2
             dest: grafana.env
+        # Grafana (uid 472), Prometheus (uid 65534) and Loki (uid 10001) all read
+        # bind-mounted config as non-root users. The deploy checkout's umask 007
+        # leaves tracked files at 0660 group `docker`, which none of them can
+        # read — the container then exits on "permission denied" (Grafana) or
+        # "Error loading config" (Prometheus) and silently drops out of the
+        # compose project. The per-file render task above only covers
+        # promtail.yml, datasources.yml and contact-points.yml; prometheus.yml,
+        # loki.yml, dashboards.yml, alert-rules.yml, notification-policies.yml
+        # and the dashboard JSONs arrive via the checkout. liveness depends on
+        # WHEN the mode last changed, so all of them are opened up here.
+        world_readable_paths:
+          - provisioning
+          - prometheus.yml
+          - loki.yml
       when: "'monitor' in (services | default([]))"
       tags: [user.docker, user.docker.monitor]
 
