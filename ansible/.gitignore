@@ -21,6 +21,14 @@ vars/.traefik_dashboard_password
 plays/vars/.monitor_grafana_admin_password
 vars/.monitor_grafana_admin_password
 
+# Moodle MariaDB credentials (generated and persisted by Ansible via
+# lookup('password', 'vars/.moodle_db_*' ...))
+plays/vars/.moodle_db_password
+vars/.moodle_db_password
+plays/vars/.moodle_db_root_password
+vars/.moodle_db_root_password
+
+
 # Vaultwarden master password, manually dropped here for one-off runs - never commit
 .vw_master_pw
 __pycache__/

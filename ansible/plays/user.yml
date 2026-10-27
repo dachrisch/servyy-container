@@ -584,6 +584,34 @@
       when: "'bnb-office' in (services | default([]))"
       tags: [user.docker, user.docker.bnb-office]
 
+    # Moodle (OFFD / Flag Academy) — the referee-training platform that replaces
+    # Christoph's FTP-only shared hosting. Plan: docs/plans/2026-10-27-moodle-offd-hosting.md
+    #
+    # `service_host` is not cosmetic: it is rendered into BOTH the Traefik router
+    # and $CFG->wwwroot in config.php. Moving the site from the rehearsal host to
+    # offd.de is therefore one inventory change, never a database edit.
+    #
+    # Data lives on an attached volume (moodle_volume_* host vars); hosts without
+    # one (servyy-test.lxd) fall back to a plain directory in the service dir.
+    - role: docker_service
+      vars:
+        service_dir: moodle
+        service_name: moodle
+        service_host: "{{ moodle_service_host | default(service_dir ~ '.' ~ domain) }}"
+        world_readable_paths:
+          # Apache workers run as uid 33 and include config.php on every request;
+          # the checkout's 0660/umask-007 mode would 500 the whole site.
+          - config.php
+        env_templates:
+          - src: moodle.env.j2
+            dest: .env
+          - src: moodle.db.env.j2
+            dest: db.env
+          - src: moodle.config.php.j2
+            dest: config.php
+      when: "'moodle' in (services | default([]))"
+      tags: [user.docker, user.docker.moodle]
+
     # DevHub — personal dev command board (Next.js + SQLite). Runs on codey so it
     # can dispatch opencode on code.lehel.xyz. Public DNS h.code.lehel.xyz must point
     # to codey (217.217.227.124) via Porkbun before the first deploy.

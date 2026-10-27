@@ -1,0 +1,22 @@
+---
+# Moodle's bind-mounted data directories (moodledata + MariaDB datadir) with the
+# ownership the containers expect. Shared by both host shapes:
+#   * prod  — under the attached volume (/mnt/moodle), created by moodle_volume.yml
+#   * test  — under the service dir (./data), no volume involved
+#
+# www-data is uid 33 inside the app image, mysql is uid 999 inside the mariadb
+# image. Moodle's installer refuses a dataroot it cannot write, and Apache serves
+# as uid 33 — getting this wrong yields a 500 on every request, not an obvious
+# error.
+- name: Create the Moodle data directories with container ownership
+  file:
+    path: "{{ moodle_data_root_path }}/{{ item.name }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "0770"
+  become_user: root
+  loop:
+    - { name: moodledata, owner: 33, group: 33 }
+    - { name: mariadb, owner: 999, group: 999 }
+  tags: [user.docker.moodle, user.docker]

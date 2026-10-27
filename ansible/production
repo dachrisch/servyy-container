@@ -44,6 +44,11 @@ prod:
           me: false
           monitor: true
           leaguesphere: true
+          # Moodle (OFFD / Flag Academy) — Christoph's referee-training platform.
+          # Serves the rehearsal hostname m.leaguesphere.app until the offd.de A
+          # record moves here. Plan:
+          # docs/plans/2026-10-27-moodle-offd-hosting.md
+          moodle: true
         # queen enabled on prod (test enables queen only before).
         # bumbleflies.de is NOT in Porkbun API scope (DNS-01 fails with
         # INVALID_DOMAIN), so queen uses the HTTP-01 resolver like
@@ -55,6 +60,20 @@ prod:
         # until the Strato DNS for ibs.bricksnbytes.de is flipped). DNS for
         # ibs.bumbleflies.de already points at servy; own Traefik router/cert.
         bnb_office_alt_host: ibs.bumbleflies.de
+        # --- Moodle (OFFD / Flag Academy) ---------------------------------
+        # Data volume: Hetzner Cloud volume id 107289254 (100 GB, fsn1),
+        # created out of band (`hcloud volume create`, not automounted).
+        # roles/user/tasks/moodle_volume.yml formats it if blank, writes fstab
+        # and mounts it at moodle_volume_path; moodle_data_root is what the
+        # compose file bind-mounts for moodledata + the MariaDB datadir.
+        moodle_volume_device: /dev/disk/by-id/scsi-0HC_Volume_107289254
+        moodle_volume_path: /mnt/moodle
+        moodle_data_root: /mnt/moodle
+        # Rehearsal hostname, resolved by the *.leaguesphere.app wildcard that
+        # already points at servy — no DNS change needed to start. It feeds the
+        # Traefik router AND $CFG->wwwroot, so cutover to offd.de is this one
+        # line plus the A record.
+        moodle_service_host: m.leaguesphere.app
     codey.lehel.xyz:
         domain: lehel.xyz
         with_docker: true

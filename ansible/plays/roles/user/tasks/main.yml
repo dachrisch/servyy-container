@@ -60,6 +60,31 @@
     - user.docker
   when: with_containers | default(false)
 
+# Moodle's data volume must be formatted+mounted before the moodle compose
+# project starts. Gated on the volume actually being configured for this host:
+# servyy-test.lxd has no volume and uses a plain directory instead.
+- import_tasks: moodle_volume.yml
+  tags:
+    - user.docker.moodle
+    - user.docker
+  when:
+    - with_containers | default(false)
+    - "'moodle' in (services | default([]))"
+    - moodle_volume_device is defined
+
+# Volume-less hosts (servyy-test.lxd): just the bind-mounted directories, no
+# mount. Same ownership rules as on the volume.
+- import_tasks: moodle_data_dirs.yml
+  vars:
+    moodle_data_root_path: "{{ docker.remote_dir }}/moodle/data"
+  tags:
+    - user.docker.moodle
+    - user.docker
+  when:
+    - with_containers | default(false)
+    - "'moodle' in (services | default([]))"
+    - moodle_volume_device is not defined
+
 - import_tasks: dns.yml
   tags:
     - user.dns

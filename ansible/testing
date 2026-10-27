@@ -22,6 +22,14 @@ test:
         shared: true
         finance: true
         bnb-office: true
+        moodle: true
+      # Moodle on the test box: no volume (moodle_data_root falls back to
+      # ./data), plain HTTP behind the local Traefik, no cert. Same stack as
+      # prod, which is the point — the blank instance and every rehearsal run
+      # here first.
+      moodle_traefik_entrypoint: web
+      moodle_traefik_tls: "false"
+      moodle_traefik_certresolver: ""
       shared_services: [mongo, redis]
       finance_services: [queen]
       queen_service_host: queen.servyy-test.lxd

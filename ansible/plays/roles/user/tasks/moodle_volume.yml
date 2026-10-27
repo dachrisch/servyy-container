@@ -1,0 +1,70 @@
+---
+# Attached Hetzner Cloud volume for the Moodle instance — moodledata AND the
+# MariaDB data directory (docs/plans/2026-10-27-moodle-offd-hosting.md, Task 1).
+#
+# The volume itself is created and attached out of band, because creating one is
+# a billing action rather than configuration:
+#
+#   hcloud volume create --name moodle --size 100 --server servy --location fsn1
+#
+# Its device path is then recorded as `moodle_volume_device` on the host (prod
+# inventory). This file does only the reproducible part: format-if-blank, fstab,
+# mount, and the ownership the two containers expect. Hosts without a volume
+# (servyy-test.lxd) skip the include entirely — see user.yml.
+#
+# Deliberately NOT mounted over /mnt/10g_volume: that path already holds ~36 GB
+# of docker layers on the root disk and mounting over it would hide them.
+- name: Create the Moodle volume mount point
+  file:
+    path: "{{ moodle_volume_path }}"
+    state: directory
+    mode: "0755"
+  become_user: root
+  tags: [user.docker.moodle, user.docker]
+
+- name: Check the Moodle volume device
+  stat:
+    path: "{{ moodle_volume_device }}"
+  register: moodle_volume_device_stat
+  tags: [user.docker.moodle, user.docker]
+
+- name: Fail when the Moodle volume device is missing
+  fail:
+    msg: >-
+      moodle_volume_device ({{ moodle_volume_device }}) not found on
+      {{ inventory_hostname }} — create/attach the volume first, or unset
+      moodle_volume_device for this host.
+  when: not moodle_volume_device_stat.stat.exists
+  tags: [user.docker.moodle, user.docker]
+
+- name: Check whether the Moodle volume is already formatted
+  command: "blkid {{ moodle_volume_device }}"
+  register: moodle_volume_blkid
+  failed_when: false
+  changed_when: false
+  tags: [user.docker.moodle, user.docker]
+
+- name: Format the Moodle volume (only when blank)
+  filesystem:
+    dev: "{{ moodle_volume_device }}"
+    fstype: ext4
+  become_user: root
+  when: moodle_volume_blkid.rc != 0
+  tags: [user.docker.moodle, user.docker]
+
+- name: Mount the Moodle volume (writes fstab, then mounts)
+  mount:
+    path: "{{ moodle_volume_path }}"
+    src: "{{ moodle_volume_device }}"
+    fstype: ext4
+    # nofail: a detached volume must not wedge the next reboot of a host that
+    # also runs LeagueSphere prod.
+    opts: "defaults,nofail"
+    state: mounted
+  become_user: root
+  tags: [user.docker.moodle, user.docker]
+
+- name: Create the data directories on the volume
+  import_tasks: moodle_data_dirs.yml
+  vars:
+    moodle_data_root_path: "{{ moodle_volume_path }}"

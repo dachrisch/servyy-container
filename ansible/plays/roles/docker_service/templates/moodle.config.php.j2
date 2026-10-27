@@ -1,0 +1,41 @@
+<?php
+// Managed by Ansible - do not edit manually.
+//
+// Moodle's config.php for the OFFD / Flag Academy instance. It lives in the repo
+// as a template and is bind-mounted into the container, for three reasons:
+//   1. a rebuild of the image must never lose the site configuration;
+//   2. wwwroot is derived from `service_host`, so moving the site between the
+//      rehearsal host (m.leaguesphere.app) and offd.de is one inventory change
+//      instead of a database edit;
+//   3. the database password follows the same vault path as every other service.
+//
+// Path layout is load-bearing: the code sits at /var/www/html/offd/moodle and
+// wwwroot keeps the /offd/moodle suffix, which is what offd.de serves today.
+unset($CFG);
+global $CFG;
+$CFG = new stdClass();
+
+$CFG->dbtype    = 'mariadb';
+$CFG->dblibrary = 'native';
+// The compose project (and therefore the container) is always named moodle.
+$CFG->dbhost    = 'moodle.db';
+$CFG->dbname    = '{{ moodle_db_name | default("moodle") }}';
+$CFG->dbuser    = '{{ moodle_db_user | default("moodle") }}';
+$CFG->dbpass    = '{{ vault_moodle_db_password }}';
+$CFG->prefix    = 'mdl_';
+$CFG->dboptions = [
+    'dbcollation'      => 'utf8mb4_unicode_ci',
+    'dbhandlesoptions' => false,
+];
+
+$CFG->wwwroot  = 'https://{{ service_host }}/offd/moodle';
+$CFG->dataroot = '/var/www/moodledata';
+$CFG->admin    = 'admin';
+$CFG->directorypermissions = 02777;
+
+// Traefik terminates TLS and proxies plain HTTP over the internal docker
+// network; without these two Moodle generates http:// links and redirect loops.
+$CFG->sslproxy     = true;
+$CFG->reverseproxy = true;
+
+require_once(__DIR__ . '/lib/setup.php');
