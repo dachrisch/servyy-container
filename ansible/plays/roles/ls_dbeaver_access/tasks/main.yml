@@ -8,7 +8,11 @@
       - item.name is match('^[a-z0-9-]{1,40}$')
       - item.local_port is match('^[0-9]{4,5}$')
       - (item.local_ports | default([item.local_port]) | join(',')) is match('^[0-9]{4,5}(,[0-9]{4,5})*$')
-      - item.ssh_key_filename is match('^dbeaver_' ~ item.name ~ '_key_[a-z0-9-]+$')
+      # Shape only: prod's file is `dbeaver_tunnel_key_<host>` (its user name),
+      # stage's is `dbeaver_stage_key_<host>`. The guard against a wrong suffix
+      # is that authorized_keys is no longer exclusive, so a regenerated key
+      # cannot lock the installed one out.
+      - item.ssh_key_filename is match('^dbeaver_[a-z0-9_]+_key_[a-z0-9-]+$')
     quiet: true
   loop: "{{ dbeaver_tunnels }}"
   loop_control:
