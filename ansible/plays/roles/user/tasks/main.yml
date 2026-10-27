@@ -76,11 +76,11 @@
     - services_enabled.moodle | default(false) | bool
     - moodle_volume_device is defined
 
-# Volume-less hosts (servyy-test.lxd): just the bind-mounted directories, no
-# mount. Same ownership rules as on the volume.
+# Volume-less hosts (servyy-test.lxd and, since 2026-10-27, prod too): just the
+# bind-mounted directories, no mount. Same ownership rules as on a volume.
 - import_tasks: moodle_data_dirs.yml
   vars:
-    moodle_data_root_path: "{{ docker.remote_dir }}/moodle/data"
+    moodle_data_root_path: "{{ moodle_data_root | default(docker.remote_dir ~ '/moodle/data') }}"
   tags:
     - user.docker.moodle
     - user.docker

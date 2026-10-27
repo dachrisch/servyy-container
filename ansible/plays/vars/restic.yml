@@ -46,6 +46,12 @@ restic:
       - 'go/pkg'           # Go packages cache
       - 'go/bin'
 
+      # Moodle: moodledata (14 GB once migrated) and the MariaDB datadir live in
+      # the service dir. An hourly home snapshot of a live database is worthless
+      # and would upload gigabytes; they get their own restic scope
+      # (`restic-moodle`) with a mariadb-backup dump for the DB instead.
+      - 'servyy-container/moodle/data'
+
       # Temporary files
       - '**/*.tmp'
       - '**/*.swp'
