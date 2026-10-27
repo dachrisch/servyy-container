@@ -1,5 +1,10 @@
 # Branded Traefik error pages (404 + 500-503)
 
+> **Superseded in part (2026-10-27):** 404 is no longer intercepted by the
+> entrypoint middleware (app 404s pass through; branding became opt-in per
+> router), and the pages gained a retry link with an availability poll. See
+> `history/2026-10-27_traefik-error-page-retry.md`.
+
 ## Problem
 Requests to non-existent Traefik routes (unknown `Host`) got Traefik's plain
 `404 page not found` (19 bytes, no branding). Failed backends (502/503) were
@@ -133,15 +138,13 @@ code.lehel.xyz → 401 (authgate normal, untouched — 401 not in middleware
 scope); middleware 404s → branded pages with status preserved; containers
 healthy; checkouts current.
 
-Correction to the design assumption: the errors-middleware path does NOT
-forward the original Host (verified live: known-host backend 404 rendered
-the generic variant despite mapped host; consistent with upstream v1 code
-copying headers but not Host). Per-service dispatch therefore fires on the
-catchall-direct path only (original Host preserved through normal routing).
-Down-service (middleware) pages render generic-but-branded. True
-per-service DOWN pages would need an identity header plumbed per router
-(headers middleware setting X-Service-Name + template branching on
-.ServiceName) — i.e. label edits across services. Parked unless requested.
+Correction to the design assumption (**disproved 2026-10-27**, see
+`history/2026-10-27_traefik-error-page-retry.md`): the errors-middleware path
+**does** forward the original Host. Re-tested with a real 5xx (a router whose
+backend port was closed): the branded page rendered the mapped host's name
+(`502 · Passwords`), so per-service dispatch fires on both the catchall and the
+middleware path. The observation below was a template-side effect, not missing
+Host — treat this paragraph as historical.
 
 Known upstream issue observed on prod: error-pages v4.2.4 panics
 (per-connection, recovered, process stays healthy) with `invalid
@@ -160,5 +163,6 @@ same tags on both hosts, restart the traefik projects.
   warning before the branded 404.
 - Consider a `restart traefik` notify/handler for mounted-config changes
   (currently a manual step — pre-existing gap, not introduced here).
-- Per-service DOWN pages via identity header (see correction above).
+- Per-service DOWN pages via identity header — **not needed**: the middleware
+  path forwards Host (see the 2026-10-27 correction in this file).
 - Upstream report for the WriteHeader(1) panic on numeric paths.
