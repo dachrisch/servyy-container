@@ -329,3 +329,57 @@ End-to-end through the tunnel, with a throwaway requester/approver pair (deleted
 DBeaver: SSH `dbeaver_stage@servy.lehel.xyz:22` with the stage tunnel key, main host
 `127.0.0.1:33064`, database `leaguesphere_stage`, user `dbeaver_prod_<login>`, password from
 **Show password**.
+
+## Prod rollout, 2026-10-27
+
+Both PRs were merged (`#2092` binlog/audit, `#2093` dbaccess), released as **4.44.0**
+(`#2098`, tag `v4.44.0`), and CircleCI pushed `leaguesphere/backend:latest` through
+`deploy_staging` → `hold_production` (auto-approved, no live games) → `deploy_production`.
+
+```bash
+# infra half first: dba.env must exist before the compose that mounts it
+./servyy.sh --tags ls.dbeaver --limit servy.lehel.xyz
+# app half with the feature still OFF
+./servyy.sh --tags ls.app.pull,ls.app.env,ls.app.deploy \
+  -e dbeaver_dbaccess_enabled=false --limit servy.lehel.xyz
+ssh servy.lehel.xyz "docker exec leaguesphere.app python manage.py dbaccess_sync_tables"
+# grant dbaccess.approve_requests to one named human, then switch it on
+./servyy.sh --tags ls.app.env,ls.app.deploy \
+  -e dbeaver_dbaccess_enabled=true --limit servy.lehel.xyz
+```
+
+| Check | Result |
+|---|---|
+| Containers | `leaguesphere.{db,app,www,db-access,db-tunnel}` all up |
+| App version | `4.44.0` |
+| `/dbaccess/` | `302` → login (was `404` before the flag) |
+| `/health/` | `200` |
+| Allow-list | `dbaccess_sync_tables`: 104 grantable, 8 withheld |
+| Approver | `dbaccess.approve_requests` granted to `chrisd` (superusers can approve too; a second named human is still needed so nobody has to rely on that) |
+| Prod tunnel path | `127.0.0.1:33063` → socat → mysql: peer `172.25.0.3`, `CURRENT_USER() = dbaccess@172.25.%` (the pattern the minted accounts are granted from) |
+| Binlog | `log_bin=1`, `binlog_format=ROW` |
+
+Two things the rollout taught, both now fixed:
+
+1. **The statement audit was never writing.** The plugin loaded (`SERVER_AUDIT ACTIVE`) but
+   `server_audit_logging` was never set, so neither stack produced a `server_audit.log` — the
+   only trace was the plugin's startup line in the container log. The timestamp format also used
+   strftime spelling; the plugin uses DATE_FORMAT semantics (`%M` = month name, `%i` = minute) and
+   printed `2026-10-26 22:October:02`. `SET GLOBAL` closed the gap immediately, `#2099` makes it
+   survive a restart (`server_audit_logging = ON`, `%Y-%m-%d %H:%i:%S`), and both DB containers
+   were restarted at 07:22 UTC to read it.
+2. **Watchtower-prod bounced the database four hours later** (image `mariadb:latest` changed) and
+   that restart reverted the runtime `SET GLOBAL`. The config file is now the durable source, but
+   it is worth remembering that a watchtower sweep can restart the prod DB container.
+
+Follow-up worth doing: `.circleci/scope-exclude.txt` lists `deployed/mysql-conf/.*` (and
+`deployed/dba/.*`), so a PR touching only those paths never runs `test_compose_network` or
+`check_migrations` — the two required checks of the `PR` ruleset — and can only be merged with
+`--admin` (`#2099` was). Mapping those paths to `run-compose` would make the ruleset satisfiable
+for exactly the changes that alter how the container runs.
+
+Also noted: `leaguesphere`'s PRs are GitHub *stacked* PRs, so `gh pr merge` refuses them
+("must be merged using the asynchronous merge REST API"). Merge the top PR with
+`gh api -X PUT repos/<owner>/<repo>/pulls/<n>/merge-async -f merge_method=squash` and poll
+`GET .../merge-async/<uuid>`; merging the lower PR after its base has gone retargets it to
+`master` and re-runs CI, which costs another full pipeline.

@@ -144,10 +144,13 @@ Compose compares the image *reference*, not the image id, so after loading a new
 `docker rm -f leaguesphere_stage.staging-app` before the deploy or the container is not recreated.
 Restart `portainer.watchtower-dev` when the rehearsal is over.
 
-**State 2026-10-26 (final):** stage runs the **CI-built** image of `feat/dbaccess-flow` — tag
-`v4.43.2-rc.1`, `leaguesphere/backend:staging` = `sha256:a212f96f9e05`, pulled by
-`portainer.watchtower-dev` (running again, blue-green cutover) with the frontend image from the
-same tag. `DBACCESS_ENABLED=true`, allow-list seeded, migrations applied at container start.
+**State 2026-10-27:** **prod and stage both run it.** Prod is release `4.44.0`
+(`leaguesphere/backend:latest`), `DBACCESS_ENABLED=true`, allow-list seeded (104 grantable,
+8 withheld), `dbaccess.approve_requests` granted to `chrisd`, and the `db-tunnel` socat publishing
+`127.0.0.1:33063`. Stage runs the same code from `v4.43.2-rc.2` on `:staging` with its own tunnel
+(`dbeaver_stage`, `127.0.0.1:33064`). Both DBs have binlog + statement audit on; see
+`history/2026-10-26_temporary-prod-db-access.md` for the rollout evidence and the audit bug found
+during it.
 
 
 Stage first:
