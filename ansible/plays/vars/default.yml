@@ -41,15 +41,21 @@ extension_drive:
   opts: discard,defaults
 
 # Journal log retention (declarative)
+# 200M (was 500M): the journal is a convenience log, not the audit trail —
+# /var/log/security-audit + auditd are. Servy's root disk runs close to full.
 journald:
-  system_max_use: 500M
+  system_max_use: 200M
   max_retention_sec: 4week
   max_file_size: 100M
 
-# Docker cleanup (aggressive, weekly)
+# Docker cleanup (aggressive, daily)
 docker_cleanup:
   enabled: true
-  schedule: 'Sun 02:00'  # After PhotoPrism backup, before home backup
+  # Daily since 2026-10-27: watchtower re-pulls every app image and churns
+  # roughly 1.3G/day of superseded layers (42 images/26G right after a prune
+  # -> 71 images/34G six days later). Weekly left up to a week of that on a
+  # 75G root; daily caps steady state ~7-8G lower.
+  schedule: '*-*-* 02:00'  # After PhotoPrism backup, before home backup
   log_file: '/var/log/docker-cleanup.log'
   prune_flags: '-a -f --volumes'  # Aggressive: all unused images + volumes
 

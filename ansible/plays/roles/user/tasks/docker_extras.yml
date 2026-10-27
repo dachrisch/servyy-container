@@ -26,7 +26,6 @@
       - dir: leagues-finance
       - dir: finance
       - dir: searxng
-      - dir: job-search
       - dir: dontforget
       - dir: bnb-office
       - dir: platzler-heid

@@ -20,7 +20,7 @@ that Traefik is still fronting with a stale connection.
 
 | Host | Alias | Role | Enabled services (source of truth: `ansible/production`) |
 |---|---|---|---|
-| `servy.lehel.xyz` | `lehel.xyz` | Primary | traefik, git, photoprism, bumbleflies (www/bnb/edu/live — repository/archive retired 2026-09-27), achim-hoefer, portainer, pass, energy, groceries, leagues-finance, finance (firefly/importer/queen), shared (mongo/valkey/postgres), searxng, job-search, dontforget, **monitor**, leaguesphere — disabled: thore, platzler-heid, dns, me |
+| `servy.lehel.xyz` | `lehel.xyz` | Primary | traefik, git, photoprism, bumbleflies (www/bnb/edu/live — repository/archive retired 2026-09-27), achim-hoefer, portainer, pass, energy, groceries, leagues-finance, finance (firefly/importer/queen), shared (mongo/valkey/postgres), searxng, dontforget, **monitor**, leaguesphere — disabled: thore, platzler-heid, dns, me, job-search (retired 2026-10-27) |
 | `codey.lehel.xyz` | `code.lehel.xyz` | Secondary (opencode) | traefik, opencode, opencode-authgate, portainer-agent, devhub — disabled: claude-hub |
 
 Re-grep `ansible/production` (`services_enabled:` per host) before trusting

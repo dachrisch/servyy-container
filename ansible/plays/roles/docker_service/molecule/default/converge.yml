@@ -86,6 +86,9 @@
         service_dir: domain-svc
         domain: example.org
 
+    # Fixture only: the prod job-search service was retired 2026-10-27, but
+    # these templates stay as the role's multi-env-template test case (3 env
+    # files rendered from one service). Do not treat them as service debris.
     - name: Deploy multi-template job-search service
       ansible.builtin.include_role:
         name: docker_service

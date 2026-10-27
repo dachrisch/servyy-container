@@ -171,8 +171,9 @@ registry instead — stop and investigate (tag mismatch / `--pull` behavior).
   the registry and you silently deploy the wrong (or stale) image.
 - **Secrets** come from the Ansible-rendered env file on host (git-crypt in the
   repo). Don't hand-author `web.env`; copy the rendered one.
-- **`job-search` owns host port 27017** on the shared host — dontforget's mongo
-  stays internal (no published port), so don't add a host port mapping.
+- **Host port 27017 is free** since `job-search` was retired (2026-10-27) —
+  dontforget's mongo stays internal (no published port), so don't add a host
+  port mapping just because the port opened up.
 - **servyy-test IP can change** if the LXD container is recreated — re-derive
   `$IP` rather than caching it.
 - **Replacing** recreates only the app container; the db volume persists. Use
