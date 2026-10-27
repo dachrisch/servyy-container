@@ -13,8 +13,9 @@ stack. This change lands the **blank instance**; the data migration and the `off
 separate, later steps.
 
 Chosen shape: a `docker_service` on `servy`, next to LeagueSphere, with its data on existing server
-storage — not a separate VM. A 100 GB Hetzner volume was built first and then **detached and deleted
-the same day**, because no new spend should happen before the real import has been measured.
+storage — not a separate VM. A 100 GB Hetzner volume (id `107289254`) was built first and then
+**detached and deleted the same day** (`DELETE /volumes/107289254` → 204, account back to zero
+volumes), because no new spend should happen before the real import has been measured.
 
 ## What was built
 
@@ -50,7 +51,7 @@ the eventual move to `offd.de` is one variable plus the A record — not a DB ed
   import needs no upgrade at all.
 - Cron container runs `admin/cli/cron.php` every minute (`Cron run completed correctly`).
 - Memory: 209 MB app + 223 MB db + 128 MB cron against 768/768/256 limits; host keeps ~3 GB available.
-- Same stack validated first on `servyy-test.lxd` (TLS off, `./data` instead of the volume).
+- Same stack validated first on `servyy-test.lxd` (TLS off, plain HTTP behind the local Traefik).
 
 ## Five things that had to be fixed on the way
 
@@ -78,7 +79,8 @@ write the Ansible-rendered `config.php`.
 ## Not done yet
 
 - **Backups (`restic-moodle`) and one executed restore drill — must land before any real data.**
-- Dry run: 14 GB over `lftp` + the `mysqldump` from All-Inkl (still the hard dependency on Christoph).
+- Dry run: 14 GB over `lftp` + the `mysqldump` from All-Inkl (still the hard dependency on Christoph;
+  the export is promised for 2026-10-28).
 - Cutover: `offd.de` A record → servy, new `MOODLE_WSTOKEN` in `secret_main.yaml` + `secret_stage.yaml`,
   then the `m.` router removed.
 - Upgrade automation (watchtower scope is deliberately unset; 5.x stays manual — the docroot moves to
@@ -86,5 +88,6 @@ write the Ansible-rendered `config.php`.
 
 ## Rollback
 
-Fully additive. `moodle: false` in `services_enabled` plus `docker compose -p moodle down`; the
-volume and its data stay. Nothing existing on servy was modified.
+Fully additive. `moodle: false` in `services_enabled` plus `docker compose -p moodle down`; the data
+directory stays. Nothing existing on servy was modified — no other service, volume or DNS record was
+touched.
