@@ -122,14 +122,16 @@ grafana: 9 dashboards, 37 alert rules provisioned, 0 provisioning errors
   the 2026-10-22 signature) is invisible to the `container_not_running` alert,
   which only reads `.State.Running`. That outage class is caught only by the
   external HTTP monitor.
-- `moodle/docker-compose.yml` names its compose service **`app`** and puts it
-  on the shared `proxy` network, so the alias `app` now collides with
-  leaguesphere's backend alias. leaguesphere's frontend re-resolves
-  `app:8000` every 5 s and intermittently proxied to moodle → 502 →
-  unhealthy → routers withdrawn → 404 on leaguesphere.app (2026-10-27, ~10 min).
-  Mitigated by detaching `moodle.app` from `proxy`; the durable fix is to rename
-  the compose service (e.g. `web`). This is the `manage-service` skill's
-  "never name a service `app`" pitfall.
+- ~~`moodle/docker-compose.yml` names its compose service **`app`**~~ — **RESOLVED 2026-10-27**
+  (`e807aff`): the service is now `moodle` (container `moodle.moodle`), so the alias `app` is
+  LeagueSphere's alone again. Named `moodle` rather than `web` because `web` is already a shared
+  alias (`bnb-office.web`, `dontforget.web`) — same bug class. Verified after a forced recreate:
+  `app` → `172.25.0.6`, leaguesphere.app 200. See
+  [2026-10-27_moodle-proxy-alias-outage.md](2026-10-27_moodle-proxy-alias-outage.md).
+  Original finding, kept for the record: the alias `app` collided with leaguesphere's backend alias;
+  leaguesphere's frontend re-resolves `app:8000` every 5 s and intermittently proxied to moodle → 502
+  → unhealthy → routers withdrawn → 404 on leaguesphere.app (2026-10-27, ~10 min). Mitigated at the
+  time by detaching `moodle.app` from `proxy`.
 
 ## Alternatives Considered
 
