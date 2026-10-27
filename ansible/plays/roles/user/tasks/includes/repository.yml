@@ -170,14 +170,22 @@
   tags:
     - user.repo.clone
 
+- name: Select the container-consumed paths present on this host
+  ansible.builtin.set_fact:
+    world_readable_existing_paths: >-
+      {{ world_readable_after_checkout.results
+         | selectattr('stat', 'defined') | selectattr('stat.exists')
+         | map(attribute='stat') | map(attribute='path') | list }}
+  tags:
+    - user.repo.clone
+
 - name: Restore world-readable modes on container-consumed checkout paths
-  ansible.builtin.command: "chmod -cR a+rX {{ item.stat.path | quote }}"
-  loop: "{{ world_readable_after_checkout.results | selectattr('stat', 'defined') | selectattr('stat.exists') | list }}"
-  loop_control:
-    label: "{{ item.item.0.key }}/{{ item.item.1 }}"
+  ansible.builtin.command: "chmod -cR a+rX {{ world_readable_existing_paths | map('quote') | join(' ') }}"
   # `chmod -c` prints one line per mode it actually changed, so a second run is
   # a no-op and reports no change.
-  changed_when: item.stdout | length > 0
+  changed_when: world_readable_chmod.stdout | length > 0
+  register: world_readable_chmod
+  when: world_readable_existing_paths | length > 0
   tags:
     - user.repo.clone
 
