@@ -64,8 +64,6 @@ world_readable_paths_by_service:
     - error-pages.html            # error-pages container (uid 10001)
   achim-hoefer:
     - serve                       # nginx worker (uid 101)
-  moodle:
-    - config.php                  # Apache workers (uid 33)
   monitor:
     - provisioning                # grafana (uid 472): dashboards, alerting
     - prometheus.yml              # prometheus (uid 65534)

@@ -586,31 +586,30 @@
     # Moodle (OFFD / Flag Academy) — the referee-training platform that replaces
     # Christoph's FTP-only shared hosting. Plan: docs/plans/2026-10-27-moodle-offd-hosting.md
     #
-    # `service_host` is not cosmetic: it is rendered into BOTH the Traefik router
-    # and $CFG->wwwroot in config.php. Moving the site from the rehearsal host to
-    # offd.de is therefore one inventory change, never a database edit.
+    # `service_host` is not cosmetic: it is rendered into the Traefik router AND
+    # into SITE_URL ($CFG->wwwroot) for the container. Moving the site from the
+    # rehearsal host to offd.de is therefore one inventory change, never a
+    # database edit.
     #
-    # Data lives on an attached volume (moodle_volume_* host vars); hosts without
-    # one (servyy-test.lxd) fall back to a plain directory in the service dir.
+    # Data (moodledata + the MariaDB datadir) lives under moodle_data_root —
+    # existing server storage. The optional volume path is still supported:
+    # set moodle_volume_device/moodle_volume_path and roles/user/tasks/
+    # moodle_volume.yml takes over the mount.
     - role: docker_service
       vars:
         service_dir: moodle
         service_name: moodle
         service_host: "{{ moodle_service_host | default(service_dir ~ '.' ~ domain) }}"
-        # The moodle image is built from moodle/app/Dockerfile in this repo, so a
-        # deploy must rebuild it — compose's default `missing` policy silently
-        # keeps serving the old image after a Dockerfile change.
-        compose_build: always
-        # Apache workers run as uid 33 and include config.php on every request;
-        # the checkout's 0660/umask-007 mode would 500 the whole site.
-        world_readable_paths: "{{ world_readable_paths_by_service[service_dir] | default([]) }}"
         env_templates:
           - src: moodle.env.j2
             dest: .env
           - src: moodle.db.env.j2
             dest: db.env
-          - src: moodle.config.php.j2
-            dest: config.php
+          # The image writes config.php itself from these variables, so nothing
+          # is rendered into the Moodle tree any more — which is also why there
+          # is no world_readable_paths entry for this service.
+          - src: moodle.app.env.j2
+            dest: app.env
       when: "'moodle' in (services | default([]))"
       tags: [user.docker, user.docker.moodle]
 

@@ -27,6 +27,8 @@ plays/vars/.moodle_db_password
 vars/.moodle_db_password
 plays/vars/.moodle_db_root_password
 vars/.moodle_db_root_password
+plays/vars/.moodle_admin_password
+vars/.moodle_admin_password
 
 
 # Vaultwarden master password, manually dropped here for one-off runs - never commit

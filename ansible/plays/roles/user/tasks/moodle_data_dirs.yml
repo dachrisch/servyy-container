@@ -1,13 +1,17 @@
 ---
-# Moodle's bind-mounted data directories (moodledata + MariaDB datadir) with the
-# ownership the containers expect. Shared by both host shapes:
-#   * prod  — under the attached volume (/mnt/moodle), created by moodle_volume.yml
-#   * test  — under the service dir (./data), no volume involved
+# Moodle's bind-mounted data directories with the ownership the containers
+# expect. Shared by both host shapes:
+#   * a dedicated volume (/mnt/...) if moodle_volume_device is configured
+#   * existing server storage (<service dir>/data) otherwise — the default since
+#     2026-10-27, so no new spend before the import has been measured
 #
-# www-data is uid 33 inside the app image, mysql is uid 999 inside the mariadb
-# image. Moodle's installer refuses a dataroot it cannot write, and Apache serves
-# as uid 33 — getting this wrong yields a 500 on every request, not an obvious
-# error.
+# uid 65534 (nobody) is the numeric *Alpine* user the erseco/alpine-moodle image
+# runs as — not 33 (www-data), which was the Debian/Apache value under the
+# previous self-built image. Getting this wrong does not error at start: Moodle
+# simply cannot write its dataroot and fails later, deep in an unrelated request.
+#
+# 999 is mysql inside the mariadb image; the entrypoint would chown it anyway,
+# but doing it here keeps a `docker compose down && up` a no-op.
 - name: Create the Moodle data directories with container ownership
   file:
     path: "{{ moodle_data_root_path }}/{{ item.name }}"
@@ -17,6 +21,6 @@
     mode: "0770"
   become_user: root
   loop:
-    - { name: moodledata, owner: 33, group: 33 }
+    - { name: moodledata, owner: 65534, group: 65534 }
     - { name: mariadb, owner: 999, group: 999 }
   tags: [user.docker.moodle, user.docker]
