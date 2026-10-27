@@ -327,10 +327,10 @@
         # error-pages bind-mounts error-pages.html and runs as uid 10001. The
         # deploy checkout's umask 007 leaves tracked files at 0660, which the
         # container cannot read ("permission denied" -> restart loop, so every
-        # catchall/5xx page falls back to Traefik's plain status). Make just
-        # that one file world-readable; traefik itself runs as root.
-        world_readable_paths:
-          - error-pages.html
+        # catchall/5xx page falls back to Traefik's plain status). traefik
+        # itself runs as root. Declared centrally (vars/default.yml) so the
+        # repo-sync task can re-apply it too.
+        world_readable_paths: "{{ world_readable_paths_by_service[service_dir] | default([]) }}"
       when: "'traefik' in (services | default([]))"
       tags: [user.docker, user.docker.traefik]
 
@@ -364,8 +364,7 @@
         service_dir: achim-hoefer
         # serve/ is bind-mounted into nginx:stable and must stay readable by the
         # nginx worker (uid 101), which the checkout's umask 007 (0660) prevents.
-        world_readable_paths:
-          - serve
+        world_readable_paths: "{{ world_readable_paths_by_service[service_dir] | default([]) }}"
       when: "'achim-hoefer' in (services | default([]))"
       tags: [user.docker, user.docker.achim-hoefer]
 
@@ -602,10 +601,9 @@
         # deploy must rebuild it — compose's default `missing` policy silently
         # keeps serving the old image after a Dockerfile change.
         compose_build: always
-        world_readable_paths:
-          # Apache workers run as uid 33 and include config.php on every request;
-          # the checkout's 0660/umask-007 mode would 500 the whole site.
-          - config.php
+        # Apache workers run as uid 33 and include config.php on every request;
+        # the checkout's 0660/umask-007 mode would 500 the whole site.
+        world_readable_paths: "{{ world_readable_paths_by_service[service_dir] | default([]) }}"
         env_templates:
           - src: moodle.env.j2
             dest: .env
@@ -676,15 +674,10 @@
         # leaves tracked files at 0660 group `docker`, which none of them can
         # read — the container then exits on "permission denied" (Grafana) or
         # "Error loading config" (Prometheus) and silently drops out of the
-        # compose project. The per-file render task above only covers
-        # promtail.yml, datasources.yml and contact-points.yml; prometheus.yml,
-        # loki.yml, dashboards.yml, alert-rules.yml, notification-policies.yml
-        # and the dashboard JSONs arrive via the checkout. liveness depends on
-        # WHEN the mode last changed, so all of them are opened up here.
-        world_readable_paths:
-          - provisioning
-          - prometheus.yml
-          - loki.yml
+        # compose project. Declared centrally (vars/default.yml); the per-file
+        # render task above only covers promtail.yml, datasources.yml and
+        # contact-points.yml.
+        world_readable_paths: "{{ world_readable_paths_by_service[service_dir] | default([]) }}"
       when: "'monitor' in (services | default([]))"
       tags: [user.docker, user.docker.monitor]
 

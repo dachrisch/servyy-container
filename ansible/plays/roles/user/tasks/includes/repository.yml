@@ -144,12 +144,40 @@
 # land as 0660 (dirs 0770): readable by create_user and the docker group only.
 # That is intentional for the git-crypt'd secret files, but content that a
 # container reads as a non-root uid needs world-read -- services declare such
-# paths via `world_readable_paths` in the docker_service role.
+# paths in `world_readable_paths_by_service` (plays/vars/default.yml).
 - name: "Set correct ownership for {{ remote_dir }}"
   shell: |
     find "{{ remote_dir }}" -type f -exec chown "{{ create_user }}:docker" {} + 2>/dev/null || true
     find "{{ remote_dir }}" -type d -exec chown "{{ create_user }}:docker" {} + 2>/dev/null || true
   changed_when: false
+  tags:
+    - user.repo.clone
+
+# Re-apply the declared world-readable modes HERE, not only inside each
+# service's docker_service role. A checkout that rewrites 0660/0770 without the
+# service role re-running is a silent outage: nginx answers 403, the healthcheck
+# fails, Traefik withdraws the routers (achim-hoefer, twice) -- or the app exits
+# outright (grafana "permission denied", prometheus "Error loading config").
+# A `--tags user.docker.repo` run used to do exactly that; this makes the
+# checkout unable to leave the host in that state.
+- name: Look up container-consumed paths declared for this checkout
+  ansible.builtin.stat:
+    path: "{{ (remote_dir, item.0.key, item.1) | path_join }}"
+  loop: "{{ world_readable_paths_by_service | default({}) | dict2items | subelements('value') }}"
+  loop_control:
+    label: "{{ item.0.key }}/{{ item.1 }}"
+  register: world_readable_after_checkout
+  tags:
+    - user.repo.clone
+
+- name: Restore world-readable modes on container-consumed checkout paths
+  ansible.builtin.command: "chmod -cR a+rX {{ item.stat.path | quote }}"
+  loop: "{{ world_readable_after_checkout.results | selectattr('stat', 'defined') | selectattr('stat.exists') | list }}"
+  loop_control:
+    label: "{{ item.item.0.key }}/{{ item.item.1 }}"
+  # `chmod -c` prints one line per mode it actually changed, so a second run is
+  # a no-op and reports no change.
+  changed_when: item.stdout | length > 0
   tags:
     - user.repo.clone
 

@@ -48,6 +48,29 @@ journald:
   max_retention_sec: 4week
   max_file_size: 100M
 
+# Paths inside a service directory (relative to it) that a container process
+# must be able to read as a NON-ROOT uid. The deploy checkout runs under umask
+# 007, so `git reset --hard` restores tracked files as 0660 / dirs 0770 —
+# intentional for the git-crypt'd secrets, unreadable for anything else.
+#
+# Single source of truth, consumed twice: the docker_service role opens the
+# paths for the service it is deploying, and the repo-sync task re-applies them
+# straight after the checkout. The second consumer is what stops a
+# `--tags user.docker.repo` run from silently breaking services (nginx 403 ->
+# unhealthy -> Traefik withdraws routers: achim-hoefer 2026-10-22 and again
+# 2026-10-27; grafana/prometheus exiting on "permission denied" 2026-10-27).
+world_readable_paths_by_service:
+  traefik:
+    - error-pages.html            # error-pages container (uid 10001)
+  achim-hoefer:
+    - serve                       # nginx worker (uid 101)
+  moodle:
+    - config.php                  # Apache workers (uid 33)
+  monitor:
+    - provisioning                # grafana (uid 472): dashboards, alerting
+    - prometheus.yml              # prometheus (uid 65534)
+    - loki.yml                    # loki (uid 10001)
+
 # Docker cleanup (aggressive, daily)
 docker_cleanup:
   enabled: true
