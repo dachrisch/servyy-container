@@ -21,6 +21,6 @@
     mode: "0770"
   become_user: root
   loop:
-    - { name: moodledata, owner: 65534, group: 65534 }
-    - { name: mariadb, owner: 999, group: 999 }
+    - {name: moodledata, owner: 65534, group: 65534}
+    - {name: mariadb, owner: 999, group: 999}
   tags: [user.docker.moodle, user.docker]
