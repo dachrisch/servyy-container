@@ -134,13 +134,13 @@ cd ansible && ./servyy.sh --tags user.docker.moodle --limit servy.lehel.xyz
 ```
 
 Acceptance: `https://m.leaguesphere.app/offd/moodle/` serves the **installer**, the cert is real
-(HTTP-01), `docker logs moodle.app` is clean, cron ticks, `/` redirects to `/offd/moodle/`.
+(HTTP-01), `docker logs moodle.moodle` is clean, cron ticks, `/` redirects to `/offd/moodle/`.
 
 ### STATUS: DONE (2026-10-27) — blank instance live
 
 | Check | Result |
 |---|---|
-| Containers | `moodle.app` (healthy), `moodle.db` (healthy), `moodle.cron` |
+| Containers | `moodle.moodle` (healthy), `moodle.db` (healthy), `moodle.cron` |
 | Volume | **none** — data on existing server storage, `/home/cda/servyy-container/moodle/data` (root disk, 21 GB free); the 100 GB volume was detached and deleted on 2026-10-27 to avoid new spend before the import is measured |
 | TLS | Let's Encrypt cert for `m.leaguesphere.app`, valid to 2027-01-25 (HTTP-01) |
 | Front page | `200 — Home \| offd` |
@@ -177,6 +177,12 @@ Moodle behind this Traefik.
 5. **Gate every TLS-dependent setting on `TRAEFIK_TLS`.** wwwroot scheme, `sslproxy` and the
    http→https redirect router all follow it: `servyy-test.lxd` has no https listener, and a redirect
    there blackholes every request.
+6. **Never name a proxy-attached service after a generic word.** The compose service name becomes a
+   DNS alias on the shared `proxy` network. Named `app`, this stack hijacked LeagueSphere's own
+   `app:8000` lookup (its frontend re-resolves every 5 s), 502'd, and took **leaguesphere.app down for
+   ~10 minutes** on 2026-10-27. The service is therefore `moodle` (container `moodle.moodle`), an
+   alias nothing else claims — not `web`, which `bnb-office.web` and `dontforget.web` already share.
+   Details: [moodle/AGENTS.md](../moodle/AGENTS.md).
 
 
 Then walk the installer and record the generated `config.php` into the image/entrypoint contract
@@ -255,12 +261,12 @@ Target: an **executed** restore drill on `servyy-test.lxd` before cutover, not j
 | containers up | `ssh lehel.xyz "docker ps \| grep moodle"` |
 | blank instance reachable | `curl -sI https://m.leaguesphere.app/offd/moodle/` → 200 |
 | cert issued | `echo \| openssl s_client -connect m.leaguesphere.app:443 -servername m.leaguesphere.app 2>/dev/null \| openssl x509 -noout -issuer -dates` |
-| code path matches wwwroot | `docker exec moodle.app ls /var/www/html/offd/moodle/version.php` |
+| code path matches wwwroot | `docker exec moodle.moodle ls /var/www/html/offd/moodle/version.php` |
 | db healthy | `docker inspect -f '{{.State.Health.Status}}' moodle.db` |
 | cron runs | `docker logs moodle.cron --tail 20` |
-| memory headroom | `ssh lehel.xyz "free -g; docker stats --no-stream moodle.app moodle.db"` |
+| memory headroom | `ssh lehel.xyz "free -g; docker stats --no-stream moodle.moodle moodle.db"` |
 | LeagueSphere integration | stage: `moodle-report/` returns licence rows |
-| logs in Grafana | Loki `{container="moodle.app"}` |
+| logs in Grafana | Loki `{container="moodle.moodle"}` |
 
 ## Rollback
 

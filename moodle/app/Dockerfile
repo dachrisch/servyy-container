@@ -26,7 +26,7 @@ RUN set -eux; \
     chown -R www-data:www-data /var/www/html/offd
 
 # Advisory only — the release actually served is whatever this build pinned,
-# and `docker exec moodle.app php .../version.php`-adjacent checks in the
+# and `docker exec moodle.moodle php .../version.php`-adjacent checks in the
 # runbook compare it against the DB.
 LABEL org.opencontainers.image.title="moodle-offd" \
       org.opencontainers.image.version="${MOODLE_VERSION}" \

@@ -10,7 +10,7 @@ onto servy. Live target: `https://offd.de/offd/moodle`. Rehearsal hostname:
 
 | Container | Image | Purpose |
 |---|---|---|
-| `moodle.app` | built from `app/Dockerfile` (`moodle:4.5.12`) | Apache + PHP, Moodle code |
+| `moodle.moodle` | built from `app/Dockerfile` (`moodle:4.5.12`) | Apache + PHP, Moodle code |
 | `moodle.db` | `mariadb@sha256:2bdff15…` (already on the host) | project-internal DB, no published port |
 | `moodle.cron` | same as app | `admin/cli/cron.php` every 60 s — not optional |
 
@@ -42,17 +42,17 @@ i.e. `/mnt/moodle` on prod (Hetzner volume `107289254`) and `./data` on
 cd ansible && ./servyy.sh --tags user.docker.repo,user.docker.moodle --limit servy.lehel.xyz
 
 # logs
-ssh lehel.xyz "docker logs moodle.app --tail 100"
+ssh lehel.xyz "docker logs moodle.moodle --tail 100"
 ssh lehel.xyz "docker logs moodle.cron --tail 50"
 
 # pending upgrade check (exit 2 = upgrade required)
-ssh lehel.xyz "docker exec -u www-data moodle.app php /var/www/html/offd/moodle/admin/cli/upgrade.php --is-pending; echo \$?"
+ssh lehel.xyz "docker exec -u www-data moodle.moodle php /var/www/html/offd/moodle/admin/cli/upgrade.php --is-pending; echo \$?"
 
 # install a blank instance (Task 3 of the plan)
-ssh lehel.xyz "docker exec -u www-data moodle.app php /var/www/html/offd/moodle/admin/cli/install.php ..."
+ssh lehel.xyz "docker exec -u www-data moodle.moodle php /var/www/html/offd/moodle/admin/cli/install.php ..."
 
 # change wwwroot (should not be needed — edit moodle_service_host instead)
-ssh lehel.xyz "docker exec -u www-data moodle.app php /var/www/html/offd/moodle/admin/cli/cfg.php --name=wwwroot --set=https://offd.de/offd/moodle"
+ssh lehel.xyz "docker exec -u www-data moodle.moodle php /var/www/html/offd/moodle/admin/cli/cfg.php --name=wwwroot --set=https://offd.de/offd/moodle"
 ```
 
 Upgrades: the entrypoint runs `admin/cli/upgrade.php --non-interactive` whenever
@@ -66,3 +66,21 @@ deliberately **not** set yet — auto-updates are Task 8, after cutover.
 - `servyy-test.lxd` rehearsal of the 5.x upgrade (docroot moves to `/public`).
 - SMTP: no central relay exists in this repo; Moodle's notification mail needs a
   decision (SPF/DKIM at All-Inkl, or a transactional provider).
+
+## Naming rule — the service name is a DNS alias
+
+Compose registers each service name as a DNS alias on the `proxy` network, which every service on
+this host shares. A generic name therefore hijacks lookups for every consumer of that name.
+
+On 2026-10-27 this service was named `app` and took **leaguesphere.app down for ~10 minutes**:
+LeagueSphere's frontend re-resolves `app:8000` every 5 s, DNS round-robined the alias onto Moodle,
+the frontend got a 502, went unhealthy, and Traefik withdrew LeagueSphere's routers (404).
+
+Hence: **service `moodle`, container `moodle.moodle`, alias `moodle` — unique on the proxy network.**
+Do not rename it to `app`, `web`, `db`, `api` or any other word another service might resolve
+(`web` alone is already claimed by `bnb-office.web` and `dontforget.web`). Check before adding any
+proxy-attached service:
+
+```bash
+ssh lehel.xyz "docker network inspect proxy -f '{{json .Containers}}'"   # who is on the shared network
+```
