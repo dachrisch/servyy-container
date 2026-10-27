@@ -1,7 +1,7 @@
 # moodle/ — Moodle (OFFD / Flag Academy)
 
-Christoph's referee-training platform, moved off €15/month FTP-only shared hosting
-onto servy. Live target: `https://offd.de/offd/moodle`. Rehearsal hostname:
+Christoph's referee-training platform, moved off €15/month FTP-only shared hosting onto servy.
+Live target: `https://offd.de` (root of the host — not a subpath). Rehearsal hostname:
 `m.leaguesphere.app` (wildcard `*.leaguesphere.app` → servy, no DNS work needed).
 
 **Plan, verified baseline, cutover runbook:** [docs/plans/2026-10-27-moodle-offd-hosting.md](../docs/plans/2026-10-27-moodle-offd-hosting.md)
@@ -10,77 +10,65 @@ onto servy. Live target: `https://offd.de/offd/moodle`. Rehearsal hostname:
 
 | Container | Image | Purpose |
 |---|---|---|
-| `moodle.moodle` | built from `app/Dockerfile` (`moodle:4.5.12`) | Apache + PHP, Moodle code |
+| `moodle.moodle` | `erseco/alpine-moodle:v4.5.15` | nginx + php-fpm + **cron**, one container, configured by env |
 | `moodle.db` | `mariadb@sha256:2bdff15…` (already on the host) | project-internal DB, no published port |
-| `moodle.cron` | same as app | `admin/cli/cron.php` every 60 s — not optional |
 
-Data (never in git, never on the root disk): `$MOODLE_DATA_ROOT/{moodledata,mariadb}`,
-i.e. `/mnt/moodle` on prod (Hetzner volume `107289254`) and `./data` on
-`servyy-test.lxd`. Ansible owns the mount and the ownership:
-[`roles/user/tasks/moodle_volume.yml`](../ansible/plays/roles/user/tasks/moodle_volume.yml).
+There is **no separate cron container, no `config.php` in git, and no Dockerfile**: the image writes
+`config.php` from env vars on first boot, runs `admin/cli/install.php`, and runs
+`admin/cli/upgrade.php` whenever the image is newer than the database (`AUTO_UPDATE_MOODLE=true`).
+
+Data (never in git): `$MOODLE_DATA_ROOT/{moodledata,mariadb}` — existing server storage
+(`<service dir>/data`). Ansible owns the directories and their ownership:
+[`roles/user/tasks/moodle_data_dirs.yml`](../ansible/plays/roles/user/tasks/moodle_data_dirs.yml).
+A dedicated volume is supported but not used: set `moodle_volume_device` + `moodle_volume_path`.
 
 ## Load-bearing invariants — do not "clean these up"
 
-1. **The code path mirrors the URL.** Moodle lives at `/var/www/html/offd/moodle`
-   because wwwroot is `…/offd/moodle`. Flattening it breaks every link and the
-   `$CFG->wwwroot` contract with the live database.
-2. **`config.php` is rendered by Ansible, never edited on the host**
-   (`roles/docker_service/templates/moodle.config.php.j2`). It carries the DB password
-   and derives `$CFG->wwwroot` from `service_host` — which is why cutover to `offd.de`
-   is an inventory change, not a DB edit.
-3. **`moodledata` must be owned by uid 33** (www-data). Wrong ownership = HTTP 500 on
-   every request, with a confusing log line.
-4. **The image pin is the migration version.** `4.5.12` is what offd.de runs today, so
-   the import needs no upgrade. Bump deliberately (plan, Task 8).
-5. **HTTP-01, not DNS-01.** Neither `offd.de` (All-Inkl) nor `leaguesphere.app`
-   (GoDaddy) is in Porkbun scope, so `letsencryptdnsresolver` cannot issue.
+1. **Served at the host root, not at a subpath.** Upstream Moodle does not support path-based serving
+   (erseco docs, issue #127) and the image owns its docroot. The old live site was
+   `https://offd.de/offd/moodle`, which is why the imported database needs a one-time `wwwroot`
+   search-replace — see the plan, Task 5. Never reintroduce a subpath.
+2. **The service name becomes a DNS alias on the shared `proxy` network** and must stay globally
+   unique. It is `moodle` on purpose; `app` took leaguesphere.app down for 10 minutes on 2026-10-27.
+3. **`moodledata` must be owned by uid 65534** (`nobody` — Alpine). Wrong ownership does not error at
+   start; Moodle fails later, deep inside an unrelated request.
+4. **`SITE_URL` is `$CFG->wwwroot`** and is derived from `service_host`, so the cutover to `offd.de`
+   is one inventory value plus the A record. No trailing slash, no path.
+5. **`REVERSEPROXY` must stay `false`.** On a single-URL deployment it makes Moodle answer
+   "Reverse proxy enabled so the server cannot be accessed directly". `SSLPROXY=true` is the correct
+   knob behind a TLS-terminating proxy (and follows `TRAEFIK_TLS`).
+6. **`MOODLE_SITENAME` may not contain spaces** — the image passes it to `install.php` unquoted, so
+   first boot dies with "unrecognized options". The real display name comes from the imported DB.
+7. **HTTP-01, not DNS-01.** Neither `offd.de` (All-Inkl) nor `leaguesphere.app` (GoDaddy) is in
+   Porkbun scope, so `letsencryptdnsresolver` cannot issue.
 
 ## Everyday operations
 
 ```bash
-# deploy / re-render .env, db.env, config.php (after an inventory change)
+# deploy / re-render .env, db.env, app.env (after an inventory change)
 cd ansible && ./servyy.sh --tags user.docker.repo,user.docker.moodle --limit servy.lehel.xyz
 
-# logs
-ssh lehel.xyz "docker logs moodle.moodle --tail 100"
-ssh lehel.xyz "docker logs moodle.cron --tail 50"
+# logs (nginx, fpm, cron and Moodle all log to stdout — one container, one log)
+ssh lehel.xyz "docker logs moodle.moodle --tail 100 -f"
 
 # pending upgrade check (exit 2 = upgrade required)
-ssh lehel.xyz "docker exec -u www-data moodle.moodle php /var/www/html/offd/moodle/admin/cli/upgrade.php --is-pending; echo \$?"
+ssh lehel.xyz "docker exec -u 65534 moodle.moodle php /var/www/html/admin/cli/upgrade.php --is-pending; echo \$?"
 
-# install a blank instance (Task 3 of the plan)
-ssh lehel.xyz "docker exec -u www-data moodle.moodle php /var/www/html/offd/moodle/admin/cli/install.php ..."
-
-# change wwwroot (should not be needed — edit moodle_service_host instead)
-ssh lehel.xyz "docker exec -u www-data moodle.moodle php /var/www/html/offd/moodle/admin/cli/cfg.php --name=wwwroot --set=https://offd.de/offd/moodle"
+# run a CLI task
+ssh lehel.xyz "docker exec -u 65534 moodle.moodle php /var/www/html/admin/cli/cron.php"
 ```
 
-Upgrades: the entrypoint runs `admin/cli/upgrade.php --non-interactive` whenever
-`version.php` and the database disagree, and **exits 1** if the upgrade fails so a
-health-gated watchtower rollback restores the previous image. Watchtower scope is
-deliberately **not** set yet — auto-updates are Task 8, after cutover.
+Version bumps: change the image tag in `docker-compose.yml` (renovate opens PRs for `v4.5.x`);
+on the next deploy the container starts, notices the DB is older than the code, and runs
+`upgrade.php` automatically. Major versions (5.x) stay a **manual, rehearsed** event — Moodle 5.1+
+moves the docroot to `/public` and every plugin needs re-verification.
 
 ## Not done yet (see the plan)
 
 - restic scope `restic-moodle` + one *executed* restore drill (Task 7) — **before** real data lands.
-- `servyy-test.lxd` rehearsal of the 5.x upgrade (docroot moves to `/public`).
-- SMTP: no central relay exists in this repo; Moodle's notification mail needs a
-  decision (SPF/DKIM at All-Inkl, or a transactional provider).
-
-## Naming rule — the service name is a DNS alias
-
-Compose registers each service name as a DNS alias on the `proxy` network, which every service on
-this host shares. A generic name therefore hijacks lookups for every consumer of that name.
-
-On 2026-10-27 this service was named `app` and took **leaguesphere.app down for ~10 minutes**:
-LeagueSphere's frontend re-resolves `app:8000` every 5 s, DNS round-robined the alias onto Moodle,
-the frontend got a 502, went unhealthy, and Traefik withdrew LeagueSphere's routers (404).
-
-Hence: **service `moodle`, container `moodle.moodle`, alias `moodle` — unique on the proxy network.**
-Do not rename it to `app`, `web`, `db`, `api` or any other word another service might resolve
-(`web` alone is already claimed by `bnb-office.web` and `dontforget.web`). Check before adding any
-proxy-attached service:
-
-```bash
-ssh lehel.xyz "docker network inspect proxy -f '{{json .Containers}}'"   # who is on the shared network
-```
+- The `leaguesphere` side of the URL change: `MOODLE_URL` plus the hardcoded `/moodle/…` segments in
+  `officials/service/moodle/`. Not touched yet on purpose — prod LeagueSphere still points at the old
+  live offd.de until the search-replace is proven on the test box.
+- Plugin list → `PLUGINS` in `moodle.app.env.j2` (installed at every boot, so the code tree stays
+  immutable).
+- SMTP env (`SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD`) once the mail decision is made.

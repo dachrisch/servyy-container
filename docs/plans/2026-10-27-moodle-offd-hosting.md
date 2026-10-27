@@ -50,14 +50,17 @@ Not a separate VM.
 1. **One stack, host swapped at cutover.** The instance rehearsed at `m.leaguesphere.app` *is* the
    production instance. At cutover only `SERVICE_HOST` changes and an `offd.de` router joins it — no
    second volume, no data move, nothing to drift.
-2. **Preserve the exact wwwroot path** `/offd/moodle` on both hosts, i.e. Moodle code lives at
-   `/var/www/html/offd/moodle` inside the container. The only thing that changes is the hostname, so
-   **no search-replace** of the 14 GB DB is ever needed. Content links that are already absolute keep
-   pointing at `offd.de/offd/moodle` during the rehearsal — harmless, and it proves content untouched.
-3. **Official image + our thin Dockerfile.** `moodlehq/moodle-php-apache` is PHP+Apache with the
-   required extensions only — its tags are *PHP* versions, not Moodle releases. We therefore build a
-   pinned image (`FROM …:8.3` + the `4.5.12` tarball) in-repo, which is Moodle's documented
-   production path.
+2. **Served at the host root, with a one-time wwwroot replace at import.** Superseded decision (see
+   below): the first design mirrored the live `/offd/moodle` path inside the docroot so the DB needed
+   no search-replace. The prebuilt image owns its docroot and upstream Moodle does not support
+   subpath serving, so wwwroot becomes `https://offd.de` and the imported DB needs **one** targeted
+   search-replace (Task 5) — rehearsed on `servyy-test.lxd` against the real dump before prod.
+3. **Maintained prebuilt image, not a self-built one** (changed 2026-10-27). `moodlehq/moodle-php-apache`
+   ships no Moodle code, so "official + pinned" meant building the release tarball into an in-repo
+   image — which left us owning the PHP patch cadence with no registry for watchtower to pull from.
+   `erseco/alpine-moodle:v4.5.15` is nginx + php-fpm + cron, env-configured, tag per Moodle release,
+   and renovate already watches compose image tags. It also ships **PHP 8.3.36**; `v4.5.12` was
+   rejected precisely because it is PHP 8.3.15 (Dec 2024) and exposed to known PHP CVEs.
 4. **MariaDB sidecar in the project**, no published port, mirroring `bnb-office` / `leaguesphere.db`.
 5. **Data on existing server storage** (`<service dir>/data`), never the Storage Box: CIFS is a
    backup target, not a database, and it is the restic destination — it cannot also be the only copy.
@@ -107,11 +110,13 @@ disk and mounting over it would hide them.
 
 ```
 moodle/
-├── docker-compose.yml      app (build) + db + cron, mem limits, traefik labels
-├── app/Dockerfile          pinned moodlehq/moodle-php-apache:8.3 + Moodle 4.5.12
-├── app/entrypoint.sh       runs admin/cli/upgrade.php when version.php != DB version
+├── docker-compose.yml      moodle (erseco/alpine-moodle) + db, mem limits, traefik labels
 └── AGENTS.md               subdirectory guide (repo convention)
 ```
+
+No Dockerfile, no entrypoint, no cron container and no rendered `config.php`: the image writes
+`config.php` from env, installs on first boot, and runs `upgrade.php` when the image is newer than the
+database. `moodledata` must be owned by **uid 65534** (`nobody`), not 33 — the image is Alpine.
 
 - **app**: `MOODLE_DATABASE_*` from `db.env`, `MOODLE_DATA_ROOT` bind mounts, `mem_limit: 768m`,
   router `Host(${SERVICE_HOST})`, `letsencrypthttpresolver` (offd.de is at All-Inkl; `m.` is at GoDaddy
@@ -133,8 +138,8 @@ Ansible: `docker_service` block in `ansible/plays/user.yml` + `templates/moodle.
 cd ansible && ./servyy.sh --tags user.docker.moodle --limit servy.lehel.xyz
 ```
 
-Acceptance: `https://m.leaguesphere.app/offd/moodle/` serves the **installer**, the cert is real
-(HTTP-01), `docker logs moodle.moodle` is clean, cron ticks, `/` redirects to `/offd/moodle/`.
+Acceptance: `https://m.leaguesphere.app/` serves the **installer**, the cert is real (HTTP-01),
+`docker logs moodle.moodle` is clean, cron ticks (inside the same container), nginx answers on 8080.
 
 ### STATUS: DONE (2026-10-27) — blank instance live
 
@@ -145,19 +150,38 @@ Acceptance: `https://m.leaguesphere.app/offd/moodle/` serves the **installer**, 
 | TLS | Let's Encrypt cert for `m.leaguesphere.app`, valid to 2027-01-25 (HTTP-01) |
 | Front page | `200 — Home \| offd` |
 | Login | `200 — Log in to the site \| offd`, form present |
-| Version | `4.5.12 (Build: 20260608)` — identical to live offd.de; `--is-pending` → rc 0 |
+| Version | `4.5.15 (Build: 20261005)` on PHP 8.3.36 — a patch ahead of live offd.de's 4.5.12, so the import is a patch-level upgrade the image runs itself |
 | Cron | `Cron run completed correctly` every minute |
-| Root redirect | `308` → `https://m.leaguesphere.app/offd/moodle/` |
+| URL | served at the host root: `https://m.leaguesphere.app/` → `200 Startseite \| moodle`; `/login/index.php` → `200` with form |
 | Memory | app 209 MB / db 223 MB / cron 128 MB (limits 768/768/256); host 3 GB available |
 
 The DB install was done with `admin/cli/install_database.php`, **not** the web installer: the web
 installer writes `config.php`, which is the Ansible-rendered bind mount (read-only to uid 33).
 The `admin` account created here is throwaway — the real import replaces the database.
 
-### Implementation notes — what actually bit us
+### Implementation notes — the prebuilt image (current)
 
-Each of these was a real 403/500 on the first attempt; they are the non-obvious parts of running
-Moodle behind this Traefik.
+1. **`moodledata` must be owned by uid 65534 (`nobody`).** The image is Alpine and runs unprivileged;
+   uid 33 (www-data) was the Debian/Apache value under the previous image. Wrong ownership does not
+   fail at start — Moodle breaks later, deep inside an unrelated request.
+2. **No subpath.** Upstream Moodle does not support it (erseco docs, issue #127) and the image owns
+   its docroot, so `SITE_URL` is host-only and the imported DB needs the one-time replace.
+3. **`REVERSEPROXY` stays `false`** on a single-URL deployment, or Moodle answers "Reverse proxy
+   enabled so the server cannot be accessed directly". `SSLPROXY=true` is the knob that matters.
+4. **`MOODLE_SITENAME` may not contain spaces** — the image passes `--fullname=$MOODLE_SITENAME`
+   unquoted, so "Flag Academy" arrives as two argv entries and the first-boot installer aborts with
+   "unrecognized options: Academy". The real name comes from the imported DB.
+5. **nginx listens on 8080** (unprivileged), so the Traefik service port label is 8080.
+6. **First boot takes minutes, not seconds**: the entrypoint installs ~500 tables before it starts
+   runit. A healthcheck `start_period` well under that marks the container unhealthy and Traefik
+   withdraws the router mid-install (harmless, but confusing when reading logs). It is 120 s here;
+   on servy the install took ~260 s.
+
+### Implementation notes — superseded self-built image (kept for the record)
+
+Before 2026-10-27 the stack was a 12-line image built in-repo
+(`moodlehq/moodle-php-apache:8.3` + the Moodle release tarball). These were the traps of that shape;
+they no longer apply, but they are why the switch happened.
 
 1. **Do not replace the image's ENTRYPOINT.** `moodlehq/moodle-php-apache` ships
    `moodle-docker-php-entrypoint`, which exports `APACHE_DOCUMENT_ROOT` and renders the PHP ini from
@@ -210,8 +234,10 @@ Then walk the installer and record the generated `config.php` into the image/ent
 lftp -u <user>,<pass> ftp://<host> -e "mirror -c -P 16 --parallel=8 / /moodledata-local; bye"
 ```
 
-- import the dump into `moodle.db`, set `wwwroot` to `https://m.leaguesphere.app/offd/moodle`
-  (`admin/cli/cfg.php`), `admin/cli/purge_caches.php`;
+- import the dump into `moodle.db`, then **replace wwwroot** from `https://offd.de/offd/moodle` to
+  `https://m.leaguesphere.app` — `SITE_URL` (config.php) covers `$CFG->wwwroot`, but teacher-entered
+  absolute links inside course content need the DB search-replace; rehearse it here, on the real
+  dump, before prod. Then `admin/cli/purge_caches.php`;
 - run at **exactly 4.5.12** first, then `admin/cli/check_database_schema.php` + plugin audit;
 - point **stage** LeagueSphere at `https://m.leaguesphere.app/offd` (`secret_stage.yaml`) and run the
   licence report end-to-end — that exercises the web service, the custom fields, `mod_quiz` and the
@@ -223,7 +249,7 @@ lftp -u <user>,<pass> ftp://<host> -e "mirror -c -P 16 --parallel=8 / /moodledat
 
 1. `offd.de` A record TTL lowered to 300 s ≥ 24 h before.
 2. Old site → maintenance mode; final dump + file delta.
-3. `cfg.php --name=wwwroot --set=https://offd.de/offd/moodle` + purge caches.
+3. `SITE_URL=https://offd.de` (inventory: `moodle_service_host`), redeploy, purge caches.
 4. DNS A → `49.13.6.173` (**MX untouched** — mail stays at KAS).
 5. New `MOODLE_WSTOKEN` into `secret_main.yaml` **and** `secret_stage.yaml`; deploy prod LeagueSphere
    (`--tags ls.app.prod`), verify inside the container: `env | grep MOODLE_`.
@@ -259,9 +285,9 @@ Target: an **executed** restore drill on `servyy-test.lxd` before cutover, not j
 | Check | Command / place |
 |---|---|
 | containers up | `ssh lehel.xyz "docker ps \| grep moodle"` |
-| blank instance reachable | `curl -sI https://m.leaguesphere.app/offd/moodle/` → 200 |
+| blank instance reachable | `curl -sI https://m.leaguesphere.app/` → 200 |
 | cert issued | `echo \| openssl s_client -connect m.leaguesphere.app:443 -servername m.leaguesphere.app 2>/dev/null \| openssl x509 -noout -issuer -dates` |
-| code path matches wwwroot | `docker exec moodle.moodle ls /var/www/html/offd/moodle/version.php` |
+| code + config in place | `docker exec -u 65534 moodle.moodle php /var/www/html/admin/cli/check_database_schema.php` |
 | db healthy | `docker inspect -f '{{.State.Health.Status}}' moodle.db` |
 | cron runs | `docker logs moodle.cron --tail 20` |
 | memory headroom | `ssh lehel.xyz "free -g; docker stats --no-stream moodle.moodle moodle.db"` |
