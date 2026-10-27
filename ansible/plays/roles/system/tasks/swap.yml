@@ -50,6 +50,9 @@
   file:
     path: "{{ swap_file }}"
     mode: 0600
+  # In --check mode the file has not been created yet (dd is skipped), so
+  # `file` would fail with "absent, cannot continue".
+  when: swap_file_check.stat.exists or not ansible_check_mode
   tags:
     - system.swap.file.permission
 
@@ -114,6 +117,32 @@
   command: swapoff {{ item }}
   loop: "{{ stale_swap_files }}"
   failed_when: false
+  tags:
+    - system.swap.stale.cleanup
+
+# A swapoff can fail with ENOMEM when the host cannot fault every page of the
+# old file back into RAM. Deleting the file anyway would unlink it while the
+# kernel still holds it, so the space stays allocated but becomes invisible
+# (neither df nor swapon accounting explains it). Refuse to continue instead:
+# the new swap is already active, so a retry after memory pressure drops works.
+- name: re-read active swap devices
+  command: swapon --show=NAME --noheadings
+  register: active_swap_devices_after
+  changed_when: false
+  when: not ansible_check_mode
+  tags:
+    - system.swap.stale.cleanup
+
+- name: abort if a stale swap file is still in use
+  ansible.builtin.assert:
+    that: (stale_swap_files | intersect(active_swap_devices_after.stdout_lines)) | length == 0
+    fail_msg: >-
+      Still active after swapoff:
+      {{ stale_swap_files | intersect(active_swap_devices_after.stdout_lines) | join(', ') }}.
+      Not deleting them — the new {{ swap_space }} swap is already enabled, so
+      re-run once memory pressure has dropped.
+    success_msg: "Stale swap files are switched off."
+  when: not ansible_check_mode
   tags:
     - system.swap.stale.cleanup
 
