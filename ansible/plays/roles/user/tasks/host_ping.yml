@@ -5,6 +5,14 @@
     mode: 0770
     owner: "{{create_user}}"
   vars:
-    test_urls: "{{docker.services | map(attribute='dir') | product([domain]) | map('join', '.')}}"
+    # Entries may carry an explicit `host` when the service is not reachable
+    # under the {dir}.{domain} convention (moodle is served at
+    # m.leaguesphere.app until the offd.de cutover). Everything else keeps the
+    # derived name, so this stays backwards compatible.
+    test_urls: >-
+      {{ (docker.services | rejectattr('host', 'defined')
+            | map(attribute='dir') | product([domain]) | map('join', '.') | list)
+         + (docker.services | selectattr('host', 'defined')
+            | map(attribute='host') | map('string') | list) }}
   tags:
     - user.ping.script

@@ -30,6 +30,8 @@
       - dir: bnb-office
       - dir: platzler-heid
       - dir: monitor
+      - dir: moodle
+        depends: traefik
     services_root: "{{ docker.remote_dir }}"
   tags:
     - user.docker.services.script
