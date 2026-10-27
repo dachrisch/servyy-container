@@ -28,14 +28,18 @@ $CFG->dboptions = [
     'dbhandlesoptions' => false,
 ];
 
-$CFG->wwwroot  = 'https://{{ service_host }}/offd/moodle';
+{% set moodle_tls = (moodle_traefik_tls | default('true')) | string == 'true' %}
+$CFG->wwwroot  = '{{ 'https' if moodle_tls else 'http' }}://{{ service_host }}/offd/moodle';
 $CFG->dataroot = '/var/www/moodledata';
 $CFG->admin    = 'admin';
 $CFG->directorypermissions = 02777;
 
 // Traefik terminates TLS and proxies plain HTTP over the internal docker
 // network; without these two Moodle generates http:// links and redirect loops.
-$CFG->sslproxy     = true;
+// Both follow the same switch as wwwroot: the test box runs plain HTTP behind
+// its local Traefik (TRAEFIK_TLS=false), where sslproxy would bounce every
+// request to an https listener that does not exist there.
+$CFG->sslproxy     = {{ 'true' if moodle_tls else 'false' }};
 $CFG->reverseproxy = true;
 
 require_once(__DIR__ . '/lib/setup.php');
