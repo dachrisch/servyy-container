@@ -63,13 +63,17 @@
 # Moodle's data volume must be formatted+mounted before the moodle compose
 # project starts. Gated on the volume actually being configured for this host:
 # servyy-test.lxd has no volume and uses a plain directory instead.
+#
+# `services` is NOT usable here: it is a set_fact in the play's task list, which
+# runs after the roles, so inside this role it is always undefined. Read the
+# inventory flag directly.
 - import_tasks: moodle_volume.yml
   tags:
     - user.docker.moodle
     - user.docker
   when:
     - with_containers | default(false)
-    - "'moodle' in (services | default([]))"
+    - services_enabled.moodle | default(false) | bool
     - moodle_volume_device is defined
 
 # Volume-less hosts (servyy-test.lxd): just the bind-mounted directories, no
@@ -82,7 +86,7 @@
     - user.docker
   when:
     - with_containers | default(false)
-    - "'moodle' in (services | default([]))"
+    - services_enabled.moodle | default(false) | bool
     - moodle_volume_device is not defined
 
 - import_tasks: dns.yml

@@ -32,10 +32,16 @@ LABEL org.opencontainers.image.title="moodle-offd" \
       org.opencontainers.image.version="${MOODLE_VERSION}" \
       org.opencontainers.image.description="Moodle ${MOODLE_VERSION} (LTS) at /offd/moodle"
 
-COPY entrypoint.sh /usr/local/bin/moodle-entrypoint
-RUN chmod 0755 /usr/local/bin/moodle-entrypoint
+COPY entrypoint.sh /usr/local/bin/moodle-upgrade-guard
+RUN chmod 0755 /usr/local/bin/moodle-upgrade-guard
 
 # Deliberately NOT `USER www-data`: apache2-foreground must bind :80, and the
-# entrypoint drops to www-data for the CLI upgrade itself.
-ENTRYPOINT ["/usr/local/bin/moodle-entrypoint"]
-CMD ["apache2-foreground"]
+# guard drops to www-data for the CLI upgrade itself.
+ENTRYPOINT ["/usr/local/bin/moodle-upgrade-guard"]
+# CMD goes *through* the image's own entrypoint on purpose. It exports
+# APACHE_DOCUMENT_ROOT (derived from a /public dir on Moodle 5.1+, plain
+# /var/www/html otherwise) and renders the PHP ini from the environment.
+# Bypassing it leaves the vhost with an empty DocumentRoot — every request
+# answers 403 Forbidden.
+CMD ["moodle-docker-php-entrypoint", "apache2-foreground"]
+
