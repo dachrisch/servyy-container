@@ -1,13 +1,98 @@
+{{- $reqHost := .Host -}}
+{{- $h := $reqHost | lower -}}
+{{- $h = index (split ":" $h) 0 -}}
+{{- $name := "" -}}
+{{- $slogan := "" -}}
+{{- $icon := "" -}}
+{{- if or (eq $h "bumbleflies.de") (eq $h "www.bumbleflies.de") (eq $h "live.bumbleflies.de") (eq $h "edu.bumbleflies.de") (eq $h "bumbleflies.lehel.xyz") -}}
+{{- $name = "Bumbleflies" -}}
+{{- $slogan = "The hive is resting its wings — back soon." -}}
+{{- $icon = "hive" -}}
+{{- else if or (eq $h "leaguesphere.app") (eq $h "www.leaguesphere.app") (eq $h "stage.leaguesphere.app") (eq $h "demo.leaguesphere.app") (eq $h "leaguesphere.lehel.xyz") -}}
+{{- $name = "LeagueSphere" -}}
+{{- $slogan = "Half-time. The match resumes shortly." -}}
+{{- $icon = "whistle" -}}
+{{- else if or (eq $h "bricksnbytes.bumbleflies.de") (eq $h "bricksnbytes.de") (eq $h "www.bricksnbytes.de") -}}
+{{- $name = "Bricks'n'Bytes" -}}
+{{- $slogan = "Our blocks are restacking — one moment." -}}
+{{- $icon = "brick" -}}
+{{- else if or (eq $h "ibs.bricksnbytes.de") (eq $h "ibs.bumbleflies.de") -}}
+{{- $name = "BricksnBytes Office" -}}
+{{- $slogan = "The desk is being tidied — back in a moment." -}}
+{{- else if eq $h "pass.lehel.xyz" -}}
+{{- $name = "Passwords" -}}
+{{- $slogan = "The vault is locked for a moment." -}}
+{{- $icon = "keyhole" -}}
+{{- else if eq $h "search.lehel.xyz" -}}
+{{- $name = "Search" -}}
+{{- $slogan = "The scent went cold — try again soon." -}}
+{{- $icon = "magnifier" -}}
+{{- else if or (eq $h "code.lehel.xyz") (eq $h "opencode.lehel.xyz") -}}
+{{- $name = "Code" -}}
+{{- $slogan = "The AI is recharging its batteries." -}}
+{{- $icon = "terminal" -}}
+{{- else if eq $h "h.code.lehel.xyz" -}}
+{{- $name = "Hub" -}}
+{{- $slogan = "The workshop is closed for a moment." -}}
+{{- $icon = "gauge" -}}
+{{- else if or (eq $h "xn--hfer-architekten-mwb.de") (eq $h "www.xn--hfer-architekten-mwb.de") (eq $h "achim-hoefer.lehel.xyz") -}}
+{{- $name = "Höfer Architekten" -}}
+{{- $slogan = "The drawing board is being re-pinned — back shortly." -}}
+{{- else if or (eq $h "finance.lehel.xyz") (eq $h "finance.leaguesphere.app") -}}
+{{- $name = "Finance" -}}
+{{- $slogan = "The books are being balanced — one moment." -}}
+{{- else if eq $h "finance-importer.lehel.xyz" -}}
+{{- $name = "Finance Importer" -}}
+{{- $slogan = "A stack of receipts is being filed — back shortly." -}}
+{{- else if eq $h "queen.bumbleflies.de" -}}
+{{- $name = "Queen" -}}
+{{- $slogan = "Her Majesty is taking a short tea break." -}}
+{{- else if eq $h "groceries.lehel.xyz" -}}
+{{- $name = "Groceries" -}}
+{{- $slogan = "The shelves are being restocked — back momentarily." -}}
+{{- else if eq $h "energy.lehel.xyz" -}}
+{{- $name = "Energy" -}}
+{{- $slogan = "The meter is catching its breath — back soon." -}}
+{{- else if eq $h "jobs.lehel.xyz" -}}
+{{- $name = "Jobs" -}}
+{{- $slogan = "The job board is being updated — back shortly." -}}
+{{- else if or (eq $h "dontforget.lehel.xyz") (eq $h "dontforget.bumbleflies.de") -}}
+{{- $name = "Don't Forget" -}}
+{{- $slogan = "The reminder is snoozing — back shortly." -}}
+{{- else if eq $h "photoprism.lehel.xyz" -}}
+{{- $name = "Photos" -}}
+{{- $slogan = "The albums are being dusted — back in a moment." -}}
+{{- else if eq $h "portainer.lehel.xyz" -}}
+{{- $name = "Portainer" -}}
+{{- $slogan = "The docks are being rearranged — back shortly." -}}
+{{- else if eq $h "monitor.lehel.xyz" -}}
+{{- $name = "Monitor" -}}
+{{- $slogan = "The watchtower is refocusing — back soon." -}}
+{{- else if eq $h "git.lehel.xyz" -}}
+{{- $name = "Git" -}}
+{{- $slogan = "The branches are being pruned — back shortly." -}}
+{{- else if eq $h "traefik.lehel.xyz" -}}
+{{- $name = "Traefik" -}}
+{{- $slogan = "The switchboard is being rewired — back in a moment." -}}
+{{- end -}}
+{{- $poll := or (ge .StatusCode 500) $name -}}
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="robots" content="nofollow,noarchive,noindex">
+  <!-- Marker used by the availability poll below to tell "still the branded
+       error page" from "the service answered". Keep in sync with MARKER in the
+       script at the bottom of this file. -->
+  <meta name="x-error-page" content="traefik-error-page-v1">
+  <noscript>
+    <!-- No-JS fallback: plain periodic reload, same conditions as the poll. -->
+    <!-- {{ if $poll }} -->
+    <meta http-equiv="refresh" content="30">
+    <!-- {{ end }} -->
+  </noscript>
   <title>{{ .StatusCode }}: {{ .Message }}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <!-- {{ if or (eq .StatusCode 408) (eq .StatusCode 425) (eq .StatusCode 429) (eq .StatusCode 500) (eq .StatusCode 502) (eq .StatusCode 503) (eq .StatusCode 504) }} -->
-  <meta http-equiv="refresh" content="30">
-  <!-- {{ end }} -->
   <meta name="title" content="{{ .StatusCode }}: {{ .Message | escape }}">
   <meta name="description" content="{{ .Description | escape }}">
   <meta property="og:title" content="{{ .StatusCode }}: {{ .Message | escape }}">
@@ -124,51 +209,26 @@
       font-size: .85em;
       opacity: 0.75;
     }
+
+    .status {
+      font-size: .8em;
+      opacity: .55;
+      margin: .25em 0 1.25em 0;
+      min-height: 1.2em;
+    }
   </style>
 </head>
 <body>
 <article>
   <!-- Service identity for known hosts. .Host carries the original request
-       host (forwarded by Traefik's errors middleware). Matching is done on a
-       lowercased copy ($h) since DNS names are case-insensitive; the Try-again
-       link only ever renders for exact-match hosts (see below), and $h is
-       HTML-escaped there anyway, so a malicious Host header cannot break out
-       of the href. Unknown or empty hosts fall through to the generic ghost
-       rendering below. -->
-  <!-- {{ $reqHost := .Host }} -->
-  <!-- {{ $h := $host | lower }} -->
-  <!-- {{ $name := "" }} -->
-  <!-- {{ $slogan := "" }} -->
-  <!-- {{ $icon := "" }} -->
-  <!-- {{ if or (eq $h "bumbleflies.de") (eq $h "www.bumbleflies.de") }} -->
-  <!-- {{ $name = "Bumbleflies" }} -->
-  <!-- {{ $slogan = "The hive is resting its wings — back soon." }} -->
-  <!-- {{ $icon = "hive" }} -->
-  <!-- {{ else if or (eq $h "leaguesphere.app") (eq $h "stage.leaguesphere.app") (eq $h "demo.leaguesphere.app") }} -->
-  <!-- {{ $name = "LeagueSphere" }} -->
-  <!-- {{ $slogan = "Half-time. The match resumes shortly." }} -->
-  <!-- {{ $icon = "whistle" }} -->
-  <!-- {{ else if or (eq $h "bricksnbytes.bumbleflies.de") (eq $h "bricksnbytes.de") (eq $h "www.bricksnbytes.de") }} -->
-  <!-- {{ $name = "Bricks'n'Bytes" }} -->
-  <!-- {{ $slogan = "Our blocks are restacking — one moment." }} -->
-  <!-- {{ $icon = "brick" }} -->
-  <!-- {{ else if eq $h "pass.lehel.xyz" }} -->
-  <!-- {{ $name = "Passwords" }} -->
-  <!-- {{ $slogan = "The vault is locked for a moment." }} -->
-  <!-- {{ $icon = "keyhole" }} -->
-  <!-- {{ else if eq $h "search.lehel.xyz" }} -->
-  <!-- {{ $name = "Search" }} -->
-  <!-- {{ $slogan = "The scent went cold — try again soon." }} -->
-  <!-- {{ $icon = "magnifier" }} -->
-  <!-- {{ else if or (eq $h "code.lehel.xyz") (eq $h "opencode.lehel.xyz") }} -->
-  <!-- {{ $name = "Code" }} -->
-  <!-- {{ $slogan = "The AI is recharging its batteries." }} -->
-  <!-- {{ $icon = "terminal" }} -->
-  <!-- {{ else if eq $h "h.code.lehel.xyz" }} -->
-  <!-- {{ $name = "Hub" }} -->
-  <!-- {{ $slogan = "The workshop is closed for a moment." }} -->
-  <!-- {{ $icon = "gauge" }} -->
-  <!-- {{ end }} -->
+       host on BOTH paths (catchall routers and the errors middleware, which
+       builds its backend request from req.Host) — verified live, see
+       history/2026-10-27_traefik-error-page-retry.md. Matching is done on a
+       lowercased, port-stripped copy ($h) since DNS names are
+       case-insensitive. The Try-again href only ever uses $h for exact-match
+       hosts (and is escaped), and the JS poll reloads location.href, so a
+       malicious Host header has no injection surface. Unknown or empty hosts
+       fall through to the generic ghost rendering below. -->
 
   <!-- {{ if eq $icon "hive" }} -->
   <svg class="ghost" xmlns="http://www.w3.org/2000/svg" width="127px" height="132px" viewBox="0 0 120 120" xml:space="preserve">
@@ -255,14 +315,18 @@
   </p>
 
   <h3><span data-l10n>Error</span> {{ .StatusCode }}<!-- {{ if $name }} --> · {{ $name }}<!-- {{ end }} --></h3>
-  <p class="description" data-l10n><!-- {{ if $slogan }} --><!-- {{ if ge .StatusCode 500 }} -->{{ $name }} — {{ $slogan }}<!-- {{ else }} -->{{ $name }} can't find that page.<!-- {{ end }} --><!-- {{ else }} -->{{ .Description }}<!-- {{ end }} --></p>
+  <!-- The service-own 404 body is never replaced anymore (see
+       history/2026-10-27_traefik-error-page-retry.md): a 404 reaching this page
+       means the host has no live route, so both 404 and 5xx here mean "not
+       reachable right now" and use the same wording. -->
+  <p class="description" data-l10n><!-- {{ if $slogan }} -->{{ $name }} — {{ $slogan }}<!-- {{ else }} -->{{ .Description }}<!-- {{ end }} --></p>
 
   <nav class="links" aria-label="Additional links">
-    <!-- {{ if and $reqHost (ge .StatusCode 500) }} -->
-    <!-- {{ if $name }} -->
-    <a href="https://{{ $h | escape }}/" data-l10n>Try {{ $name }} again</a>
-    <!-- {{ end }} -->
-    <!-- {{ end }} -->
+    <!-- Availability retry: always present. With JS the href is rewritten to
+         the current URL and the click runs an immediate availability probe;
+         without JS the href falls back to the service root (or, for unmapped
+         hosts, an empty href = reload the current URL). -->
+    {{ if $name }}<a id="retry" href="https://{{ $h | escape }}/" data-l10n>Check {{ $name }} again</a>{{ else }}<a id="retry" href="" data-l10n>Check again</a>{{ end }}
     <!-- {{ if .HomepageURL }} -->
     <a href="{{ .HomepageURL }}" data-l10n>Go to homepage</a>
     <!-- {{ end }} -->
@@ -271,6 +335,8 @@
     <a href="{{ .URL }}" data-l10n>{{ .Label }}</a>
     <!-- {{- end -}} -->
   </nav>
+
+  <p class="status" id="retry-status" data-l10n hidden></p>
 
   <!-- NOTE: no request-details table in this fork. SHOW_DETAILS=true is
        required so the server populates .Host (used for the dispatch above),
@@ -282,5 +348,79 @@
 <!-- {{- if (not .Config.L10nDisabled) -}} -->
 <script>// {{ l10nScript }}</script>
 <!-- {{- end -}} -->
+
+<!-- {{ if $poll }} -->
+<script>
+// Availability poll. The page was served because the requested host has no
+// live route (404 from the catchall) or its backend answered 5xx, so we know
+// the target is unreachable right now. Re-fetch the SAME URL every 20s and
+// navigate as soon as it stops answering with this error page (the marker in
+// <head> is the only reliable signal: an app's own 404 must also count as
+// "back"). Gives up after 20 minutes; the visible link always works manually.
+(function () {
+  var MARKER = 'traefik-error-page-v1';
+  var PERIOD = 20;
+  var GIVE_UP_MS = 20 * 60 * 1000;
+
+  var link = document.getElementById('retry');
+  var status = document.getElementById('retry-status');
+  var left = PERIOD;
+  var busy = false;
+  var timer = null;
+  var deadline = Date.now() + GIVE_UP_MS;
+
+  function say(text) {
+    if (!status) return;
+    if (text === null) { status.hidden = true; status.textContent = ''; return; }
+    status.hidden = false;
+    status.textContent = text;
+  }
+
+  function probe() {
+    if (busy) return;
+    busy = true;
+    say('Checking…');
+    fetch(location.href, {cache: 'no-store', credentials: 'same-origin', redirect: 'follow'})
+      .then(function (res) { return res.text(); })
+      .then(function (body) {
+        busy = false;
+        if (body.indexOf(MARKER) === -1) { location.reload(); return; }
+        schedule();
+      })
+      .catch(function () { busy = false; schedule(); });
+  }
+
+  function schedule() {
+    if (Date.now() > deadline) {
+      say('Automatic checks paused — use the link above.');
+      return;
+    }
+    left = PERIOD;
+    tick();
+  }
+
+  function tick() {
+    if (busy) { timer = setTimeout(tick, 1000); return; }
+    if (left <= 0) { probe(); return; }
+    say('Checking again in ' + left + 's…');
+    left -= 1;
+    timer = setTimeout(tick, 1000);
+  }
+
+  if (link) {
+    link.href = location.href;
+    link.addEventListener('click', function (event) {
+      event.preventDefault();
+      if (timer) { clearTimeout(timer); timer = null; }
+      probe();
+    });
+  }
+
+  // Start the countdown only once the page is idle, so slow connections do not
+  // stack probes on top of the document load.
+  window.addEventListener('load', function () { setTimeout(tick, 1000); });
+})();
+</script>
+<!-- {{ end }} -->
 </body>
 </html>

@@ -432,6 +432,13 @@
           # basicAuth usersFile consumed by traefik/dynamic.yaml (`traefik-auth`).
           - src: traefik/dashboard-auth.htpasswd.j2
             dest: dashboard-auth.htpasswd
+        # error-pages bind-mounts error-pages.html and runs as uid 10001. The
+        # deploy checkout's umask 007 leaves tracked files at 0660, which the
+        # container cannot read ("permission denied" -> restart loop, so every
+        # catchall/5xx page falls back to Traefik's plain status). Make just
+        # that one file world-readable; traefik itself runs as root.
+        world_readable_paths:
+          - error-pages.html
       when: "'traefik' in (services | default([]))"
       tags: [user.docker, user.docker.traefik]
 
