@@ -62,6 +62,14 @@
         dest: /home/molecule/static-svc/serve/index.html
         mode: "0660"
 
+    # A single-file world_readable_paths entry (not inside the directory above),
+    # mirroring traefik/error-pages.html: the file is mounted as its own path.
+    - name: Create 0660 single-file bind-mount content for static-svc
+      ansible.builtin.copy:
+        content: "<html>static</html>\n"
+        dest: /home/molecule/static-svc/template.html
+        mode: "0660"
+
   tasks:
     - name: Deploy simple service
       ansible.builtin.include_role:
@@ -100,6 +108,7 @@
         service_dir: static-svc
         world_readable_paths:
           - serve
+          - template.html
 
     - name: Deploy manual service (env only, no compose)
       ansible.builtin.include_role:

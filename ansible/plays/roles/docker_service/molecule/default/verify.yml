@@ -45,6 +45,17 @@
           - static_svc_content.results[0].stat.mode == '0775'
         fail_msg: "serve/ is {{ static_svc_content.results[0].stat.mode }}, expected 0775"
 
+    - name: Stat single-file world_readable_paths entry
+      ansible.builtin.stat:
+        path: /home/molecule/static-svc/template.html
+      register: static_svc_file
+
+    - name: Verify single-file bind-mount content is world-readable (0660 -> 0664)
+      ansible.builtin.assert:
+        that:
+          - static_svc_file.stat.mode == '0664'
+        fail_msg: "template.html is {{ static_svc_file.stat.mode }}, expected 0664"
+
     - name: Verify domain-override service .env exists
       ansible.builtin.stat:
         path: /home/molecule/domain-svc/.env

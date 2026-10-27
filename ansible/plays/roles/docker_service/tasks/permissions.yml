@@ -2,7 +2,8 @@
 # Give the container's non-root user read access to bind-mounted content.
 # See world_readable_paths in defaults/main.yml for why the 0660 modes the git
 # checkout produces are not enough. `mode: a+rX` (not a plain 0664) so directory
-# traversal is added without making regular files executable.
+# traversal is added without making regular files executable. Entries may be
+# directories (recursed) or single files (e.g. a bind-mounted template).
 - name: Check configured world-readable paths for {{ service_dir }}
   ansible.builtin.stat:
     path: "{{ docker.remote_dir }}/{{ service_dir }}/{{ item }}"
@@ -12,8 +13,10 @@
 - name: Make container-consumed content in {{ service_dir }} world-readable
   ansible.builtin.file:
     path: "{{ item.stat.path }}"
-    state: directory
-    recurse: true
+    # `state: directory` fails on a file path ("already exists as a file"), so
+    # the state follows what is actually there; only directories are recursed.
+    state: "{{ item.stat.isdir | ternary('directory', 'file') }}"
+    recurse: "{{ item.stat.isdir }}"
     mode: a+rX
   loop: "{{ world_readable_path_stats.results }}"
   loop_control:

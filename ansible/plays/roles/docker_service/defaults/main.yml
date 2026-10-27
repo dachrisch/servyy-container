@@ -35,5 +35,7 @@ ensure_volumes: []
 # (nginx worker = uid 101) gets 403 on every request, fails its healthcheck, and
 # Traefik then withdraws the container's routers for as long as it is unhealthy
 # (the site answers with the catch-all 404 instead). Paths listed here are
-# chmod a+rX'ed after the env files are rendered: dirs 0775, files 0664.
+# chmod a+rX'ed after the env files are rendered: dirs 0775 (recursed), single
+# files 0664. Files work too -- e.g. traefik/error-pages.html, read by the
+# error-pages container (uid 10001) at startup.
 world_readable_paths: []
