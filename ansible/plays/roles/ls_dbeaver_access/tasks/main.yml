@@ -60,12 +60,18 @@
         # -e dbeaver_tunnel_keys_exclusive=true to prune old keys.
         exclusive: "{{ dbeaver_tunnel_keys_exclusive | default(false) | bool }}"
         key: "{{ lookup('file', '~/.ssh/' + item.ssh_key_filename + '.pub') }}"
+        # NO `command="/bin/false"`: a client that opens a session channel (DBeaver's
+        # SSHJ transport does) has it run and exit immediately, which tears the whole
+        # SSH connection down mid-handshake - the forwarded MySQL socket dies with
+        # "unexpected end of stream, read 0 bytes from 4". `restrict` already denies
+        # pty/agent/X11/user-rc and the account's shell is /usr/sbin/nologin, so
+        # there is no shell to get either way.
         key_options: >-
           restrict,port-forwarding,{{
           (item.local_ports | default([item.local_port]))
           | map('regex_replace', '^', 'permitopen="127.0.0.1:')
           | map('regex_replace', '$', '"')
-          | join(',') }},command="/bin/false"
+          | join(',') }}
       loop: "{{ dbeaver_tunnels }}"
       loop_control:
         label: "{{ item.user }}"
