@@ -46,8 +46,8 @@ check() { # $1=description $2=actual $3=expected
 # ---------------------------------------------------------------- stubs -----
 # docker ps            -> the three fixture images
 # docker ps --filter   -> a synthetic container id derived from the image name
-# docker export        -> a "rootfs tar" whose only content is that container id, so the
-#                         trivy stub can tell which image is being scanned
+# docker export        -> a rootfs tar whose only content is a "cid" file, so the trivy stub
+#                         can tell which image is being scanned
 cat > "${BIN}/docker" <<'STUB'
 #!/bin/bash
 echo "docker $*" >> "${STUB_CALLS}/docker.log"
@@ -62,14 +62,11 @@ if [[ "${1:-}" == "ps" ]]; then
     exit 0
 fi
 if [[ "${1:-}" == "export" ]]; then
-    out=""
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            -o) out="$2"; shift 2 ;;
-            *) cid="$1"; shift ;;
-        esac
-    done
-    echo "${cid}" > "${out}"
+    cid="$2"
+    stage="$(mktemp -d)"
+    echo "${cid}" > "${stage}/cid"
+    tar -cf - -C "${stage}" .
+    rm -rf "${stage}"
     echo "${cid}" >> "${STUB_CALLS}/exports.log"
     exit 0
 fi
@@ -79,7 +76,8 @@ chmod +x "${BIN}/docker"
 
 # trivy image  -> good:latest succeeds; the other two fail the way the containerd image
 #                 store fails when layer blobs are missing
-# trivy rootfs -> only succeeds for the image whose export says cid-broken:latest
+# trivy rootfs -> only succeeds when handed an unpacked directory containing cid-broken:latest
+#                 (real trivy returns an empty result set for a tar path — verified on servy)
 cat > "${BIN}/trivy" <<'STUB'
 #!/bin/bash
 echo "trivy $*" >> "${STUB_CALLS}/trivy.log"
@@ -97,11 +95,11 @@ case "${cmd}" in
             *) echo "FATAL image scan error: file blobs/sha256/deadbeef not found in tar" >&2; exit 1 ;;
         esac ;;
     rootfs)
-        if head -c 200 "${target}" | grep -q 'cid-broken:latest'; then
+        if [[ -d "${target}" ]] && grep -q 'cid-broken:latest' "${target}/cid" 2>/dev/null; then
             findings
             exit 0
         fi
-        echo "FATAL rootfs scan error: unable to read ${target}" >&2
+        echo "FATAL rootfs scan error: ${target} is not an unpacked rootfs with a matching cid" >&2
         exit 1 ;;
     config)
         echo '{}'
@@ -247,7 +245,7 @@ echo "== rootfs fallback =="
 check "unexportable image falls back to a rootfs scan" "$(probe scanner broken:latest)" "rootfs"
 check "fallback keeps the finding" "$(probe criticals broken:latest)" "1"
 check "fallback exports the failing image only" "$(file_probe "${CALLS}/exports.log" 'cid-broken:latest')" "1"
-check "fallback export is cleaned up" "$(ls "${LOGS}"/"$(date +%Y-%m-%d)" | grep -c '\.trivy-rootfs' || true)" "0"
+check "fallback export is cleaned up" "$(ls -a "${LOGS}"/"$(date +%Y-%m-%d)" | grep -c '\.trivy-rootfs' || true)" "0"
 
 echo "== unscannable images =="
 check "successful scans are recorded as results" "$(probe kind good:latest)" "result"
@@ -266,6 +264,11 @@ check_contains "SUMMARY.md names the unscanned image" "${SUMMARY}" "unscannable:
 check_contains "SUMMARY.md counts the tools that ran" "${SUMMARY}" "Tools Run**: 1"
 check_grep "SUMMARY.md opens a scan-failure section" "${SUMMARY}" '^## Scan Failures$'
 check_grep "SUMMARY.md lists the failure as a list item" "${SUMMARY}" '^- `unscannable:latest`$'
+
+echo "== same-day re-run =="
+# The audit is re-run by hand after a fix; counters must not accumulate.
+STUB_CALLS="${CALLS}" PATH="${BIN}:${PATH}" bash "${WORK}/audit.sh" > "${WORK}/run2.log" 2>&1
+check "re-run does not double-count tools" "$(grep -c 'Tools Run\*\*: 1' "${SUMMARY}" 2>/dev/null || true)" "1"
 
 echo
 if [[ "${FAIL}" -gt 0 ]]; then

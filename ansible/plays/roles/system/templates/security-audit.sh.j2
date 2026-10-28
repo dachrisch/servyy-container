@@ -12,6 +12,9 @@ TOOLS_DIR="{{ security_audit.script_dir }}"
 
 mkdir -p "${LOG_DIR}"
 
+# Same-day re-runs must not accumulate the tool counter read by generate_summary().
+: > "${LOG_DIR}/.tools-run"
+
 # Counters
 TOTAL_CHECKS=0
 TOTAL_FINDINGS=0
@@ -138,20 +141,24 @@ scan_image() { # $1=image $2=output json
 # image — e.g. with the containerd image store, where garbage-collected layer blobs make
 # `docker save` emit an archive whose manifest references blobs it does not contain and
 # `trivy image` aborts with "file blobs/sha256/... not found in tar".
-# `trivy rootfs -` does not read stdin, hence the intermediate tar.
-scan_rootfs() { # $1=image $2=output json $3=temp tar
+# `trivy rootfs` scans a directory: handed an archive path it exits 0 with zero results
+# (verified 2026-10-28), which would be another silent fake-clean — hence the unpack.
+scan_rootfs() { # $1=image $2=output json $3=temp dir
     local cid rc=0
     cid=$(docker ps --filter "ancestor=$1" --format '{% raw %}{{.ID}}{% endraw %}' | head -1)
     if [[ -z "${cid}" ]]; then
         echo "ERROR: no running container for ${1}, cannot fall back to a rootfs scan"
         return 1
     fi
-    if ! docker export "${cid}" -o "$3"; then
-        echo "ERROR: docker export of ${cid} (${1}) failed"
+    rm -rf "$3"
+    mkdir -p "$3"
+    if ! docker export "${cid}" | tar -x -C "$3"; then
+        echo "ERROR: could not export the filesystem of ${cid} (${1})"
+        rm -rf "$3"
         return 1
     fi
     trivy rootfs --scanners vuln --format json --severity HIGH,CRITICAL "$3" > "$2" || rc=$?
-    rm -f "$3"
+    rm -rf "$3"
     return "${rc}"
 }
 
@@ -182,7 +189,7 @@ run_trivy() {
         if scan_image "${IMAGE}" "${LOG_DIR}/.trivy-scan.json" \
                 && json_ok "${LOG_DIR}/.trivy-scan.json"; then
             scanner="image"
-        elif scan_rootfs "${IMAGE}" "${LOG_DIR}/.trivy-scan.json" "${LOG_DIR}/.trivy-rootfs.tar" \
+        elif scan_rootfs "${IMAGE}" "${LOG_DIR}/.trivy-scan.json" "${LOG_DIR}/.trivy-rootfs" \
                 && json_ok "${LOG_DIR}/.trivy-scan.json"; then
             scanner="rootfs"
         fi
