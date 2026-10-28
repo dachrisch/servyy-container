@@ -117,6 +117,17 @@ run_docker_bench() {
 }
 
 # Trivy - Container image vulnerability scanner
+
+# True when the file is non-empty and parses as JSON.
+json_ok() {
+    [[ -s "$1" ]] && python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$1" 2>/dev/null
+}
+
+# Fast path: let trivy read the image through the docker daemon (docker save).
+scan_image() { # $1=image $2=output json
+    trivy image --format json --severity HIGH,CRITICAL "$1" > "$2" 2>/dev/null
+}
+
 run_trivy() {
     if ! command -v trivy &>/dev/null; then
         echo "ERROR: trivy not installed"
@@ -134,15 +145,14 @@ run_trivy() {
             echo ',' >> "${LOG_DIR}/trivy-results.json"
         fi
 
-        # Scan image and wrap result with target name. The scan JSON must be redirected into
-        # the results file (stdout otherwise lands in the tool log and the file stays empty).
-        echo "{\"target\": \"${IMAGE}\", \"result\": " >> "${LOG_DIR}/trivy-results.json"
-        if trivy image --format json --severity HIGH,CRITICAL "${IMAGE}" \
-                > "${LOG_DIR}/.trivy-image.json" 2>/dev/null \
-                && [[ -s "${LOG_DIR}/.trivy-image.json" ]] \
-                && python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "${LOG_DIR}/.trivy-image.json" 2>/dev/null; then
+        # Wrap the scan JSON with its target. The JSON must be redirected into the results
+        # file (stdout otherwise lands in the tool log and the file stays empty).
+        if scan_image "${IMAGE}" "${LOG_DIR}/.trivy-image.json" \
+                && json_ok "${LOG_DIR}/.trivy-image.json"; then
+            echo "{\"target\": \"${IMAGE}\", \"scanner\": \"image\", \"result\": " >> "${LOG_DIR}/trivy-results.json"
             cat "${LOG_DIR}/.trivy-image.json" >> "${LOG_DIR}/trivy-results.json"
         else
+            echo "{\"target\": \"${IMAGE}\", \"scanner\": \"none\", \"result\": " >> "${LOG_DIR}/trivy-results.json"
             echo '{}' >> "${LOG_DIR}/trivy-results.json"
         fi
         rm -f "${LOG_DIR}/.trivy-image.json"
