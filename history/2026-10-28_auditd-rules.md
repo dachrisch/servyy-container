@@ -53,6 +53,34 @@ Rejected: `--ignore-unfixed`. It would have dropped those 3 from the report enti
 would know the images contain kernel-header CVEs we cannot patch and cannot fix by rebuilding.
 Counting them separately keeps the information and marks it as not actionable.
 
+## Verification
+
+Deployed with `--tags system.hardening.audit` + `system.security_audit.scripts`; the deployed
+audit script is byte-identical to the rendered template at `a2ccb3f`.
+
+On the host:
+
+- `auditctl -l` → **36 rules**, `auditctl -s` → `enabled 1`, `backlog_limit 8192`, `lost 0`
+- events land under the keys: `identity` 5, `privilege` 5, `cron` 7, `auth` 3, `docker` 1,
+  `systemd` 1, `modules` 1, `mounts` 1, `group-modify` 2 in the first minutes
+- growth measured at **5,568 bytes / 2 min ≈ 4 MB/day**; the packaged rotation (8 MB × 5)
+  holds ~10 days, so no tuning needed
+- **Lynis `ACCT-9630` is gone** (0 `warning[]|suggestion[]` lines; the only remaining matches
+  are its own `tests_executed=` metadata). Suggestions went 14 → 13, index unchanged at 81
+
+For the counts, a trivy-only re-scan of all 46 images with the new split:
+
+```
+scanned=46  failed=0
+critical=108  critical_unfixed=70
+high=2656     high_unfixed=1523
+```
+
+so **38 of 108 criticals and 1133 of 2656 highs are actionable** — the unfixable share is much
+larger than the fireflyiii pair alone, which is precisely the information the old report threw
+away. `SUMMARY.md` now reads
+`- **Trivy findings**: 108 CRITICAL (70 without an upstream fix), 2656 HIGH`.
+
 ## Consequences
 
 ### Positive
@@ -65,8 +93,9 @@ Counting them separately keeps the information and marks it as not actionable.
 
 - ~4 MB/day of audit log; the packaged rotation (8 MB × 5) keeps ~10 days — fine, but it will
   not keep a month of history
-- `ACCT-9630` should disappear from the next Lynis run; if it does not, the rules file is not
-  being loaded and the handler needs a look
+- When grepping the Lynis report for a test id, anchor on `^(warning|suggestion)\[\]=` —
+  ids also appear in the `tests_executed=` metadata line, which made a fixed finding look
+  unfixed on the first check
 
 ### Known Issues / Open Findings
 
