@@ -32,6 +32,9 @@ run_tool() {
 
     log "START: ${name}"
     TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
+    # This function runs in a subshell (see the pipe below), so the count is recorded in a
+    # file for generate_summary() instead of relying on the variable.
+    echo "${name}" >> "${LOG_DIR}/.tools-run"
 
     if "$@" 2>&1 | tee -a "${LOG_DIR}/${name}.log"; then
         log "DONE: ${name}"
@@ -160,6 +163,9 @@ run_trivy() {
 
     echo '[' > "${LOG_DIR}/trivy-results.json"
     FIRST=true
+    SCANNED=0
+    FAILED=0
+    FAILED_TARGETS=""
 
     for IMAGE in $(docker ps --format '{% raw %}{{.Image}}{% endraw %}' | sort -u); do
         log "  Scanning image: ${IMAGE}"
@@ -186,20 +192,38 @@ run_trivy() {
             cat "${LOG_DIR}/.trivy-scan.json" >> "${LOG_DIR}/trivy-results.json"
             echo '}' >> "${LOG_DIR}/trivy-results.json"
             rm -f "${LOG_DIR}/.trivy-scan.json"
+            SCANNED=$((SCANNED + 1))
         else
             # Never write an empty result: an unscanned image must not look like a clean one.
             log "  WARN: could not scan ${IMAGE} (neither the image nor its filesystem), see trivy.log"
             echo "{\"target\": \"${IMAGE}\", \"error\": \"scan failed, see trivy.log\"}" >> "${LOG_DIR}/trivy-results.json"
+            FAILED=$((FAILED + 1))
+            FAILED_TARGETS="${FAILED_TARGETS}${IMAGE} "
         fi
     done
 
     echo ']' >> "${LOG_DIR}/trivy-results.json"
 
-    # Count findings
+    # Count findings. `grep -c` exits 1 when it counts nothing, so it must not be paired with
+    # `|| echo 0` — that produces "0\n0" and breaks the line.
     local CRITICAL HIGH
-    CRITICAL=$(grep -c '"Severity": "CRITICAL"' "${LOG_DIR}/trivy-results.json" 2>/dev/null || echo 0)
-    HIGH=$(grep -c '"Severity": "HIGH"' "${LOG_DIR}/trivy-results.json" 2>/dev/null || echo 0)
-    log "  Trivy: ${CRITICAL} CRITICAL, ${HIGH} HIGH vulnerabilities found"
+    CRITICAL=$(grep -c '"Severity": "CRITICAL"' "${LOG_DIR}/trivy-results.json" 2>/dev/null || true)
+    HIGH=$(grep -c '"Severity": "HIGH"' "${LOG_DIR}/trivy-results.json" 2>/dev/null || true)
+    CRITICAL=${CRITICAL:-0}
+    HIGH=${HIGH:-0}
+    log "  Trivy: ${SCANNED} image(s) scanned, ${FAILED} failed; ${CRITICAL} CRITICAL, ${HIGH} HIGH"
+
+    # Coverage reaches generate_summary() through a file: run_tool runs this function in a
+    # subshell, so shell variables would not survive.
+    {
+        echo "scanned=${SCANNED}"
+        echo "failed=${FAILED}"
+        echo "critical=${CRITICAL}"
+        echo "high=${HIGH}"
+        for TARGET in ${FAILED_TARGETS}; do
+            echo "failed_target=${TARGET}"
+        done
+    } > "${LOG_DIR}/trivy-summary.txt"
 
     # Also run filesystem scan for IaC misconfigurations
     trivy config --format json --severity HIGH,CRITICAL \
@@ -285,13 +309,35 @@ run_nuclei() {
 generate_summary() {
     log "Generating summary report..."
 
+    # run_tool and run_trivy execute in a subshell ("$@" 2>&1 | tee), so their counters are
+    # read from files rather than from shell variables.
+    local tools_run=0 trivy_line="" trivy_failures=""
+    if [[ -f "${LOG_DIR}/.tools-run" ]]; then
+        tools_run=$(wc -l < "${LOG_DIR}/.tools-run")
+    fi
+    if [[ -f "${LOG_DIR}/trivy-summary.txt" ]]; then
+        local scanned failed
+        scanned=$(sed -n 's/^scanned=//p' "${LOG_DIR}/trivy-summary.txt")
+        failed=$(sed -n 's/^failed=//p' "${LOG_DIR}/trivy-summary.txt")
+        trivy_line="- **Container images**: ${scanned}/$((scanned + failed)) scanned"
+        if [[ "${failed}" != "0" ]]; then
+            # Built with $'…' rather than $(printf …): command substitution strips the
+            # trailing newline, which glues the last bullet onto the next heading.
+            trivy_failures=$'\n## Scan Failures\n\nThe following container images could not be scanned — treat them as unknown, not as clean (see `trivy.log`):\n\n'
+            while IFS= read -r target; do
+                trivy_failures+="- \`${target}\`"$'\n'
+            done < <(sed -n 's/^failed_target=//p' "${LOG_DIR}/trivy-summary.txt")
+        fi
+    fi
+
     cat > "${SUMMARY}" <<EOF
 # Security Audit Report - ${DATE}
 
 ## Overview
 - **Host**: servy.lehel.xyz
 - **Date**: ${DATE}
-- **Tools Run**: ${TOTAL_CHECKS}
+- **Tools Run**: ${tools_run}
+${trivy_line}
 
 ## Tools Executed
 
@@ -321,6 +367,7 @@ nmap -sV localhost
 cat ${LOG_DIR}/testssl-*.json | jq '.'
 \`\`\`
 
+${trivy_failures}
 ## Full Results
 All detailed results are in: \`${LOG_DIR}/\`
 EOF

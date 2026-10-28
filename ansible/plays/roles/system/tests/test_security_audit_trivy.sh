@@ -18,7 +18,11 @@ ROLE="$(dirname "${HERE}")"
 TEMPLATE="${ROLE}/templates/security-audit.sh.j2"
 
 WORK="$(mktemp -d)"
-trap 'rm -rf "${WORK}"' EXIT
+if [[ -n "${KEEP:-}" ]]; then
+    echo "work dir kept at ${WORK}"
+else
+    trap 'rm -rf "${WORK}"' EXIT
+fi
 
 BIN="${WORK}/bin"
 LOGS="${WORK}/logs"
@@ -143,6 +147,7 @@ chmod +x "${WORK}/audit.sh"
 STUB_CALLS="${CALLS}" PATH="${BIN}:${PATH}" bash "${WORK}/audit.sh" > "${WORK}/run.log" 2>&1
 RUN_RC=$?
 
+STATS="${LOGS}/$(date +%Y-%m-%d)/trivy-summary.txt"
 RESULTS="${LOGS}/$(date +%Y-%m-%d)/trivy-results.json"
 SUMMARY="${LOGS}/$(date +%Y-%m-%d)/SUMMARY.md"
 TOOL_LOG="${LOGS}/$(date +%Y-%m-%d)/trivy.log"
@@ -212,6 +217,22 @@ check_ge() { # $1=description $2=actual $3=minimum
     fi
 }
 
+check_grep() { # $1=description $2=file $3=anchored regex, expected exactly one match
+    local count
+    count=$(grep -c -- "$3" "$2" 2>/dev/null || true)
+    check "$1" "${count:-0}" "1"
+}
+
+check_contains() { # $1=description $2=file $3=literal text
+    if grep -qF -- "$3" "$2" 2>/dev/null; then
+        PASS=$((PASS + 1))
+        printf '  ok   %s\n' "$1"
+    else
+        FAIL=$((FAIL + 1))
+        printf '  FAIL %s\n         expected %s to contain: %s\n' "$1" "${2##*/}" "$3"
+    fi
+}
+
 # ---------------------------------------------------------------- checks ----
 echo "== rendered script exit code =="
 check "audit script runs" "${RUN_RC}" "0"
@@ -233,6 +254,18 @@ check "successful scans are recorded as results" "$(probe kind good:latest)" "re
 check "unscannable image is recorded as an error" "$(probe kind unscannable:latest)" "error"
 check "no row claims an empty result" "$(probe empty-results)" "0"
 check_ge "trivy's failure reaches the tool log" "$(file_probe "${TOOL_LOG}" 'FATAL')" 1
+
+echo "== coverage reporting =="
+check "summary records scanned images" "$(grep '^scanned=' "${STATS}" 2>/dev/null || echo missing)" "scanned=2"
+check "summary records failed images" "$(grep '^failed=' "${STATS}" 2>/dev/null || echo missing)" "failed=1"
+check "summary counts criticals" "$(grep "^critical=" "${STATS}" 2>/dev/null || echo missing)" "critical=2"
+check "summary counts highs" "$(grep '^high=' "${STATS}" 2>/dev/null || echo missing)" "high=0"
+check "summary names the failed image" "$(grep '^failed_target=' "${STATS}" 2>/dev/null || echo missing)" "failed_target=unscannable:latest"
+check_contains "SUMMARY.md reports coverage" "${SUMMARY}" "2/3 scanned"
+check_contains "SUMMARY.md names the unscanned image" "${SUMMARY}" "unscannable:latest"
+check_contains "SUMMARY.md counts the tools that ran" "${SUMMARY}" "Tools Run**: 1"
+check_grep "SUMMARY.md opens a scan-failure section" "${SUMMARY}" '^## Scan Failures$'
+check_grep "SUMMARY.md lists the failure as a list item" "${SUMMARY}" '^- `unscannable:latest`$'
 
 echo
 if [[ "${FAIL}" -gt 0 ]]; then
