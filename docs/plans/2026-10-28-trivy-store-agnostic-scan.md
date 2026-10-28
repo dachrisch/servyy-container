@@ -98,18 +98,26 @@ assert_eq "broken:latest" "$(exported_images)"     # fallback did run, for that 
 **Step 3: Implement the minimum**
 
 ```bash
-scan_rootfs() {                    # $1=image $2=result-json $3=temp-tar
-    local cid
+scan_rootfs() {                    # $1=image $2=result-json $3=temp dir
+    local cid rc=0
     cid="$(docker ps --filter "ancestor=$1" --format '{{.ID}}' | head -1)"
     [[ -n "${cid}" ]] || return 1
-    docker export "${cid}" -o "$3" || return 1
-    trivy rootfs --scanners vuln --format json --severity HIGH,CRITICAL "$3" > "$2"
+    rm -rf "$3"; mkdir -p "$3"
+    docker export "${cid}" | tar -x -C "$3" || return 1
+    trivy rootfs --scanners vuln --format json --severity HIGH,CRITICAL "$3" > "$2" || rc=$?
+    rm -rf "$3"
+    return "${rc}"
 }
 ```
 
-Fall back to it only after `trivy image` fails or produces unparseable JSON. Note
-`trivy rootfs -` does **not** accept stdin (verified: `lstat -: no such file or directory`),
-so the export must go to a temp file, deleted after each image.
+Two traps, both verified on servy rather than assumed:
+- `trivy rootfs -` does not read stdin (`lstat -: no such file or directory`).
+- `trivy rootfs <tar>` **exits 0 with zero results** — the same silent fake-clean this task
+  exists to remove. Scanned on a real export: tar → 0 results, unpacked directory → 930.
+  So the export is streamed through `tar -x` into a temp dir, and the test stub rejects a
+  non-directory argument so the contract cannot drift back.
+
+Fall back to it only after `trivy image` fails or produces unparseable JSON.
 
 **Step 4: Run the test → PASS**
 
@@ -173,6 +181,27 @@ section when `failed > 0`.
 **Step 4: Run the test → PASS**
 
 **Step 5: Commit** — `feat(security-audit): report trivy scan coverage in SUMMARY.md`
+
+---
+
+## Task 4b: Fix the two silent summary bugs found while testing
+
+**Files:**
+- Modify: `ansible/plays/roles/system/templates/security-audit.sh.j2` (`run_tool`, `run_trivy`, `generate_summary`)
+
+Both were discovered by the harness rather than reported:
+
+1. `CRITICAL=$(grep -c … || echo 0)` prints `0\n0` when nothing matches (`grep -c` exits 1),
+   so the log line read `Trivy: 1 CRITICAL, 0`/`0 HIGH`.
+2. `TOTAL_CHECKS` is incremented inside `run_tool`, which executes as `"$@" 2>&1 | tee …` —
+   a subshell — so `generate_summary` always saw `0`. (`2026-10-09`'s "Tools Run: 7" came
+   from the pre-23:39 script version; no audit has run since that deploy.)
+
+**Step 1: Failing test** — `Tools Run**: 1` in SUMMARY.md, `critical=`/`high=` in
+`trivy-summary.txt`.
+
+**Step 2:** RED. **Step 3:** record tool runs in `${LOG_DIR}/.tools-run` and read it back;
+drop the `|| echo 0` idiom. **Step 4:** GREEN. **Step 5:** commit with Task 4.
 
 ---
 
