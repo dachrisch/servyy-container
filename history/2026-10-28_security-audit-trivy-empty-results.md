@@ -129,6 +129,8 @@ The deployed script is byte-identical to the rendered template at `f687a35`.
   broken run, which restores content blobs. That is the predicted behaviour, and it means
   the rootfs rows will move in and out as images are re-pulled
 - `trivy-summary.txt`: `scanned=46 failed=0 critical=108 high=2663`
+- `SUMMARY.md` reads `Tools Run: 7` and `Container images: 46/46 scanned`, and has **no**
+  `## Scan Failures` section (it appears only when `failed > 0`)
 
 The rootfs rows are real now (this is what the unpack fix bought): `leaguesphere/backend`
 199 vulns (3 sections: debian + node-pkg + python-pkg), `bumblecode/ibs` 186, `cadvisor` 84,
