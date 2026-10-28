@@ -51,7 +51,7 @@ if [[ "${1:-}" == "ps" ]]; then
     for a in "$@"; do
         case "${a}" in
             -q) exit 0 ;;
-            ancestor=*) echo "cid-${a#ancestor=}" | tr -c 'a-zA-Z0-9:._-\n' '_'; exit 0 ;;
+            ancestor=*) echo "cid-${a#ancestor=}"; exit 0 ;;
         esac
     done
     printf '%s\n' 'good:latest' 'broken:latest' 'unscannable:latest'
@@ -202,6 +202,16 @@ file_probe() { # $1=file $2=grep pattern -> count (0 when the file is absent)
     fi
 }
 
+check_ge() { # $1=description $2=actual $3=minimum
+    if [[ "$2" =~ ^[0-9]+$ ]] && (( $2 >= $3 )); then
+        PASS=$((PASS + 1))
+        printf '  ok   %s (%s)\n' "$1" "$2"
+    else
+        FAIL=$((FAIL + 1))
+        printf '  FAIL %s\n         expected at least: %s\n         actual:            %s\n' "$1" "$3" "$2"
+    fi
+}
+
 # ---------------------------------------------------------------- checks ----
 echo "== rendered script exit code =="
 check "audit script runs" "${RUN_RC}" "0"
@@ -211,6 +221,18 @@ check "results file is valid JSON" "$(probe valid)" "yes"
 check "healthy image scanned via the image source" "$(probe scanner good:latest)" "image"
 check "healthy image keeps its finding" "$(probe criticals good:latest)" "1"
 check "healthy image is not exported" "$(file_probe "${CALLS}/exports.log" 'anything')" "0"
+
+echo "== rootfs fallback =="
+check "unexportable image falls back to a rootfs scan" "$(probe scanner broken:latest)" "rootfs"
+check "fallback keeps the finding" "$(probe criticals broken:latest)" "1"
+check "fallback exports the failing image only" "$(file_probe "${CALLS}/exports.log" 'cid-broken:latest')" "1"
+check "fallback export is cleaned up" "$(ls "${LOGS}"/"$(date +%Y-%m-%d)" | grep -c '\.trivy-rootfs' || true)" "0"
+
+echo "== unscannable images =="
+check "successful scans are recorded as results" "$(probe kind good:latest)" "result"
+check "unscannable image is recorded as an error" "$(probe kind unscannable:latest)" "error"
+check "no row claims an empty result" "$(probe empty-results)" "0"
+check_ge "trivy's failure reaches the tool log" "$(file_probe "${TOOL_LOG}" 'FATAL')" 1
 
 echo
 if [[ "${FAIL}" -gt 0 ]]; then

@@ -124,8 +124,32 @@ json_ok() {
 }
 
 # Fast path: let trivy read the image through the docker daemon (docker save).
+# stderr is deliberately not discarded: when the daemon cannot export the image, trivy's
+# FATAL line ("file blobs/sha256/... not found in tar") is the only explanation we get.
 scan_image() { # $1=image $2=output json
-    trivy image --format json --severity HIGH,CRITICAL "$1" > "$2" 2>/dev/null
+    trivy image --format json --severity HIGH,CRITICAL "$1" > "$2"
+}
+
+# Fallback: scan the container's merged filesystem. This reads through the runtime's
+# snapshot instead of the image store, so it still works when the daemon cannot export the
+# image — e.g. with the containerd image store, where garbage-collected layer blobs make
+# `docker save` emit an archive whose manifest references blobs it does not contain and
+# `trivy image` aborts with "file blobs/sha256/... not found in tar".
+# `trivy rootfs -` does not read stdin, hence the intermediate tar.
+scan_rootfs() { # $1=image $2=output json $3=temp tar
+    local cid rc=0
+    cid=$(docker ps --filter "ancestor=$1" --format '{% raw %}{{.ID}}{% endraw %}' | head -1)
+    if [[ -z "${cid}" ]]; then
+        echo "ERROR: no running container for ${1}, cannot fall back to a rootfs scan"
+        return 1
+    fi
+    if ! docker export "${cid}" -o "$3"; then
+        echo "ERROR: docker export of ${cid} (${1}) failed"
+        return 1
+    fi
+    trivy rootfs --scanners vuln --format json --severity HIGH,CRITICAL "$3" > "$2" || rc=$?
+    rm -f "$3"
+    return "${rc}"
 }
 
 run_trivy() {
@@ -145,18 +169,28 @@ run_trivy() {
             echo ',' >> "${LOG_DIR}/trivy-results.json"
         fi
 
-        # Wrap the scan JSON with its target. The JSON must be redirected into the results
-        # file (stdout otherwise lands in the tool log and the file stays empty).
-        if scan_image "${IMAGE}" "${LOG_DIR}/.trivy-image.json" \
-                && json_ok "${LOG_DIR}/.trivy-image.json"; then
-            echo "{\"target\": \"${IMAGE}\", \"scanner\": \"image\", \"result\": " >> "${LOG_DIR}/trivy-results.json"
-            cat "${LOG_DIR}/.trivy-image.json" >> "${LOG_DIR}/trivy-results.json"
-        else
-            echo "{\"target\": \"${IMAGE}\", \"scanner\": \"none\", \"result\": " >> "${LOG_DIR}/trivy-results.json"
-            echo '{}' >> "${LOG_DIR}/trivy-results.json"
+        # Wrap the scan JSON with its target and with the source that produced it. The JSON
+        # must be redirected into the results file (stdout otherwise lands in the tool log
+        # and the file stays empty).
+        local scanner=""
+        if scan_image "${IMAGE}" "${LOG_DIR}/.trivy-scan.json" \
+                && json_ok "${LOG_DIR}/.trivy-scan.json"; then
+            scanner="image"
+        elif scan_rootfs "${IMAGE}" "${LOG_DIR}/.trivy-scan.json" "${LOG_DIR}/.trivy-rootfs.tar" \
+                && json_ok "${LOG_DIR}/.trivy-scan.json"; then
+            scanner="rootfs"
         fi
-        rm -f "${LOG_DIR}/.trivy-image.json"
-        echo '}' >> "${LOG_DIR}/trivy-results.json"
+
+        if [[ -n "${scanner}" ]]; then
+            echo "{\"target\": \"${IMAGE}\", \"scanner\": \"${scanner}\", \"result\": " >> "${LOG_DIR}/trivy-results.json"
+            cat "${LOG_DIR}/.trivy-scan.json" >> "${LOG_DIR}/trivy-results.json"
+            echo '}' >> "${LOG_DIR}/trivy-results.json"
+            rm -f "${LOG_DIR}/.trivy-scan.json"
+        else
+            # Never write an empty result: an unscanned image must not look like a clean one.
+            log "  WARN: could not scan ${IMAGE} (neither the image nor its filesystem), see trivy.log"
+            echo "{\"target\": \"${IMAGE}\", \"error\": \"scan failed, see trivy.log\"}" >> "${LOG_DIR}/trivy-results.json"
+        fi
     done
 
     echo ']' >> "${LOG_DIR}/trivy-results.json"
