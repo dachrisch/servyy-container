@@ -81,3 +81,51 @@ content decision for Christoph, not a technical need.
   test box. Scratch DB dropped, disk back to 21 GB free.
 - The test box now holds a full copy of the real data (DB only) with the URL replace applied — a ready
   rehearsal target for the file half.
+
+---
+
+## Prod import (2026-10-28, same day)
+
+Imported the same dump into the **prod** instance at `m.leaguesphere.app`:
+
+1. Stopped the app, emptied the blank dataroot, dropped/recreated the `moodle` DB (grants survive).
+2. Import: **13 min 41 s**, 497 tables, then the image auto-upgraded **4.5.12 → 4.5.15**
+   (`Command line upgrade … completed successfully`, maintenance mode in and out).
+3. wwwroot replace applied **once, with the final URL** (`https://offd.de/offd/moodle` →
+   `https://offd.de`) so no second pass is needed at cutover: 106 question texts, 13 answers,
+   8 book chapters, 6 URLs, 1 page, 310 attempt snapshots → **0 hits left** in live content.
+4. Verified live: `Home | Flag Academy`, login page, course categories, 4 129 users, 104 courses,
+   **7 603 enrolments**.
+
+### The image rewrites settings on every boot — including on an installed DB
+
+`02-configure-moodle.sh` runs `configure_moodle_settings` + `update_admin_user.php` on **every**
+start. Against the freshly imported database this silently changed:
+
+| Setting | Was (their site) | Now | Handling |
+|---|---|---|---|
+| first site admin (id 2, the role account `OFFD Admin`) | `admin@offd.de` | `admin@leaguesphere.app` | **fixed** — `MOODLE_EMAIL=admin@offd.de` |
+| its password hash | their hash | our generated one | accepted: password is Ansible-managed, reverts on deploy |
+| `noreplyaddress` | `noreply@offd.de` | `noreply@localhost` | **fixed** — `MOODLE_MAIL_NOREPLY_ADDRESS` |
+| `emailsubjectprefix` | *(empty)* | `[moodle]` | **fixed** — empty env value |
+| `smtphosts`/`smtpuser`/`smtppass` | *(all empty)* | `smtp.gmail.com:587`, `your_email@gmail.com`, `your_password` | **not fixable via env** — see below |
+| `enableblogs` | `1` | `0` | hardcoded in the image, no override. Two blog posts exist; documented deviation |
+
+**Only id 2 was touched** — the nine other site admins are real people with their own unchanged
+credentials, so nobody lost access. But the lesson is sharp: this image treats env as the source of
+truth for a set of *site settings*, not just for first boot.
+
+**Mail is the one real casualty.** The old site had no SMTP at all — it used the shared host's local
+MTA. This container has no MTA, and the image fills the gap with placeholder Gmail credentials, so
+outbound mail (password resets, notifications, reminders) is non-functional until a relay is chosen.
+
+### Still open after the import
+
+- **`enrol_waitlist` plugin** — 35 courses use the `waitlist` enrolment method, so it is functionally
+  required, not cosmetic. Expected version `2025072001`. moodle.org's download endpoint returned 404
+  to both this machine and servy, so the practical source is Christoph's instance (zip `enrol/waitlist`)
+  or his browser. `qbehaviour_adaptiveallnothing` is installed in the DB but **used by no quiz**
+  (behaviours in use: deferredfeedback, immediatecbm, immediatefeedback) — optional.
+- **The ~14 GB `moodledata`** — still not delivered; `pluginfile.php` links 404 until it is.
+- **SMTP decision** (see above) — blocker before users log in.
+- The LeagueSphere side of the URL change (`MOODLE_URL` + the hardcoded `/moodle/…` segments).

@@ -92,9 +92,13 @@ prod LeagueSphere keeps pointing at the old live offd.de in the meantime:
 
 ## Next step
 
-When the `moodledata` archive lands: mirror it into `moodle_data_root/moodledata` on
-`servyy-test.lxd` (uid 65534), confirm a `pluginfile.php` link from the rehearsal DB resolves, then
-repeat the same two steps on prod — import the dump into `moodle`, let the image upgrade, run the
-measured wwwroot replace (`https://offd.de/offd/moodle` → `https://offd.de`), install
-`enrol_waitlist` + `qbehaviour_adaptiveallnothing`, and only then flip `moodle_service_host` to
-`offd.de` and do the LeagueSphere-side `MOODLE_URL` change.
+Three things, in order:
+
+1. **Get the `moodledata` (~14 GB) onto prod** — the only unexercised half. Mirror it into
+   `<service dir>/data/moodledata` (uid 65534), then spot-check a `pluginfile.php` link.
+2. **Install `enrol_waitlist`** (expected version `2025072001`, needed by 35 courses): obtain the zip
+   (Christoph's instance, or his browser — moodle.org 404s from here), serve it from a URL the host
+   can reach, add it to `PLUGINS=` in `moodle.app.env.j2`, deploy, then run
+   `admin/cli/upgrade.php --non-interactive` once so Moodle registers it.
+3. **Decide outbound mail** (SMTP relay) — currently non-functional: the old host used its local MTA,
+   this container has none, and the image fills in placeholder Gmail creds.

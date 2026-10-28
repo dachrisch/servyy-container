@@ -42,6 +42,37 @@ A dedicated volume is supported but not used: set `moodle_volume_device` + `mood
 7. **HTTP-01, not DNS-01.** Neither `offd.de` (All-Inkl) nor `leaguesphere.app` (GoDaddy) is in
    Porkbun scope, so `letsencryptdnsresolver` cannot issue.
 
+## The image rewrites site settings on every boot
+
+`02-configure-moodle.sh` runs `configure_moodle_settings` and `update_admin_user.php` on **every**
+container start — not only at install. On an already-installed database that means env wins over
+whatever is in the DB for:
+
+| env var | writes |
+|---|---|
+| `MOODLE_USERNAME` / `MOODLE_PASSWORD` / `MOODLE_EMAIL` | the **first** site admin (`get_admin()` → lowest id in `siteadmins`) |
+| `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD`/`SMTP_PROTOCOL` | `smtphosts`, `smtpuser`, `smtppass`, `smtpsecure` |
+| `MOODLE_MAIL_NOREPLY_ADDRESS`, `MOODLE_MAIL_PREFIX` | `noreplyaddress`, `emailsubjectprefix` |
+| — (hardcoded) | `enableblogs=0`, `pathtophp`, `pathtodu`, `debug`/`debugdisplay` |
+
+Consequences for OFFD: the site admin is the role account `OFFD Admin` (id 2) and its password is
+**Ansible-managed** — changing it in the UI reverts at the next deploy. `enableblogs` is forced to 0
+with no env override despite 2 existing blog posts. Mail settings must be supplied via env or the
+image writes placeholder Gmail credentials.
+
+This bit us once on 2026-10-28: importing Christoph's dump silently rewrote the admin email, the
+noreply address and the mail prefix.
+
+## Plugins
+
+Third-party plugins live outside the image and are installed **at every boot** from `PLUGINS=`
+(`type_name=url`, space separated) in `moodle.app.env.j2`, so the code tree stays immutable.
+OFFD has exactly two, and only one is in use:
+
+- **`enrol_waitlist`** (version `2025072001`) — **required**: 35 courses use the `waitlist`
+  enrolment method.
+- `qbehaviour_adaptiveallnothing` — installed in the DB, used by **no** quiz.
+
 ## Everyday operations
 
 ```bash
