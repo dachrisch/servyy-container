@@ -56,6 +56,40 @@ after that experiment.
 Rejected: keeping the rationale inline as trailing text without `#` (still "unexpected
 characters"), and dropping the profile (the accepted-risk list is what keeps the score honest).
 
+## Verification
+
+Deployed via `--tags system.security_audit.scripts`; `/etc/lynis/custom.prf` is byte-identical
+to the rendered template. A standalone `lynis audit system --quick --cronjob --profile
+/etc/lynis/custom.prf` then ran on `servy.lehel.xyz`:
+
+| | before (2026-10-09, pre-hardening) | broken (since 2026-10-09 23:39) | now |
+|---|---|---|---|
+| `hardening_index` | 61 | **absent** | **81** |
+| warnings | 1 | 0 (fake) | 3 |
+| suggestions | 43 | 0 (fake) | 14 |
+| `lynis-report.dat` | 66 KB | **352 bytes** | 65 KB |
+| fatal errors | — | `unexpected characters in profile` | 0 |
+
+`+20` over the pre-hardening baseline is the P6 hardening finally being measured. Warnings
+now are `PKGS-7392` (vulnerable packages), `MAIL-8818` (SMTP banner leaks OS/software name)
+and `FINT-4316` (no AIDE database) — the last one is an artefact of the scoped AIDE config:
+the DB lives at `/var/lib/aide/aide-hardening.db` (9.7 MB, 2026-10-10), not the distro
+`/var/lib/aide/aide.db` that Lynis looks for. See
+`2026-10-10_host-hardening-aide-scope.md`.
+
+Suggestions dropping from 43 to 14 is what the accepted-risk profile is for — it is finally
+being read.
+
+### The `skip-test=<ID>:<qualifier>` entries do nothing
+
+Lynis 3.1.6 does not honour the qualified form. `skip-test=SSH-7408:Port` did not suppress
+`SSH-7408`; the control still evaluates and now reports a *different* sub-finding
+(`AllowTcpForwarding (set LOCAL to NO)`). Suppressing the whole control instead would hide
+genuine advice, so the entry stays inert on purpose. The three
+`skip-test=KRNL-6000:<sysctl>` entries are equally inert, which is fine today only because
+those sysctls are actually set by the hardening role. Do not add more qualified entries
+expecting them to work.
+
 ## Consequences
 
 ### Positive
@@ -70,6 +104,8 @@ characters"), and dropping the profile (the accepted-risk list is what keeps the
 
 ### Known Issues / Open Findings
 
-- The `skip-test=KRNL-6000:<sysctl>` and `skip-test=SSH-7408:Port` entries were never proven to
-  match Lynis' control names; with the profile finally parsed, expect some of those findings to
-  reappear and confirm whether the skip syntax is right
+- `skip-test=<ID>:<qualifier>` is inert in Lynis 3.1.6 (see above); today's `KRNL-6000:*` and
+  `SSH-7408:Port` entries are documentation, not suppression
+- `FINT-4316` will keep firing while AIDE uses the scoped database path
+- Two findings worth a look now that the audit is trustworthy again: `ACCT-9630` (auditd is
+  running with an empty ruleset) and `MAIL-8818` (SMTP banner discloses OS/software)
