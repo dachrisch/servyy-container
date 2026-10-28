@@ -12,6 +12,10 @@ TOOLS_DIR="{{ security_audit.script_dir }}"
 
 mkdir -p "${LOG_DIR}"
 
+# Same-day re-runs must not accumulate the tool counter read by generate_summary().
+: > "${LOG_DIR}/.tools-run"
+: > "${LOG_DIR}/.tool-status"
+
 # Counters
 TOTAL_CHECKS=0
 TOTAL_FINDINGS=0
@@ -32,6 +36,9 @@ run_tool() {
 
     log "START: ${name}"
     TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
+    # This function runs in a subshell (see the pipe below), so the count is recorded in a
+    # file for generate_summary() instead of relying on the variable.
+    echo "${name}" >> "${LOG_DIR}/.tools-run"
 
     if "$@" 2>&1 | tee -a "${LOG_DIR}/${name}.log"; then
         log "DONE: ${name}"
@@ -84,12 +91,28 @@ load_audit_hosts() {
 
 # Lynis - Host OS hardening audit
 run_lynis() {
+    local report="${LOG_DIR}/lynis-report.dat"
     if ! command -v lynis &>/dev/null; then
         echo "ERROR: lynis not installed"
         return 1
     fi
+    rm -f "${report}"
     lynis audit system --quick --cronjob --quiet --profile /etc/lynis/custom.prf \
-        --report-file "${LOG_DIR}/lynis-report.dat" 2>&1 || true
+        --report-file "${report}" 2>&1 || true
+
+    # A profile that lynis rejects (e.g. inline comments) aborts the run right after the
+    # report header is written. The exit status is still 0 and the report then looks like a
+    # host with zero warnings and zero suggestions, so require the index a real audit emits.
+    if ! grep -q '^hardening_index=' "${report}" 2>/dev/null; then
+        echo "ERROR: lynis wrote no hardening_index - the audit aborted (see lynis.log)"
+        echo "lynis_index=unknown" >> "${LOG_DIR}/.tool-status"
+        return 1
+    fi
+
+    local index
+    index=$(sed -n 's/^hardening_index=//p' "${report}" | tail -1)
+    echo "lynis_index=${index}" >> "${LOG_DIR}/.tool-status"
+    log "  Lynis: hardening_index=${index} (warnings: $(grep -cE '^warning\[\]' "${report}" || true))"
 }
 
 # Docker Bench Security - CIS Docker Benchmark
@@ -117,6 +140,45 @@ run_docker_bench() {
 }
 
 # Trivy - Container image vulnerability scanner
+
+# True when the file is non-empty and parses as JSON.
+json_ok() {
+    [[ -s "$1" ]] && python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$1" 2>/dev/null
+}
+
+# Fast path: let trivy read the image through the docker daemon (docker save).
+# stderr is deliberately not discarded: when the daemon cannot export the image, trivy's
+# FATAL line ("file blobs/sha256/... not found in tar") is the only explanation we get.
+scan_image() { # $1=image $2=output json
+    trivy image --format json --severity HIGH,CRITICAL "$1" > "$2"
+}
+
+# Fallback: scan the container's merged filesystem. This reads through the runtime's
+# snapshot instead of the image store, so it still works when the daemon cannot export the
+# image — e.g. with the containerd image store, where garbage-collected layer blobs make
+# `docker save` emit an archive whose manifest references blobs it does not contain and
+# `trivy image` aborts with "file blobs/sha256/... not found in tar".
+# `trivy rootfs` scans a directory: handed an archive path it exits 0 with zero results
+# (verified 2026-10-28), which would be another silent fake-clean — hence the unpack.
+scan_rootfs() { # $1=image $2=output json $3=temp dir
+    local cid rc=0
+    cid=$(docker ps --filter "ancestor=$1" --format '{% raw %}{{.ID}}{% endraw %}' | head -1)
+    if [[ -z "${cid}" ]]; then
+        echo "ERROR: no running container for ${1}, cannot fall back to a rootfs scan"
+        return 1
+    fi
+    rm -rf "$3"
+    mkdir -p "$3"
+    if ! docker export "${cid}" | tar -x -C "$3"; then
+        echo "ERROR: could not export the filesystem of ${cid} (${1})"
+        rm -rf "$3"
+        return 1
+    fi
+    trivy rootfs --scanners vuln --format json --severity HIGH,CRITICAL "$3" > "$2" || rc=$?
+    rm -rf "$3"
+    return "${rc}"
+}
+
 run_trivy() {
     if ! command -v trivy &>/dev/null; then
         echo "ERROR: trivy not installed"
@@ -125,6 +187,9 @@ run_trivy() {
 
     echo '[' > "${LOG_DIR}/trivy-results.json"
     FIRST=true
+    SCANNED=0
+    FAILED=0
+    FAILED_TARGETS=""
 
     for IMAGE in $(docker ps --format '{% raw %}{{.Image}}{% endraw %}' | sort -u); do
         log "  Scanning image: ${IMAGE}"
@@ -134,28 +199,55 @@ run_trivy() {
             echo ',' >> "${LOG_DIR}/trivy-results.json"
         fi
 
-        # Scan image and wrap result with target name. The scan JSON must be redirected into
-        # the results file (stdout otherwise lands in the tool log and the file stays empty).
-        echo "{\"target\": \"${IMAGE}\", \"result\": " >> "${LOG_DIR}/trivy-results.json"
-        if trivy image --format json --severity HIGH,CRITICAL "${IMAGE}" \
-                > "${LOG_DIR}/.trivy-image.json" 2>/dev/null \
-                && [[ -s "${LOG_DIR}/.trivy-image.json" ]] \
-                && python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "${LOG_DIR}/.trivy-image.json" 2>/dev/null; then
-            cat "${LOG_DIR}/.trivy-image.json" >> "${LOG_DIR}/trivy-results.json"
-        else
-            echo '{}' >> "${LOG_DIR}/trivy-results.json"
+        # Wrap the scan JSON with its target and with the source that produced it. The JSON
+        # must be redirected into the results file (stdout otherwise lands in the tool log
+        # and the file stays empty).
+        local scanner=""
+        if scan_image "${IMAGE}" "${LOG_DIR}/.trivy-scan.json" \
+                && json_ok "${LOG_DIR}/.trivy-scan.json"; then
+            scanner="image"
+        elif scan_rootfs "${IMAGE}" "${LOG_DIR}/.trivy-scan.json" "${LOG_DIR}/.trivy-rootfs" \
+                && json_ok "${LOG_DIR}/.trivy-scan.json"; then
+            scanner="rootfs"
         fi
-        rm -f "${LOG_DIR}/.trivy-image.json"
-        echo '}' >> "${LOG_DIR}/trivy-results.json"
+
+        if [[ -n "${scanner}" ]]; then
+            echo "{\"target\": \"${IMAGE}\", \"scanner\": \"${scanner}\", \"result\": " >> "${LOG_DIR}/trivy-results.json"
+            cat "${LOG_DIR}/.trivy-scan.json" >> "${LOG_DIR}/trivy-results.json"
+            echo '}' >> "${LOG_DIR}/trivy-results.json"
+            rm -f "${LOG_DIR}/.trivy-scan.json"
+            SCANNED=$((SCANNED + 1))
+        else
+            # Never write an empty result: an unscanned image must not look like a clean one.
+            log "  WARN: could not scan ${IMAGE} (neither the image nor its filesystem), see trivy.log"
+            echo "{\"target\": \"${IMAGE}\", \"error\": \"scan failed, see trivy.log\"}" >> "${LOG_DIR}/trivy-results.json"
+            FAILED=$((FAILED + 1))
+            FAILED_TARGETS="${FAILED_TARGETS}${IMAGE} "
+        fi
     done
 
     echo ']' >> "${LOG_DIR}/trivy-results.json"
 
-    # Count findings
+    # Count findings. `grep -c` exits 1 when it counts nothing, so it must not be paired with
+    # `|| echo 0` — that produces "0\n0" and breaks the line.
     local CRITICAL HIGH
-    CRITICAL=$(grep -c '"Severity": "CRITICAL"' "${LOG_DIR}/trivy-results.json" 2>/dev/null || echo 0)
-    HIGH=$(grep -c '"Severity": "HIGH"' "${LOG_DIR}/trivy-results.json" 2>/dev/null || echo 0)
-    log "  Trivy: ${CRITICAL} CRITICAL, ${HIGH} HIGH vulnerabilities found"
+    CRITICAL=$(grep -c '"Severity": "CRITICAL"' "${LOG_DIR}/trivy-results.json" 2>/dev/null || true)
+    HIGH=$(grep -c '"Severity": "HIGH"' "${LOG_DIR}/trivy-results.json" 2>/dev/null || true)
+    CRITICAL=${CRITICAL:-0}
+    HIGH=${HIGH:-0}
+    log "  Trivy: ${SCANNED} image(s) scanned, ${FAILED} failed; ${CRITICAL} CRITICAL, ${HIGH} HIGH"
+
+    # Coverage reaches generate_summary() through a file: run_tool runs this function in a
+    # subshell, so shell variables would not survive.
+    {
+        echo "scanned=${SCANNED}"
+        echo "failed=${FAILED}"
+        echo "critical=${CRITICAL}"
+        echo "high=${HIGH}"
+        for TARGET in ${FAILED_TARGETS}; do
+            echo "failed_target=${TARGET}"
+        done
+    } > "${LOG_DIR}/trivy-summary.txt"
 
     # Also run filesystem scan for IaC misconfigurations
     trivy config --format json --severity HIGH,CRITICAL \
@@ -241,13 +333,47 @@ run_nuclei() {
 generate_summary() {
     log "Generating summary report..."
 
+    # run_tool and run_trivy execute in a subshell ("$@" 2>&1 | tee), so their counters are
+    # read from files rather than from shell variables.
+    local tools_run=0 trivy_line="" trivy_failures="" lynis_line=""
+    if [[ -f "${LOG_DIR}/.tools-run" ]]; then
+        tools_run=$(wc -l < "${LOG_DIR}/.tools-run")
+    fi
+
+    # Lynis: a missing index means the audit aborted, which must not read as "no findings".
+    if grep -qx 'lynis' "${LOG_DIR}/.tools-run" 2>/dev/null; then
+        local lynis_index
+        lynis_index=$(sed -n 's/^lynis_index=//p' "${LOG_DIR}/.tool-status" 2>/dev/null)
+        if [[ -n "${lynis_index}" && "${lynis_index}" != "unknown" ]]; then
+            lynis_line="- **Lynis hardening index**: ${lynis_index}/100"
+        else
+            lynis_line="- **Lynis hardening index**: unknown (lynis aborted, see lynis.log)"
+        fi
+    fi
+    if [[ -f "${LOG_DIR}/trivy-summary.txt" ]]; then
+        local scanned failed
+        scanned=$(sed -n 's/^scanned=//p' "${LOG_DIR}/trivy-summary.txt")
+        failed=$(sed -n 's/^failed=//p' "${LOG_DIR}/trivy-summary.txt")
+        trivy_line="- **Container images**: ${scanned}/$((scanned + failed)) scanned"
+        if [[ "${failed}" != "0" ]]; then
+            # Built with $'…' rather than $(printf …): command substitution strips the
+            # trailing newline, which glues the last bullet onto the next heading.
+            trivy_failures=$'\n## Scan Failures\n\nThe following container images could not be scanned — treat them as unknown, not as clean (see `trivy.log`):\n\n'
+            while IFS= read -r target; do
+                trivy_failures+="- \`${target}\`"$'\n'
+            done < <(sed -n 's/^failed_target=//p' "${LOG_DIR}/trivy-summary.txt")
+        fi
+    fi
+
     cat > "${SUMMARY}" <<EOF
 # Security Audit Report - ${DATE}
 
 ## Overview
 - **Host**: servy.lehel.xyz
 - **Date**: ${DATE}
-- **Tools Run**: ${TOTAL_CHECKS}
+- **Tools Run**: ${tools_run}
+${trivy_line}
+${lynis_line}
 
 ## Tools Executed
 
@@ -277,6 +403,7 @@ nmap -sV localhost
 cat ${LOG_DIR}/testssl-*.json | jq '.'
 \`\`\`
 
+${trivy_failures}
 ## Full Results
 All detailed results are in: \`${LOG_DIR}/\`
 EOF
