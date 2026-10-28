@@ -4,4 +4,8 @@ Documentation=man:aide(1)
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/aide --config /etc/aide/aide-hardening.conf --check
+# Real breakage (missing database) must fail the unit; differences found by the check must not.
+# AIDE encodes its findings in the exit status (1=added, 2=removed, 4=changed, and any
+# combination), so a plain --check turns "the host changed" into a failed unit every week.
+ExecStartPre=/usr/bin/test -s /var/lib/aide/aide.db
+ExecStart=-/usr/bin/aide --config /etc/aide/aide-hardening.conf --check

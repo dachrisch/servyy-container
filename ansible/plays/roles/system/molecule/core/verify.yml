@@ -86,6 +86,50 @@
       command: grep -E '^install (dccp|sctp)' /etc/modprobe.d/disable-rare-protocols.conf
       changed_when: false
 
+    # The auditd ruleset is the regression this covers: production ran auditd with no rules at
+    # all for weeks because nothing asserted the file (Lynis ACCT-9630).
+    - name: Stat the auditd hardening rules
+      stat:
+        path: /etc/audit/rules.d/99-hardening.rules
+      register: audit_rules_stat
+
+    - name: Verify the auditd rules file was deployed with safe permissions
+      assert:
+        that:
+          - audit_rules_stat.stat.exists
+          - audit_rules_stat.stat.mode == '0640'
+          - audit_rules_stat.stat.pw_name == 'root'
+        fail_msg: "99-hardening.rules missing or not 0640 root:root"
+
+    - name: Read the auditd rules
+      slurp:
+        path: /etc/audit/rules.d/99-hardening.rules
+      register: audit_rules_raw
+
+    - name: Verify the auditd ruleset content
+      vars:
+        audit_text: "{{ audit_rules_raw.content | b64decode }}"
+      assert:
+        that:
+          # A rule for every class; the ids are what ausearch -k looks up later.
+          - "'-k identity' in audit_text"
+          - "'-k privilege' in audit_text"
+          - "'-k cron' in audit_text"
+          - "'-k modules' in audit_text"
+          # Global settings belong to the package's audit.rules; immutability was not requested.
+          # Match at a line start, so the comments that mention them do not count.
+          - audit_text is not search('(?m)^-D')
+          - audit_text is not search('(?m)^-e 2')
+          - audit_text.splitlines() | select('match', '^-w ') | list | length >= 25
+          - audit_text.splitlines() | select('match', '^-a always,exit') | list | length >= 3
+        fail_msg: "auditd ruleset is incomplete or carries global settings"
+
+    - name: Verify auditd is installed
+      command: dpkg-query -W -f='${Status}' auditd
+      register: auditd_pkg
+      changed_when: false
+      failed_when: "'install ok installed' not in auditd_pkg.stdout"
+
     - name: Check legal banner exists
       stat:
         path: /etc/issue
