@@ -125,6 +125,24 @@
     - system.hardening
     - system.hardening.audit
 
+# The package ships /etc/audit/rules.d/audit.rules with global settings only, so auditd was
+# running with no rules at all (Lynis ACCT-9630): no audit trail whatsoever. The rule file is
+# additive — augenrules concatenates rules.d in name order, and our file carries rules only.
+- name: Deploy auditd rules
+  template:
+    src: auditd-hardening.rules.j2
+    dest: /etc/audit/rules.d/99-hardening.rules
+    mode: '0640'
+    owner: root
+    group: root
+  become: true
+  notify: reload auditd
+  when: hardening.audit | default(true)
+  tags:
+    - system.hardening
+    - system.hardening.audit
+    - system.hardening.audit.rules
+
 - name: Install AIDE
   apt:
     name:

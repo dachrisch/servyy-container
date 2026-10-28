@@ -160,5 +160,10 @@ covered 33 of 47 images, this one covers all 46, and the DB moved on by 19 days.
 - Why blobs referenced by live images are deleted from the content store is not established
   (daily `docker system prune -a` + Watchtower churn suspected). `docker save` on this host
   is unreliable for anything else too.
-- `traefik:3.6.1` is 11 months old and the `fireflyiii/*` pair carry 23 CRITICAL each — the
-  base images deserve their own look now that the numbers are trustworthy.
+- `traefik:3.6.1` is 11 months old — worth a look now that the numbers are trustworthy.
+- The `fireflyiii/*` pair was **not** a 23-CRITICAL bookend: that figure came from this stale
+  2026-10-09 scan. Re-measured on 2026-10-28 (images pulled 2026-10-26) both images carry
+  **3 CRITICAL, all with `FixedVersion: ""`** — `CVE-2026-6653` (libxml2, no Debian fix yet) and
+  two `linux-libc-dev` kernel-header CVEs that are not executable inside a container. Nothing to
+  upgrade; the audit now reports fixable and unfixable counts separately. See
+  `2026-10-28_auditd-rules.md`.

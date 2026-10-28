@@ -33,3 +33,12 @@
   command: sysctl --system
   changed_when: true
   become: true
+
+# augenrules concatenates /etc/audit/rules.d/*.rules and loads the result with auditctl -R.
+# It replaces the running rule set, so no auditd restart (which drops events) is needed.
+# Guarded like the other service handlers: auditd cannot load rules inside a container.
+- name: reload auditd
+  command: augenrules --load
+  changed_when: true
+  become: true
+  when: ansible_facts['virtualization_type'] | default('') != 'docker'

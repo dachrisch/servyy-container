@@ -228,14 +228,39 @@ run_trivy() {
 
     echo ']' >> "${LOG_DIR}/trivy-results.json"
 
-    # Count findings. `grep -c` exits 1 when it counts nothing, so it must not be paired with
-    # `|| echo 0` — that produces "0\n0" and breaks the line.
-    local CRITICAL HIGH
-    CRITICAL=$(grep -c '"Severity": "CRITICAL"' "${LOG_DIR}/trivy-results.json" 2>/dev/null || true)
-    HIGH=$(grep -c '"Severity": "HIGH"' "${LOG_DIR}/trivy-results.json" 2>/dev/null || true)
+    # Count findings, split by whether an upstream fix exists. On a fleet of pinned upstream
+    # images most criticals have no fixed version at all (`FixedVersion: ""`), and lumping
+    # them with fixable ones hides what is actually actionable.
+    local COUNTS CRITICAL HIGH CRITICAL_UNFIXED HIGH_UNFIXED
+    COUNTS=$(python3 - "${LOG_DIR}/trivy-results.json" <<'PY' || true
+import json
+import sys
+
+c = h = cu = hu = 0
+try:
+    rows = json.load(open(sys.argv[1]))
+except (OSError, ValueError):
+    rows = []
+for row in rows:
+    for section in ((row.get("result") or {}).get("Results") or []):
+        for vuln in (section.get("Vulnerabilities") or []):
+            severity = vuln.get("Severity")
+            unfixed = not vuln.get("FixedVersion")
+            if severity == "CRITICAL":
+                c += 1
+                cu += 1 if unfixed else 0
+            elif severity == "HIGH":
+                h += 1
+                hu += 1 if unfixed else 0
+print(c, h, cu, hu)
+PY
+)
+    read -r CRITICAL HIGH CRITICAL_UNFIXED HIGH_UNFIXED <<< "${COUNTS:-0 0 0 0}"
     CRITICAL=${CRITICAL:-0}
     HIGH=${HIGH:-0}
-    log "  Trivy: ${SCANNED} image(s) scanned, ${FAILED} failed; ${CRITICAL} CRITICAL, ${HIGH} HIGH"
+    CRITICAL_UNFIXED=${CRITICAL_UNFIXED:-0}
+    HIGH_UNFIXED=${HIGH_UNFIXED:-0}
+    log "  Trivy: ${SCANNED} image(s) scanned, ${FAILED} failed; ${CRITICAL} CRITICAL (${CRITICAL_UNFIXED} without an upstream fix), ${HIGH} HIGH"
 
     # Coverage reaches generate_summary() through a file: run_tool runs this function in a
     # subshell, so shell variables would not survive.
@@ -243,7 +268,9 @@ run_trivy() {
         echo "scanned=${SCANNED}"
         echo "failed=${FAILED}"
         echo "critical=${CRITICAL}"
+        echo "critical_unfixed=${CRITICAL_UNFIXED}"
         echo "high=${HIGH}"
+        echo "high_unfixed=${HIGH_UNFIXED}"
         for TARGET in ${FAILED_TARGETS}; do
             echo "failed_target=${TARGET}"
         done
@@ -335,7 +362,7 @@ generate_summary() {
 
     # run_tool and run_trivy execute in a subshell ("$@" 2>&1 | tee), so their counters are
     # read from files rather than from shell variables.
-    local tools_run=0 trivy_line="" trivy_failures="" lynis_line=""
+    local tools_run=0 trivy_line="" trivy_findings="" trivy_failures="" lynis_line=""
     if [[ -f "${LOG_DIR}/.tools-run" ]]; then
         tools_run=$(wc -l < "${LOG_DIR}/.tools-run")
     fi
@@ -351,10 +378,15 @@ generate_summary() {
         fi
     fi
     if [[ -f "${LOG_DIR}/trivy-summary.txt" ]]; then
-        local scanned failed
+        local scanned failed critical critical_unfixed high high_unfixed
         scanned=$(sed -n 's/^scanned=//p' "${LOG_DIR}/trivy-summary.txt")
         failed=$(sed -n 's/^failed=//p' "${LOG_DIR}/trivy-summary.txt")
+        critical=$(sed -n 's/^critical=//p' "${LOG_DIR}/trivy-summary.txt")
+        critical_unfixed=$(sed -n 's/^critical_unfixed=//p' "${LOG_DIR}/trivy-summary.txt")
+        high=$(sed -n 's/^high=//p' "${LOG_DIR}/trivy-summary.txt")
+        high_unfixed=$(sed -n 's/^high_unfixed=//p' "${LOG_DIR}/trivy-summary.txt")
         trivy_line="- **Container images**: ${scanned}/$((scanned + failed)) scanned"
+        trivy_findings="- **Trivy findings**: ${critical} CRITICAL (${critical_unfixed} without an upstream fix), ${high} HIGH"
         if [[ "${failed}" != "0" ]]; then
             # Built with $'…' rather than $(printf …): command substitution strips the
             # trailing newline, which glues the last bullet onto the next heading.
@@ -373,6 +405,7 @@ generate_summary() {
 - **Date**: ${DATE}
 - **Tools Run**: ${tools_run}
 ${trivy_line}
+${trivy_findings}
 ${lynis_line}
 
 ## Tools Executed
@@ -393,8 +426,8 @@ ${lynis_line}
 # View Lynis score
 grep "hardening_index" ${LOG_DIR}/lynis-report.dat
 
-# Count critical findings
-grep -c "CRITICAL" ${LOG_DIR}/trivy-results.json || echo "0"
+# Count critical findings (and how many have no upstream fix)
+cat ${LOG_DIR}/trivy-summary.txt
 
 # View open ports
 nmap -sV localhost
