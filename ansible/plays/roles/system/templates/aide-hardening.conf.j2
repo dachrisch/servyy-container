@@ -5,9 +5,11 @@
 # data and /home while computing ~9 hashes per file. On servy the init never
 # completed (>45 min). This config restricts monitoring to the system-integrity
 # roots and uses two hashes, so a run finishes in a couple of minutes.
-database_in=file:/var/lib/aide/aide-hardening.db
-database_out=file:/var/lib/aide/aide-hardening.db.new
-database_new=file:/var/lib/aide/aide-hardening.db.new
+# Conventional paths on purpose: Lynis (FINT-4316) and aide-common look for /var/lib/aide/aide.db.
+# Using aide-hardening.db quietly meant the integrity database was invisible to both.
+database_in=file:/var/lib/aide/aide.db
+database_out=file:/var/lib/aide/aide.db.new
+database_new=file:/var/lib/aide/aide.db.new
 gzip_dbout=yes
 report_url=stdout
 
@@ -28,6 +30,11 @@ Full = OwnerMode+n+i+s+Checksums
 /var/spool Full
 
 # Excluded: volatile, large or network-backed paths
+# /root itself stays monitored (keys, dotfiles, scripts), minus the paths our own tooling
+# rewrites constantly: the trivy/session caches and the nuclei template set.
+!/root/.cache
+!/root/.local
+!/root/nuclei-templates
 !/mnt
 !/media
 !/home

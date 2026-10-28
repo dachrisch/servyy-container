@@ -43,8 +43,9 @@
       mount: "/mnt/storagebox"
     hardening:
       enabled: true
-      # Container-incompatible tooling stays off in molecule
-      audit: false
+      # auditd is installed and its ruleset deployed even in a container; only the service
+      # itself is skipped there (see tasks/hardening.yml). Everything else stays off.
+      audit: true
       aide: false
       malware: false
       # No sshd in the test container -> skip the SSH drop-in
