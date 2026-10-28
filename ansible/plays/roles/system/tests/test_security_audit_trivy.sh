@@ -109,12 +109,45 @@ exit 0
 STUB
 chmod +x "${BIN}/trivy"
 
+# lynis -> ok:     report carries hardening_index=71
+#          broken: the profile is rejected — real lynis writes only the report header and
+#                  dies, which used to look like a host with zero findings
+cat > "${BIN}/lynis" <<'STUB'
+#!/bin/bash
+report=""
+prev=""
+for a in "$@"; do
+    [[ "${prev}" == "--report-file" ]] && report="$a"
+    prev="$a"
+done
+{
+    echo "# Lynis Report"
+    echo "report_version_major=1"
+    echo "lynis_version=3.1.6"
+    echo "hostname=stub"
+    if [[ "${STUB_LYNIS_MODE:-ok}" == "ok" ]]; then
+        echo "hardening_index=71"
+        echo "warning[]=PKGS-7392"
+    fi
+} > "${report}"
+if [[ "${STUB_LYNIS_MODE:-ok}" != "ok" ]]; then
+    echo "  [WARNING]: Your profile '/etc/lynis/custom.prf' contains unexpected characters." >&2
+    echo "Fatal error: unexpected characters in profile. Stopping execution (security measure)" >&2
+fi
+exit 0
+STUB
+chmod +x "${BIN}/lynis"
+
 # --------------------------------------------------------------- render -----
-python3 - "${TEMPLATE}" "${WORK}/audit.sh" "${LOGS}" "${OPT}" <<'PY'
+render_and_run() { # $1=tag $2=log dir $3=trivy(true/false) $4=lynis(true/false) $5=lynis stub mode
+    local tag="$1" logdir="$2" trivy="$3" lynis="$4" mode="$5"
+    mkdir -p "${WORK}/${tag}"
+
+    python3 - "${TEMPLATE}" "${WORK}/${tag}/audit.sh" "${logdir}" "${OPT}" "${trivy}" "${lynis}" <<'PY'
 import sys
 import jinja2
 
-template_path, out_path, log_dir, script_dir = sys.argv[1:5]
+template_path, out_path, log_dir, script_dir, trivy, lynis = sys.argv[1:7]
 with open(template_path) as fh:
     source = fh.read()
 
@@ -123,9 +156,9 @@ ctx = {
         "log_dir": log_dir,
         "script_dir": script_dir,
         "tools": {
-            "lynis": False,
+            "lynis": lynis == "true",
             "docker_bench": False,
-            "trivy": True,
+            "trivy": trivy == "true",
             "nmap": False,
             "testssl": False,
             "humble": False,
@@ -136,14 +169,16 @@ ctx = {
 env = jinja2.Environment(autoescape=False, keep_trailing_newline=True)
 # Ansible builtin filter, not part of plain Jinja2.
 env.filters["ternary"] = lambda value, true_val, false_val: true_val if value else false_val
-rendered = env.from_string(source).render(**ctx)
 with open(out_path, "w") as fh:
-    fh.write(rendered)
+    fh.write(env.from_string(source).render(**ctx))
 PY
-chmod +x "${WORK}/audit.sh"
+    chmod +x "${WORK}/${tag}/audit.sh"
 
-STUB_CALLS="${CALLS}" PATH="${BIN}:${PATH}" bash "${WORK}/audit.sh" > "${WORK}/run.log" 2>&1
-RUN_RC=$?
+    STUB_LYNIS_MODE="${mode}" STUB_CALLS="${CALLS}" PATH="${BIN}:${PATH}" \
+        bash "${WORK}/${tag}/audit.sh" > "${WORK}/${tag}/run.log" 2>&1
+}
+
+if render_and_run main "${LOGS}" true false ok; then RUN_RC=0; else RUN_RC=$?; fi
 
 STATS="${LOGS}/$(date +%Y-%m-%d)/trivy-summary.txt"
 RESULTS="${LOGS}/$(date +%Y-%m-%d)/trivy-results.json"
@@ -264,6 +299,24 @@ check_contains "SUMMARY.md names the unscanned image" "${SUMMARY}" "unscannable:
 check_contains "SUMMARY.md counts the tools that ran" "${SUMMARY}" "Tools Run**: 1"
 check_grep "SUMMARY.md opens a scan-failure section" "${SUMMARY}" '^## Scan Failures$'
 check_grep "SUMMARY.md lists the failure as a list item" "${SUMMARY}" '^- `unscannable:latest`$'
+
+echo "== lynis profile =="
+# Lynis aborts the whole audit on any character after a value, so a rationale may never sit
+# on a skip-test line.
+check "profile has no inline comments after values" \
+    "$(grep -cE '^skip-test=[^#]*#' "${ROLE}/templates/lynis-custom.prf.j2" 2>/dev/null || true)" "0"
+
+echo "== lynis reporting =="
+# A rejected profile leaves a header-only report; that must never read as "0 findings".
+LYNIS_LOGS="${WORK}/logs-lynis"
+render_and_run lynis-broken "${LYNIS_LOGS}/broken" false true broken
+BROKEN_SUMMARY="${LYNIS_LOGS}/broken/$(date +%Y-%m-%d)/SUMMARY.md"
+check_contains "aborted lynis is reported as unknown" "${BROKEN_SUMMARY}" "Lynis hardening index**: unknown"
+check_contains "aborted lynis points at its log" "${BROKEN_SUMMARY}" "lynis.log"
+
+render_and_run lynis-ok "${LYNIS_LOGS}/ok" false true ok
+OK_SUMMARY="${LYNIS_LOGS}/ok/$(date +%Y-%m-%d)/SUMMARY.md"
+check_contains "lynis index is reported" "${OK_SUMMARY}" "Lynis hardening index**: 71/100"
 
 echo "== same-day re-run =="
 # The audit is re-run by hand after a fix; counters must not accumulate.

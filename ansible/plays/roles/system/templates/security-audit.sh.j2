@@ -14,6 +14,7 @@ mkdir -p "${LOG_DIR}"
 
 # Same-day re-runs must not accumulate the tool counter read by generate_summary().
 : > "${LOG_DIR}/.tools-run"
+: > "${LOG_DIR}/.tool-status"
 
 # Counters
 TOTAL_CHECKS=0
@@ -90,12 +91,28 @@ load_audit_hosts() {
 
 # Lynis - Host OS hardening audit
 run_lynis() {
+    local report="${LOG_DIR}/lynis-report.dat"
     if ! command -v lynis &>/dev/null; then
         echo "ERROR: lynis not installed"
         return 1
     fi
+    rm -f "${report}"
     lynis audit system --quick --cronjob --quiet --profile /etc/lynis/custom.prf \
-        --report-file "${LOG_DIR}/lynis-report.dat" 2>&1 || true
+        --report-file "${report}" 2>&1 || true
+
+    # A profile that lynis rejects (e.g. inline comments) aborts the run right after the
+    # report header is written. The exit status is still 0 and the report then looks like a
+    # host with zero warnings and zero suggestions, so require the index a real audit emits.
+    if ! grep -q '^hardening_index=' "${report}" 2>/dev/null; then
+        echo "ERROR: lynis wrote no hardening_index - the audit aborted (see lynis.log)"
+        echo "lynis_index=unknown" >> "${LOG_DIR}/.tool-status"
+        return 1
+    fi
+
+    local index
+    index=$(sed -n 's/^hardening_index=//p' "${report}" | tail -1)
+    echo "lynis_index=${index}" >> "${LOG_DIR}/.tool-status"
+    log "  Lynis: hardening_index=${index} (warnings: $(grep -cE '^warning\[\]' "${report}" || true))"
 }
 
 # Docker Bench Security - CIS Docker Benchmark
@@ -318,9 +335,20 @@ generate_summary() {
 
     # run_tool and run_trivy execute in a subshell ("$@" 2>&1 | tee), so their counters are
     # read from files rather than from shell variables.
-    local tools_run=0 trivy_line="" trivy_failures=""
+    local tools_run=0 trivy_line="" trivy_failures="" lynis_line=""
     if [[ -f "${LOG_DIR}/.tools-run" ]]; then
         tools_run=$(wc -l < "${LOG_DIR}/.tools-run")
+    fi
+
+    # Lynis: a missing index means the audit aborted, which must not read as "no findings".
+    if grep -qx 'lynis' "${LOG_DIR}/.tools-run" 2>/dev/null; then
+        local lynis_index
+        lynis_index=$(sed -n 's/^lynis_index=//p' "${LOG_DIR}/.tool-status" 2>/dev/null)
+        if [[ -n "${lynis_index}" && "${lynis_index}" != "unknown" ]]; then
+            lynis_line="- **Lynis hardening index**: ${lynis_index}/100"
+        else
+            lynis_line="- **Lynis hardening index**: unknown (lynis aborted, see lynis.log)"
+        fi
     fi
     if [[ -f "${LOG_DIR}/trivy-summary.txt" ]]; then
         local scanned failed
@@ -345,6 +373,7 @@ generate_summary() {
 - **Date**: ${DATE}
 - **Tools Run**: ${tools_run}
 ${trivy_line}
+${lynis_line}
 
 ## Tools Executed
 
