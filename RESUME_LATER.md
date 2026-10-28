@@ -43,11 +43,20 @@ Written: 2026-10-27 22:5x (Europe/Berlin)
 
 ## In progress / blocked
 
-- **Blocked on Christoph's export** — the `mysqldump` from All-Inkl plus the 14 GB `moodledata`
-  (`lftp mirror`). He promised the export for **2026-10-28**; without the dump the migration would
-  lose quiz attempts, grades and the custom profile fields LeagueSphere reads.
-- Still unknown from him: actual DB size, plugin list (`Site admin → Plugins overview`), whether
-  `www.offd.de` moves too, whether anything else lives on `offd.de/`.
+- **DB dump ARRIVED 2026-10-28 and is fully rehearsed** (details:
+  `history/2026-10-28_offd-dump-measured-and-rehearsed.md`). 134 MB gz / 1.62 GB, MariaDB 10.6,
+  4 248 users, 104 courses, 1.67 GB (58 % is the standard log), only two third-party plugins
+  (`enrol_waitlist`, `qbehaviour_adaptiveallnothing`). Imported + auto-upgraded 4.5.12 → 4.5.15 on
+  `servyy-test.lxd`; front page renders `Home | Flag Academy`.
+- **Still blocked on the ~14 GB `moodledata`** — the other half of the export. Without it
+  `pluginfile.php` links 404 (images/PDFs/SCORM), so the file half of the migration is unexercised.
+- wwwroot replace is measured, not guessed: **~134 live rows** (`mdl_question.questiontext` 106,
+  `mdl_question_answers.answer` 13, `mdl_book_chapters.content` 8, `mdl_url.externalurl` 6,
+  `mdl_page.content` 1, optional `mdl_question_attempts.questionsummary` 310). Proved on the test box
+  against the real data → 0 hits left.
+- Sizing settled: 1.67 GB DB + ~14 GB files ≈ 15.7 GB vs **21 GB free** → no volume needed.
+- Still unknown from Christoph: whether `www.offd.de` moves too, whether anything else lives on
+  `offd.de/`, and whether the 965 MB standard log should be kept or trimmed.
 - Not started: `restic-moodle` scope (backup gate before real data lands) and one executed restore
   drill on `servyy-test.lxd`.
 
@@ -83,9 +92,9 @@ prod LeagueSphere keeps pointing at the old live offd.de in the meantime:
 
 ## Next step
 
-Add the `restic-moodle` scope (daily moodledata snapshot + hourly `mariadb-backup` set, seed file +
-vaultwarden item + `restic_seeds` entries) and run **one restore drill on `servyy-test.lxd`** — that
-is the gate before the 14 GB lands. Then, when the export arrives, dry-run the import on
-`m.leaguesphere.app`: `lftp mirror` the 14 GB, import the dump into `moodle.db`, keep the code at
-4.5.12, and point **stage** LeagueSphere (`secret_stage.yaml`) at `https://m.leaguesphere.app/offd` to
-exercise the web service end-to-end.
+When the `moodledata` archive lands: mirror it into `moodle_data_root/moodledata` on
+`servyy-test.lxd` (uid 65534), confirm a `pluginfile.php` link from the rehearsal DB resolves, then
+repeat the same two steps on prod — import the dump into `moodle`, let the image upgrade, run the
+measured wwwroot replace (`https://offd.de/offd/moodle` → `https://offd.de`), install
+`enrol_waitlist` + `qbehaviour_adaptiveallnothing`, and only then flip `moodle_service_host` to
+`offd.de` and do the LeagueSphere-side `MOODLE_URL` change.

@@ -214,7 +214,37 @@ Then walk the installer and record the generated `config.php` into the image/ent
 
 ---
 
-## Task 4: Facts from Christoph (blocking for Task 5)
+## Task 4: Facts from Christoph — ANSWERED 2026-10-28
+
+The dump arrived: `/var/jail/home/leaguesphere/dump-OFFD-d037491e-202610280831.sql.gz`
+(134 MB gz, **1.62 GB** uncompressed, `mysqldump 8.0.19` from a **MariaDB 10.6.23** source,
+`mdl_` prefix, no `CREATE DATABASE`/`USE` — it imports into whatever DB you target).
+Verified with `gzip -t`, then imported into a scratch database and measured:
+
+| | |
+|---|---|
+| Tables | 497 |
+| DB size | **1.67 GB** |
+| Users | **4 248** (4 128 active, non-deleted) |
+| Courses | **104** (2 132 course modules) |
+| File rows | 39 355 |
+| Log rows | 4 647 735 |
+| Version in DB | `4.5.12 (Build: 20260608)`, version `2024100712` |
+| **Third-party plugins** | **2 only**: `enrol_waitlist`, `qbehaviour_adaptiveallnothing` |
+| Custom profile fields | exactly the ones LeagueSphere reads: `teamname`, `teamid`, `Landesverband`, `LandesverbandAuswahl` (+ `Lizenznummer`, `Lizenzstufe`, `rechnung`) |
+
+**Where the 1.67 GB lives:** `mdl_logstore_standard_log` **965 MB** (58 %), question attempts
+~360 MB (live exam history — keep), `mdl_messages` 72 MB, `mdl_analytics_predict_samples` 69 MB
+(regenerable). So the DB can be trimmed by up to ~1 GB by dropping the *standard log* — a decision for
+Christoph, not a technical necessity.
+
+**Sizing:** 1.67 GB DB + ~14 GB moodledata ≈ **15.7 GB** against **21 GB free** on `/` → fits with
+~5 GB headroom, no volume needed.
+
+**Plugin preservation is a non-problem:** two plugins, both public. Declare them in `PLUGINS=` in
+`moodle.app.env.j2` (installed at every boot) — or install manually before cutover.
+
+## Task 4 (original open items, for the record)
 
 1. **A `mysqldump`** — hoster support ticket, or phpMyAdmin export, or one month of DB access.
    Without it the migration loses quiz attempts, grades and the custom profile fields LeagueSphere
@@ -228,7 +258,27 @@ Then walk the installer and record the generated `config.php` into the image/ent
 
 ---
 
-## Task 5: Dry run (still on `m.`)
+## Task 5: Dry run — DB half DONE on `servyy-test.lxd` (2026-10-28)
+
+Rehearsed on the test box, not prod (the blank instance there is untouched):
+
+1. Imported the 1.62 GB dump into the test box's `moodle` DB — 8 min 17 s.
+2. The image detected DB version `2024100712` < its own `2024100715` and ran
+   `admin/cli/upgrade.php` automatically; result: `4.5.15 (Build: 20261005)`, maintenance mode
+   entered and left cleanly, no plugin complaints despite the two third-party plugins being absent.
+3. Front page then rendered **real data**: `Home | Flag Academy`, 4 248 users, 104 courses.
+4. **wwwroot replace — measured, not guessed.** Every text/varchar column in the database was scanned
+   for `https://offd.de/offd/moodle`. Live content needing the change is **~134 rows**:
+   `mdl_question.questiontext` 106, `mdl_question_answers.answer` 13, `mdl_book_chapters.content` 8,
+   `mdl_url.externalurl` 6, `mdl_page.content` 1 (+310 `mdl_question_attempts.questionsummary`
+   snapshots, optional). Everything else is sent-message history (`mdl_messages`/`mdl_notifications`,
+   ~40 k rows), autosave drafts, config logs — leave those alone.
+   After the replace: **0 remaining hits** in live content, and a spot check shows the rewritten link
+   pointing at the new host.
+5. **Still missing: the ~14 GB `moodledata`.** Without it `pluginfile.php` links 404 (images, PDFs,
+   SCORM content). The DB half is proven; the file half is not yet exercised.
+
+### Task 5 original detail (still on `m.`)
 
 ```bash
 lftp -u <user>,<pass> ftp://<host> -e "mirror -c -P 16 --parallel=8 / /moodledata-local; bye"
