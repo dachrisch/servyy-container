@@ -83,7 +83,10 @@ cat > "${BIN}/trivy" <<'STUB'
 echo "trivy $*" >> "${STUB_CALLS}/trivy.log"
 findings() {
     cat <<'JSON'
-{"SchemaVersion": 2, "Results": [{"Target": "stub (alpine 3.22)", "Vulnerabilities": [{"VulnerabilityID": "CVE-2026-9999", "Severity": "CRITICAL"}]}]}
+{"SchemaVersion": 2, "Results": [{"Target": "stub (alpine 3.22)", "Vulnerabilities": [
+  {"VulnerabilityID": "CVE-2026-9999", "Severity": "CRITICAL", "FixedVersion": ""},
+  {"VulnerabilityID": "CVE-2026-1111", "Severity": "HIGH", "FixedVersion": "1.0.1"}
+]}]}
 JSON
 }
 cmd="${1:-}"
@@ -292,7 +295,11 @@ echo "== coverage reporting =="
 check "summary records scanned images" "$(grep '^scanned=' "${STATS}" 2>/dev/null || echo missing)" "scanned=2"
 check "summary records failed images" "$(grep '^failed=' "${STATS}" 2>/dev/null || echo missing)" "failed=1"
 check "summary counts criticals" "$(grep "^critical=" "${STATS}" 2>/dev/null || echo missing)" "critical=2"
-check "summary counts highs" "$(grep '^high=' "${STATS}" 2>/dev/null || echo missing)" "high=0"
+check "summary counts highs" "$(grep '^high=' "${STATS}" 2>/dev/null || echo missing)" "high=2"
+check "summary separates criticals without an upstream fix" \
+    "$(grep '^critical_unfixed=' "${STATS}" 2>/dev/null || echo missing)" "critical_unfixed=2"
+check "summary separates fixable highs" \
+    "$(grep '^high_unfixed=' "${STATS}" 2>/dev/null || echo missing)" "high_unfixed=0"
 check "summary names the failed image" "$(grep '^failed_target=' "${STATS}" 2>/dev/null || echo missing)" "failed_target=unscannable:latest"
 check_contains "SUMMARY.md reports coverage" "${SUMMARY}" "2/3 scanned"
 check_contains "SUMMARY.md names the unscanned image" "${SUMMARY}" "unscannable:latest"

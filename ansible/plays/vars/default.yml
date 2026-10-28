@@ -125,6 +125,9 @@ hardening:
   audit: true
   aide: true
   malware: true
+  # Make the auditd rule set immutable (-e 2). Off by default: an immutable set cannot be
+  # changed without a reboot, so any later rule change (this template included) needs one.
+  audit_immutable: false
   # Docker-safe sysctl values. Deliberately excludes net.ipv4.conf.all.forwarding
   # (Docker needs it) and kernel.modules_disabled (breaks dynamic module load).
   sysctl:
