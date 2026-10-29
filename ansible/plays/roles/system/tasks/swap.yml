@@ -163,9 +163,18 @@
   tags:
     - system.swap.stale.cleanup
 
-- name: set swapiness
+# vm.swappiness = 20, not the kernel default 60 and not the 1 this task used to
+# write: 1 is a database-server setting and on this host it pushed reclaim into
+# dropping page cache instead of swapping genuinely cold app pages. 60 (the old
+# effective value — the previous task wrote /etc/sysctl.conf, which systemd does
+# NOT apply at boot unless it is symlinked as /etc/sysctl.d/99-sysctl.conf) let
+# the kernel swap hot pages of a 7.6G host running 45 containers. 20 keeps swap
+# for cold pages and emergencies.
+- name: set swappiness
   sysctl:
     name: vm.swappiness
-    value: "1"
+    value: "20"
+    sysctl_file: /etc/sysctl.d/99-swappiness.conf
+    reload: true
   tags:
     - system.swap.swappiness

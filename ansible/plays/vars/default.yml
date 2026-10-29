@@ -68,6 +68,8 @@ world_readable_paths_by_service:
     - provisioning                # grafana (uid 472): dashboards, alerting
     - prometheus.yml              # prometheus (uid 65534)
     - loki.yml                    # loki (uid 10001)
+  moodle:
+    - php-fpm-limits.conf         # php-fpm runs as `nobody` in this image
 
 # Docker cleanup (aggressive, daily)
 docker_cleanup:

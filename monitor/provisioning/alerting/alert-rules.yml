@@ -723,6 +723,251 @@ groups:
           severity: high
         isPaused: true
 
+      # CRITICAL: a container's cgroup OOM killer fired. This is the alert the
+      # 2026-10-29 incident was missing: 702 oom-kills in seven days, all of them
+      # moodle.moodle (php-fpm children reaped inside a too-small mem_limit), and
+      # nobody noticed because the dashboards were gone and no rule watched the
+      # kernel's own counter. `increase()` over 30m (not `rate()`) because OOM
+      # kills are rare, discrete events — a rate would round them to zero.
+      - uid: container_oom_killed
+        title: Container OOM Kill
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 1800
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: sum by (name) (increase(container_oom_events_total{name!=""}[30m]))
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: 'Container {{ $labels.name }} was OOM-killed'
+          description: 'The cgroup OOM killer fired {{ if $values.B }}{{ printf "%.0f" $values.B.Value }}{{ else }}at least once{{ end }} time(s) in the last 30 minutes for {{ $labels.name }}. Working set has outgrown mem_limit: raise the limit or cut the process count that runs inside it. 702 such kills between 2026-10-22 and 2026-10-29 all came from moodle.moodle (100 php-fpm children x 512M memory_limit inside a 768m container).'
+        labels:
+          severity: critical
+        isPaused: false
+
+      # CRITICAL: memory PSI "full" — every runnable task stalled on memory.
+      # The average load and MemFree rules cannot see this: MemFree sits at
+      # ~200M permanently because page cache occupies the rest, so the host looks
+      # fine while work waits on reclaim. PSI is the metric that actually says
+      # "work is blocked". `node_pressure_memory_stalled_seconds_total` is
+      # aggregate stall time; rate*100 = percent of wall-clock time fully stalled.
+      - uid: node_memory_pressure_full
+        title: Memory Pressure Stalled (full)
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: rate(node_pressure_memory_stalled_seconds_total[5m]) * 100
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [5]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'All tasks stalled on memory for {{ if $values.B }}{{ printf "%.1f" $values.B.Value }}{{ else }}over 5{{ end }}% of the time'
+          description: 'PSI memory "full" above 5% for 5 minutes: every non-idle task sat waiting on page reclaim, not just some of them. On this host that means swap is backing hot pages. Check `sar -S`/pswpout, then the capped containers whose working set is near their limit.'
+        labels:
+          severity: critical
+        isPaused: false
+
+      # HIGH: memory PSI "some" — at least one task stalled on reclaim. Earlier
+      # warning tier for the same failure mode; measured baseline is 0.2-0.5%.
+      - uid: node_memory_pressure_some
+        title: Memory Pressure Stalled (some)
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: rate(node_pressure_memory_waiting_seconds_total[5m]) * 100
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [10]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: 'Some tasks stalled on memory for {{ if $values.B }}{{ printf "%.1f" $values.B.Value }}{{ else }}over 10{{ end }}% of the time'
+          description: 'PSI memory "some" above 10% for 10 minutes (baseline on this host is 0.2-0.5%). Retained page cache is no longer sufficient and the kernel is reclaiming. Correlate with swap-out and the per-container working-set ratio.'
+        labels:
+          severity: high
+        isPaused: false
+
+      # HIGH: swap-out thrashing. node_vmstat_pswpout counts pages (4 KiB) written
+      # to swap; rate() = pages/s. 500 pages/s over 15 minutes is ~2 MiB/s of
+      # steady-state swap traffic — that is not an emergency cushion any more, it
+      # is the backing store. Measured 2026-10-29 while 2.4 GiB was swapped:
+      # ~250 pages/s, i.e. this rule stays quiet until thrash roughly doubles.
+      - uid: node_swap_out_thrash
+        title: Heavy Swap-Out (thrashing)
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: rate(node_vmstat_pswpout[5m])
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [500]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: 'Host is writing {{ if $values.B }}{{ printf "%.0f" $values.B.Value }}{{ else }}over 500{{ end }} pages/s to swap'
+          description: 'Sustained swap-out (~2 MiB/s) for 15 minutes. Hot pages are being evicted, so every request touching them pays disk latency. `vm.swappiness` should be 20 (roles/system/tasks/swap.yml); if reclaim persists, the host is genuinely out of RAM.'
+        labels:
+          severity: high
+        isPaused: false
+
+      # MEDIUM: a capped container is close to its mem_limit. This is the early
+      # warning that would have preceded every one of the moodle OOM kills. Only
+      # containers that actually declare a limit are considered (`and` on
+      # container_spec_memory_limit_bytes), and the < 1e12 filter drops the
+      # sentinel value cAdvisor reports for uncapped containers, which would
+      # otherwise divide by ~9 exabytes and stay silent anyway.
+      - uid: container_memory_near_limit
+        title: Container Near Memory Limit
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'max by (name) ((container_memory_working_set_bytes{name!=""} / clamp_min(container_spec_memory_limit_bytes{name!=""}, 1)) and (container_spec_memory_limit_bytes{name!=""} > 0) and (container_spec_memory_limit_bytes{name!=""} < 1e12))'
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.9]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: 'Container {{ $labels.name }} is at {{ if $values.B }}{{ printf "%.0f" $values.B.Value }}%{{ else }}over 90%{{ end }} of its memory limit'
+          description: 'Working set has been above 90% of mem_limit for 15 minutes. Either the limit is too small for the process count inside the container (moodle: 5 x 256M php-fpm children in 1.5G) or a leak is growing. The OOM kill is usually minutes away.'
+        labels:
+          severity: medium
+        isPaused: false
+
   # Infrastructure monitoring alert rules
   - orgId: 1
     name: infrastructure-alerts
