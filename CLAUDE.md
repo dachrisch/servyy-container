@@ -524,11 +524,20 @@ cd ansible && ./servyy.sh --limit servy.lehel.xyz
 
 ## git-crypt (CRITICAL)
 
-**Encrypted patterns:** `docker-compose.yml`, `*.yaml`, `*.env`, `*.conf`, `secrets.*`, `secret_*`
+**Encrypted patterns:** `*.yaml`, `*.env`, `*.conf`, `secrets.*`, `secret_*`, `git/htpasswd`
+
+**Not encrypted (since 2026-10-29): `docker-compose.yml`** — the hosted Renovate app reads the
+repo through the GitHub API, so ciphertext blobs made every `image:` tag invisible to it and no
+compose image was ever bumped. Compose files are plaintext now, which means: **never put a
+secret inline in one.** Secrets go in a `*.env` file rendered from `plays/vars/secrets.yml`
+(see `photoprism/photoprism.env.j2`). Two CI/deploy guards enforce the rest: compose files must
+stay plaintext (`.github/scripts/validate-git-crypt.sh`) and nothing may publish a port on all
+interfaces except Traefik 80/443 (`ansible/plays/roles/user/files/check_published_ports.py`).
+Safety audit: `history/2026-10-29_exposure-guards.md`.
 
 **Rules:**
 - Files appear as **plaintext when unlocked** - edit normally
-- Auto-encrypted on commit
+- Auto-encrypted on commit (except compose files)
 - Check status: `git-crypt status`
 
 ## Architecture

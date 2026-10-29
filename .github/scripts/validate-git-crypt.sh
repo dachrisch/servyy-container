@@ -21,7 +21,7 @@ required_patterns=(
     "filter=git-crypt"
     "*.yaml filter=git-crypt"
     "*.env filter=git-crypt"
-    "docker-compose.yml filter=git-crypt"
+    "*.conf filter=git-crypt"
 )
 
 for pattern in "${required_patterns[@]}"; do
@@ -32,6 +32,20 @@ for pattern in "${required_patterns[@]}"; do
 done
 
 echo "✓ .gitattributes patterns correct"
+
+# Compose files must stay PLAINTEXT (removed from git-crypt on 2026-10-29): the
+# hosted Renovate app reads the repository through the GitHub API, so an encrypted
+# blob hides every `image:` tag in it and image bumps silently stop happening.
+# This guards against re-adding the rule out of habit. The safety preconditions are
+# listed in .gitattributes and in history/2026-10-29_exposure-guards.md.
+compose_probe="traefik/docker-compose.yml"
+if git check-attr filter "$compose_probe" | grep -q "git-crypt"; then
+    echo "ERROR: $compose_probe is encrypted again."
+    echo "       Compose files must stay plaintext so Renovate can bump image tags."
+    echo "       Keep secrets in *.env (still encrypted), never inline in a compose file."
+    exit 1
+fi
+echo "✓ compose files are plaintext (Renovate can read image tags)"
 
 # Check critical encrypted files exist
 critical_files=(

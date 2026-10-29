@@ -1,5 +1,16 @@
 git/htpasswd filter=git-crypt diff=git-crypt
-docker-compose.yml filter=git-crypt diff=git-crypt
+# compose files are deliberately PLAINTEXT since 2026-10-29: the hosted Renovate
+# app reads the repo through the GitHub API, so ciphertext blobs were invisible to
+# it and no `image:` tag in any compose file was ever bumped (traefik sat on 3.6.1
+# through ~24 patch releases). Guarantees that made this safe, in this order:
+#   * both repos are public -> nothing internal may be reachable (audited, ports
+#     scanned, routers pruned: history/2026-10-29_exposure-guards.md),
+#   * no compose file may hold a secret -> the four PhotoPrism literals moved to
+#     photoprism.env, and a scan of all 25 files found nothing else,
+#   * `providers.docker.exposedByDefault: false` + `traefik.enable=true`, a
+#     deploy-time 0.0.0.0 port assertion and the host DOCKER-USER edge filter, so
+#     an accident cannot become internet-reachable.
+# Secrets stay encrypted via the *.env / *.yaml / *.conf / secrets.* rules below.
 # Molecule fixtures must stay plaintext: CI (and molecule) read them via
 # lookup('file') without the git-crypt key, so an encrypted blob breaks parsing.
 ansible/plays/roles/system_probe/molecule/default/files/probetest/docker-compose.yml !filter !diff
