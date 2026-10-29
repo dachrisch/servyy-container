@@ -35,6 +35,8 @@ Beleg.
    POST inkl. Objekt- und Maßnahmenkatalog). Die zwei vorhandenen Projektfotos
    sind eingebunden, nicht ersetzt.
 5. **Blatt 04 — Qualifikation**, **Blatt 05 — Kontakt** als Plankopf.
+   Das Porträt von Achim Höfer steht in Blatt 04 („Wer prüft“), in Graustufen
+   und mit mono Beschriftung, damit es zur Plan-Set-Sprache passt.
 6. CTA an vier Stellen (Header, Hero, nach den Referenzen, Kontakt), überall
    `mailto:` mit vorbelegtem Betreff — kein Backend.
 
