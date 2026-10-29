@@ -42,8 +42,50 @@ The reverse proxy for every host (servy + codey). Deployed by
   host/status cases + a virtual-clock test of the poll script).
 * `.Host` is only populated when `SHOW_DETAILS=true`, which stays true — the
   template renders no details table, so nothing about the request leaks.
-* Catchall routers use `HostRegexp(`.+`)` (a bare `Host(`*`)` never matches on
-  Traefik 3.6) with priority 1, so any real `Host(...)` rule outranks them.
+* Catchall routers use `HostRegexp(`.+`)` with priority 1, so any real `Host(...)` rule
+  outranks them. Traefik **3.7.7** made a bare `Host(`*`)` a real catch-all (on 3.6 it
+  only matched single-label hosts such as `localhost`); we deliberately keep
+  `HostRegexp` because it matches identically on 3.6 and 3.7, which keeps a rollback
+  free of edge cases.
+
+## Upgrading Traefik
+
+The image tag is pinned in `docker-compose.yml` and **nothing bumps it automatically**
+(there is no Renovate runner in this repo despite `renovate.json`), so check
+`https://api.github.com/repos/traefik/traefik/releases` by hand and read
+`docs/content/migrate/v3.md` on the target branch before changing the tag. Full worked
+example: `history/2026-10-29_traefik-3.7-upgrade.md` (3.6.1 → 3.7.16).
+
+1. **Rehearse the config first, off-host.** Run the repo's real `traefik.yaml` +
+   `dynamic.yaml` in a throwaway container on the target image with **the docker
+   provider removed from the static copy and no `traefik.env`** — otherwise the
+   instance discovers the live containers and can place real ACME orders. Compare
+   startup warnings and a probe set (catchall page + branded marker, unknown-host
+   TLS, encoded-character paths, `CONNECT`) against the running version.
+2. **Back up the ACME store**: `traefik-certificates/acme.json` (re-issuable, but LE
+   rate limits are real).
+3. **Deploy test host first** (`servyy-test.lxd`: `cd ~/servyy-container/traefik &&
+   docker compose up -d --force-recreate`), verify, then servy, then codey.
+4. **Verify**: image tag, `traefik version`, `docker logs | grep -cE
+   'aliasHeadersStrategy|trustForwardHeader'` → 0, the branded-page marker on an
+   unknown host, and the **router inventory** before/after (grep the
+   `traefik.http.routers.*` labels of every container — the count and the md5 of the
+   sorted set must not change).
+5. **Config and image move together; a rollback is the whole commit.** Traefik parses
+   its *static* configuration strictly: an option the running image does not know is a
+   **fatal startup error**, not a warning. `traefik:3.6.1` + a `traefik.yaml` carrying
+   `aliasHeadersStrategy` exits with `command traefik error: field not found, node:
+   aliasHeadersStrategy` (measured 2026-10-29). So: `git revert` the commit (config and
+   tag together), pull, `up -d --force-recreate` — and deploy in the same order, with
+   the image **pre-pulled**, because the container sits in watchtower's `prod` scope: new
+   config on disk + a recreate that still starts the old image = dead proxy.
+   Never mix a behaviour change (header strategy `delete`, `encodedCharacters`
+   hardening) into a version bump — a failure then has two possible causes.
+
+Config is a single-file bind mount: `up -d` alone will **not** pick up a changed
+`traefik.yaml`/`dynamic.yaml`, and since 3.6.19 an empty `dashboard-auth.htpasswd`
+unmounts the dashboard router (404 instead of 401) with only a log line — check the
+file is non-empty after any change to `traefik_dashboard_auth`.
 
 ## Checking a change by hand
 
