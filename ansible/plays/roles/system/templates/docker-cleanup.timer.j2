@@ -5,7 +5,12 @@ Requires=docker-cleanup.service
 [Timer]
 OnCalendar={{ docker_cleanup.schedule }}
 RandomizedDelaySec=5m
-Persistent=true
+# Persistent=false on purpose: with true, a run missed because the host was rebooting is
+# executed immediately on the next boot, while containerd is still settling. That window is
+# where the containerd content store lost layer blobs the images still referenced (docker save
+# then emits archives with missing blobs, see history/2026-10-28_security-audit-trivy-empty-results.md).
+# A skipped prune is cheaper than a degraded image store.
+Persistent=false
 
 [Install]
 WantedBy=timers.target

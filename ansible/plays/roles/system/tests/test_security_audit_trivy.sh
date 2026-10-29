@@ -291,6 +291,15 @@ check "unscannable image is recorded as an error" "$(probe kind unscannable:late
 check "no row claims an empty result" "$(probe empty-results)" "0"
 check_ge "trivy's failure reaches the tool log" "$(file_probe "${TOOL_LOG}" 'FATAL')" 1
 
+echo "== disk discipline =="
+# The Java index database is ~1.5G and this fleet has no Java workloads; fetching it on every
+# run is pure disk burn (the 2026-10-27 reclaim had to delete it by hand).
+check "image scans skip the java index" \
+    "$(grep -c -- 'trivy image .*--skip-java-db-update' "${CALLS}/trivy.log" || true)" "3"
+# Two images need the fallback: one whose blobs are gone, one that fails both ways.
+check "rootfs fallback skips the java index" \
+    "$(grep -c -- 'trivy rootfs .*--skip-java-db-update' "${CALLS}/trivy.log" || true)" "2"
+
 echo "== coverage reporting =="
 check "summary records scanned images" "$(grep '^scanned=' "${STATS}" 2>/dev/null || echo missing)" "scanned=2"
 check "summary records failed images" "$(grep '^failed=' "${STATS}" 2>/dev/null || echo missing)" "failed=1"
