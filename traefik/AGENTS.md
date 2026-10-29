@@ -71,9 +71,14 @@ example: `history/2026-10-29_traefik-3.7-upgrade.md` (3.6.1 → 3.7.16).
    unknown host, and the **router inventory** before/after (grep the
    `traefik.http.routers.*` labels of every container — the count and the md5 of the
    sorted set must not change).
-5. **Rollback is the tag only.** Keep any new static options *neutral* (`keep`,
-   `trustForwardHeader: false`, no boolean default flips) so the previous image still
-   accepts the config; then `git revert` the tag, pull, `up -d --force-recreate`.
+5. **Config and image move together; a rollback is the whole commit.** Traefik parses
+   its *static* configuration strictly: an option the running image does not know is a
+   **fatal startup error**, not a warning. `traefik:3.6.1` + a `traefik.yaml` carrying
+   `aliasHeadersStrategy` exits with `command traefik error: field not found, node:
+   aliasHeadersStrategy` (measured 2026-10-29). So: `git revert` the commit (config and
+   tag together), pull, `up -d --force-recreate` — and deploy in the same order, with
+   the image **pre-pulled**, because the container sits in watchtower's `prod` scope: new
+   config on disk + a recreate that still starts the old image = dead proxy.
    Never mix a behaviour change (header strategy `delete`, `encodedCharacters`
    hardening) into a version bump — a failure then has two possible causes.
 
