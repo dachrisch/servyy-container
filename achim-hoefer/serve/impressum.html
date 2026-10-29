@@ -1,141 +1,154 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="de">
-  <head>
-    <title>Impressum - Höfer Architekten - Website</title>
+<head>
+<title>Impressum — Höfer Architekten</title>
 <meta charset="utf-8" />
-    <meta
-      name="description"
-      content="Achim Höfer
-Architekt
-Sachverständiger zur Wertermittlung von bebauten und unbebauten
-Grundstücken Fachplaner für vorbeugenden Brandschutz EIPOS, TU Dresden"
-    />
-    <meta
-      property="og:title"
-      content="Impressum - Höfer Architekten - Website"
-    />
-    <meta
-      property="og:description"
-      content="Achim Höfer
-Architekt
-Sachverständiger zur Wertermittlung von bebauten und unbebauten
-Grundstücken Fachplaner für vorbeugenden Brandschutz EIPOS, TU Dresden"
-    />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="Impressum und Anbieterkennzeichnung von Höfer Architekten, Achim Höfer, Karolinenstraße 9, 80538 München." />
+<meta name="robots" content="index,follow" />
+<link rel="icon" href="public/playground_assets/favicon-32x32.png" type="image/png" sizes="32x32" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=Inter+Tight:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#E8E9E3;
+    --ink:#0E1A25;
+    --ink-2:#3D4A55;
+    --blue:#1D5B80;
+    --orange:#CE5019;
+    --rule:rgba(14,26,37,.28);
+    --rule-soft:rgba(14,26,37,.13);
+    --grid:rgba(14,26,37,.055);
+    --pad:clamp(16px,3vw,44px);
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:"Inter Tight",system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;color:var(--ink);font-family:var(--sans);font-size:15.5px;line-height:1.6;background-color:#D3D5CE;-webkit-font-smoothing:antialiased}
+  a{color:inherit;text-decoration:none}
+  ::selection{background:var(--orange);color:var(--paper)}
+  :focus-visible{outline:2px solid var(--orange);outline-offset:3px}
+  .m{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2)}
+  .shell{
+    max-width:1440px;margin:0 auto;
+    background-color:var(--paper);
+    background-image:
+      linear-gradient(to right,var(--grid) 1px,transparent 1px),
+      linear-gradient(to bottom,var(--grid) 1px,transparent 1px);
+    background-size:24px 24px;
+    box-shadow:0 0 0 1px rgba(14,26,37,.14),0 30px 90px rgba(14,26,37,.10);
+    min-height:100vh;display:flex;flex-direction:column;
+  }
+  header{border-bottom:1px solid var(--rule);background:rgba(232,233,227,.93);backdrop-filter:blur(8px);position:sticky;top:0;z-index:10}
+  .bar{display:flex;align-items:center;gap:18px;padding:0 var(--pad);height:52px;max-width:1280px;margin:0 auto}
+  .brand{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;font-weight:500;white-space:nowrap}
+  .bar nav{margin-left:auto;display:flex;gap:18px}
+  .bar nav a{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-2);border-bottom:1px solid transparent;padding:3px 0}
+  .bar nav a:hover{color:var(--ink);border-color:var(--orange)}
+  .cta{display:inline-flex;align-items:center;gap:8px;background:var(--ink);color:var(--paper);font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;padding:8px 12px;white-space:nowrap;transition:background .2s}
+  .cta:hover{background:var(--orange)}
+  .cta svg{width:12px;height:12px}
 
-    <style data-tag="reset-style-sheet">
-      html {  line-height: 1.15;}body {  margin: 0;}* {  box-sizing: border-box;  border-width: 0;  border-style: solid;}p,li,ul,pre,div,h1,h2,h3,h4,h5,h6 {  margin: 0;  padding: 0;}button,input,optgroup,select,textarea {  font-family: inherit;  font-size: 100%;  line-height: 1.15;  margin: 0;}button,select {  text-transform: none;}button,[type="button"],[type="reset"],[type="submit"] {  -webkit-appearance: button;}button::-moz-focus-inner,[type="button"]::-moz-focus-inner,[type="reset"]::-moz-focus-inner,[type="submit"]::-moz-focus-inner {  border-style: none;  padding: 0;}button:-moz-focus,[type="button"]:-moz-focus,[type="reset"]:-moz-focus,[type="submit"]:-moz-focus {  outline: 1px dotted ButtonText;}a {  color: inherit;  text-decoration: inherit;}input {  padding: 2px 4px;}img {  display: block;}html { scroll-behavior: smooth  }
-    </style>
-    <style data-tag="default-style-sheet">
-      html {
-        font-family: Verdana;
-        font-size: 24px;
-      }
+  main{flex:1;padding:clamp(34px,4.6vw,64px) 0 clamp(40px,5vw,72px)}
+  .wrap{max-width:1280px;margin:0 auto;padding:0 var(--pad)}
+  .head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 24px;border-top:1px solid var(--ink);padding-top:12px;margin-bottom:clamp(24px,3.4vw,40px)}
+  h1{font-size:clamp(30px,4vw,48px);line-height:1.02;letter-spacing:-.035em;font-weight:600;margin:0}
+  .head .meta{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
 
-      body {
-        font-weight: 400;
-        font-style:normal;
-        text-decoration: none;
-        text-transform: none;
-        letter-spacing: normal;
-        line-height: 1.55;
-        color: var(--dl-color-gray-black);
-        background-color: var(--dl-color-gray-white);
+  .blocks{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--rule-soft);border:1px solid var(--rule-soft)}
+  .block{background:var(--paper);padding:clamp(18px,2.4vw,28px)}
+  .block h2{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--blue);font-weight:500;margin:0 0 12px}
+  .block p{margin:0;font-size:14.5px;line-height:1.65;color:var(--ink-2)}
+  .block p + p{margin-top:10px}
+  .block strong{color:var(--ink);font-weight:500}
+  .block a{border-bottom:1px solid var(--rule);padding-bottom:1px}
+  .block a:hover{color:var(--orange);border-color:var(--orange)}
+  @media(max-width:720px){.blocks{grid-template-columns:1fr}}
 
-      }
-    </style>
-    <link
-      rel="shortcut icon"
-      href="/public/playground_assets/favicon-32x32.png"
-      type="icon/png"
-      sizes="32x32"
-    />
+  .note{margin-top:clamp(22px,3vw,32px);border-left:3px solid var(--orange);background:rgba(255,255,255,.45);padding:14px 16px;font-size:13px;line-height:1.55;color:var(--ink-2);max-width:70ch}
+  .note b{color:var(--ink);font-weight:500}
 
-    <!--This is the head section-->
-    <!-- <style> ... </style> -->
-    <link rel="stylesheet" href="./style.css" />
-  </head>
-  <body>
-    <div>
-      <link href="./impressum.css" rel="stylesheet" />
+  footer{border-top:1px solid var(--rule);padding:16px 0 26px}
+  .foot{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;max-width:1280px;margin:0 auto;padding:0 var(--pad);font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
+  .foot a:hover{color:var(--orange)}
+  .foot .sp{margin-left:auto}
+</style>
+</head>
+<body>
+<div class="shell">
 
-      <div class="impressum-container">
-        <div data-role="Header" class="impressum-navbar-container">
-          <div class="impressum-navbar">
-            <span class="impressum-heading card-Heading">
-              Höfer Architekten
-            </span>
-          </div>
+  <header>
+    <div class="bar">
+      <a class="brand" href="index.html">Höfer Architekten</a>
+      <nav>
+        <a href="index.html#grundriss">Grundriss</a>
+        <a href="index.html#leistungen">Leistungen</a>
+        <a href="index.html#referenzen">Referenzen</a>
+        <a href="index.html#kontakt">Kontakt</a>
+      </nav>
+      <a class="cta" href="mailto:achim.hoefer@gmx.net?subject=Begehung%20Brandschutz">
+        Anfrage
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+  </header>
+
+  <main>
+    <div class="wrap">
+      <div class="head">
+        <h1>Impressum</h1>
+        <span class="meta">Angaben gemäß § 5 TMG</span>
+      </div>
+
+      <div class="blocks">
+        <div class="block">
+          <h2>Anbieter</h2>
+          <p>
+            <strong>Achim Höfer</strong><br />
+            Höfer Architekten<br />
+            Karolinenstraße 9<br />
+            80538 München
+          </p>
         </div>
-        <div class="impressum-container1"></div>
-        <div class="impressum-imprint">
-          <div class="impressum-heading-container">
-            <h2 class="impressum-text section-Heading">Impressum</h2>
-          </div>
-          <div class="impressum-cards-container">
-            <div class="impressum-card">
-              <div class="impressum-content-container">
-                <span class="impressum-heading1 card-Heading">
-                  <span>Angaben gemäß § 5 TMG</span>
-                  <br />
-                </span>
-                <span class="card-Text">
-                  <span>Achim Höfer</span>
-                  <br />
-                  <span>Höfer Architekten</span>
-                  <br />
-                  <span>Karolinenstraße 9</span>
-                  <br />
-                  <span>80538 München</span>
-                </span>
-              </div>
-            </div>
-            <div class="impressum-card1">
-              <div class="impressum-content-container1">
-                <span class="impressum-heading2 card-Heading">Kontakt</span>
-                <span class="impressum-text11 card-Text">
-                  <span>Telefon: 0171 9727560</span>
-                  <br />
-                  <span>E-Mail: achim.hoefer@gmx.net</span>
-                  <br class="card-Text" />
-                </span>
-              </div>
-            </div>
-            <div class="impressum-card2">
-              <div class="impressum-content-container2">
-                <span class="impressum-heading3 card-Heading">
-                  Aufsichtsbehörde
-                </span>
-                <span class="card-Text">
-                  <span>Bayerische Architektenkammer</span>
-                  <br />
-                  <span>Waisenhausstraße 4</span>
-                  <br />
-                  <span>80637 München</span>
-                </span>
-              </div>
-            </div>
-            <div class="impressum-card3">
-              <div class="impressum-content-container3">
-                <span class="impressum-heading4 card-Heading">
-                  <span>Berufsbezeichnung</span>
-                  <br />
-                </span>
-                <span class="card-Text">
-                  <span>Architekten</span>
-                  <br />
-                  <span>
-                    Zuständige Kammer: Bayrische Architektenkammer (BayAK)
-                  </span>
-                  <br />
-                  <br />
-                  <span>Verliehen durch: Bundesrepublik Deutschland</span>
-                </span>
-              </div>
-            </div>
-          </div>
+
+        <div class="block">
+          <h2>Kontakt</h2>
+          <p>
+            Telefon: <a href="tel:+491719727560">0171 9727560</a><br />
+            E-Mail: <a href="mailto:achim.hoefer@gmx.net">achim.hoefer@gmx.net</a>
+          </p>
+        </div>
+
+        <div class="block">
+          <h2>Berufsbezeichnung</h2>
+          <p>
+            Architekt<br />
+            Verliehen durch die Bundesrepublik Deutschland
+          </p>
+        </div>
+
+        <div class="block">
+          <h2>Zuständige Kammer</h2>
+          <p>
+            Bayerische Architektenkammer<br />
+            Waisenhausstraße 4<br />
+            80637 München
+          </p>
         </div>
       </div>
     </div>
-    <script src="https://unpkg.com/@teleporthq/teleport-custom-scripts"></script>
-  </body>
+  </main>
+
+  <footer>
+    <div class="foot">
+      <span>© Höfer Architekten 2026</span>
+      <a href="index.html">Startseite</a>
+      <span class="sp">Karolinenstraße 9 · 80538 München</span>
+    </div>
+  </footer>
+
+</div>
+</body>
 </html>
