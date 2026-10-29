@@ -83,9 +83,16 @@ example: `history/2026-10-29_traefik-3.7-upgrade.md` (3.6.1 → 3.7.16).
    hardening) into a version bump — a failure then has two possible causes.
 
 Config is a single-file bind mount: `up -d` alone will **not** pick up a changed
-`traefik.yaml`/`dynamic.yaml`, and since 3.6.19 an empty `dashboard-auth.htpasswd`
-unmounts the dashboard router (404 instead of 401) with only a log line — check the
-file is non-empty after any change to `traefik_dashboard_auth`.
+`traefik.yaml`/`dynamic.yaml`. Since 3.6.19 an empty `dashboard-auth.htpasswd` unmounts the
+dashboard router (404 instead of 401) with only a log line, so `user.yml` post_tasks
+slurp the rendered file and **assert it holds exactly one `user:hash` line** on every
+deploy of the traefik service — no manual check needed, but do not tag those tasks away.
+
+The dashboard hostname is **per host**: `traefik.lehel.xyz` on servy (the role default
+`{{ service_dir }}.{{ domain }}`) and `traefik.code.lehel.xyz` on codey, via
+`traefik_service_host` in `ansible/production`. codey also runs with `domain: lehel.xyz`,
+and the `*.lehel.xyz` wildcard resolves to servy — without the override both hosts claim
+the same dashboard name and codey's copy is simply unreachable.
 
 ## Checking a change by hand
 
