@@ -11,9 +11,11 @@ Ausgeliefert von `nginx:stable` auf `servy.lehel.xyz`, öffentlich unter
 - `serve/impressum.html` — Impressum, gleiche Gestaltungssprache.
 - `serve/llms.txt`, `serve/robots.txt`, `serve/sitemap.xml` — Standarddateien für
   Crawler und LLMs. Neue Seiten gehören in `sitemap.xml` und `llms.txt`.
-- `serve/public/og-image.png` — 1200×630 Social-Preview. Quelle: `og-image.html`
+- `serve/public/social-preview.png` — 1200×630 Social-Preview. Quelle: `og-image.html`
   im Service-Verzeichnis; im Browser bei exakt 1200×630 rendern und als PNG
-  exportieren, dann in `serve/public/` ablegen.
+  exportieren, dann in `serve/public/` ablegen. Bei inhaltlichen Änderungen den
+  Dateinamen mitändern (`social-preview-2.png` o. ä.), weil Facebook & Co. das
+  Bild sonst dauerhaft aus dem Cache zeigen.
 - `serve/public/playground_assets/` — Favicon und die zwei vorhandenen
   Projektfotos (T-Systems, POST Bauen). Weitere Assets gibt es nicht.
 - Kein Build-Schritt. Datei bearbeiten, committen, deployen.
