@@ -40,7 +40,7 @@ services:
     # Pinned to prod-proven digest (servy.lehel.xyz valkey:9-alpine ee91f7a174ac, healthy 2 weeks)
     # Ephemeral job-queue store: a restart loses pending Bull jobs (they retry).
     # leagues-finance uses db 0; queen uses db 1 (see finance/queen.env.j2).
-    image: docker.io/valkey/valkey:9-alpine@sha256:ee91f7a174ac4d6a6b0685b3a60e321f0a9dbbb691f9b0e285be2ba1d1be8328
+    image: docker.io/valkey/valkey:9-alpine@sha256:bf09d58e96d6b4524a15396b65b242bbe18beebbcc15a04d8ee75ddac62fae0b
     container_name: ${COMPOSE_PROJECT_NAME}.redis
     restart: unless-stopped
     networks:
