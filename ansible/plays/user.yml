@@ -606,10 +606,16 @@
           - src: moodle.db.env.j2
             dest: db.env
           # The image writes config.php itself from these variables, so nothing
-          # is rendered into the Moodle tree any more — which is also why there
-          # is no world_readable_paths entry for this service.
+          # is rendered into the Moodle tree.
           - src: moodle.app.env.j2
             dest: app.env
+        # php-fpm.conf has `include=/etc/php83/php-fpm.d/*.conf`, and the pool
+        # override bind-mounted from the checkout is read by php-fpm inside the
+        # container. The checkout's umask 007 leaves it 0660 cda:cda while the
+        # image runs as `nobody`: without this, php-fpm cannot open the pool file
+        # and fails to start at all (nginx answers 502). Found on servyy-test,
+        # 2026-10-29.
+        world_readable_paths: "{{ world_readable_paths_by_service[service_dir] | default([]) }}"
       when: "'moodle' in (services | default([]))"
       tags: [user.docker, user.docker.moodle]
 
