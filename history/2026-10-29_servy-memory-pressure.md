@@ -211,19 +211,31 @@ Not validated on servyy-test: `vm.swappiness` (the swap task is gated on
 `create_swap | default(false)`, which the test host does not set) and the monitor stack
 (not enabled there). Those are verified on prod in the checklist below.
 
-## Not in this repository — LeagueSphere worker count (C) and its limits
+## LeagueSphere worker count (C) and its limits — separate repository, landed
 
 `leaguesphere_stage` and `leaguesphere-demo` are deployed from a **separate repository**
 (`dachrisch/leaguesphere`, `deployed/docker-compose{,.staging,.demo}.yaml`) via the
-`ls_app` role into git checkouts in the deploy user's home. Changing gunicorn there is a
-change in that repo, not here:
+`ls_app` role into git checkouts in the deploy user's home, all pulling branch `master`.
+Change delivered as [dachrisch/leaguesphere#2135](https://github.com/dachrisch/leaguesphere/pull/2135)
+(merged 2026-10-29, CI green after a re-run of a flaky `build_backend` stage):
 
 - `deployed/docker-compose.staging.yaml` + `deployed/docker-compose.demo.yaml`:
-  `gunicorn -w 6 --threads 2` → **`-w 1 --threads 2`** (~−120 MiB and most of the CPU each;
-  these are dev environments with ~no traffic). Production keeps `-w 6`.
-- `mem_limit` for the three apps and their databases per the table above.
+  `gunicorn -w 6 --threads 2` → **`-w 1 --threads 2`**. Production keeps `-w 6`.
+- `mem_limit`: prod app 1g, prod db 512m, stage/demo app 512m each, stage/demo mysql 512m
+  each — with the rationale recorded in `deployed/README.md` so the next service added
+  there does not repeat the mistake.
 
-This entry will be updated (or a follow-up written) when that lands.
+Verified on prod after the `ls_app` deploy: `docker inspect` shows 1g / 512m for prod
+app+db and 512m / 512m for stage and demo; `Config.Cmd` is `-w 1` on stage and demo and
+`-w 6` on prod, the worker boot logs match (6 / 1 / 1), and all three sites return **200**.
+
+Operational note for that play: `--tags ls.app.deploy.compose` alone aborts at "Wait for
+MySQL to be ready" with `'ls_runs_own_db' is undefined`, because the `set_fact` that
+defines it carries only the parent tag `ls.app.deploy`. Use `--tags ls.app,ls.demo
+--skip-tags ls.app.deploy.db`: including the parent tag defines the facts, and excluding
+`ls.app.deploy.db` keeps `db_check` from running — every destructive task ("Remove MySQL
+volume to trigger init scripts", "Stop containers before volume cleanup") is guarded on
+`db_check.rc is defined`, so all of them skip.
 
 ## Verification
 
@@ -243,6 +255,17 @@ Results:
 | offd.de | `/login/index.php` → **200** |
 | load average / memory / available | 5.86 → **4.55**, 4.6 → **3.8 GiB** used, 3.1 → **3.8 GiB** available |
 | working set vs limit (all capped containers) | moodle.moodle 4.6 %, moodle.db 17 %, mongo 40 %, prometheus 20 %, loki 24 %, grafana 79 % — none near the new 90 % rule |
+| LeagueSphere (C) | prod `-w 6`, stage and demo `-w 1`; prod app 688M resident **with 0 in swap** (was 454M + 334M swapped), stage app 645M → 129M, all three sites 200 |
+
+Final state at 19:45 CET, after the LeagueSphere deploy:
+
+| Metric | Before (18:30) | After (19:45) |
+|---|---|---|
+| Load average | `5.86 / 3.44 / 2.92` (day average 6.04) | **`2.60 / 4.41 / 3.91`** |
+| Memory used / available | 4.6 GiB / 3.1 GiB | 4.2 GiB / **3.4 GiB** |
+| Swap used | 2.4–3.3 GiB | **1.4 GiB** |
+| OOM kills | 702 per week, 100 % moodle | **0** in the 2 h since, 0 container OOM events |
+| Highest working-set/limit | moodle at 768m (OOMing) | grafana 81 %, everything else ≤ 63 % |
 
 Not applied in this pass: `traefik` (384m). The `user.docker.traefik` tag runs
 `traefik_dashboard_auth`, which pushes the dashboard credentials to Vaultwarden and needs
@@ -252,9 +275,11 @@ change is committed and valid; traefik is currently unlimited at 149M, so nothin
 risk by waiting.
 
 Watch after ~24 h: `sar -q` load average (was 6.04 day average on 4 cores) and `sar -S`
-swap (was flat at 2.4 GiB). Swap went *up* to 2.9 GiB during the restart wave and should
-fall as pages become cold; if it stays above 2.5 GiB with `swappiness=20`, the remaining
-cause is the unlimited LeagueSphere containers, not reclaim policy.
+swap (was flat at 2.4 GiB). Swap rose to 2.9 GiB during the restart wave and has already
+fallen to **1.4 GiB** as pages became cold again; if it climbs back above 2.5 GiB the
+remaining candidates are the two largest uncapped consumers left — `traefik` (149M, cap
+still pending the vault unlock) and the `monitor`/`photoprism` sidecars that only have a
+`deploy.resources` limit or none at all.
 
 ## Why not just add RAM
 
