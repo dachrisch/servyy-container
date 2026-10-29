@@ -85,6 +85,35 @@ has no effect on 80/443.
 * Exposure re-scan from outside: still only 22/80/443; and the new `DOCKER-USER` chain
   present on both hosts (`iptables -C DOCKER-USER -j HOST-EDGE`).
 
+## Deployment result (2026-10-29, 22:45–23:15 CET)
+
+| Step | servy | codey |
+|---|---|---|
+| app services recreated with `traefik.enable=true` (13 + `pass`) | ✅ (photoprism, energy, groceries, monitor, leagues-finance, bumbleflies ×4, achim-hoefer, portainer, git, pass) | n/a — all its routed services already had the label |
+| LeagueSphere `www` ×3 (other repo) | ✅ labels present, sites 200 | n/a |
+| Traefik recreated with `exposedByDefault: false` | ✅ 3.7.16 healthy | ✅ 3.7.16 healthy |
+| routers removed by the flip | **11, all internal**: `db-bnb-office`, `db-moodle`, `mongo-dontforget`, `prometheus-monitor`, `pushgateway-monitor`, `pushgateway-bridge-monitor` + their `web-` twins | none |
+| `Could not find network named "proxy"` warnings | **1 110 → 0** | **0** |
+| `https://monitor.lehel.xyz/metrics` | **302 (login)** — was 200 | n/a |
+| node-exporter / cadvisor published ports | **none** | n/a |
+| public host sweep | **30/32 2xx/3xx**, the 2 exceptions are the dashboards' intended **401** | code.lehel.xyz 200, h.code.lehel.xyz 200, traefik.code.lehel.xyz 401 |
+| host edge filter (`DOCKER-USER` → `HOST-EDGE`) | **active** (already deployed earlier in #232) | **active** (deployed now) |
+| port scan from the internet | **22, 80, 443 only** | **22, 80, 443 only** |
+| `check_published_ports.py` on the prod checkout | 0 offenders / 24 files | — |
+
+Two operational notes from the rollout:
+
+* **Pass had to be recreated outside Ansible** (`cd ~/servyy-container/pass && docker compose up -d`) because
+  the `user.docker.pass` tag includes `vaultwarden_admin_token`, whose Vaultwarden push fails: the
+  controller's `bw` CLI is `unauthenticated` and `bw unlock` cannot succeed without a login, so the play
+  aborts before touching the container. Same reason the Traefik deploys pass
+  `-e traefik_dashboard_push_vaultwarden=false`. **Fix the `bw login --apikey` step before relying on any
+  Vaultwarden mirror in a deploy.**
+* **codey was at 100 % disk** (29 G root, 0 B free) when the pull ran: 6.9 G `opencode_opencode_root` +
+  4.4 G `codey_dev_checkouts` volumes, 5.1 G in `/var/lib/containerd`. Pruning unused images freed only
+  179 MB (the "5.4 GB reclaimable" is shared layers), journald/apt freed ~170 MB, and that was enough for
+  the pull. Nobody watches codey's disk — the monitor stack has no node-exporter there.
+
 ## Then, and only then
 
 Remove the `docker-compose.yml` encryption rule from `.gitattributes` (and the matching
