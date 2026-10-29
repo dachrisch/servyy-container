@@ -149,8 +149,11 @@ json_ok() {
 # Fast path: let trivy read the image through the docker daemon (docker save).
 # stderr is deliberately not discarded: when the daemon cannot export the image, trivy's
 # FATAL line ("file blobs/sha256/... not found in tar") is the only explanation we get.
+# --skip-java-db-update: the Java index database is ~1.5G and no image on this fleet runs
+# Java, so fetching it is pure disk burn (it had to be deleted by hand during the 2026-10-27
+# reclaim and came straight back).
 scan_image() { # $1=image $2=output json
-    trivy image --format json --severity HIGH,CRITICAL "$1" > "$2"
+    trivy image --format json --severity HIGH,CRITICAL --skip-java-db-update "$1" > "$2"
 }
 
 # Fallback: scan the container's merged filesystem. This reads through the runtime's
@@ -174,7 +177,8 @@ scan_rootfs() { # $1=image $2=output json $3=temp dir
         rm -rf "$3"
         return 1
     fi
-    trivy rootfs --scanners vuln --format json --severity HIGH,CRITICAL "$3" > "$2" || rc=$?
+    trivy rootfs --scanners vuln --format json --severity HIGH,CRITICAL \
+        --skip-java-db-update "$3" > "$2" || rc=$?
     rm -rf "$3"
     return "${rc}"
 }
