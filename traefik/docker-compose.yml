@@ -64,7 +64,7 @@ services:
   # middleware error-pages@file) — never exposed via its own router, so
   # traefik.enable stays false.
   error-pages:
-    image: ghcr.io/tarampampam/error-pages:4.2.4
+    image: ghcr.io/tarampampam/error-pages:4.2.7
     container_name: ${COMPOSE_PROJECT_NAME}.error-pages
     networks:
       - proxy
