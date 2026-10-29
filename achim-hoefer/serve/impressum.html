@@ -76,6 +76,10 @@
   .foot{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;max-width:1280px;margin:0 auto;padding:0 var(--pad);font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
   .foot a:hover{color:var(--orange)}
   .foot .sp{margin-left:auto}
+  @media(max-width:640px){
+    .foot{display:grid;grid-template-columns:auto auto;justify-content:start;gap:7px 18px;align-items:baseline}
+    .foot .sp{grid-column:1 / -1;margin-left:0;color:var(--ink-3)}
+  }
 </style>
 </head>
 <body>
