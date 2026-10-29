@@ -17,6 +17,19 @@ The reverse proxy for every host (servy + codey). Deployed by
 
 ## Rules that bite
 
+* **A service is only routable when it opts in.** `providers.docker.exposedByDefault` is
+  `false` (since 2026-10-29): a compose service without `traefik.enable=true` gets no
+  router at all and answers the catchall 404 while its container looks perfectly healthy.
+  Add the label whenever you add a `traefik.http.routers.*` label. The old `true` setting
+  published anything that merely *acquired* a router label, and logged a
+  `Could not find network named "proxy"` warning per container per config event.
+* **Never publish a port on all interfaces.** Docker writes its own FORWARD/nat rules and
+  bypasses ufw, so `ports: - "8080:8080"` is internet-reachable the moment the container
+  starts. Only this proxy may bind `0.0.0.0` (80/443); everything else publishes to
+  `127.0.0.1` or is reached over the docker network. The deploy fails early if you forget
+  (`roles/user/files/check_published_ports.py`), and the host `DOCKER-USER` firewall
+  (#232) drops anything else arriving on the public interface.
+
 * **Any change to `traefik.yaml`/`dynamic.yaml`/`error-pages.html` needs a
   project recreate, not just a deploy.** The config is a single-file bind
   mount; `git reset --hard` on the target replaces the inode, so the running
