@@ -110,7 +110,7 @@ container instead of pushing every other container's hot pages to swap:
 | `shared.mongo` | 512m | `shared/docker-compose.yml` |
 | `monitor.prometheus` | 768m | `monitor/docker-compose.yml` |
 | `monitor.loki` | 512m | `monitor/docker-compose.yml` |
-| `monitor.grafana` | 384m | `monitor/docker-compose.yml` |
+| `monitor.grafana` | 512m | `monitor/docker-compose.yml` |
 | `traefik.reverse-proxy` | 384m | `traefik/docker-compose.yml` |
 | `leaguesphere.app` | 1g | **other repo** — see below |
 | `leaguesphere.db` | 512m | **other repo** — see below |
@@ -124,12 +124,14 @@ working set in swap. The indexer is the one workload here that genuinely spikes;
 risks killing it mid-scan. It keeps the existing 1536M `deploy.resources.limits.memory`
 and is the single item of the reviewed plan not tightened.
 
-**Deviation: `traefik` got 384m, not the 256m first proposed.** 256m is only ~1.7× the
-measured 152M, and traefik is the one container whose death takes every site on the host
-down at once (Traefik withdraws routers when a container is unhealthy; when *Traefik*
-itself is gone, everything 404s). 384m still bounds a genuine leak at ~2.5× current
-usage, which is what the cap is for — it does not reduce usage, so the looser number
-costs nothing in memory pressure.
+**Deviation: `traefik` got 384m and `monitor.grafana` 512m, not the 256m/384m first
+proposed.** Both are containers whose failure is disproportionate: traefik's death takes
+every site on the host down at once (Traefik withdraws routers when a container is
+unhealthy; when *Traefik* itself is gone, everything 404s), and Grafana carries every
+dashboard and alert rule — losing it is the blind spot this whole change is about. Caps
+do not reduce usage, they only bound a leak, so the looser numbers cost nothing in memory
+pressure. Measured after the change: traefik 149M, Grafana 302M (79 % of the original
+384m proposal, which is why it was raised).
 
 ### D. `vm.swappiness` 60 → 20, and it now survives a reboot
 
@@ -225,34 +227,34 @@ This entry will be updated (or a follow-up written) when that lands.
 
 ## Verification
 
-Pending deployment. Checklist:
+Applied to prod on 2026-10-29 19:00–19:20 CET (`ansible-playbook servyy.yml -i production
+--limit servy.lehel.xyz --tags system.swap.swappiness,user.docker.moodle,user.docker.monitor,user.docker.shared`).
+Results:
 
-```bash
-# A + D
-ssh lehel.xyz 'sysctl vm.swappiness'                     # → vm.swappiness = 20
-ssh lehel.xyz 'cat /etc/sysctl.d/99-swappiness.conf'     # → vm.swappiness = 20
+| Check | Result |
+|---|---|
+| `sysctl vm.swappiness` | **20**, and `/etc/sysctl.d/99-swappiness.conf` contains `vm.swappiness=20` |
+| `moodle.moodle` / `moodle.db` `HostConfig.Memory` | **1610612736** / **1073741824** |
+| pool override inside the container | `pm.max_children = 5`, `pm.max_requests = 500` (file readable, applied) |
+| php `memory_limit` | **256M** |
+| `shared.mongo` / `prometheus` / `loki` / `grafana` | 512M / 768M / 512M / 512M |
+| OOM kills since the restart | **0** |
+| alert rules in Grafana | `system-resources-alerts` 15 active + 1 paused (was 10) — the five new rules are live; `grafana_alerting_rule_evaluation_failures_total` **0** |
+| offd.de | `/login/index.php` → **200** |
+| load average / memory / available | 5.86 → **4.55**, 4.6 → **3.8 GiB** used, 3.1 → **3.8 GiB** available |
+| working set vs limit (all capped containers) | moodle.moodle 4.6 %, moodle.db 17 %, mongo 40 %, prometheus 20 %, loki 24 %, grafana 79 % — none near the new 90 % rule |
 
-# A — the limit and the pool override are both live
-ssh lehel.xyz "docker inspect moodle.moodle --format '{{.HostConfig.Memory}}'"   # → 1610612736
-ssh lehel.xyz 'docker exec moodle.moodle grep -h "^pm" /etc/php83/php-fpm.d/zz-limits.conf'
-ssh lehel.xyz 'docker exec moodle.moodle php -i | grep memory_limit'             # → 256M
+Not applied in this pass: `traefik` (384m). The `user.docker.traefik` tag runs
+`traefik_dashboard_auth`, which pushes the dashboard credentials to Vaultwarden and needs
+an interactive `bw unlock` on the controller — so the traefik cap lands on the next deploy
+that runs that tag (no vault password is available to a non-interactive run). The compose
+change is committed and valid; traefik is currently unlimited at 149M, so nothing is at
+risk by waiting.
 
-# B
-ssh lehel.xyz 'docker inspect shared.mongo monitor.prometheus monitor.loki monitor.grafana traefik.traefik moodle.db --format "{{.Name}} {{.HostConfig.Memory}}"'
-
-# A — the actual goal: no new moodle OOM kills
-ssh lehel.xyz "sudo journalctl -k --since '24 hours ago' | grep -c oom-kill"
-ssh lehel.xyz "docker exec monitor.grafana curl -s -G --data-urlencode \
-  'query=sum by (name) (increase(container_oom_events_total{name=~\".+\"}[1h]))' \
-  http://prometheus:9090/api/v1/query"                   # → all zeros, moodle.moodle absent
-
-# E — rules loaded and evaluating
-curl -s https://monitor.lehel.xyz/api/health | head
-# Grafana → Alerting → Alert rules → Infrastructure → "Container OOM Kill" (Normal, not Error)
-```
-
-Also worth re-reading after ~24 h: `sar -q` load average (target < 4 on 4 cores) and
-`sar -S` swap usage (target: falling, not flat at 2.4 GiB).
+Watch after ~24 h: `sar -q` load average (was 6.04 day average on 4 cores) and `sar -S`
+swap (was flat at 2.4 GiB). Swap went *up* to 2.9 GiB during the restart wave and should
+fall as pages become cold; if it stays above 2.5 GiB with `swappiness=20`, the remaining
+cause is the unlimited LeagueSphere containers, not reclaim policy.
 
 ## Why not just add RAM
 
