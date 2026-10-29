@@ -119,7 +119,7 @@ services:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/ready"]
 
   pushgateway:
-    image: prom/pushgateway:v1.6.2
+    image: prom/pushgateway:v1.11.5
     restart: unless-stopped
     container_name: ${COMPOSE_PROJECT_NAME}.pushgateway
     labels:
