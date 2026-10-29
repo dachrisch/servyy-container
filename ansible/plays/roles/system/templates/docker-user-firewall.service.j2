@@ -1,0 +1,16 @@
+[Unit]
+Description=Host-level filter for Docker-published ports
+Documentation=file:/usr/local/sbin/docker-user-firewall.sh
+# DOCKER-USER only exists once the daemon is up, and Docker recreates the chain on every
+# restart, so this has to run again after each start.
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/docker-user-firewall.sh
+
+[Install]
+WantedBy=multi-user.target

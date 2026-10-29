@@ -42,3 +42,12 @@
   changed_when: true
   become: true
   when: ansible_facts['virtualization_type'] | default('') != 'docker'
+
+# The filter lives in DOCKER-USER, which Docker recreates on every daemon restart, hence the
+# unit is re-run rather than cared for by iptables persistence.
+- name: restart docker edge filter
+  systemd:
+    name: docker-user-firewall.service
+    state: restarted
+  become: true
+  when: ansible_facts['virtualization_type'] | default('') != 'docker'

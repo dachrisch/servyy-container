@@ -40,6 +40,11 @@
     - system.docker.cleanup
     - system.maintenance
 
+- import_tasks: firewall.yml
+  when: with_docker | default(false)
+  tags:
+    - system.firewall
+
 - import_tasks: claude_hub_reaper.yml
   when: >-
     (claude_hub_reaper.enabled | default(true))

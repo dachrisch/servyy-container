@@ -72,6 +72,13 @@ world_readable_paths_by_service:
     - php-fpm-limits.conf         # php-fpm runs as `nobody` in this image
 
 # Docker cleanup (aggressive, daily)
+# Host-level filter for Docker-published ports (system role, tasks/firewall.yml).
+# Docker bypasses ufw, so without this a `ports:` entry in any compose file is internet-facing
+# whenever the provider firewall lets it through. Only these TCP ports stay reachable on the
+# public interface; everything else Docker publishes is dropped at the host.
+edge_filter_enabled: true
+edge_allowed_tcp_ports: [22, 80, 443]
+
 docker_cleanup:
   enabled: true
   # Daily since 2026-10-27: watchtower re-pulls every app image and churns
