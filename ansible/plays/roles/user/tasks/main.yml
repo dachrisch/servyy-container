@@ -48,6 +48,25 @@
     - user.repo
   when: with_containers | default(false)
 
+# Guard against a new internet-facing port. Docker writes its own FORWARD/nat
+# rules and bypasses ufw entirely, so `ports: - "8080:8080"` in any compose file is
+# reachable the moment the container starts — and both repos are public with the
+# compose files now plaintext, so a copy-pasted line is a realistic accident.
+# Only the reverse proxy may bind 0.0.0.0 (80/443); everything else publishes to
+# 127.0.0.1 or not at all. Runs on the target because CI sees git-crypt ciphertext.
+# Found two latent offenders on its first run (node-exporter 9100, cadvisor 8080).
+- name: Check that no compose file publishes a port on every interface
+  ansible.builtin.script:
+    cmd: "{{ role_path }}/files/check_published_ports.py {{ docker.remote_dir }}"
+  register: published_ports_check
+  changed_when: false
+  failed_when: published_ports_check.rc != 0
+  tags:
+    - user.docker.repo
+    - user.docker
+    - user.repo
+  when: with_containers | default(false)
+
 - import_tasks: docker_setup.yml
   tags:
     - user.docker.setup

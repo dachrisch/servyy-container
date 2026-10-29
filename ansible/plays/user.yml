@@ -350,6 +350,13 @@
     - role: docker_service
       vars:
         service_dir: photoprism
+        env_templates:
+          # The DB/admin secrets live here, not inline in the compose file: both
+          # repos are public and the compose files are being made readable
+          # (Renovate cannot see git-crypt ciphertext, so image tags in them were
+          # never bumped automatically). `*.env` stays encrypted.
+          - src: photoprism/photoprism.env.j2
+            dest: photoprism.env
       when: "'photoprism' in (services | default([]))"
       tags: [user.docker, user.docker.photoprism]
 
