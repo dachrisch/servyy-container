@@ -1,0 +1,47 @@
+---
+# Host-level filter for Docker-published ports. See history/2026-10-29_exposure-triage.md.
+#
+# Docker bypasses ufw: it writes its own FORWARD rules, so anything in a compose `ports:`
+# entry is reachable from outside unless the provider blocks it. This adds a HOST-EDGE chain
+# (hooked from DOCKER-USER) that allows only {22,80,443} in on the public interface.
+
+- name: Deploy the Docker edge filter script
+  template:
+    src: docker-user-firewall.sh.j2
+    dest: /usr/local/sbin/docker-user-firewall.sh
+    mode: '0700'
+    owner: root
+    group: root
+  become: true
+  notify: restart docker edge filter
+  when: edge_filter_enabled | default(true)
+  tags:
+    - system.firewall
+    - system.firewall.edge
+
+- name: Deploy the Docker edge filter unit
+  template:
+    src: docker-user-firewall.service.j2
+    dest: /etc/systemd/system/docker-user-firewall.service
+    mode: '0644'
+    owner: root
+    group: root
+  become: true
+  notify: reload systemd
+  when: edge_filter_enabled | default(true)
+  tags:
+    - system.firewall
+    - system.firewall.edge
+
+- name: Enable and start the Docker edge filter
+  systemd:
+    name: docker-user-firewall.service
+    enabled: true
+    state: started
+  become: true
+  when:
+    - edge_filter_enabled | default(true)
+    - ansible_facts['virtualization_type'] | default('') != 'docker'
+  tags:
+    - system.firewall
+    - system.firewall.edge

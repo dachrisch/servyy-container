@@ -1,0 +1,50 @@
+#!/bin/bash
+# Managed by Ansible - host-level filter for Docker-published ports.
+#
+# Docker writes its own FORWARD and nat rules and bypasses ufw entirely, so a `ports:` entry
+# in any compose file is reachable from the internet unless something upstream blocks it. On
+# this host that upstream was only the provider firewall, with ufw inactive and DOCKER-USER
+# empty: Traefik's metrics were published on 0.0.0.0:8082 and Postfix on 0.0.0.0:25, both
+# filtered by nothing but luck. This gives the host its own say.
+#
+# Only traffic arriving on the public interface is filtered. Container egress and traffic
+# between Docker networks arrive on br-*/docker0 and fall straight through, so nothing
+# internal breaks.
+set -euo pipefail
+
+CHAIN="HOST-EDGE"
+IFACE="$(ip route show default | awk '{print $5; exit}')"
+PORTS="{{ edge_allowed_tcp_ports | default([22, 80, 443]) | join(',') }}"
+
+if [[ -z "${IFACE}" ]]; then
+    echo "ERROR: no default route found, refusing to guess the public interface" >&2
+    exit 1
+fi
+
+apply_family() { # $1 = iptables command
+    local cmd="$1"
+
+    # A missing DOCKER-USER chain means Docker is not up yet; failing loudly is better than
+    # silently filtering nothing.
+    if ! "${cmd}" -n -L DOCKER-USER >/dev/null 2>&1; then
+        echo "ERROR: ${cmd} DOCKER-USER chain is missing (docker not running?)" >&2
+        return 1
+    fi
+
+    # Own chain, hooked from DOCKER-USER, so we never flush rules another tool put there.
+    "${cmd}" -N "${CHAIN}" 2>/dev/null || true
+    "${cmd}" -F "${CHAIN}"
+    "${cmd}" -A "${CHAIN}" -i "${IFACE}" -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
+    "${cmd}" -A "${CHAIN}" -i "${IFACE}" -p tcp -m multiport --dports "${PORTS}" -j RETURN
+    "${cmd}" -A "${CHAIN}" -i "${IFACE}" -j DROP
+    "${cmd}" -C DOCKER-USER -j "${CHAIN}" 2>/dev/null || "${cmd}" -I DOCKER-USER 1 -j "${CHAIN}"
+}
+
+apply_family iptables
+# IPv6 is published the same way ([::]:443 via docker-proxy); filter it too when Docker has
+# an ip6tables DOCKER-USER chain.
+if command -v ip6tables >/dev/null 2>&1 && ip6tables -n -L DOCKER-USER >/dev/null 2>&1; then
+    apply_family ip6tables
+fi
+
+echo "edge filter active on ${IFACE}: allow tcp/${PORTS}, drop the rest of DOCKER-USER"
