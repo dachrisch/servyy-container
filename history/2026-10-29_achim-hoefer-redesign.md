@@ -48,6 +48,11 @@ Beleg.
 - Mobile: Rail und Plankopf-Zeile ausgeblendet, Navigation in der Leiste,
   CTA als „Anfrage“, Grundriss skaliert, Register und Referenzen stapeln.
 
+Die Plankopf-Felder enthalten echte Angaben (Ansprechpartner, Telefon, E-Mail,
+Adresse, Leistungen, Qualifikation, Kammer, Impressum). Attrappen aus dem
+Entwurf — „Freigabe / Unterschrift“, „Datum“, „Plan-Nr.“, „Bauherr“ und der
+Maßstabsvermerk auf Nicht-Plan-Blättern — sind entfernt.
+
 ## Beispielinhalte
 
 Mängelbericht (`BE-2026-014`, vier Feststellungen) und Grundriss sind
