@@ -76,6 +76,13 @@ prod:
         moodle_service_host: m.leaguesphere.app
     codey.lehel.xyz:
         domain: lehel.xyz
+        # codey also uses domain `lehel.xyz` (its public names are explicit records:
+        # code.lehel.xyz, h.code.lehel.xyz), so the traefik role's default would give
+        # codey's dashboard the same host as servy's. The `*.lehel.xyz` wildcard
+        # resolves every such name to servy, so codey's router was unreachable and
+        # duplicated servy's. Record created 2026-10-29: traefik.code CNAME
+        # codey.lehel.xyz.
+        traefik_service_host: traefik.code.lehel.xyz
         with_docker: true
         with_containers: true
         has_10g_volume: false

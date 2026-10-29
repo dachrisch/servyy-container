@@ -315,6 +315,13 @@
     - role: docker_service
       vars:
         service_dir: traefik
+        # Per-host public dashboard name. The default (`{{ service_dir }}.{{ domain }}`)
+        # is only right on servy: codey also runs with domain `lehel.xyz`, so it would
+        # claim `traefik.lehel.xyz` too — a name the `*.lehel.xyz` wildcard already
+        # routes to servy, leaving codey's dashboard unreachable and its router
+        # competing for a host it never serves (measured 2026-10-29). codey sets
+        # `traefik_service_host: traefik.code.lehel.xyz` in ansible/production.
+        service_host: "{{ traefik_service_host | default(service_dir ~ '.' ~ domain) }}"
         env_templates:
           - src: docker.env.j2
             dest: .env
@@ -831,6 +838,41 @@
       when: prune_legacy_datastore_images | default(false)
       tags:
         - user.docker
+
+    # Traefik 3.6.19 turned "basicAuth with an empty user list" into an ERROR:
+    # the middleware is dropped, every router referencing `traefik-auth@file` is
+    # unmounted, and the dashboard answers 404 instead of 401 with only a log
+    # line — the exact silent failure to watch for here, because the users file
+    # comes from a gitignored passphrase seed that a fresh checkout or a
+    # half-finished render can leave empty. Verified on both hosts 2026-10-29.
+    - name: Read the rendered Traefik dashboard users file
+      ansible.builtin.slurp:
+        src: "{{ (docker.remote_dir, 'traefik', 'dashboard-auth.htpasswd') | path_join }}"
+      register: traefik_dashboard_users_file
+      when: "'traefik' in (services | default([]))"
+      tags:
+        - user.docker
+        - user.docker.traefik
+
+    - name: Assert the Traefik dashboard users file holds exactly one htpasswd entry
+      ansible.builtin.assert:
+        that:
+          - (traefik_dashboard_users_file.content | b64decode).splitlines()
+            | reject('match', '^\s*(#.*)?$') | select('match', '^[^:\s]+:\$[^:\s]+$')
+            | list | length == 1
+        fail_msg: >-
+          traefik/dashboard-auth.htpasswd on {{ inventory_hostname }} does not
+          contain exactly one `username:hash` line. Traefik 3.6.19+ treats an
+          empty users list as an error and unmounts the dashboard router (404
+          instead of 401), so https://{{ traefik_service_host | default('traefik.' ~ domain) }}
+          is unreachable until this is fixed. Check that
+          plays/vars/.traefik_dashboard_password exists on the controller and
+          re-run with --tags user.docker.traefik.
+        quiet: true
+      when: "'traefik' in (services | default([]))"
+      tags:
+        - user.docker
+        - user.docker.traefik
 
 # Configure Portainer RBAC and register the slave agent endpoint via the API.
 # Opt-in via portainer_rbac_enabled (does not run on routine deploys). See
