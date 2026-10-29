@@ -59,12 +59,13 @@ services:
     mem_limit: 512m
     container_name: ${COMPOSE_PROJECT_NAME}.loki
     labels:
-      - traefik.enable=true
-      - traefik.http.routers.loki.tls=true
-      - traefik.http.routers.loki.rule=Host(`${SERVICE_HOST}`) && PathPrefix(`/loki`)
-      - traefik.http.routers.loki.tls.certresolver=letsencryptdnsresolver
-      - traefik.http.routers.loki.service=loki
-      - traefik.http.services.loki.loadbalancer.server.port=3100
+      # Deliberately NOT routed through Traefik any more. Loki was published at
+      # `monitor.lehel.xyz/loki` (TLS router with certresolver) even though Grafana
+      # queries it over the docker network (`http://loki:3100`), and Traefik's
+      # per-entrypoint router split also produced a `web-loki` router on the public
+      # :80. Since Loki has no real auth (only the tenant header), that was pure
+      # exposure surface. Prometheus scrapes `loki:3100` over the network too.
+      - traefik.enable=false
       - com.centurylinklabs.watchtower.scope=prod
     volumes:
       - ./loki.yml:/etc/loki/local-config.yaml
