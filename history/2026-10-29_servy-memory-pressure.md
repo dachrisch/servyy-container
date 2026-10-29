@@ -111,7 +111,7 @@ container instead of pushing every other container's hot pages to swap:
 | `monitor.prometheus` | 768m | `monitor/docker-compose.yml` |
 | `monitor.loki` | 512m | `monitor/docker-compose.yml` |
 | `monitor.grafana` | 384m | `monitor/docker-compose.yml` |
-| `traefik.reverse-proxy` | 256m | `traefik/docker-compose.yml` |
+| `traefik.reverse-proxy` | 384m | `traefik/docker-compose.yml` |
 | `leaguesphere.app` | 1g | **other repo** — see below |
 | `leaguesphere.db` | 512m | **other repo** — see below |
 | stage / demo apps | 512m each | **other repo** — see below |
@@ -123,6 +123,13 @@ memory to process large files", and the container currently keeps 63 MiB of a 52
 working set in swap. The indexer is the one workload here that genuinely spikes; a 1g cap
 risks killing it mid-scan. It keeps the existing 1536M `deploy.resources.limits.memory`
 and is the single item of the reviewed plan not tightened.
+
+**Deviation: `traefik` got 384m, not the 256m first proposed.** 256m is only ~1.7× the
+measured 152M, and traefik is the one container whose death takes every site on the host
+down at once (Traefik withdraws routers when a container is unhealthy; when *Traefik*
+itself is gone, everything 404s). 384m still bounds a genuine leak at ~2.5× current
+usage, which is what the cap is for — it does not reduce usage, so the looser number
+costs nothing in memory pressure.
 
 ### D. `vm.swappiness` 60 → 20, and it now survives a reboot
 
@@ -170,6 +177,37 @@ Notes on the tuning, all measured against the live Prometheus before being commi
   evaluates `moodle.moodle`, `moodle.db`, `photoprism.photoprism` and the bnb-office pair.
 - All five use the existing `prometheus` datasource uid and route through
   `notification-policies.yml` (critical → `email-critical`, high/medium → `email-admin`).
+
+## What servyy-test caught before prod
+
+Deploying the branch to `servyy-test.lxd` first (repo policy) paid for itself immediately:
+
+1. **php-fpm would not start at all.** The bind-mounted
+   `moodle/php-fpm-limits.conf` lands in the deploy checkout as `0660 cda:cda` (the
+   checkout runs under umask 007), but the image runs as `nobody`. php-fpm could not open
+   the pool file and exited, so nginx answered **502** with no `php-fpm` process running —
+   the test site was down, not merely mis-tuned. Fixed by declaring the file in
+   `world_readable_paths_by_service` (`ansible/plays/vars/default.yml`) and passing
+   `world_readable_paths` in the moodle role (`ansible/plays/user.yml`), the same `a+rX`
+   mechanism the monitor stack and error-pages already rely on.
+2. **The alert rules were checked against a real Grafana 13.3.0** (the prod image), not
+   just `yaml.safe_load`: a throwaway container with the provisioning files mounted
+   served all **42 rules** via `/api/v1/provisioning/alert-rules`, the five new ones
+   present with the intended severity/`for`/condition and no provisioning error. The
+   first attempt failed for an unrelated, already-known reason — the raw Jinja text in
+   `datasources.yml` / `notification-policies.yml` (see
+   [`2026-10-29_monitor-restart-policy.md`](2026-10-29_monitor-restart-policy.md)), which
+   is why the validation mount used a minimal stand-in datasource.
+
+Post-fix measurement on servyy-test: `moodle.moodle` and `moodle.db` healthy at
+`HostConfig.Memory` 1.5G/1G, `/etc/php83/php-fpm.d/zz-limits.conf` readable and applied
+(`pm.max_children = 5`), php `memory_limit = 256M`, `shared.mongo` 512M, and 8
+concurrent `/login/index.php` requests all returned **200** while php-fpm held exactly
+**5** workers — the cap works under concurrency.
+
+Not validated on servyy-test: `vm.swappiness` (the swap task is gated on
+`create_swap | default(false)`, which the test host does not set) and the monitor stack
+(not enabled there). Those are verified on prod in the checklist below.
 
 ## Not in this repository — LeagueSphere worker count (C) and its limits
 
