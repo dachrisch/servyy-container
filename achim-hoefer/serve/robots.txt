@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://xn--hfer-architekten-mwb.de/sitemap.xml

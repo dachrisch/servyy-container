@@ -53,6 +53,14 @@ Adresse, Leistungen, Qualifikation, Kammer, Impressum). Attrappen aus dem
 Entwurf — „Freigabe / Unterschrift“, „Datum“, „Plan-Nr.“, „Bauherr“ und der
 Maßstabsvermerk auf Nicht-Plan-Blättern — sind entfernt.
 
+## Crawler und Social Preview
+
+- `serve/llms.txt` — Kurzprofil, Leistungen, Referenzen, Kontakt im llms.txt-Format.
+- `serve/robots.txt` — alles erlaubt, Verweis auf das Sitemap.
+- `serve/sitemap.xml` — zwei URLs (Startseite, Impressum).
+- `serve/public/og-image.png` (1200×630) plus vollständige OG-/Twitter-Tags und
+  Canonical auf beiden Seiten. Bildquelle: `achim-hoefer/og-image.html`.
+
 ## Beispielinhalte
 
 Mängelbericht (`BE-2026-014`, vier Feststellungen) und Grundriss sind
