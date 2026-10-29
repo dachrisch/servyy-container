@@ -1,44 +1,158 @@
-- name: Check if atuin is installed
-  shell: "atuin -V"
-  register: autin_version
-  failed_when: false
+---
+# atuin: keep the binary current, and never let the login run unattended.
+#
+# The role used to install atuin only when `atuin -V` failed, so each host froze at whatever
+# version was installed first (servy 18.16.1, codey 18.20.1 while upstream shipped 18.24.3).
+# Nothing else upgrades them: these are cargo-dist installs under ~/.atuin/bin, the shipped
+# atuin-update helper is no longer published upstream, and update_check only prints a notice.
+#
+# The unconditional `atuin login` was worse than stale: since 18.24 it turns a legacy sync
+# session into a Hub auth migration against the live API and aborts the play with "invalid
+# credentials". That migration is a deliberate, interactive step, so the login is gated on
+# "there is no session yet".
+
+# ansible_facts['user_dir'] is whoever facts were gathered as — in this play set that is root,
+# not the shell user the role configures. Ask passwd for the real home.
+- name: Look up the atuin user's home directory
+  ansible.builtin.command:
+    cmd: "getent passwd {{ create_user }}"
+  register: atuin_passwd
   changed_when: false
 
-- block:
-    - name: Create temporary file for install script
-      tempfile:
+- name: Record the atuin home directory
+  ansible.builtin.set_fact:
+    atuin_home: "{{ atuin_passwd.stdout.split(':')[5] }}"
+
+- name: Decide which atuin version is wanted
+  ansible.builtin.set_fact:
+    atuin_wanted: "{{ atuin_version | default('latest') | string | trim }}"
+
+- name: Read the installed atuin version
+  ansible.builtin.command:
+    cmd: "{{ (atuin_home, '.atuin/bin/atuin') | path_join }} --version"
+  register: atuin_installed
+  changed_when: false
+  failed_when: false
+
+# A 403 (rate limit) or an offline host must warn and keep the current binary, never fail the
+# play — a shell-history tool is not worth a failed provision.
+- name: Ask GitHub for the latest atuin release
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/atuinsh/atuin/releases/latest
+    return_content: true
+    timeout: 20
+  register: atuin_release
+  changed_when: false
+  failed_when: false
+  when: atuin_wanted == 'latest'
+
+- name: Work out which version to install
+  ansible.builtin.set_fact:
+    atuin_available: >-
+      {{ (atuin_release.json.tag_name | default('')) | regex_replace('^v', '')
+         if (atuin_wanted == 'latest' and (atuin_release.status | default(0)) == 200)
+         else (atuin_wanted if atuin_wanted != 'latest' else '') }}
+    atuin_current: >-
+      {{ (atuin_installed.stdout | default(''))
+         | regex_findall('([0-9]+\.[0-9]+\.[0-9]+)') | first | default('', true) }}
+
+- name: Warn when the wanted atuin version could not be resolved
+  ansible.builtin.debug:
+    msg: >-
+      Could not resolve the latest atuin release
+      ({{ 'HTTP ' ~ atuin_release.status if atuin_release.status is defined else 'no request' }});
+      keeping the installed version {{ atuin_current | default('') or 'unknown' }}.
+
+  when:
+    - atuin_available | length == 0
+
+- name: Install atuin {{ atuin_available }}
+  when:
+    - atuin_available | length > 0
+    - atuin_current != atuin_available
+  block:
+    - name: Create a temporary file for the installer
+      ansible.builtin.tempfile:
         state: file
-        suffix: temp
-      register: temp_install_file
+        suffix: atuin-installer.sh
+      register: atuin_installer
 
-    - name: Downloading atuin install script
-      get_url:
-        url: "{{ atuin.url }}"
-        dest: "{{ temp_install_file.path }}"
-        force: true # overwrite tempfile
+    - name: Download the atuin installer for {{ atuin_available }}
+      ansible.builtin.get_url:
+        url: >-
+          https://github.com/atuinsh/atuin/releases/download/v{{ atuin_available
+          }}/atuin-installer.sh
+        dest: "{{ atuin_installer.path }}"
+        mode: '0700'
+        force: true
 
-    - name: Run install script
-      shell: "bash {{ temp_install_file.path }}"
+    # --no-modify-path keeps the installer's hands off .bashrc/.profile, which already source
+    # ~/.atuin/bin/env. The env var is the modern spelling (the flag is deprecated and only
+    # logs a notice in the current installer); sending both keeps pinned older releases working.
+    - name: Run the atuin installer
+      ansible.builtin.command:
+        argv:
+          - bash
+          - "{{ atuin_installer.path }}"
+          - --no-modify-path
+        chdir: "{{ atuin_home }}"
+      environment:
+        ATUIN_NO_MODIFY_PATH: "1"
 
-    # default install (without cargo) will be in .atuin without linking
-    - name: Link executable
-      become_user: root
-      file:
-        src: "{{ ansible_facts['user_dir'] }}/.atuin/bin/atuin"
-        dest: "/usr/bin/atuin"
-        state: link
-  when: autin_version.rc != 0
+    - name: Remove the atuin installer
+      ansible.builtin.file:
+        path: "{{ atuin_installer.path }}"
+        state: absent
 
-- name: Login [{{ atuin.username }}]
-  shell: "atuin login -u {{ atuin.username }} -p {{ atuin.password }} -k '{{ atuin.key }}'"
+# The cargo-dist install lands in ~/.atuin/bin without linking it into PATH for non-login
+# shells, so /usr/bin/atuin stays a symlink to the user's copy. Idempotent: a correct link is
+# a no-op.
+- name: Link the atuin binary into /usr/bin
+  become_user: root
+  ansible.builtin.file:
+    src: "{{ (atuin_home, '.atuin/bin/atuin') | path_join }}"
+    dest: /usr/bin/atuin
+    state: link
+
+# The self-updater asset is no longer published upstream; the leftovers on older installs are
+# orphaned binaries that nothing schedules.
+- name: Remove the orphaned atuin-update helper
+  ansible.builtin.file:
+    path: "{{ (atuin_home, '.atuin/bin/atuin-update') | path_join }}"
+    state: absent
+
+- name: Check whether atuin already has a session
+  ansible.builtin.command:
+    cmd: atuin status
+  register: atuin_status
+  changed_when: false
+  failed_when: false
+
+# Logging in is only meaningful on a host without a session. argv (not a shell string) keeps the
+# vaulted values out of shell quoting entirely; trim drops the trailing newline a YAML block
+# scalar leaves behind.
+- name: Log in to atuin [{{ atuin.username }}]
+  ansible.builtin.command:
+    argv:
+      - atuin
+      - login
+      - -u
+      - "{{ atuin.username | trim }}"
+      - -p
+      - "{{ atuin.password | trim }}"
+      - -k
+      - "{{ atuin.key | trim }}"
   no_log: true
   register: login
-  changed_when: '"already logged in" not in (login.stderr | lower) and "already logged in" not in (login.stdout | lower)'
-  failed_when: login.rc != 0 and ("already logged in" not in (login.stderr | lower) and "already logged in" not in (login.stdout | lower))
+  changed_when: true
+  when: "atuin_status.stdout is not search('(?m)^Username: ')"
 
+# Only meaningful right after a fresh login; `login` is skipped (and therefore unchanged) on a
+# host that already has a session.
 - name: Sync
-  shell: "atuin sync"
-  when: login.changed
+  ansible.builtin.command:
+    cmd: atuin sync
+  when: login is changed
 
 - name: Set atuin filenames
   set_fact:
@@ -46,24 +160,24 @@
 
 - name: Set auto-sync
   lineinfile:
-    path: "{{ (ansible_facts['user_dir'], config_dir) | path_join }}"
+    path: "{{ (atuin_home, config_dir) | path_join }}"
     search_string: 'auto_sync'
     line: 'auto_sync = true'
 
 - name: Set update-check
   lineinfile:
-    path: "{{ (ansible_facts['user_dir'], config_dir) | path_join }}"
+    path: "{{ (atuin_home, config_dir) | path_join }}"
     search_string: 'update_check'
     line: 'update_check = true'
 
 - name: Set filter mode for shell up-key binding
   lineinfile:
-    path: "{{ (ansible_facts['user_dir'], config_dir) | path_join }}"
+    path: "{{ (atuin_home, config_dir) | path_join }}"
     search_string: 'filter_mode_shell_up_key_binding'
     line: 'filter_mode_shell_up_key_binding = "directory"'
 
 - name: Set enter_accept to false
   lineinfile:
-    path: "{{ (ansible_facts['user_dir'], config_dir) | path_join }}"
+    path: "{{ (atuin_home, config_dir) | path_join }}"
     search_string: 'enter_accept'
     line: 'enter_accept = false'
