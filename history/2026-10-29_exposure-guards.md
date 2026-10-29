@@ -116,7 +116,29 @@ Two operational notes from the rollout:
 
 ## Then, and only then
 
-Remove the `docker-compose.yml` encryption rule from `.gitattributes` (and the matching
-requirement in `.github/scripts/validate-git-crypt.sh`), so the compose files become
-readable — which is what lets the already-installed Renovate app finally bump the image
-tags. `*.yaml` (config), `*.env`, `*.conf`, `secrets.*` and `secret_*` stay encrypted.
+**Done** (`2e08af0`), after the table above came back clean.
+
+* `.gitattributes`: the `docker-compose.yml filter=git-crypt` rule is gone, replaced by a
+  comment block listing the three preconditions (no reachable internals, no secrets in a
+  compose file, guards that keep accidents unreachable) so the next person doesn't
+  re-encrypt them out of habit.
+* `.github/scripts/validate-git-crypt.sh`: no longer *requires* that rule — and now
+  **fails** if a compose file is encrypted again (with a message naming Renovate as the
+  reason).
+* `CLAUDE.md`'s git-crypt section: `docker-compose.yml` removed from the encrypted
+  patterns, plus the new hard rule — **never inline a secret in a compose file**; secrets
+  go to a `*.env` rendered from `plays/vars/secrets.yml`.
+
+Proof, through the GitHub API (i.e. exactly what a bot sees):
+
+```
+$ gh api …/contents/monitor/docker-compose.yml | base64 -d | grep image:
+      image: grafana/grafana:latest        ← visible to Renovate now
+$ gh api …/contents/traefik/traefik.yaml  | base64 -d | head -c 9
+GITCRYPT                                    ← config stays encrypted
+```
+
+CI on the commit that did it: **all 24 jobs green**, including
+`Validate git-crypt Encryption` and every molecule scenario. No deploy was involved —
+hosts already had these files decrypted in their working trees; the next pull simply
+replaces the ciphertext blobs with the same plaintext.
