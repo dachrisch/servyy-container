@@ -74,10 +74,17 @@ The reverse proxy for every host (servy + codey). Deployed by
 
 ## Upgrading Traefik
 
-The image tag is pinned in `docker-compose.yml` and **nothing bumps it automatically**
-(there is no Renovate runner in this repo despite `renovate.json`), so check
-`https://api.github.com/repos/traefik/traefik/releases` by hand and read
-`docs/content/migrate/v3.md` on the target branch before changing the tag. Full worked
+The tag floats on the **minor line** (`traefik:3.7` since 2026-10-30), so patch
+releases land on their own: watchtower `scope=prod` re-pulls it within ~2 h on both
+hosts. That is deliberate — the previous pin (`3.6.1`, then `3.7.16`) sat through
+patch releases that were never applied.
+
+Moving to a **new minor or major** is still a manual job: read
+`docs/content/migrate/v3.md` on the target branch first, and bump the tag in
+`docker-compose.yml` yourself. Renovate does read these compose files now that they are
+plaintext, and it opens the PRs (minor/patch automerge per `renovate.json`), so the
+signal exists — but a Traefik minor bump must not be merged blind, because the static
+config is parsed strictly and an unknown field is a fatal startup error. Full worked
 example: `history/2026-10-29_traefik-3.7-upgrade.md` (3.6.1 → 3.7.16).
 
 1. **Rehearse the config first, off-host.** Run the repo's real `traefik.yaml` +
