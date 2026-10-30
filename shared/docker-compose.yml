@@ -57,7 +57,7 @@ services:
   db:
     # Firefly III postgres. Bind mount keeps the EXISTING finance path:
     # zero data movement, adopted on prod, created fresh on test.
-    image: postgres:15
+    image: postgres:18
     container_name: ${COMPOSE_PROJECT_NAME}.db
     restart: unless-stopped
     env_file:
