@@ -386,12 +386,7 @@
   .foot-nav .m{color:var(--ink-2);opacity:.6;font-size:9px}
   .spec-row h3 a,.spec-row li a{border-bottom:1px solid var(--rule-soft)}
   .spec-row h3 a:hover,.spec-row li a:hover{color:var(--orange);border-color:var(--orange)}
-  .spec-links{margin-top:clamp(24px,3vw,36px);border-top:1px solid var(--rule);padding-top:16px}
-  .spec-links .m{display:block;margin-bottom:12px}
-  .spec-links ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
-  .spec-links a{display:flex;justify-content:space-between;align-items:baseline;gap:10px;border:1px solid var(--rule-soft);padding:12px 14px;font-family:var(--sans);font-size:14px;transition:border-color .2s}
-  .spec-links a:hover{border-color:var(--orange);color:var(--orange)}
-  .spec-links a span{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
+  .spec-row h3 a::after{content:" →";color:var(--orange);font-size:.85em;letter-spacing:0}
   .foot{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
   .foot a:hover{color:var(--orange)}
   .foot .sp{margin-left:auto}
@@ -801,16 +796,6 @@
           <h2>Leistungsverzeichnis</h2>
           <span class="meta">4 Positionen</span>
           <span class="meta">LPH 1 – 9 HOAI</span>
-        </div>
-
-        <div class="spec-links">
-          <span class="m">Leistungen im Detail</span>
-          <ul>
-            <li><a href="/brandschutzkonzept.html">Brandschutzkonzept <span>Neubau &amp; Bestand</span></a></li>
-            <li><a href="/maengelbericht-brandschutz.html">Begehung &amp; Mängelbericht <span>Bestand</span></a></li>
-            <li><a href="/flucht-und-rettungsplaene.html">Flucht- &amp; Rettungspläne <span>Kennzeichnung</span></a></li>
-            <li><a href="/wertermittlung.html">Wertermittlung <span>Wert</span></a></li>
-          </ul>
         </div>
 
         <div class="spec">
