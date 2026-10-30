@@ -23,6 +23,16 @@ Ausgeliefert von `nginx:stable` auf `servy.lehel.xyz`, öffentlich unter
   Schriften werden lokal ausgeliefert (DSGVO: LG München I, 3 O 17493/20) und
   über `@font-face` im `<style>` von `index.html` und `impressum.html`
   eingebunden. Neue Schnitte nur mit passendem `unicode-range` ergänzen.
+  **Diese Dateien werden `immutable` für ein Jahr ausgeliefert** (siehe
+  `nginx/default.conf`): wird ein Schnitt ersetzt, muss der Dateiname mit
+  wechseln (`…-latin-2.woff2`), sonst sehen Bestandsbesucher ein Jahr lang die
+  alte Datei.
+- `nginx/default.conf` — ersetzt die Konfiguration des `nginx:stable`-Images und
+  setzt `Cache-Control` (HTML revalidiert, Schriften ein Jahr `immutable`,
+  `plan.css` eine Stunde, Bilder eine Woche, Crawler-Dateien eine Stunde) sowie
+  gzip für CSS/JSON/SVG. Per Volume in `docker-compose.yml` gemountet. Vor
+  Änderungen die Syntax gegen das echte Image prüfen:
+  `docker run --rm -v "$PWD/nginx/default.conf":/etc/nginx/conf.d/default.conf:ro nginx:stable nginx -t`
 - `serve/index.html` enthält am Ende des `<head>` ein JSON-LD-`@graph`
   (`ProfessionalService`, `Person`, `WebSite`). Adresse, Telefon, Kammer und
   Qualifikation darin müssen zum sichtbaren Inhalt passen — Google verwirft
