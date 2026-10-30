@@ -7,7 +7,7 @@ services:
       - traefik.http.routers.${SERVICE_NAME}.tls=true
       - traefik.http.routers.${SERVICE_NAME}.rule=Host(`${SERVICE_HOST}`)
       - traefik.http.routers.${SERVICE_NAME}.tls.certresolver=letsencryptdnsresolver
-      - traefik.http.routers.${SERVICE_NAME}.middlewares=crawler-ratelimit@file,error-pages-404@file
+      - traefik.http.routers.${SERVICE_NAME}.middlewares=crawler-ratelimit@file,error-pages-404@file,achim-alias-noindex@docker
       - traefik.http.routers.${SERVICE_NAME}_prod.tls=true
       - traefik.http.routers.${SERVICE_NAME}_prod.rule=Host(`xn--hfer-architekten-mwb.de`)
       # Stock nginx answers 404 with a bare page; keep the branded one for
@@ -32,6 +32,14 @@ services:
       - traefik.http.routers.${SERVICE_NAME}_prod.tls.certresolver=letsencryptdnsresolver
       - traefik.http.routers.${SERVICE_NAME}_local_qualified.rule=Host(`${SERVICE_NAME}.${LOCAL_HOSTNAME}`)
       - traefik.http.routers.${SERVICE_NAME}_local_qualified.entrypoints=web
+      - traefik.http.routers.${SERVICE_NAME}_local_qualified.middlewares=achim-alias-noindex@docker
+      # The .lehel.xyz alias serves the same content as the public domain.
+      # Its canonical points at the public domain, but an indexable second host
+      # is still a liability, and a 301 would defeat using it as a preview.
+      # So: keep it reachable for humans, tell crawlers to stay out.
+      # Only the ${SERVICE_NAME} router (Host achim-hoefer.lehel.xyz) carries
+      # this; the _prod router keeps serving the public domain untouched.
+      - traefik.http.middlewares.achim-alias-noindex.headers.customresponseheaders.X-Robots-Tag=noindex, nofollow
       - com.centurylinklabs.watchtower.scope=prod
     volumes:
       - ./serve:/usr/share/nginx/html
