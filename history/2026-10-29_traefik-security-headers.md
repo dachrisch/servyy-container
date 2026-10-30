@@ -1,10 +1,10 @@
 # Baseline security headers at the Traefik entrypoints
 
-**Date:** 2026-10-29
-**Status:** ⏳ Drafted and committed, **not deployed** — it rides along with the pending
-Traefik 3.7.16 rollout (`2026-10-29_traefik-3.7-upgrade.md`), which needs the same
-`--force-recreate`; the operator-local `plays/vars/.traefik_dashboard_password` seed is absent in
-this checkout, so `tags=user.docker.traefik` asserts out (see `2026-10-29_exposure-triage.md` §2)
+**Date:** 2026-10-29 (deployed 2026-10-30)
+**Status:** ✅ **Deployed** — merged as PR #244 and rolled out to `servyy-test.lxd` (rehearsal),
+`servy.lehel.xyz` and `codey.lehel.xyz` on 2026-10-30. It shipped *after* the Traefik 3.7.16
+upgrade (`2026-10-29_traefik-3.7-upgrade.md`) had already landed on both hosts, so it got its own
+`--force-recreate` rather than riding along with that rollout.
 **Relates to:** `2026-10-29_traefik-3.7-upgrade.md`, `2026-10-29_exposure-triage.md`,
 `2026-10-06_traefik-branded-error-pages.md`
 
@@ -126,10 +126,46 @@ Done here:
 - `git-crypt` round-trip: both files are `*.yaml` → encrypted; the staged blobs are ciphertext
   (`\0GITCRYPT\0`) and `git cat-file --filters :<path>` reproduces the edited plaintext byte for byte
 
-NOT done — no Traefik runtime is reachable from this container (no docker CLI, no bash):
+NOT done at authoring time (no Traefik runtime was reachable from that container): the
+`--force-recreate` and the real `curl -I` per host. Both are done below.
 
-- `docker compose up -d --force-recreate` and a real `curl -I` per host
-- `docker logs traefik.traefik | grep -i error` to confirm `security-headers@file` resolved
+## Deployment (2026-10-30)
+
+1. **PR #244** merged to `master` as `649cf69` (merge commit, all 28 CI checks green).
+2. **Rehearsal on `servyy-test.lxd`** — that box runs its own `traefik` compose project outside the
+   `testing` inventory, so the rehearsal is the production procedure verbatim: `git pull` +
+   `docker compose up -d --force-recreate` in `~/servyy-container/traefik`. Result: `healthy`, zero
+   `level=error` lines, headers present on both `web` and `websecure` (HSTS only on TLS, as designed
+   by `forceSTSHeader: false`), branded catchall 404 still carrying
+   `x-error-page: traefik-error-page-v1`.
+3. **Production** — `./servyy.sh --tags "user.docker.repo,user.docker.traefik"` on `servy` and
+   `codey` (repo sync **must** be in the tag list: the config only exists on the host after
+   `user.docker.repo` runs, and `user.docker.traefik` alone leaves the checkout on the old commit),
+   then `docker compose up -d --force-recreate` in `~/servyy-container/traefik` on **each** host, per
+   `traefik/AGENTS.md`. Both came back `running healthy` on `traefik:3.7.16` with zero
+   `level=error` lines; the dashboard routers still answer `401 WWW-Authenticate: Basic`.
+
+Post-deploy sample (public URLs, through real DNS):
+
+| host | status | HSTS | nosniff | referrer-policy | XFO | Server / X-Powered-By |
+|---|---|---|---|---|---|---|
+| git.lehel.xyz | 200 | 1y +subDomains | ✅ | no-referrer | DENY | **gone** (was `nginx/1.14.0`) |
+| m.leaguesphere.app | 200 | 1y +subDomains | ✅ | no-referrer | DENY | **gone** (was `nginx` + `PHP/8.3.36`) |
+| leaguesphere.app | 301 | 1y +subDomains | ✅ | no-referrer | DENY | **gone** |
+| photoprism.lehel.xyz | 307 | 1y +subDomains | ✅ | no-referrer | DENY | **gone** |
+| finance.lehel.xyz | 302 | 1y +subDomains | ✅ | no-referrer | DENY | **gone** (was `nginx`) |
+| pass.lehel.xyz | 200 | 1y +subDomains | ✅ | no-referrer | DENY | **gone** (was `Rocket`) |
+| portainer.lehel.xyz | 200 | 1y +subDomains | ✅ | no-referrer | DENY | **gone** |
+| search.lehel.xyz | 200 | 1y +subDomains | ✅ | no-referrer | DENY | **gone** (was `granian`) |
+| h.code.lehel.xyz (codey) | 200 | 1y +subDomains | ✅ | no-referrer | DENY | **gone** |
+| traefik[.code].lehel.xyz | 401 | 1y +subDomains | ✅ | no-referrer | DENY | **gone** |
+
+firefly (`finance.lehel.xyz`) no longer emits the duplicate `X-Frame-Options`,
+`X-Content-Type-Options` and `Referrer-Policy` pairs — one of each, as intended.
+
+Still to watch: `m.leaguesphere.app` framing (Moodle moved `SAMEORIGIN` → `DENY`; if a view turns
+out to frame same-origin content, switch the middleware to `customFrameOptionsValue: SAMEORIGIN`)
+and the next security-audit run for the humble grade movement.
 
 ### Post-deploy check (one line per host)
 

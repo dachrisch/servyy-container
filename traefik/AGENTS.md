@@ -11,7 +11,7 @@ The reverse proxy for every host (servy + codey). Deployed by
 | File | Role |
 |---|---|
 | `traefik.yaml` | static config: entrypoints (`web`, `websecure`, `metrics`), Docker + file providers, ACME. Compose files render the env it substitutes. |
-| `dynamic.yaml` | everything hot-editable: middlewares (`error-pages`, `error-pages-404`, `crawler-ratelimit`, `traefik-auth`, …), catchall routers, `error-pages` service. |
+| `dynamic.yaml` | everything hot-editable: middlewares (`security-headers`, `error-pages`, `error-pages-404`, `crawler-ratelimit`, `traefik-auth`, …), catchall routers, `error-pages` service. |
 | `docker-compose.yml` | `traefik` + `error-pages` (the only containers in this project). |
 | `error-pages.html` | custom error-page template, bind-mounted into `error-pages` as `/error-pages.html` (`HTML_TEMPLATE`). |
 
@@ -23,6 +23,17 @@ The reverse proxy for every host (servy + codey). Deployed by
   Add the label whenever you add a `traefik.http.routers.*` label. The old `true` setting
   published anything that merely *acquired* a router label, and logged a
   `Could not find network named "proxy"` warning per container per config event.
+* **Every response gets the baseline security headers, and there is no opt-out.**
+  `security-headers@file` sits first in the `web`/`websecure` entrypoint `middlewares`
+  lists (`traefik.yaml`), so it is outermost and also covers the branded error pages. It
+  sends HSTS (1y, `includeSubDomains`, TLS only — `forceSTSHeader: false`), `nosniff`,
+  `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, and strips `Server`/
+  `X-Powered-By`. The middleware's `headers` block uses `Header().Set()`, so it **replaces**
+  a backend's own value, not merges: a service that needs a different XFO/referrer value
+  cannot have one while it is on the entrypoint — move the middleware to per-router labels
+  or relax the shared value instead. CSP and Permissions-Policy are deliberately **not**
+  global for exactly this reason. Rationale and the pre-change header survey:
+  `history/2026-10-29_traefik-security-headers.md`.
 * **Never publish a port on all interfaces.** Docker writes its own FORWARD/nat rules and
   bypasses ufw, so `ports: - "8080:8080"` is internet-reachable the moment the container
   starts. Only this proxy may bind `0.0.0.0` (80/443); everything else publishes to
