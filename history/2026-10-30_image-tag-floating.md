@@ -73,13 +73,20 @@ line (`postgres:15`, `mongo:8`, `valkey:9`). `mariadb` containers carry no
 
 1. **codey's disk was 100 % full** (29 G, 0 B free) — the deploy aborted with
    `FileNotFoundError: No usable temporary directory`. The bulk is the `opencode.web`
-   container's **writable layer (5.59 G, 4.1 G of it `/tmp`)**, on top of the
-   `opencode_opencode_root` (5.5 G) and `codey_dev_checkouts` (4.8 G) volumes. Freed
-   ~1.9 G by deleting day-old scratch (`/tmp/opencode/{esprobe,mountprobe,vite-dyn,audit,venv}`,
-   `/tmp/node-compile-cache`, `/tmp/renovate`) after confirming no process had a cwd in
-   them — none of it belongs to a live session. **Not fixed, only bought time**: the
-   container is never recreated on codey, so its layer grows without bound. It needs a
-   real reclaim decision (recreate `opencode.web` at a quiet moment, or trim the volume).
+   container's **writable layer (3.9–5.6 G, most of it `/tmp`)**, on top of the
+   `opencode_opencode_root` (5.5 G) and `codey_dev_checkouts` (4.8 G) volumes.
+   Freed **~5.3 G** (0 B → 5.3 G free, 81 % used) by deleting regenerable caches and
+   scratch after confirming no process held a cwd or open file in them:
+   `/root/.cache/{puppeteer,mongodb-binaries}` (1.1 G), `npm cache clean` (0.7 G),
+   day-old `/tmp/opencode/{vitest5,ovr-fix,reb,pil,pdfenv}` (1.8 G), apt cache, and the
+   disabled `canonical-livepatch` snap.
+   **Not fixed, only bought time.** Left untouched on purpose: `/root/dev` (4.8 G of
+   another session's checkouts — three live sessions had cwds inside it),
+   `/root/.local/share/opencode` (1.9 G of session state), and
+   `/root/.cache/ms-playwright` (0.7 G, in use). The durable fixes are a recreate of
+   `opencode.web` at a quiet moment (drops the whole writable layer) plus pruning the
+   stale checkouts — realistically 2.7 G of the 4.8 G is not in use by anyone.
+
 2. **Vaultwarden pushes are broken from the controller** — `bw login --apikey` fails
    against `pass.lehel.xyz` with the credentials in `vars/secrets.yml`, and
    `bw unlock` with `~/.ssh/vw.key` fails too. This blocks any deploy that includes
