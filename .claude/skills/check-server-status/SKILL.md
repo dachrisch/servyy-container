@@ -61,14 +61,13 @@ this table — it drifts as services are added/removed.
    `/var/lib/systemd/timers/stamp-<timer>` (mtime = last scheduled trigger) before
    flagging anything.
 
-   **A service journal entry is not proof its schedule fired.** These timer templates
-   carry `Requires=<service>` in `[Unit]`, so systemd starts the service whenever the
-   timer unit starts — which is **every boot**. Measured 2026-10-30: `kernel-cleanup.service`
+   **A service journal entry is not proof its schedule fired.** Until 2026-10-30 the timer
+   templates carried `Requires=<service>` in `[Unit]`, which made systemd start the service
+   whenever the timer unit started — i.e. **every boot**. Measured then: `kernel-cleanup.service`
    ran 2026-10-29 05:30:47, seconds after the unattended-upgrade reboot, while the timer's
-   `LAST` correctly stayed 2026-10-04. Consequences worth knowing: `kernel-cleanup` (an apt
-   run) and `security-audit` (a full audit) execute on every reboot, and for
-   `docker-cleanup` this defeats the `Persistent=false` reasoning in its own template — the
-   boot-time prune it was written to avoid still happens.
+   `LAST` correctly stayed 2026-10-04. That line is gone (PR #253), so a boot should no longer
+   trigger a run — but keep comparing `/var/lib/systemd/timers/stamp-<timer>` (authoritative
+   last scheduled run) against the journal before concluding a schedule fired.
 8. Summarize per host as UP / DEGRADED / DOWN with the specific evidence line
    — don't just say "looks fine."
 
