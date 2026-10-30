@@ -1,6 +1,9 @@
 [Unit]
 Description=Kernel cleanup timer
-Requires=kernel-cleanup.service
+# Deliberately no `Requires=kernel-cleanup.service`: systemd activates the same-name
+# .service on elapse anyway, and `Requires=` would instead run an apt cleanup at every
+# boot (measured 2026-10-29 05:30:47, seconds after the unattended-upgrade reboot, while
+# this timer's own LAST correctly remained 2026-10-04).
 
 [Timer]
 OnCalendar={{ kernel_cleanup.schedule }}

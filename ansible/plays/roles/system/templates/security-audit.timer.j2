@@ -1,6 +1,7 @@
 [Unit]
 Description=Monthly security audit trigger
-Requires=security-audit.service
+# Deliberately no `Requires=security-audit.service`: the same-name .service is activated
+# when the timer elapses, whereas `Requires=` would also run a full audit at every boot.
 
 [Timer]
 OnCalendar={{ security_audit.schedule }}
