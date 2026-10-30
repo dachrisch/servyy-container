@@ -1,6 +1,10 @@
 [Unit]
 Description=Trigger for Docker system cleanup
-Requires=docker-cleanup.service
+# Deliberately no `Requires=docker-cleanup.service`. systemd already activates the
+# same-name .service when the timer elapses; `Requires=` additionally pulls the service
+# in whenever the TIMER is started — which is every boot — and that is exactly the
+# boot-time prune the Persistent=false note below was written to avoid. (Measured
+# 2026-10-29/30: kernel-cleanup ran seconds after an unattended-upgrade reboot.)
 
 [Timer]
 OnCalendar={{ docker_cleanup.schedule }}
