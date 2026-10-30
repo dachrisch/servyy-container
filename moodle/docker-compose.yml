@@ -62,7 +62,7 @@ services:
     # PHP 8.3.15 (Dec 2024) — exposed to a pile of PHP CVEs including the
     # 2026-10-21 criticals. v4.5.15 ships PHP 8.3.36 (patched). Migrating
     # 4.5.12 → 4.5.15 is a patch-level DB upgrade the image runs itself.
-    image: erseco/alpine-moodle:v4.5.15
+    image: erseco/alpine-moodle:5.3.0
     container_name: ${COMPOSE_PROJECT_NAME}.moodle
     restart: unless-stopped
     depends_on:
