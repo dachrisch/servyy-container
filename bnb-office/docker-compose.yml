@@ -14,7 +14,7 @@ services:
     # 12.3.3). Never cross a major: MariaDB cannot open a newer data dir, and
     # this volume holds bnb-office's real data. No watchtower label here, so a
     # bump arrives with a deploy, not unattended.
-    image: mariadb:12.3
+    image: mariadb:13.0
     container_name: ${COMPOSE_PROJECT_NAME}.db
     restart: unless-stopped
     env_file:
