@@ -102,6 +102,12 @@ muss der Commit auf `origin/master` liegen; nur lokal committet reicht nicht.
 
 - Plan-Set-Sprache: Zeichenraster, IBM Plex Mono + Inter Tight, Tinte `#0E1A25`,
   Orange `#CE5019`, Blau `#1D5B80`.
+- **Zwei Orange-Töne:** `--orange` (`#CE5019`) für Linien, Rahmen, Pfeile und
+  Flächen — als Nicht-Text braucht es nur 3:1. Für **kleine Schrift** dagegen
+  `--orange-text` (`#B24414`): `#CE5019` erreicht auf Papier/Karte nur 3.6–3.8:1
+  und fällt bei WCAG AA (4.5:1) durch. Gebänderte Kleinschrift auf dunklem Grund
+  nicht unter `rgba(232,233,227,.58)` absenken, sonst kippt der Kontrast auf
+  4.5:1. Prüfen mit Lighthouse (Accessibility muss 100 bleiben).
 - Die Seite ist ein 1440 px breites „Blatt“ auf einem `#D3D5CE`-Tisch, Inhalt
   maximal 1280 px, ab 1440 px zentriert.
 - Breakpoints: 1080 (Rail), 940 (Hero/Grundriss), 900 (Navigation),

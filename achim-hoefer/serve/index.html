@@ -67,6 +67,10 @@
     --ink-2:#3D4A55;
     --blue:#1D5B80;
     --orange:#CE5019;
+    /* Textvariante für kleine Beschriftungen: #CE5019 erreicht auf Papier und
+       Karte nur 3.6-3.8:1 und fällt bei WCAG AA (4.5:1) durch. Der Farbton
+       bleibt, nur dunkler — für Linien, Pfeile und Flächen weiterhin --orange. */
+    --orange-text:#B24414;
     --rule:rgba(14,26,37,.28);
     --rule-soft:rgba(14,26,37,.13);
     --grid:rgba(14,26,37,.055);
@@ -176,7 +180,7 @@
   .strip-in div{padding:14px 16px;border-right:1px solid rgba(232,233,227,.16);font-size:12.5px;line-height:1.45}
   .strip-in div:first-child{padding-left:0}
   .strip-in div:last-child{border-right:0}
-  .strip-in .m{display:block;color:rgba(232,233,227,.5);margin-bottom:5px;font-size:8.5px}
+  .strip-in .m{display:block;color:rgba(232,233,227,.58);margin-bottom:5px;font-size:8.5px}
   .strip-in b{font-weight:400;color:var(--paper)}
   @media(max-width:900px){
     .strip-in{grid-template-columns:1fr 1fr}
@@ -231,14 +235,14 @@
   .legend{list-style:none;margin:0 0 24px;padding:0;border-top:1px solid var(--rule);font-size:12.5px;color:var(--ink-2)}
   .legend li{display:grid;grid-template-columns:64px 1fr;gap:12px;padding:9px 0;border-bottom:1px solid var(--rule-soft);line-height:1.45}
   .legend .flag{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;align-self:start;padding:2px 5px;border:1px solid var(--rule);color:var(--ink-2);justify-self:start}
-  .legend .flag.a{border-color:var(--orange);color:var(--orange)}
+  .legend .flag.a{border-color:var(--orange);color:var(--orange-text)}
   .befund-copy .m{display:block;margin-top:10px;font-size:9px}
 
   .befund-card{border:1px solid var(--rule);background:var(--card)}
   .bef-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:11px 13px;border-bottom:1px solid var(--rule)}
   .bef-head .id{font-family:var(--mono);font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--blue)}
   .bef-head .bef-title{margin:4px 0 0;font-family:var(--mono);font-size:11.5px;font-weight:500;letter-spacing:.08em;text-transform:uppercase}
-  .bef-count{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--orange);border:1px solid var(--orange);padding:3px 6px;white-space:nowrap}
+  .bef-count{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--orange-text);border:1px solid var(--orange);padding:3px 6px;white-space:nowrap}
   details.bef{border-bottom:1px solid var(--rule-soft)}
   details.bef:last-of-type{border-bottom:0}
   details.bef summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:34px 1fr auto;gap:12px;align-items:start;padding:11px 13px;transition:background .18s}
@@ -246,9 +250,9 @@
   details.bef summary:hover{background:rgba(255,255,255,.6)}
   details.bef .no{font-family:var(--mono);font-size:9.5px;color:var(--ink-2);padding-top:2px}
   details.bef .txt{font-size:13px;line-height:1.45}
-  details.bef .txt small{display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-2);margin-top:3px;opacity:.75}
+  details.bef .txt small{display:block;font-family:var(--mono);font-size:8.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-2);margin-top:3px;opacity:.85}
   details.bef .flag{font-family:var(--mono);font-size:9px;letter-spacing:.06em;text-transform:uppercase;padding:2px 5px;border:1px solid var(--rule);color:var(--ink-2);white-space:nowrap}
-  details.bef .flag.a{border-color:var(--orange);color:var(--orange)}
+  details.bef .flag.a{border-color:var(--orange);color:var(--orange-text)}
   details.bef .note{padding:0 13px 12px 59px;font-size:12.5px;line-height:1.5;color:var(--ink-2)}
   details.bef .note b{color:var(--ink);font-weight:500}
   .bef-foot{display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:space-between;padding:9px 13px;border-top:1px solid var(--rule);background:rgba(255,255,255,.4)}
@@ -374,7 +378,7 @@
   .c-mail:hover{color:#E9875B;border-color:#E9875B}
   .plankopf{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid rgba(232,233,227,.35);border-left:1px solid rgba(232,233,227,.2)}
   .pk{border-right:1px solid rgba(232,233,227,.2);border-bottom:1px solid rgba(232,233,227,.2);padding:12px 14px;min-height:74px}
-  .pk .m{color:rgba(232,233,227,.5);font-size:8.5px;display:block;margin-bottom:6px}
+  .pk .m{color:rgba(232,233,227,.58);font-size:8.5px;display:block;margin-bottom:6px}
   .pk b{font-family:var(--mono);font-size:11px;font-weight:400;letter-spacing:.04em;line-height:1.5;text-transform:uppercase}
   .pk a{border-bottom:1px solid rgba(232,233,227,.35)}
   @media(max-width:760px){.plankopf{grid-template-columns:1fr 1fr}}
