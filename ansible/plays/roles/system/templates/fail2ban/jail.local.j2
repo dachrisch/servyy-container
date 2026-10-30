@@ -50,15 +50,29 @@ findtime = 600
 # Loki-sourced blocklist (populated by script)
 # Traefik protection now handled via Loki queries (see update-from-loki.sh)
 #
+# This is a WEB-abuse jail: its triggers come from Traefik access logs
+# (rate-limit / aggressive-crawler signatures). It must never be able to take
+# SSH down, because the IP it bans is usually the operator's own attack surface
+# or a peer host's egress — measured 2026-10-30, when a scan from codey tripped
+# both triggers and REJECTed every port from that IP on servy for 24 h,
+# including 22, so the session could not get back in to fix or verify anything.
+#
+# `iptables-allports` ignores `port` entirely, which is why the old
+# `port = http,https,ssh` still banned everything. Scope both the action and
+# the port list to the web tier: a hostile source is still throttled off
+# 80/443 for a day, and SSH (and the operator) stay reachable.
+# Do NOT "fix" a lockout by adding the offending IP to `ignoreip` — that
+# disables the jail for that source altogether and leaves the next burst
+# unbounded. Fix the scope, not the target.
 [loki-blocklist]
 enabled = true
-port = http,https,ssh
+port = http,https
 filter = loki-blocklist
 # This jail uses IPs from Loki queries
 # Managed by /usr/local/bin/blocklist/update-from-loki.sh
 # IMPORTANT: Must use polling backend to read from log file instead of journal
 backend = polling
-banaction = iptables-allports
+banaction = iptables-multiport
 logpath = /var/log/fail2ban-loki.log
 maxretry = 1
 bantime = 86400
