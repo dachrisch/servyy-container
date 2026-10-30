@@ -357,6 +357,29 @@ ssh lehel.xyz "docker restart monitor.grafana"
 # 4. Deploy via Ansible to verify git state matches server state
 ```
 
+### Never `git pull` the deploy checkout on the server
+
+`/home/cda/servyy-container` is the Ansible **remote dir**, not a workspace:
+`plays/user.yml` renders three monitor files into it from the controller
+(`template: src={{ docker.local_dir }}/monitor/... dest={{ docker.remote_dir }}/monitor/...`):
+
+- `monitor/provisioning/datasources/datasources.yml` (`{{ monitor.loki_tenant }}`)
+- `monitor/provisioning/alerting/contact-points.yml` (`{{ monitor_admin_email }}`)
+- `monitor/promtail.yml` (`{{ monitor.loki_tenant }}`)
+
+Those tracked files therefore hold *rendered* content on the server and raw Jinja
+in git. A `git pull` there silently reverts them to `{{ ... }}`, which is invalid
+YAML, and **Grafana 13 exits code 1** on a provisioning error — the container
+crash-loops and every dashboard/alert is gone until the files are rendered again.
+Same for `promtail` (it only reads its config at startup, so it survives until the
+next restart).
+
+If it happens: recover the values from live state (`servyy-logs-k8x9m2p4q7` from
+`monitor_loki_data/_data/chunks/`, the mail address from `alert_configuration` in
+`grafana.db` or `grafana.env`), write the three files, `chmod 644`, restart
+Grafana. Full write-up: `history/2026-10-30_monitor-provisioning-render-trap.md`.
+A normal Ansible deploy re-renders all three and is the sanctioned repair.
+
 ## Removing a Service Permanently
 
 **Never remove services manually. Always use Ansible to decommission services.**
