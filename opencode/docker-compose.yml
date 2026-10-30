@@ -1,6 +1,10 @@
 services:
   opencode:
-    image: ghcr.io/anomalyco/opencode:2.2.2
+    # Floating: the pin kept losing fixes — prod ran 2.1.2 while the repo said
+    # 2.2.2, because watchtower only re-pulls the tag a container already has.
+    # Note the cost: scope=prod means a new upstream build replaces and
+    # restarts this container within ~2 h, possibly mid-session.
+    image: ghcr.io/anomalyco/opencode:latest
     container_name: opencode.web
     restart: unless-stopped
     entrypoint: [ "/bin/sh", "/scripts/startup.sh" ]

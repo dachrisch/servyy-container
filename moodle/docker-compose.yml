@@ -15,9 +15,11 @@ name: moodle
 
 services:
   db:
-    # Pinned to the digest already present on servy (mariadb:lts, shared with
-    # photoprism.mariadb and bnb-office.db) — zero image pull on the host.
-    image: mariadb@sha256:2bdff1534a7e569fecaf4b10b66ad0d410806e382d9db29ba305448addda97c4
+    # mariadb:12.3 — floats patches inside the 12.3 line (the pinned digest was
+    # 12.3.3, the same build photoprism.mariadb runs). Never cross a major:
+    # MariaDB cannot open a newer data dir, and this volume holds Moodle's data.
+    # No watchtower label, so a bump arrives with a deploy, not unattended.
+    image: mariadb:12.3
     container_name: ${COMPOSE_PROJECT_NAME}.db
     restart: unless-stopped
     env_file:

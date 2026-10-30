@@ -10,9 +10,11 @@ name: bnb-office
 
 services:
   db:
-    # Pinned to the digest already running on servy (mariadb:lts,
-    # 12.3.3-MariaDB via photoprism.mariadb) — zero image pull on prod.
-    image: mariadb@sha256:2bdff1534a7e569fecaf4b10b66ad0d410806e382d9db29ba305448addda97c4
+    # mariadb:12.3 — floats patches inside the 12.3 line (the pinned digest was
+    # 12.3.3). Never cross a major: MariaDB cannot open a newer data dir, and
+    # this volume holds bnb-office's real data. No watchtower label here, so a
+    # bump arrives with a deploy, not unattended.
+    image: mariadb:12.3
     container_name: ${COMPOSE_PROJECT_NAME}.db
     restart: unless-stopped
     env_file:

@@ -48,9 +48,12 @@ services:
   # openserbia/watchtower: maintained fork of containrrr/watchtower (archived
   # upstream). Adds health-check gating with automatic rollback. DOCKER_API_VERSION
   # is deliberately unset so the fork can negotiate the daemon API version.
+  # Tag floats on `latest`: the fork publishes no 1.x tags, so a pin can only
+  # ever be a hand-copied digest. Accepted cost — a bad upstream release takes
+  # the updater itself down, and nothing pinned is left to fall back to.
   watchtower-prod:
     restart: unless-stopped
-    image: openserbia/watchtower:1.19.0
+    image: openserbia/watchtower:latest
     container_name: ${COMPOSE_PROJECT_NAME}.watchtower-prod
     labels:
       - traefik.enable=false
@@ -83,7 +86,7 @@ services:
 
   watchtower-dev:
     restart: unless-stopped
-    image: openserbia/watchtower:1.19.0
+    image: openserbia/watchtower:latest
     container_name: ${COMPOSE_PROJECT_NAME}.watchtower-dev
     labels:
       - traefik.enable=false
