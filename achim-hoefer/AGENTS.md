@@ -32,11 +32,17 @@ Ausgeliefert von `nginx:stable` auf `servy.lehel.xyz`, öffentlich unter
   `serve/flucht-und-rettungsplaene.html`, `serve/wertermittlung.html`.
   Gemeinsames Stylesheet `serve/public/plan.css` (Pfade dort absolut:
   `/public/fonts/…`), Startseite bleibt eigenständig. Jede Seite trägt
-  `Service` + `BreadcrumbList` + `FAQPage` als JSON-LD. **Der FAQ-Text im
-  `<summary>` und im `FAQPage`-Markup muss identisch bleiben** — er stammt aus
-  einer gemeinsamen Quelle (`/tmp/opencode/gen_pages.py`, nicht im Repo); bei
-  Änderungen beide Stellen pflegen. Links von der Startseite auf die
-  Leistungsseiten stehen im Block `.spec-links` unter dem Leistungsverzeichnis.
+  `Service` + `BreadcrumbList` + `FAQPage` als JSON-LD.
+  **Quelle der vier Seiten ist `tools/gen_pages.py`** — Inhalte dort ändern und
+  `cd achim-hoefer && python3 tools/gen_pages.py` laufen lassen, dann die
+  erzeugten HTML-Dateien committen. Kein Build-Schritt beim Deploy; das Skript
+  ist ein Werkzeug, damit FAQ-Text und `FAQPage`-Markup nicht auseinanderlaufen.
+- **Gemeinsames Gerüst:** `.rail`, `.bar`, `.titleblock` und `.foot-nav` sind
+  auf allen fünf Seiten **wortgleich**. Wer sie in `index.html` ändert, muss
+  die Vorlage in `tools/gen_pages.py` mitziehen und `plan.css` angleichen —
+  sonst laufen Startseite und Unterseiten optisch auseinander (genau das war
+  beim ersten Anlauf passiert: Unterseiten reservierten den 56-px-Streifen der
+  Rail, ohne sie zu rendern).
 - **IndexNow:** `serve/<32-hex>.txt` enthält den IndexNow-Key. Der Dateiname
   *ist* der Key und muss unter `https://…/<key>.txt` erreichbar bleiben —
   Datei nicht löschen oder umbenennen.
