@@ -144,13 +144,16 @@ header{position:sticky;top:0;z-index:25;background:rgba(232,233,227,.93);backdro
 .related a:hover{border-color:var(--orange);color:var(--orange)}
 .related a span{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
 
-footer{background:var(--ink);color:var(--paper);padding:16px 0 28px;margin-top:0}
+footer{padding:16px 0 28px}
+.foot-nav{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:baseline;padding-bottom:14px;
+  margin-bottom:16px;border-bottom:1px solid var(--rule-soft);font-family:var(--mono);
+  font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
+.foot-nav a:hover{color:var(--orange)}
+.foot-nav .m{color:var(--ink-2);opacity:.6;font-size:9px}
 .foot{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;font-family:var(--mono);
-  font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:rgba(232,233,227,.7)}
-.foot a:hover{color:#E9875B}
+  font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
+.foot a:hover{color:var(--orange)}
 .foot .sp{margin-left:auto}
-.foot .disc{flex:1 1 100%;font-family:var(--sans);text-transform:none;letter-spacing:0;font-size:11px;
-  color:rgba(232,233,227,.7);border-top:1px solid rgba(232,233,227,.25);padding-top:10px}
 @media(max-width:640px){
   .foot{display:grid;grid-template-columns:auto auto;justify-content:start;gap:7px 18px;align-items:baseline}
   .foot .sp{grid-column:1 / -1;margin-left:0}

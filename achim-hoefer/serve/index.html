@@ -381,6 +381,11 @@
   @media(max-width:420px){.plankopf{grid-template-columns:1fr}.pk{min-height:0;padding:10px 12px}}
 
   footer{padding:16px 0 28px}
+  .foot-nav{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:baseline;padding-bottom:14px;margin-bottom:16px;border-bottom:1px solid var(--rule-soft);font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
+  .foot-nav a:hover{color:var(--orange)}
+  .foot-nav .m{color:var(--ink-2);opacity:.6;font-size:9px}
+  .spec-row h3 a,.spec-row li a{border-bottom:1px solid var(--rule-soft)}
+  .spec-row h3 a:hover,.spec-row li a:hover{color:var(--orange);border-color:var(--orange)}
   .spec-links{margin-top:clamp(24px,3vw,36px);border-top:1px solid var(--rule);padding-top:16px}
   .spec-links .m{display:block;margin-bottom:12px}
   .spec-links ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
@@ -798,6 +803,16 @@
           <span class="meta">LPH 1 – 9 HOAI</span>
         </div>
 
+        <div class="spec-links">
+          <span class="m">Leistungen im Detail</span>
+          <ul>
+            <li><a href="/brandschutzkonzept.html">Brandschutzkonzept <span>Neubau &amp; Bestand</span></a></li>
+            <li><a href="/maengelbericht-brandschutz.html">Begehung &amp; Mängelbericht <span>Bestand</span></a></li>
+            <li><a href="/flucht-und-rettungsplaene.html">Flucht- &amp; Rettungspläne <span>Kennzeichnung</span></a></li>
+            <li><a href="/wertermittlung.html">Wertermittlung <span>Wert</span></a></li>
+          </ul>
+        </div>
+
         <div class="spec">
           <div class="spec-row">
             <span class="code">01.1</span>
@@ -832,12 +847,12 @@
 
           <div class="spec-row">
             <span class="code">01.3</span>
-            <h3>Brandschutz</h3>
+            <h3><a href="/brandschutzkonzept.html">Brandschutz</a></h3>
             <ul>
               <li>Brandschutzkonzepte</li>
               <li>Brandschutznachweise</li>
-              <li>Überprüfung des vorbeugenden baulichen Brandschutzes</li>
-              <li>Flucht- und Rettungspläne</li>
+              <li><a href="/maengelbericht-brandschutz.html">Überprüfung des vorbeugenden baulichen Brandschutzes</a></li>
+              <li><a href="/flucht-und-rettungsplaene.html">Flucht- und Rettungspläne</a></li>
               <li>Begleitung von Genehmigungsverfahren</li>
               <li>Fachplanung EIPOS, TU Dresden</li>
             </ul>
@@ -845,7 +860,7 @@
 
           <div class="spec-row">
             <span class="code">01.4</span>
-            <h3>Wertermittlung</h3>
+            <h3><a href="/wertermittlung.html">Wertermittlung</a></h3>
             <ul>
               <li>Verkehrswertermittlung bebauter Grundstücke</li>
               <li>Bewertung unbebauter Grundstücke</li>
@@ -853,16 +868,6 @@
               <li>Grundlagen für Kauf, Erbfall und Finanzierung</li>
             </ul>
           </div>
-        </div>
-
-        <div class="spec-links">
-          <span class="m">Leistungen im Detail</span>
-          <ul>
-            <li><a href="brandschutzkonzept.html">Brandschutzkonzept <span>Neubau &amp; Bestand</span></a></li>
-            <li><a href="maengelbericht-brandschutz.html">Begehung &amp; Mängelbericht <span>Bestand</span></a></li>
-            <li><a href="flucht-und-rettungsplaene.html">Flucht- &amp; Rettungspläne <span>Kennzeichnung</span></a></li>
-            <li><a href="wertermittlung.html">Wertermittlung <span>Wert</span></a></li>
-          </ul>
         </div>
       </div>
     </section>
@@ -1136,6 +1141,13 @@
 
   <footer>
     <div class="wrap">
+      <div class="foot-nav">
+        <span class="m">Leistungen</span>
+        <a href="/brandschutzkonzept.html">Brandschutzkonzept</a>
+        <a href="/maengelbericht-brandschutz.html">Begehung &amp; Mängelbericht</a>
+        <a href="/flucht-und-rettungsplaene.html">Flucht- &amp; Rettungspläne</a>
+        <a href="/wertermittlung.html">Wertermittlung</a>
+      </div>
       <div class="foot">
         <span>© Höfer Architekten 2026</span>
         <a href="impressum.html">Impressum</a>
