@@ -32,8 +32,12 @@ Anzeigegrenzen, `Service` + `BreadcrumbList` + `FAQPage` als JSON-LD,
 FAQ-Block, Querverweise auf die drei Schwester­seiten.
 
 **2. Gemeinsames Stylesheet** `serve/public/plan.css` statt kopiertem Inline-CSS.
-Die Startseite bleibt eigenständig (eine Datei, kein Build-Schritt) — sie wurde
-nur um den Block `.spec-links` erweitert, der auf die vier Seiten verlinkt.
+Die Startseite bleibt eigenständig (eine Datei, kein Build-Schritt). Die
+Verweise auf die vier Seiten liegen **in der Leistungstabelle selbst**: die
+Zeilen Brandschutz und Wertermittlung verlinken ihre Überschrift (mit Pfeil),
+die Listenpunkte „Überprüfung des vorbeugenden baulichen Brandschutzes" und
+„Flucht- und Rettungspläne" verweisen auf die passenden Seiten. Zusätzlich
+trägt jede Seite eine Footer-Navigation mit allen vier Leistungsseiten.
 
 **3. Hero-Befund umgewidmet:** „BE-2026-014 · Bürogebäude · München" →
 „Methodik · Beispielbefund", „4 offen" → „4 Beispiele", Überschrift
@@ -110,6 +114,19 @@ Bestandsaufnahme". Die Gestaltung bleibt, die Scheinreferenz ist weg.
 4. **Restart-Fenster:** Nach dem Ausrollen ist die Seite für ~30 s 404, bis der
    Healthcheck healthy meldet. Beim Prüfen direkt nach dem Deploy nicht
    erschrecken — erst `docker ps` fragen.
+5. **Ein Link-Block neben einer ähnlichen Liste ist eine Falle.** Der erste
+   Anlauf verlinkte die vier Seiten über einen Block „Leistungen im Detail"
+   direkt über dem Leistungsverzeichnis — vier Buttons, die *fast* den vier
+   Zeilen der Tabelle darunter entsprachen (Wertermittlung doppelt,
+   „Brandschutz" vs. „Brandschutzkonzept", Hochbau/Bauunterhalt ohne
+   Detailseite). Das wirkt wie zwei konkurrierende Listen und verwirrt.
+   Verweise gehören in die vorhandene Struktur, nicht daneben.
+6. **Gleiche Optik braucht gleiches Markup.** Die Unterseiten reservierten über
+   `.shell{padding-left:var(--rail)}` den 56-px-Streifen der Rail, renderten
+   die Rail aber nie, und der Titleblock fehlte — Header wirkte anders, links
+   blieb ein leerer Streifen. Erst als `.rail`, `.bar`, `.titleblock` und
+   `.foot-nav` auf allen fünf Seiten wortgleich waren, sah es wie ein Auftritt
+   aus.
 
 ### Bekannte Einschränkungen
 
