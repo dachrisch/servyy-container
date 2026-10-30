@@ -35,8 +35,14 @@ Ausgeliefert von `nginx:stable` auf `servy.lehel.xyz`, öffentlich unter
 
 ```bash
 cd ansible
-./servyy.sh --limit servy.lehel.xyz --tags user.docker.achim-hoefer
+./servyy.sh --limit servy.lehel.xyz --tags user.repo.clone,user.docker.achim-hoefer
 ```
+
+**`user.repo.clone` ist Pflicht.** Die Dateien kommen per `git pull` auf den
+Server (`/home/cda/servyy-container/achim-hoefer/serve`). Ohne dieses Tag wird
+nur das Compose-Projekt neu ausgerollt, der Checkout bleibt alt — der Lauf
+meldet dann `changed=0` und die Live-Seite ändert sich nicht. Vor dem Deploy
+muss der Commit auf `origin/master` liegen; nur lokal committet reicht nicht.
 
 ## Fallstricke
 
