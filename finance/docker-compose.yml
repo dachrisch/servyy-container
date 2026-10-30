@@ -99,6 +99,11 @@ services:
       - ofelia.enabled=true
       - ofelia.job-exec.daily-reconcile.schedule=0 30 7 * * *
       - ofelia.job-exec.daily-reconcile.command=node dist/src/server/cron/reconcile.js
+      # Reads the bills@ mailbox, files each invoice PDF into the receipts
+      # folder and stores a Bill; never books. Before the reconcile so the
+      # filings are there when the receipt reader runs.
+      - ofelia.job-exec.bill-intake.schedule=0 15 7 * * *
+      - ofelia.job-exec.bill-intake.command=node dist/src/server/cron/billIntake.js
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
       interval: 30s
