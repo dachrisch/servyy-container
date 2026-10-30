@@ -67,6 +67,10 @@ stricter value. So every header in the list had to be **equal-or-stronger than w
 
 ### Deliberately NOT set globally
 
+* **`Referrer-Policy`** — **removed on 2026-10-30, one day after this rollout.** It was shipped as
+  `no-referrer`, which broke every Django login behind the proxy (no `Referer` on the form POST →
+  CSRF rejection). A stricter header is not automatically a safe one when an app *consumes* it.
+  Full incident and portfolio sweep: `2026-10-30_referrer-policy-csrf-regression.md`.
 * **Content-Security-Policy** — photoprism, portainer, firefly, vaultwarden, energy and pass ship
   longer, stricter policies; a blanket CSP would overwrite them and break apps whose inline
   scripts/`nonce` sources a global policy cannot express. CSP stays per-app.
