@@ -381,6 +381,12 @@
   @media(max-width:420px){.plankopf{grid-template-columns:1fr}.pk{min-height:0;padding:10px 12px}}
 
   footer{padding:16px 0 28px}
+  .spec-links{margin-top:clamp(24px,3vw,36px);border-top:1px solid var(--rule);padding-top:16px}
+  .spec-links .m{display:block;margin-bottom:12px}
+  .spec-links ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+  .spec-links a{display:flex;justify-content:space-between;align-items:baseline;gap:10px;border:1px solid var(--rule-soft);padding:12px 14px;font-family:var(--sans);font-size:14px;transition:border-color .2s}
+  .spec-links a:hover{border-color:var(--orange);color:var(--orange)}
+  .spec-links a span{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
   .foot{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
   .foot a:hover{color:var(--orange)}
   .foot .sp{margin-left:auto}
@@ -535,10 +541,10 @@
       <div class="befund-card">
             <div class="bef-head">
               <div>
-                <div class="id">BE-2026-014 · Bürogebäude · München</div>
-                <h2 class="bef-title">Feststellungen aus der Begehung</h2>
+                <div class="id">Methodik · Beispielbefund</div>
+                <h2 class="bef-title">So sieht ein Befund aus</h2>
               </div>
-              <span class="bef-count">4 offen</span>
+              <span class="bef-count">4 Beispiele</span>
             </div>
 
             <details class="bef" open>
@@ -578,8 +584,8 @@
             </details>
 
             <div class="bef-foot">
-              <span class="m">Beispielhafte Darstellung</span>
-              <span class="m">4 von 7 Feststellungen</span>
+              <span class="m">Beispielhafte Darstellung · keine Bestandsaufnahme</span>
+              <span class="m">Auszug · 4 von 7</span>
             </div>
           </div>
     </section>
@@ -847,6 +853,16 @@
               <li>Grundlagen für Kauf, Erbfall und Finanzierung</li>
             </ul>
           </div>
+        </div>
+
+        <div class="spec-links">
+          <span class="m">Leistungen im Detail</span>
+          <ul>
+            <li><a href="brandschutzkonzept.html">Brandschutzkonzept <span>Neubau &amp; Bestand</span></a></li>
+            <li><a href="maengelbericht-brandschutz.html">Begehung &amp; Mängelbericht <span>Bestand</span></a></li>
+            <li><a href="flucht-und-rettungsplaene.html">Flucht- &amp; Rettungspläne <span>Kennzeichnung</span></a></li>
+            <li><a href="wertermittlung.html">Wertermittlung <span>Wert</span></a></li>
+          </ul>
         </div>
       </div>
     </section>

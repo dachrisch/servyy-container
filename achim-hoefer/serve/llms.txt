@@ -27,6 +27,10 @@ Achim Höfer ist Architekt, Sachverständiger für die Wertermittlung bebauter u
 ## Seiten
 
 - [Startseite](https://xn--hfer-architekten-mwb.de/): Leistungen, Grundriss mit umschaltbarer Brandschutz-Ebene, Referenzen, Qualifikation, Kontakt.
+- [Brandschutzkonzept](https://xn--hfer-architekten-mwb.de/brandschutzkonzept.html): Wann ein Konzept statt eines Nachweises gebraucht wird, Inhalt, Grundlagen (BayBO, MLAR, DIN 4102), Ablauf, häufige Fragen.
+- [Begehung und Mängelbericht](https://xn--hfer-architekten-mwb.de/maengelbericht-brandschutz.html): Bestandsbegehung, Feststellungen mit Klasse A/B, Fotos, Priorisierung, Ablauf.
+- [Flucht- und Rettungspläne](https://xn--hfer-architekten-mwb.de/flucht-und-rettungsplaene.html): Erstellung und Prüfung nach DIN ISO 23601, Anlässe, Inhalt, Ablauf.
+- [Wertermittlung](https://xn--hfer-architekten-mwb.de/wertermittlung.html): Verkehrswertermittlung bebauter und unbebauter Grundstücke nach ImmoWertV, Verfahren, Anlässe.
 - [Impressum](https://xn--hfer-architekten-mwb.de/impressum.html): Anbieterkennzeichnung, zuständige Kammer, Berufsbezeichnung.
 
 ## Kontakt

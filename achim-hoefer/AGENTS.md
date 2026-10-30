@@ -27,6 +27,23 @@ Ausgeliefert von `nginx:stable` auf `servy.lehel.xyz`, öffentlich unter
   (`ProfessionalService`, `Person`, `WebSite`). Adresse, Telefon, Kammer und
   Qualifikation darin müssen zum sichtbaren Inhalt passen — Google verwirft
   Markup, das nicht durch die Seite gedeckt ist.
+- **Leistungsseiten:** `serve/brandschutzkonzept.html`,
+  `serve/maengelbericht-brandschutz.html`,
+  `serve/flucht-und-rettungsplaene.html`, `serve/wertermittlung.html`.
+  Gemeinsames Stylesheet `serve/public/plan.css` (Pfade dort absolut:
+  `/public/fonts/…`), Startseite bleibt eigenständig. Jede Seite trägt
+  `Service` + `BreadcrumbList` + `FAQPage` als JSON-LD. **Der FAQ-Text im
+  `<summary>` und im `FAQPage`-Markup muss identisch bleiben** — er stammt aus
+  einer gemeinsamen Quelle (`/tmp/opencode/gen_pages.py`, nicht im Repo); bei
+  Änderungen beide Stellen pflegen. Links von der Startseite auf die
+  Leistungsseiten stehen im Block `.spec-links` unter dem Leistungsverzeichnis.
+- **IndexNow:** `serve/<32-hex>.txt` enthält den IndexNow-Key. Der Dateiname
+  *ist* der Key und muss unter `https://…/<key>.txt` erreichbar bleiben —
+  Datei nicht löschen oder umbenennen.
+- **Beispielbefund:** Der Befund im Hero ist als „Methodik · Beispielbefund"
+  gekennzeichnet. Es gibt keine echten Begehungsdaten; die Karte zeigt die
+  Methodik, nicht ein Projekt. Nicht wieder als konkreter Fall mit
+  Berichtsnummer beschriften.
 - `serve/public/playground_assets/` — Favicon und die zwei vorhandenen
   Projektfotos (T-Systems, POST Bauen). Weitere Assets gibt es nicht.
 - Kein Build-Schritt. Datei bearbeiten, committen, deployen.

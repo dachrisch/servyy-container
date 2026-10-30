@@ -9,10 +9,23 @@ services:
       - traefik.http.routers.${SERVICE_NAME}.tls.certresolver=letsencryptdnsresolver
       - traefik.http.routers.${SERVICE_NAME}.middlewares=crawler-ratelimit@file,error-pages-404@file
       - traefik.http.routers.${SERVICE_NAME}_prod.tls=true
-      - traefik.http.routers.${SERVICE_NAME}_prod.rule=Host(`xn--hfer-architekten-mwb.de`) || Host(`www.xn--hfer-architekten-mwb.de`)
+      - traefik.http.routers.${SERVICE_NAME}_prod.rule=Host(`xn--hfer-architekten-mwb.de`)
       # Stock nginx answers 404 with a bare page; keep the branded one for
       # this service (opt-in, see traefik/dynamic.yaml error-pages-404).
       - traefik.http.routers.${SERVICE_NAME}_prod.middlewares=error-pages-404@file
+      # www -> apex, permanent. www served byte-identical content with only a
+      # canonical to disambiguate; a 301 consolidates the signals instead.
+      - traefik.http.routers.${SERVICE_NAME}_www.rule=Host(`www.xn--hfer-architekten-mwb.de`)
+      - traefik.http.routers.${SERVICE_NAME}_www.middlewares=achim-www-redirect@docker
+      - traefik.http.routers.${SERVICE_NAME}_www.tls=true
+      - traefik.http.routers.${SERVICE_NAME}_www.tls.certresolver=letsencryptdnsresolver
+      - traefik.http.routers.${SERVICE_NAME}_www.service=achim-hoefer-www@docker
+      - traefik.http.middlewares.achim-www-redirect.redirectregex.regex=^https?://www\.xn--hfer-architekten-mwb\.de/(.*)
+      - traefik.http.middlewares.achim-www-redirect.redirectregex.replacement=https://xn--hfer-architekten-mwb.de/$1
+      - traefik.http.middlewares.achim-www-redirect.redirectregex.permanent=true
+      # The redirect router still needs a backend to be valid in Traefik; this
+      # service is never reached because the middleware answers first.
+      - traefik.http.services.achim-hoefer-www.loadbalancer.server.port=80
       # DNS-01 needs the domain inside the Porkbun account the Traefik keys
       # belong to. True since the registrar move to Porkbun on 2026-10-22
       # (it failed with INVALID_DOMAIN while the zone lived at GoDaddy).
