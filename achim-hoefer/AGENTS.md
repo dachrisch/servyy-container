@@ -27,6 +27,11 @@ Ausgeliefert von `nginx:stable` auf `servy.lehel.xyz`, öffentlich unter
   `nginx/default.conf`): wird ein Schnitt ersetzt, muss der Dateiname mit
   wechseln (`…-latin-2.woff2`), sonst sehen Bestandsbesucher ein Jahr lang die
   alte Datei.
+  **Preload muss jeden Schnitt abdecken, der über dem Fold benutzt wird** —
+  aktuell 400 und 500 der Mono plus Inter Tight. Fehlt einer, hängt er hinter
+  dem HTML in der kritischen Kette (PSI: „Avoid chaining critical requests",
+  ~80 ms). `mono-600` wird nur unterhalb des Folds gebraucht und bleibt bewusst
+  ohne Preload.
 - `nginx/default.conf` — ersetzt die Konfiguration des `nginx:stable`-Images und
   setzt `Cache-Control` (HTML revalidiert, Schriften ein Jahr `immutable`,
   `plan.css` eine Stunde, Bilder eine Woche, Crawler-Dateien eine Stunde) sowie

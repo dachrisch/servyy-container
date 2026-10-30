@@ -318,6 +318,7 @@ def render(page):
 <meta name="twitter:image" content="{BASE}/public/social-preview.png" />
 <meta name="theme-color" content="#E8E9E3" />
 <link rel="icon" href="/public/playground_assets/favicon-32x32.png" type="image/png" sizes="32x32" />
+<link rel="preload" href="/public/fonts/ibm-plex-mono-400-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/public/fonts/inter-tight-400-600-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/public/fonts/ibm-plex-mono-500-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/public/plan.css" />
