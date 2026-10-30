@@ -11,8 +11,10 @@ name: ${SERVICE_NAME}
 
 services:
   mongo:
-    # Pinned to prod-proven digest (servy.lehel.xyz mongo:8 e0ce8c35124d, healthy 2 weeks)
-    image: mongo:8@sha256:e0ce8c35124d4a9f9785532d1f268f39e9728ffa1cb38f46fa482436424c4bd3
+    # Floats minor/patch inside major 8 (the digest pin froze even patch fixes).
+    # watchtower scope=prod applies these within ~2 h. Major 9 is still a
+    # deliberate step: it needs the FCV check that history/ records for 8.0.
+    image: mongo:8
     container_name: ${COMPOSE_PROJECT_NAME}.mongo
     restart: unless-stopped
     # 512m: ~285M resident + ~88M in swap measured 2026-10-29. The cap stops the
@@ -37,10 +39,10 @@ services:
       retries: 5
 
   redis:
-    # Pinned to prod-proven digest (servy.lehel.xyz valkey:9-alpine ee91f7a174ac, healthy 2 weeks)
+    # Floats patches inside 9-alpine (the digest pin froze even patch fixes).
     # Ephemeral job-queue store: a restart loses pending Bull jobs (they retry).
     # leagues-finance uses db 0; queen uses db 1 (see finance/queen.env.j2).
-    image: docker.io/valkey/valkey:9-alpine@sha256:ee91f7a174ac4d6a6b0685b3a60e321f0a9dbbb691f9b0e285be2ba1d1be8328
+    image: docker.io/valkey/valkey:9-alpine
     container_name: ${COMPOSE_PROJECT_NAME}.redis
     restart: unless-stopped
     networks:

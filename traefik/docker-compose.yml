@@ -1,18 +1,23 @@
 services:
   reverse-proxy:
-    # 3.7.16 (2026-10-20) — the 3.6 line stopped at 3.6.25, so this upgrade also
-    # picks up ~24 patch releases of security and bug fixes since 3.6.1.
-    # Migration notes reviewed: v3.7.16/3.7.15 (CONNECT → 501), 3.7.13 (h2c
-    # upgrade headers no longer forwarded, rootless targets → 400), 3.7.12
-    # (aliasHeadersStrategy), 3.7.7 (bare Host(`*`) becomes a catch-all), 3.6.19
-    # (basicAuth with an empty user list is now an error), 3.6.16 (Docker API
-    # ≥ 1.40 required — hosts run 29.1.3), plus the encoded-character default
-    # flip in 3.6.7 that keeps today's permissive behaviour. Everything that
-    # touches us is handled in traefik.yaml/dynamic.yaml; the rest is
-    # Kubernetes-only.
-    # Rollback: set the tag back and `docker compose up -d --force-recreate`
-    # (see traefik/AGENTS.md).
-    image: traefik:3.7.16
+    # Floating on the 3.7 minor line (was `3.7.16`; that in turn replaced the
+    # `3.6.1` which sat through ~24 patch releases of security and bug fixes
+    # unnoticed). Patches are safe here, minor/major are NOT: Traefik parses its
+    # *static* configuration strictly, so an option a newer image dropped is a
+    # fatal startup error — an option an older image does not know is one too.
+    # Never let this cross a minor line on its own. watchtower scope=prod pulls
+    # 3.7.x within ~2 h of a release.
+    # Migration notes reviewed for 3.6.1 → 3.7.16: v3.7.16/3.7.15 (CONNECT →
+    # 501), 3.7.13 (h2c upgrade headers no longer forwarded, rootless targets
+    # → 400), 3.7.12 (aliasHeadersStrategy), 3.7.7 (bare Host(`*`) becomes a
+    # catch-all), 3.6.19 (basicAuth with an empty user list is now an error),
+    # 3.6.16 (Docker API ≥ 1.40 required — hosts run 29.1.3), plus the
+    # encoded-character default flip in 3.6.7 that keeps today's permissive
+    # behaviour. Everything that touches us is handled in
+    # traefik.yaml/dynamic.yaml; the rest is Kubernetes-only.
+    # Rollback: pin the previous patch (`traefik:3.7.16`) back and run
+    # `docker compose up -d --force-recreate` (see traefik/AGENTS.md).
+    image: traefik:3.7
     container_name: ${COMPOSE_PROJECT_NAME}.traefik
     # ~152M resident + 11M swap measured 2026-10-29. 384m, not the tighter 256m
     # first considered: this is the one container whose death takes every site on
@@ -64,7 +69,9 @@ services:
   # middleware error-pages@file) — never exposed via its own router, so
   # traefik.enable stays false.
   error-pages:
-    image: ghcr.io/tarampampam/error-pages:4.2.7
+    # Floating on 4.2: this only renders the template, so patch releases are
+    # uneventful and security fixes should not wait for a manual bump.
+    image: ghcr.io/tarampampam/error-pages:4.2
     container_name: ${COMPOSE_PROJECT_NAME}.error-pages
     networks:
       - proxy

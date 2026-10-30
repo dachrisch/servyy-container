@@ -119,7 +119,11 @@ services:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/ready"]
 
   pushgateway:
-    image: prom/pushgateway:v1.11.5
+    # Floating: this used to be pinned and the pin then failed to roll out (prod
+    # was still on v1.6.2 while the repo said v1.11.5, because watchtower only
+    # re-pulls the tag a container already has). Prometheus images publish no
+    # `vX.Y` tag, so `latest` is the only float available.
+    image: prom/pushgateway:latest
     restart: unless-stopped
     container_name: ${COMPOSE_PROJECT_NAME}.pushgateway
     labels:
