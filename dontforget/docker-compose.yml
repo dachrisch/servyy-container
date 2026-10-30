@@ -2,7 +2,7 @@ name: dontforget
 
 services:
   mongo:
-    image: mongo:8
+    image: mongo:9
     container_name: ${COMPOSE_PROJECT_NAME}.mongo
     restart: unless-stopped
     command: ["--auth"]

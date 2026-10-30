@@ -14,7 +14,7 @@ services:
     # Floats minor/patch inside major 8 (the digest pin froze even patch fixes).
     # watchtower scope=prod applies these within ~2 h. Major 9 is still a
     # deliberate step: it needs the FCV check that history/ records for 8.0.
-    image: mongo:8
+    image: mongo:9
     container_name: ${COMPOSE_PROJECT_NAME}.mongo
     restart: unless-stopped
     # 512m: ~285M resident + ~88M in swap measured 2026-10-29. The cap stops the
