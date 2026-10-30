@@ -32,9 +32,17 @@ services:
     labels:
       - traefik.enable=false
       - com.centurylinklabs.watchtower.scope=prod
+    # Healthcheck interval 30s, not 10s (as are all checks in this repo): every
+    # check is a `docker exec`, this host runs ~2.8 of them per second, and each
+    # one spawns dockerd+containerd+shim+runc and a burst of runnable tasks on a
+    # 4-core box that is queue-bound rather than CPU-bound — that churn is part
+    # of why node_load5 sits at ~2x the core count. The cost is detection speed:
+    # with `retries: 5` a dead mongo is now marked unhealthy after 2.5min
+    # instead of 50s, which no consumer of this check (probe, watchtower) needs.
+    # See history/2026-10-30_load-alert-tuning.md.
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
 
@@ -52,7 +60,7 @@ services:
       - com.centurylinklabs.watchtower.scope=prod
     healthcheck:
       test: ["CMD", "valkey-cli", "ping"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
 
@@ -76,7 +84,7 @@ services:
       - com.centurylinklabs.watchtower.scope=prod
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U firefly"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
 

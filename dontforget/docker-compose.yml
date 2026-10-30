@@ -14,7 +14,7 @@ services:
       - internal
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
 
@@ -22,6 +22,12 @@ services:
     image: dachrisch/dontforget:latest
     container_name: ${COMPOSE_PROJECT_NAME}.web
     restart: unless-stopped
+    # Image ships a 10s healthcheck; override only the interval (Docker keeps
+    # the image's test). ~2.8 docker exec healthchecks/s host-wide are part of
+    # why node_load5 sits at ~2x the core count:
+    # history/2026-10-30_load-alert-tuning.md.
+    healthcheck:
+      interval: 30s
     env_file:
       - .env
       - web.env

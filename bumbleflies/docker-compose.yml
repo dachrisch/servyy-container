@@ -36,11 +36,18 @@ services:
       - proxy
     healthcheck:
       test: wget --quiet --tries=1 --spider http://localhost/ || exit 1
+      interval: 30s
     restart: unless-stopped
 
   bnb:
     image: bumblecode/bnb:latest
     container_name: ${COMPOSE_PROJECT_NAME}.bnb
+    # The bumblecode images ship a 10s healthcheck; override only the interval
+    # (Docker keeps the image's test and merges per field). Each check is a
+    # docker exec, ~2.8/s host-wide, and this 4-core box is queue-bound:
+    # history/2026-10-30_load-alert-tuning.md.
+    healthcheck:
+      interval: 30s
     env_file:
       - bnb.env
     labels:
@@ -64,6 +71,8 @@ services:
   edu:
     image: bumblecode/edu:latest
     container_name: ${COMPOSE_PROJECT_NAME}.edu
+    healthcheck:
+      interval: 30s
     labels:
       - traefik.enable=true
       # redirect service (plain http → https; without this, http hits the global 404 page)
@@ -85,6 +94,8 @@ services:
   live:
     image: bumblecode/live:latest
     container_name: ${COMPOSE_PROJECT_NAME}.live
+    healthcheck:
+      interval: 30s
     env_file:
       - live.env
     labels:
