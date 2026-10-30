@@ -1,6 +1,6 @@
 services:
   hub:
-    image: node:24-alpine
+    image: node:26-alpine
     container_name: ${COMPOSE_PROJECT_NAME}.hub
     restart: unless-stopped
     entrypoint: [ "/bin/sh", "/scripts/startup.sh" ]
