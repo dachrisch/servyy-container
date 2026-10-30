@@ -73,6 +73,11 @@ services:
     # uneventful and security fixes should not wait for a manual bump.
     image: ghcr.io/tarampampam/error-pages:4.2
     container_name: ${COMPOSE_PROJECT_NAME}.error-pages
+    # Image ships a 10s healthcheck; override only the interval (Docker keeps
+    # the image's test). Each check is a docker exec, ~2.8/s host-wide, and this
+    # 4-core box is queue-bound: history/2026-10-30_load-alert-tuning.md.
+    healthcheck:
+      interval: 30s
     networks:
       - proxy
     volumes:

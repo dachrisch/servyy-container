@@ -223,7 +223,12 @@ groups:
     folder: Infrastructure
     interval: 1m
     rules:
-      # HIGH: 5-minute load average too high
+      # HIGH: 5-minute load average above 2x the host's CPU count.
+      # Expressed per core so the rule keeps its meaning across a resize. The
+      # old absolute `> 6` sat inside this host's normal operating range
+      # (idle baseline ~0.8 load per core: node_load5 counts *runnable
+      # threads*, and the box carries ~1,850 of them), so it fired 3x/day and
+      # was noise — history/2026-10-30_load-alert-tuning.md.
       - uid: high_load_average_5m
         title: High System Load (5 min)
         condition: C
@@ -235,7 +240,7 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
-              expr: node_load5
+              expr: 'node_load5 / count without (cpu, mode) (node_cpu_seconds_total{mode="idle"})'
               intervalMs: 1000
               maxDataPoints: 43200
               refId: A
@@ -256,19 +261,23 @@ groups:
               type: threshold
               conditions:
                 - evaluator:
-                    params: [6]
+                    params: [2]
                     type: gt
         noDataState: OK
         execErrState: Error
-        for: 5m
+        for: 10m
         annotations:
-          summary: 'System load average (5 min) is critically high'
-          description: 'Load average (5 min) is {{ if $values.B }}{{ printf "%.2f" $values.B.Value }}{{ else }}high{{ end }} - check for runaway processes or resource contention'
+          summary: 'System load average (5 min) is more than 2x the CPU count'
+          description: 'Load average (5 min) is {{ if $values.B }}{{ printf "%.2f" $values.B.Value }}{{ else }}more than 2.0{{ end }} per CPU (>2.0 = every core claimed twice over) - check for runaway processes or resource contention'
         labels:
           severity: high
         isPaused: false
 
-      # HIGH: 15-minute load average too high
+      # HIGH: 15-minute load average above 1.5x the host's CPU count.
+      # Same per-core normalisation as the 5-minute rule; 1.5 is the
+      # sustained-queueing line (6.0 on this 4-core host, against a ~3.2
+      # all-day baseline and ~1.7 during the 2026-10-30 leaguesphere.app
+      # memory-cap episode that this rule should still catch).
       - uid: high_load_average_15m
         title: High System Load (15 min)
         condition: C
@@ -280,7 +289,7 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
-              expr: node_load15
+              expr: 'node_load15 / count without (cpu, mode) (node_cpu_seconds_total{mode="idle"})'
               intervalMs: 1000
               maxDataPoints: 43200
               refId: A
@@ -301,14 +310,14 @@ groups:
               type: threshold
               conditions:
                 - evaluator:
-                    params: [3]
+                    params: [1.5]
                     type: gt
         noDataState: OK
         execErrState: Error
-        for: 5m
+        for: 15m
         annotations:
           summary: 'System load average (15 min) is elevated'
-          description: 'Load average (15 min) is {{ if $values.B }}{{ printf "%.2f" $values.B.Value }}{{ else }}elevated{{ end }} - sustained load above expected baseline'
+          description: 'Load average (15 min) is {{ if $values.B }}{{ printf "%.2f" $values.B.Value }}{{ else }}elevated{{ end }} per CPU (>1.5 = sustained queueing) - sustained load above expected baseline'
         labels:
           severity: high
         isPaused: false
@@ -358,7 +367,14 @@ groups:
           severity: critical
         isPaused: false
 
-      # MEDIUM: Swap usage above 50% (matches Monit threshold)
+      # MEDIUM: Swap usage above 80% of the swap device.
+      # Not 50%: on this host swap occupancy is steady-state cold pages (the
+      # kernel keeps ~3.5 of 6.3 GiB parked there with swappiness 20), so the
+      # old 50% threshold was a permanent coin flip — it fired repeatedly on
+      # 2026-10-30 while memory PSI sat at 0. Actual pressure is alerted on by
+      # node_memory_pressure_full / node_memory_pressure_some /
+      # node_swap_out_thrash below; this rule now only reports "the cushion is
+      # nearly gone".
       - uid: high_swap_usage
         title: High Swap Usage
         condition: C
@@ -391,14 +407,14 @@ groups:
               type: threshold
               conditions:
                 - evaluator:
-                    params: [50]
+                    params: [80]
                     type: gt
         noDataState: OK
         execErrState: Error
-        for: 10m
+        for: 15m
         annotations:
-          summary: 'System swap usage is high'
-          description: 'Swap usage is {{ if $values.B }}{{ printf "%.1f" $values.B.Value }}%{{ else }}above 50%{{ end }} - indicates memory pressure'
+          summary: 'System swap usage is critically high'
+          description: 'Swap usage is {{ if $values.B }}{{ printf "%.1f" $values.B.Value }}%{{ else }}above 80%{{ end }} - the emergency cushion is nearly gone'
         labels:
           severity: medium
         isPaused: false
@@ -448,7 +464,11 @@ groups:
           severity: high
         isPaused: false
 
-      # HIGH: system CPU usage above 20% (matches Monit monit.system.check.j2)
+      # HIGH: system CPU usage above 30% (per-core average).
+      # Was 20%, i.e. permanently half-tripped: ~13% of every core runs in
+      # kernel mode all day on this host (45 containers, ~2.8 docker exec
+      # healthchecks/s). 30% leaves room for normal churn and still catches a
+      # kernel-level problem.
       - uid: high_cpu_system
         title: High CPU Usage (system)
         condition: C
@@ -481,11 +501,11 @@ groups:
               type: threshold
               conditions:
                 - evaluator:
-                    params: [20]
+                    params: [30]
                     type: gt
         noDataState: OK
         execErrState: Error
-        for: 5m
+        for: 10m
         annotations:
           summary: 'High system CPU usage'
           description: 'System (kernel) CPU usage is {{ if $values.B }}{{ printf "%.2f" $values.B.Value }}%{{ else }}above 20%{{ end }} - possible kernel-level issue'
@@ -538,8 +558,11 @@ groups:
           severity: high
         isPaused: false
 
-      # HIGH: total CPU usage (user + system + iowait) above 200% (matches Monit
-      # monit.system.check.j2; multi-core hosts can exceed 100%)
+      # HIGH: total CPU usage (user + system + iowait) above 80% of the host's
+      # capacity. Normalised to percent-of-cores instead of the old absolute
+      # `> 200` (= 50% of this 4-core host, which is where it sits all day:
+      # 46.6% today, 48.5% yesterday), so it only fires when the box is
+      # actually running out of CPU.
       - uid: high_cpu_total
         title: High Total CPU Usage
         condition: C
@@ -551,7 +574,7 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
-              expr: 'sum by (instance) (rate(node_cpu_seconds_total{mode=~"user|system|iowait"}[5m])) * 100'
+              expr: '100 * sum without (cpu, mode) (rate(node_cpu_seconds_total{mode=~"user|system|iowait"}[5m])) / count without (cpu, mode) (node_cpu_seconds_total{mode="idle"})'
               intervalMs: 1000
               maxDataPoints: 43200
               refId: A
@@ -572,14 +595,65 @@ groups:
               type: threshold
               conditions:
                 - evaluator:
-                    params: [200]
+                    params: [80]
                     type: gt
         noDataState: OK
         execErrState: Error
-        for: 10m
+        for: 15m
         annotations:
           summary: 'High total CPU usage'
-          description: 'Total CPU usage (user+system+iowait) is {{ if $values.B }}{{ printf "%.2f" $values.B.Value }}%{{ else }}above 200%{{ end }} - system is heavily loaded'
+          description: 'Total CPU usage (user+system+iowait) is {{ if $values.B }}{{ printf "%.1f" $values.B.Value }}%{{ else }}above 80%{{ end }} of capacity - system is heavily loaded'
+        labels:
+          severity: high
+        isPaused: false
+
+      # HIGH: CPU pressure — the fraction of time at least one task was
+      # runnable but had to wait for a core.
+      # This is the rule that actually describes "the host feels loaded";
+      # node_load5/15 do not, because load counts ~1,850 runnable-thread
+      # candidates on this box and therefore carries a high idle baseline.
+      # PSI measures the waiting itself: ~13-16% on a healthy day, 56% during
+      # the 2026-10-29 memory-pressure incident.
+      - uid: node_cpu_pressure_high
+        title: High CPU Pressure (PSI)
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'rate(node_pressure_cpu_waiting_seconds_total[5m]) * 100'
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [50]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: 'Tasks are waiting for CPU more than half the time'
+          description: 'CPU pressure is {{ if $values.B }}{{ printf "%.1f" $values.B.Value }}%{{ else }}above 50%{{ end }} - some task was runnable but waiting for a core for more than half of the last 15m'
         labels:
           severity: high
         isPaused: false
