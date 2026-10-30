@@ -23,10 +23,42 @@
 <meta name="twitter:image" content="https://xn--hfer-architekten-mwb.de/public/social-preview.png" />
 <meta name="theme-color" content="#E8E9E3" />
 <link rel="icon" href="public/playground_assets/favicon-32x32.png" type="image/png" sizes="32x32" />
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Inter+Tight:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="preload" href="public/fonts/inter-tight-400-600-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="public/fonts/ibm-plex-mono-500-latin.woff2" as="font" type="font/woff2" crossorigin>
 <style>
+  /* Schriften lokal ausgeliefert — keine Verbindung zu Google (DSGVO), kein Render-Blocking durch Dritte. */
+  @font-face{
+    font-family:'IBM Plex Mono';
+    font-style:normal;
+    font-weight:400;
+    font-display:swap;
+    src:url(public/fonts/ibm-plex-mono-400-latin.woff2) format('woff2');
+    unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face{
+    font-family:'IBM Plex Mono';
+    font-style:normal;
+    font-weight:500;
+    font-display:swap;
+    src:url(public/fonts/ibm-plex-mono-500-latin.woff2) format('woff2');
+    unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face{
+    font-family:'IBM Plex Mono';
+    font-style:normal;
+    font-weight:600;
+    font-display:swap;
+    src:url(public/fonts/ibm-plex-mono-600-latin.woff2) format('woff2');
+    unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face{
+    font-family:'Inter Tight';
+    font-style:normal;
+    font-weight:400 600;
+    font-display:swap;
+    src:url(public/fonts/inter-tight-400-600-latin.woff2) format('woff2');
+    unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
   :root{
     --paper:#E8E9E3;
     --paper-2:#DFE1DA;
@@ -50,7 +82,9 @@
     background-color:#D3D5CE;
     -webkit-font-smoothing:antialiased;
   }
-  img{max-width:100%;display:block}
+  img{max-width:100%;display:block;height:auto}
+  .skip-link{position:fixed;top:-60px;left:8px;z-index:100;background:var(--ink);color:var(--paper);font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding:10px 14px;transition:top .15s}
+  .skip-link:focus{top:8px}
   a{color:inherit;text-decoration:none}
   ::selection{background:var(--orange);color:var(--paper)}
   :focus-visible{outline:2px solid var(--orange);outline-offset:3px}
@@ -203,7 +237,7 @@
   .befund-card{border:1px solid var(--rule);background:var(--card)}
   .bef-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:11px 13px;border-bottom:1px solid var(--rule)}
   .bef-head .id{font-family:var(--mono);font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--blue)}
-  .bef-head h3{margin:4px 0 0;font-family:var(--mono);font-size:11.5px;font-weight:500;letter-spacing:.08em;text-transform:uppercase}
+  .bef-head .bef-title{margin:4px 0 0;font-family:var(--mono);font-size:11.5px;font-weight:500;letter-spacing:.08em;text-transform:uppercase}
   .bef-count{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--orange);border:1px solid var(--orange);padding:3px 6px;white-space:nowrap}
   details.bef{border-bottom:1px solid var(--rule-soft)}
   details.bef:last-of-type{border-bottom:0}
@@ -360,8 +394,84 @@
   .rv.in{opacity:1;transform:none}
   @media (prefers-reduced-motion:reduce){.rv{opacity:1;transform:none;transition:none}html{scroll-behavior:auto}}
 </style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "ProfessionalService",
+      "@id": "https://xn--hfer-architekten-mwb.de/#business",
+      "name": "Höfer Architekten",
+      "description": "Architekturbüro in München für vorbeugenden Brandschutz, Architektur, Bauunterhalt und Wertermittlung. Brandschutzkonzepte, Nachweise und Mängelberichte für Bestand und Neubau.",
+      "url": "https://xn--hfer-architekten-mwb.de/",
+      "image": "https://xn--hfer-architekten-mwb.de/public/social-preview.png",
+      "telephone": "+491719727560",
+      "email": "achim.hoefer@gmx.net",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Karolinenstraße 9",
+        "postalCode": "80538",
+        "addressLocality": "München",
+        "addressRegion": "Bayern",
+        "addressCountry": "DE"
+      },
+      "areaServed": {
+        "@type": "City",
+        "name": "München"
+      },
+      "founder": { "@id": "https://xn--hfer-architekten-mwb.de/#achim-hoefer" },
+      "employee": { "@id": "https://xn--hfer-architekten-mwb.de/#achim-hoefer" },
+      "knowsAbout": [
+        "Vorbeugender Brandschutz",
+        "Brandschutzkonzept",
+        "Brandschutznachweis",
+        "Mängelbericht Brandschutz",
+        "Bauunterhalt",
+        "Wertermittlung",
+        "Hochbau"
+      ],
+      "hasOfferCatalog": {
+        "@type": "OfferCatalog",
+        "name": "Leistungen",
+        "itemListElement": [
+          { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Brandschutz" } },
+          { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Hochbau" } },
+          { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Bauunterhalt" } },
+          { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Wertermittlung" } }
+        ]
+      }
+    },
+    {
+      "@type": "Person",
+      "@id": "https://xn--hfer-architekten-mwb.de/#achim-hoefer",
+      "name": "Achim Höfer",
+      "jobTitle": "Architekt und Fachplaner für vorbeugenden Brandschutz",
+      "description": "Architekt, Sachverständiger für die Wertermittlung bebauter und unbebauter Grundstücke und Fachplaner für vorbeugenden Brandschutz (EIPOS, TU Dresden).",
+      "worksFor": { "@id": "https://xn--hfer-architekten-mwb.de/#business" },
+      "alumniOf": {
+        "@type": "EducationalOrganization",
+        "name": "EIPOS — Europäisches Institut für postgraduale Bildung, TU Dresden"
+      },
+      "memberOf": {
+        "@type": "Organization",
+        "name": "Bayerische Architektenkammer"
+      }
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://xn--hfer-architekten-mwb.de/#website",
+      "url": "https://xn--hfer-architekten-mwb.de/",
+      "name": "Höfer Architekten",
+      "inLanguage": "de",
+      "publisher": { "@id": "https://xn--hfer-architekten-mwb.de/#business" }
+    }
+  ]
+}
+</script>
 </head>
 <body>
+
+<a class="skip-link" href="#main">Zum Inhalt springen</a>
 
 <aside class="rail" aria-hidden="true">
   <span class="tick"></span>
@@ -396,7 +506,7 @@
     </div>
   </header>
 
-  <main>
+  <main id="main">
 
     <!-- ============ HERO ============ -->
     <section class="hero wrap" id="top">
@@ -426,7 +536,7 @@
             <div class="bef-head">
               <div>
                 <div class="id">BE-2026-014 · Bürogebäude · München</div>
-                <h3>Feststellungen aus der Begehung</h3>
+                <h2 class="bef-title">Feststellungen aus der Begehung</h2>
               </div>
               <span class="bef-count">4 offen</span>
             </div>
@@ -844,7 +954,7 @@
                 <li>Einbau Testlabor mit Konferenzraum Green IT — Rechenzentrum der Zukunft; Einbau einer Hubdecke zur Simulation unterschiedlicher Raumhöhen und -volumen.</li>
               </ul>
               <figure class="shot">
-                <img src="public/playground_assets/t-systems-200h.jpg" alt="Technikzentrale eines Rechenzentrums" />
+                <img src="public/playground_assets/t-systems-200h.jpg" width="300" height="163" loading="lazy" decoding="async" alt="Technikzentrale eines Rechenzentrums" />
                 <figcaption>Projektfoto · Energiezentrale, T-Systems</figcaption>
               </figure>
             </div>
@@ -890,7 +1000,7 @@
                 </ul>
               </div>
               <figure class="shot">
-                <img src="public/playground_assets/bauen-300w.jpg" alt="Logistikhalle mit Lkw-Rampe" />
+                <img src="public/playground_assets/bauen-300w.jpg" width="300" height="227" loading="lazy" decoding="async" alt="Logistikhalle mit Lkw-Rampe" />
                 <figcaption>Projektfoto · Logistikzentrum, POST Bauen</figcaption>
               </figure>
             </div>
@@ -928,7 +1038,7 @@
 
         <div class="qual">
           <figure class="portrait">
-            <img src="public/playground_assets/hoefer-portrait.jpg" alt="Achim Höfer, Architekt und Fachplaner für vorbeugenden Brandschutz" />
+            <img src="public/playground_assets/hoefer-portrait.jpg" width="500" height="761" loading="lazy" decoding="async" alt="Achim Höfer, Architekt und Fachplaner für vorbeugenden Brandschutz" />
             <figcaption>
               <b>Achim Höfer</b>
               <span>Architekt · Sachverständiger · Fachplaner Brandschutz</span>
