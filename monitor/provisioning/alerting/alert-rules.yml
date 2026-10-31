@@ -1219,7 +1219,7 @@ groups:
           severity: critical
         isPaused: false
 
-      # MEDIUM: the probe itself can't reach prod / parse its response
+      # MEDIUM: the probe itself can't reach prod / parse its response, even after retrying
       - uid: leaguesphere_maintenance_probe_success
         title: LeagueSphere Maintenance Probe Failing
         condition: C
@@ -1259,7 +1259,7 @@ groups:
         for: 10m
         annotations:
           summary: 'LeagueSphere maintenance/games probe is failing'
-          description: 'The hourly maintenance-mode/games probe could not reach or parse a response from LeagueSphere for 10+ minutes - check ls-maintenance-probe.service on lehel.xyz.'
+          description: 'The hourly maintenance-mode/games probe failed every retry (3 attempts per endpoint, ~1 minute of trying) - check ls-maintenance-probe.service on lehel.xyz and its journal for which endpoint (health/games) failed.'
         labels:
           severity: medium
         isPaused: false

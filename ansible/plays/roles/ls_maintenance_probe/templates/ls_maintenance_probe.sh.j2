@@ -8,13 +8,26 @@ BASE_URL="{{ ls_maintenance_probe_url }}"
 PUSHGATEWAY_URL="http://localhost:9091"
 JOB_NAME="leaguesphere_maintenance_probe"
 
-probe_success=1
+# The app stack stalls for >15s every now and then (a single request taking 14-15s at the
+# top of the hour: crawler bursts plus the hourly host jobs). With one attempt per hour
+# that single miss pushed leaguesphere_probe_success=0 and fired "LeagueSphere Maintenance
+# Probe Failing" for a site that answered in milliseconds seconds later. Retry instead of
+# reporting: `--retry-all-errors` also retries timeouts, `--retry-connrefused` covers a
+# restarting frontend. Worst case per endpoint: 3 x 15s + 2 x 5s = 55s, so both endpoints
+# plus the push stay well under the unit's TimeoutStartSec=300.
+CURL_OPTS=(--retry 2 --retry-delay 5 --retry-all-errors --retry-connrefused
+           --max-time 15 --connect-timeout 5 -A ls-maintenance-probe)
+
+# Per-endpoint outcomes, so a slow games API is distinguishable from an unreachable app
+# in Grafana without looking at the journal.
+health_success=1
+games_success=1
 
 # 1. Maintenance-mode detection via the health endpoint (leaguesphere#1821)
 maintenance_active=0
-health_response=$(curl -A ls-maintenance-probe -s --max-time 15 --connect-timeout 5 "${BASE_URL}/health/")
+health_response=$(curl "${CURL_OPTS[@]}" -sf "${BASE_URL}/health/")
 if [ -z "$health_response" ] || ! echo "$health_response" | jq -e 'has("maintenance_mode")' >/dev/null 2>&1; then
-  probe_success=0
+  health_success=0
 else
   maintenance_active=$(echo "$health_response" | jq -r 'if .maintenance_mode then 1 else 0 end')
 fi
@@ -26,14 +39,19 @@ fi
 # relying on this script to route around it.
 active_games=0
 games_known=1
-response=$(curl -A ls-maintenance-probe -sf --max-time 15 --connect-timeout 5 "${BASE_URL}/api/game-progress/?page_size=100")
+response=$(curl "${CURL_OPTS[@]}" -sf "${BASE_URL}/api/game-progress/?page_size=100")
 if [ -z "$response" ] || ! echo "$response" | jq -e '.results | type == "array"' >/dev/null 2>&1; then
-  probe_success=0
+  games_success=0
   games_known=0
 else
   today_date=$(TZ=Europe/Berlin date +%Y-%m-%d)
   active_games=$(echo "$response" | jq --arg today "$today_date" \
     '[.results[] | select(.date == $today) | .games[] | select(.status != "beendet" and .status != "Geplant")] | length')
+fi
+
+probe_success=1
+if [ "$health_success" = "0" ] || [ "$games_success" = "0" ]; then
+  probe_success=0
 fi
 
 # Fail-safe: if maintenance is active and the game state can't be confirmed (e.g. the API
@@ -46,15 +64,27 @@ fi
 
 # PUT (not POST): replaces the whole job group so stale series disappear
 # from Pushgateway/Grafana instead of lingering after probe changes.
-cat <<EOF | curl -sf -X PUT --max-time 15 --connect-timeout 5 --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}"
+payload=$(cat <<EOF
 # TYPE leaguesphere_maintenance_mode_active gauge
 leaguesphere_maintenance_mode_active ${maintenance_active}
 # TYPE leaguesphere_active_games gauge
 leaguesphere_active_games ${active_games}
 # TYPE leaguesphere_maintenance_blocking_games gauge
 leaguesphere_maintenance_blocking_games ${blocking}
+# TYPE leaguesphere_health_probe_success gauge
+leaguesphere_health_probe_success ${health_success}
+# TYPE leaguesphere_games_probe_success gauge
+leaguesphere_games_probe_success ${games_success}
 # TYPE leaguesphere_probe_success gauge
 leaguesphere_probe_success ${probe_success}
 EOF
+)
 
-echo "maintenance_active=${maintenance_active} active_games=${active_games} blocking=${blocking} probe_success=${probe_success}"
+# Exit non-zero when the push fails: systemd then marks the unit failed instead of hiding
+# a broken Pushgateway behind a clean exit (the stale-push alert covers the metric side).
+if ! printf '%s\n' "$payload" | curl "${CURL_OPTS[@]}" -sf -X PUT --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}"; then
+  echo "push to ${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME} failed" >&2
+  exit 1
+fi
+
+echo "maintenance_active=${maintenance_active} active_games=${active_games} blocking=${blocking} health_success=${health_success} games_success=${games_success} probe_success=${probe_success}"

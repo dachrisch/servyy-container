@@ -26,5 +26,8 @@
       description: 'Hourly LeagueSphere maintenance-mode / active-games probe'
       schedule: '*-*-* *:00:00'
       command: "{{ remote_user_home }}/.backup-scripts/ls-maintenance-probe.sh"
+      # Each endpoint retries twice (3 x 15s + 2 x 5s = 55s worst case), so two stalled
+      # endpoints plus the push can exceed systemd's 90s default for Type=oneshot.
+      timeout_start: 300
   tags:
     - ls.maintenance.probe
