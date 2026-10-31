@@ -6,6 +6,9 @@ Requires={{ service.depends }}.service
 
 [Service]
 Type=oneshot
+{% if service.timeout_start is defined %}
+TimeoutStartSec={{ service.timeout_start }}
+{% endif %}
 ExecStart={{ service.command }}
 
 [Install]
