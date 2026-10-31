@@ -36,11 +36,14 @@
   tags:
     - ls.maintenance.probe
 
+# daemon_reload: a changed unit file stays unloaded otherwise, so e.g. a new
+# TimeoutStartSec only takes effect at the next unrelated reload.
 - name: Start timer for {{ service.name }}
   systemd:
     scope: user
     name: '{{ service.name }}.timer'
     state: started
     enabled: yes
+    daemon_reload: yes
   tags:
     - ls.maintenance.probe
