@@ -1066,7 +1066,9 @@ curl -I https://{service}.lehel.xyz
 | `ansible/plays/vars/secrets.yml` | Encrypted Ansible secrets (incl. `vaultwarden_api` API key) |
 | `ansible/plays/vars/.restic_password_{home,root,ls_db}` | Restic password seed files (**source of truth**) |
 | `ansible/plays/vars/.traefik_dashboard_password` | Traefik dashboard passphrase seed (**source of truth**, gitignored; hashed into `traefik/dashboard-auth.htpasswd`) |
+| `ansible/plays/vars/.monitor_grafana_admin_password` | Grafana admin password seed (**source of truth**, gitignored; rendered into `monitor/grafana.env`) |
 | `ansible/plays/roles/restic/tasks/vaultwarden_push.yml` | Push restic passwords into Vaultwarden (handler-driven backup copy) |
+| `ansible/plays/monitor_vaultwarden.yml` | Push the Grafana admin password into Vaultwarden (recovery copy, `--tags monitor.vaultwarden`) |
 | `ansible/plays/roles/docker_service/templates/docker.env.j2` | Default service .env template |
 | `ansible/plays/roles/docker_service/templates/{service}/` | Per-service env templates |
 | `monitor/provisioning/dashboards/` | Grafana dashboard JSON files |
@@ -1138,6 +1140,27 @@ ssh lehel.xyz "docker exec leaguesphere-demo.demo-app /bin/bash -c 'rm -f /app/.
    - Guards init AND the destructive `restic.recreate` path (so recreate's wipe/re-init
      decision uses the real password, not a wrong-password artifact).
    - Reference: `history/2026-06-29_restic-seed-guard.md`
+
+6. **Controller-local Seed Secrets (drift hazard)**
+   - `vault_monitor_grafana_admin_password`, `vault_moodle_db_{,root_}password` and
+     `vaultwarden_admin_token` come from `lookup('password', 'vars/.<name> …')`. Their seed
+     files are gitignored, so they exist **only on the controller that first rendered them**.
+   - Deploying from a controller that lacks a seed **generates a new random value** and
+     renders it over the live config. That is the 2026-10-31 Grafana admin password drift:
+     a deploy from the opencode server's checkout (no seed) rewrote `monitor/grafana.env`
+     on servy while Grafana's DB kept the original password.
+   - Only restic has a guard that refuses to generate (`roles/restic/tasks/seed_guard.yml`,
+     rule 5). Grafana, Moodle and the Vaultwarden admin token have **no guard**: before
+     deploying from a new controller, copy the seed files from the original controller
+     (offline copy) or recover the value from Vaultwarden first.
+   - Grafana applies `GF_SECURITY_ADMIN_PASSWORD` only when it first creates the admin user,
+     so an env/DB mismatch does not change the working password — but recreating the
+     `grafana_data` volume would adopt the drifted value. Check with
+     `curl -u admin:<env pw> http://localhost:3000/api/user` (200 = env and DB agree).
+   - Recovery copy in Vaultwarden: `bw get password "grafana - admin (lehel.xyz)"`.
+     Re-push after a rotation with
+     `cd ansible && ./servyy.sh --limit servy.lehel.xyz --tags monitor.vaultwarden`.
+   - Reference: `history/2026-11-01_grafana-admin-password-drift.md`
 
 > **Note:** CLAUDE.md elsewhere references a standalone `ansible-playbook restic_recreate.yml`
 > — no such file exists; recreate runs via `--tags restic.recreate` through the restic role.

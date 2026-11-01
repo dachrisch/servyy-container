@@ -1,0 +1,55 @@
+---
+# Recovery copy of the Grafana admin password.
+#
+# `vault_monitor_grafana_admin_password` (vars/secrets.yml) is NOT a literal: it
+# is a controller-local seed, `lookup('password', 'vars/.monitor_grafana_admin_password
+# length=32 chars=ascii_letters,digits')`. The seed file is gitignored, so it
+# exists only on the controller that first rendered it. Any OTHER controller
+# generates a brand-new password and renders that into monitor/grafana.env —
+# which is exactly the 2026-10-31 drift: a deploy from the opencode server's
+# checkout (no seed) rewrote the password on servy, and Grafana's DB kept the
+# old one (it applies GF_SECURITY_ADMIN_PASSWORD only on first init).
+#
+# This play keeps a human-readable copy in Vaultwarden so a controller without
+# the seed can recover the real value instead of silently generating one.
+#
+# Run: ansible-playbook servyy.yml -i production --limit servy.lehel.xyz \
+#        --tags monitor.vaultwarden
+# The Vaultwarden master password comes from ~/.ssh/vw.key, like every other push.
+- name: Push the Grafana admin password to Vaultwarden
+  hosts: all
+  strategy: linear
+  remote_user: "{{ create_user }}"
+  become: true
+  become_user: "{{ create_user }}"
+  vars_files:
+    - vars/default.yml
+    - vars/secrets.yml
+  tasks:
+    - name: Push the Grafana admin password into Vaultwarden
+      include_role:
+        name: vaultwarden
+        tasks_from: push_items.yml
+        apply:
+          tags:
+            - monitor.vaultwarden
+      vars:
+        vaultwarden_item_username: admin
+        vaultwarden_items:
+          - name: "grafana - admin ({{ domain }})"
+            secret: "{{ vault_monitor_grafana_admin_password }}"
+            notes: >-
+              Grafana admin password for https://monitor.{{ domain }} (login: admin).
+              Recovery copy of the Ansible seed vars/.monitor_grafana_admin_password —
+              the seed file stays the source of truth. Grafana applies
+              GF_SECURITY_ADMIN_PASSWORD only when it first creates the admin user, so
+              changing the env value does NOT change the DB password; if the two
+              disagree, reset it with `docker exec monitor.grafana grafana cli
+              admin reset-admin-password <pw>` or restore the seed and redeploy.
+      when:
+        - vw_master_password | default('') | length > 0
+        - services_enabled.monitor | default(false) | bool
+      tags:
+        - monitor.vaultwarden
+  tags:
+    - monitor.vaultwarden
