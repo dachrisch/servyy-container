@@ -135,9 +135,24 @@ the blocklist path redirected to `/tmp`):
 100 parallel requests with the same UA → `100 302`; with rotating UAs → `100 302`. No
 per-source limit existed.
 
-**Production** — recorded in the PR body: normal vhosts keep answering, a rotating-UA
-burst now yields 429s, the quick timer is active on both hosts, and the LeagueSphere
-probe and UptimeRobot stay green.
+**Production** (`servy.lehel.xyz` recreated 11:07:49 CET, `codey.lehel.xyz` 11:04:28):
+
+| Check | Result |
+|---|---|
+| normal vhosts | `bumbleflies.de` 200, `git.lehel.xyz` 200, `monitor.lehel.xyz` 302, `leaguesphere.app` 301, `demo.leaguesphere.app` 301 |
+| rotating-UA burst, 100 parallel (`monitor.lehel.xyz`, no per-router middlewares) | 90 × 302, **10 × 429** (baseline same morning: `100 302`) |
+| sustained ~35 r/s, 500 requests | 396 × 302, **104 × 429** — the limiter holds the line at ~25 r/s + burst |
+| headers on a shed response | HSTS + `nosniff` present |
+| recovery | 302 again once the bucket refills |
+| config errors | only the known `acme-http@internal` / `error-pages@file` startup transient |
+| 429s in the 60 min after deploy, by client | `212.114.180.131` (a live WordPress-XSS scanner) 326, own test source 122 — **no legitimate client shed** |
+| ban loop on live traffic | `212.114.180.131` reached 326 x 429 in 5 min and was banned by the jail (`traefik-rate-limit attempts=2148`, `traefik-aggressive-crawler attempts=5750`) |
+| `traefik-rate-flood` reason | `fail2ban-regex` matches it: `1 matched` |
+| quick timer | active on both hosts, every 2 min (`11:07:31`, `11:09:04`, … all `Added 0 new IPs`, no error) |
+| junk lines after the stderr fix | **0** (22 647 had accumulated before it) |
+| hourly probe after the change | `probe_success=1 health_success=1 games_success=1` (11:10:42) |
+| monitor stack | all 8 containers up; Grafana healthy (no render trap) |
+
 
 ## Known issues found, not fixed here
 
@@ -154,3 +169,9 @@ probe and UptimeRobot stay green.
   load a page during an hourly sample. The retuned thresholds stop that from recurring;
   existing bans expire within 24 h.
 * `restic-backup-home.service` still fails hourly with `exit_code=3` (unrelated).
+* **Deploy prerequisites that are missing from a fresh clone** (both cost a failed run):
+  `plays/vars/.traefik_dashboard_password` is gitignored and absent here, so
+  `--tags user.docker.traefik` aborts on the `traefik_dashboard_auth` assertion — the
+  deploy was done with `user.docker.repo,user.docker.monitor,system.fail2ban` plus a manual
+  `docker compose up -d --force-recreate`; and `ansible/production` sets
+  `ansible_user: root` for codey, so `-e ansible_user=cda` is required as well.
