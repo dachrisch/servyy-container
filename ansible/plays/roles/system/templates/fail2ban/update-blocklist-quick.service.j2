@@ -1,0 +1,16 @@
+[Unit]
+Description=Fast fail2ban blocklist update from Loki (short windows)
+After=network.target fail2ban.service
+# Runs every 2 minutes: its queries only look at the last 1-2 minutes, so this
+# is what bans a flooding client while the flood is still going. The hourly
+# update-blocklist.service keeps the 24h queries (SSH brute force, scanner UAs,
+# secret probes). See history/2026-11-01_traefik-scan-flood.md.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/blocklist/update-from-loki.sh quick
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

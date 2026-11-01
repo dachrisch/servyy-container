@@ -7,6 +7,11 @@
 # Log format: YYYY-MM-DD HH:MM:SS IP reason
 # After fail2ban strips the date, there may be leading whitespace
 # Match IP followed by reason (e.g., ssh-brute-force, scanner-bot, traefik-*)
-failregex = ^\s*<HOST>\s+(?:ssh-brute-force|scanner-bot|excessive-errors|traefik-rate-limit|traefik-malicious-bot|traefik-aggressive-crawler|secret-probe)\s+attempts=\d+\s*$
+#
+# traefik-rate-flood (added 2026-11-01) is the entrypoint rate limiter's signal:
+# 200+ requests shed in 2 minutes. It is the only reason that comes from
+# update-blocklist-quick.timer (every 2 minutes), so a flood is banned while it
+# is still running instead of an hour later.
+failregex = ^\s*<HOST>\s+(?:ssh-brute-force|scanner-bot|excessive-errors|traefik-rate-limit|traefik-rate-flood|traefik-malicious-bot|traefik-aggressive-crawler|secret-probe)\s+attempts=\d+\s*$
 
 ignoreregex =

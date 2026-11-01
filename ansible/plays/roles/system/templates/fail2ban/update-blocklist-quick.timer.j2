@@ -1,0 +1,12 @@
+[Unit]
+Description=Fast update of fail2ban blocklist from Loki (every 2 minutes)
+
+[Timer]
+# Every 2 minutes, offset by one minute so it does not land on top of the
+# hourly full run (update-blocklist.timer at :00 + up to 300 s jitter).
+OnCalendar=*-*-* *:1/2:00
+RandomizedDelaySec=10
+Persistent=true
+
+[Install]
+WantedBy=timers.target
