@@ -34,6 +34,21 @@ The reverse proxy for every host (servy + codey). Deployed by
   or relax the shared value instead. CSP and Permissions-Policy are deliberately **not**
   global for exactly this reason. Rationale and the pre-change header survey:
   `history/2026-10-29_traefik-security-headers.md`.
+* **Every request is bounded by the edge guard, and there is no opt-out.**
+  `edge-guard@file` sits between `security-headers@file` and `error-pages@file` on both
+  `web` and `websecure` (`traefik.yaml`), so every router inherits it without labels. It is
+  a `chain` in `dynamic.yaml`: `edge-ratelimit` (25 r/s, burst 50, **per client IP** — Traefik
+  terminates TLS, so the peer address is the client) → `edge-inflight` (100 concurrent per
+  source). Added after the 2026-11-01 scanner flood, when one Hetzner IP took the proxy to
+  2 cores and 10 s response times (`history/2026-11-01_traefik-scan-flood.md`). The 429s it
+  produces are the primary ban signal for `update-blocklist-quick.timer`.
+  **Do not add `ipBlockList` here: it does not exist in Traefik v3.** 3.7 answers
+  `field not found, node: ipBlockList` and then drops the whole file provider config, so
+  every hostname falls back to the catchall 404. Blocking addresses is fail2ban's job
+  (`loki-blocklist` jail, 80/443 only, 24 h, `system.fail2ban` tags).
+  Adding an IP to that jail is a *runtime* action (`fail2ban-client set loki-blocklist
+  banip <ip>`); changing the limiter is a hot `dynamic.yaml` edit; changing the entrypoint
+  lists is not (see the recreate bullet below).
 * **Never publish a port on all interfaces.** Docker writes its own FORWARD/nat rules and
   bypasses ufw, so `ports: - "8080:8080"` is internet-reachable the moment the container
   starts. Only this proxy may bind `0.0.0.0` (80/443); everything else publishes to

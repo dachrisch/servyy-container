@@ -137,6 +137,42 @@
   tags:
     - system.fail2ban.timer
 
+# Fast path (2026-11-01): short-window queries every 2 minutes. The hourly run
+# alone left a 31-minute scanner flood unbanned for the whole hour; these queries
+# only touch the last 1-2 minutes, so they are cheap enough to run this often.
+- name: Create systemd service for fast blocklist updates
+  template:
+    src: fail2ban/update-blocklist-quick.service.j2
+    dest: /etc/systemd/system/update-blocklist-quick.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: reload systemd
+  tags:
+    - system.fail2ban.timer
+    - system.fail2ban.timer.quick
+
+- name: Create systemd timer for fast blocklist updates
+  template:
+    src: fail2ban/update-blocklist-quick.timer.j2
+    dest: /etc/systemd/system/update-blocklist-quick.timer
+    owner: root
+    group: root
+    mode: '0644'
+  notify: reload systemd
+  tags:
+    - system.fail2ban.timer
+    - system.fail2ban.timer.quick
+
+- name: Enable and start fast blocklist update timer
+  systemd:
+    name: update-blocklist-quick.timer
+    enabled: yes
+    state: started
+  tags:
+    - system.fail2ban.timer
+    - system.fail2ban.timer.quick
+
 - name: Create Traefik log directory
   file:
     path: /var/log/traefik
