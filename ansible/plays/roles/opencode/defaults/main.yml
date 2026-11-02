@@ -19,6 +19,7 @@ agent_config_skills_src: "{{ lookup('env', 'HOME') }}/dev/infrastructure/setup-h
 agent_config_plugins_src: "{{ lookup('env', 'HOME') }}/dev/infrastructure/setup-home/agent-config/plugins"
 # Shared canonical skills shipped to the server (dev-only ones stay out).
 opencode_server_shared_skills:
+  - adding-opencode-bot
   - gh-stack
   - release-please
   - session-messaging
