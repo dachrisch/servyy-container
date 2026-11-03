@@ -27,3 +27,40 @@ interval is quiet.
   skipped (`Bill intake confirmation not sent: …` in the Ofelia log).
 - The job exits non-zero when a bill could not be read (`failed > 0`), so a
   broken attachment shows up as a failed Ofelia run and is retried next hour.
+
+## Deployment (prod, 2026-11-03)
+
+Applied on `servy.lehel.xyz` (test host was not reachable from the deploying
+container, prod approval was given explicitly):
+
+- `bumblecode/queen:latest` was `0.31.0`/`0.32.0` (watchtower + a manual pull).
+- `git -C /home/cda/servyy-container reset --hard origin/master` (`52d5d66`);
+  the only diff in `finance/` was this label change.
+- `docker compose -p finance up -d queen` recreated only `finance.queen`
+  (`healthy`, `/health` 200 through Traefik).
+
+### Gotcha: Ofelia reads the labels only at startup
+
+Recreating the container is **not** enough. Ofelia's last startup was
+2026-10-30 and it kept firing the old definition:
+
+```
+2026-11-03T07:15:00 [Job "bill-intake"] Started - node dist/src/server/cron/billIntake.js
+```
+
+(the daily `0 15 7 * * *` it registered on 2026-10-30), with no run at 21:00
+even though the container label already said `0 * * * *`. Only after
+
+```
+docker restart portainer.ofelia
+```
+
+did it register the new schedule:
+
+```
+New job registered "bill-intake" - "node dist/src/server/cron/billIntake.js" - "0 * * * *"
+```
+
+So **every** Ofelia label change (schedule *or* command) needs a scheduler
+restart to take effect — restart it after recreating the container, then check
+for the `New job registered` line before trusting the new schedule.
