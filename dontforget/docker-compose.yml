@@ -2,13 +2,22 @@ name: dontforget
 
 services:
   mongo:
-    image: mongo:8
+    # Pinned to 9.0.4: Linux >= 6.19 (servy runs 7.0) breaks mongo 8.x
+    # (SERVER-121912), and 9.0 cannot open FCV 8.2 data, so the switch was a
+    # dump/restore onto a NEW volume (pre_tasks in plays/user.yml). Exact tag:
+    # a database major/minor step is a deliberate change.
+    # See history/2026-11-03_shared-mongo9-kernel7.md.
+    image: mongo:9.0.4
     container_name: ${COMPOSE_PROJECT_NAME}.mongo
     restart: unless-stopped
-    command: ["--auth"]
+    # No `command: ["--auth"]`: with a flag as the first arg the official
+    # entrypoint skips initdb, so MONGO_INITDB_ROOT_* would never be created on
+    # a fresh volume. The entrypoint adds --auth itself when they are set.
     env_file:
       - web.env
     volumes:
+      # mongo 9 data. The pre-9 volume dontforget_mongo_data is no longer
+      # mounted but kept untouched as the rollback copy.
       - mongo_data:/data/db
     networks:
       - internal
@@ -95,6 +104,9 @@ services:
 
 volumes:
   mongo_data:
+    # Explicit name: the migration pre_tasks in plays/user.yml key off it
+    # (absent = not migrated yet).
+    name: dontforget_mongo9_data
 
 networks:
   internal:
