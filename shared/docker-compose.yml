@@ -11,21 +11,28 @@ name: ${SERVICE_NAME}
 
 services:
   mongo:
-    # Floats minor/patch inside major 8 (the digest pin froze even patch fixes).
-    # watchtower scope=prod applies these within ~2 h. Major 9 is still a
-    # deliberate step: it needs the FCV check that history/ records for 8.0.
-    image: mongo:8
+    # Pinned to 9.0.4. Linux >= 6.19 (servy runs 7.0) breaks the TCMalloc/rseq
+    # use of mongo 8.x, and current 8.x builds refuse to start on it
+    # (SERVER-121912), so `mongo:8` crash-looped and watchtower rolled back
+    # every 2 h. 9.0 cannot open FCV 8.2 data, so the switch was a dump/restore
+    # onto a NEW volume (pre_tasks in plays/user.yml). A database gets an exact
+    # tag: a major/minor step is a deliberate change, never a watchtower pull.
+    # See history/2026-11-03_shared-mongo9-kernel7.md.
+    image: mongo:9.0.4
     container_name: ${COMPOSE_PROJECT_NAME}.mongo
     restart: unless-stopped
     # 512m: ~285M resident + ~88M in swap measured 2026-10-29. The cap stops the
     # kernel from pushing the WiredTiger cache to swap under host pressure.
     mem_limit: 512m
-    command: ["--auth"]
+    # No `command: ["--auth"]`: with a flag as the first arg the official
+    # entrypoint skips its initdb block, so MONGO_INITDB_ROOT_* would never be
+    # created on a fresh volume. The entrypoint adds --auth itself whenever
+    # the root credentials are set.
     env_file:
       - shared.env
     volumes:
-      # KEEPS the leagues-finance volume by explicit name: zero data movement.
-      # Adopted on prod, created fresh on test.
+      # mongo 9 data. The pre-9 volume leagues-finance_mongo_data is no longer
+      # mounted but kept untouched as the rollback copy.
       - mongo_data:/data/db
     networks:
       - backend
@@ -94,5 +101,6 @@ networks:
 
 volumes:
   mongo_data:
-    # Exact legacy name from the leagues-finance project: adopt, don't migrate.
-    name: leagues-finance_mongo_data
+    # Explicit name: the migration pre_tasks in plays/user.yml key off it
+    # (absent = not migrated yet).
+    name: shared_mongo_data
