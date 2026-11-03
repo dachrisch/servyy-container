@@ -275,8 +275,28 @@ Rehearsed on the test box, not prod (the blank instance there is untouched):
    ~40 k rows), autosave drafts, config logs — leave those alone.
    After the replace: **0 remaining hits** in live content, and a spot check shows the rewritten link
    pointing at the new host.
-5. **Still missing: the ~14 GB `moodledata`.** Without it `pluginfile.php` links 404 (images, PDFs,
-   SCORM content). The DB half is proven; the file half is not yet exercised.
+5. **Still missing: the `moodledata`.** Without it `pluginfile.php` links 404 (images, PDFs, SCORM
+   content). The DB half is proven; the file half is not yet exercised.
+
+### Task 5 — file half: first archive REJECTED (2026-11-03)
+
+`moodledata.tar.gz` (5.95 GB, 2026-11-03) was delivered to the `leaguesphere` jail home and
+**rejected**: the export went through FTP in ASCII/auto mode, so every bare LF became CRLF inside
+the files. The tar/gzip container is fine; the payload is not.
+
+- 9,496 `filedir` files, all 9,317 DB `contenthash` values present **by name** (0 missing) —
+  which is exactly why the file set looks complete at first glance.
+- 249 intact, 6,100 exactly repairable (CRLF→LF, sha1-verified), **3,147 damaged beyond repair**
+  (2,980 DB-referenced = **5.63 GiB**: 1,688 PNG, 944 PDF, 84 MP4, 25 PPTX (1.78 GiB), 41 `.mbz`,
+  7 ZIP, mostly `assignfeedback_editpdf` / `assignsubmission_file`).
+- CRLF↔LF is not invertible when the original already contained CR bytes, so no script recovers them.
+- Ingest was rehearsed in full and **rolled back** to the pre-import dataroot; the DB was never
+  touched. Archive + rollback copy + [re-export instructions] live in
+  `/mnt/storagebox/moodle-import/` on servy (`README-CORRUPT-EXPORT.md`).
+- Re-export must be binary end-to-end (tar the directory **on the hosting server**, or FTP in
+  Binary mode), and Christoph should verify every filedir file hashes to its own filename before
+  sending. Also ask for a fresh `mysqldump`: the current dump is 2026-10-28 while the files are
+  2026-11-03, so 5 days of DB changes are missing and 178 archive files postdate the dump.
 
 ### Task 5 original detail (still on `m.`)
 
