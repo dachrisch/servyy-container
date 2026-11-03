@@ -303,6 +303,42 @@
         - user.docker.leagues-finance
         - user.docker
 
+    # mongo 8.x -> 9.0 (kernel >= 6.19 incompatibility), see
+    # tasks/mongo9_migrate.yml. Last pre_tasks on purpose: each dump/restore must
+    # finish before the service and consumer roles run. Each import is a no-op
+    # once its new volume exists.
+    - name: Migrate shared mongo 8 -> 9 (dump/restore onto a new volume)
+      ansible.builtin.import_tasks: tasks/mongo9_migrate.yml
+      vars:
+        mongo9_name: shared
+        mongo9_project: shared
+        mongo9_container: shared.mongo
+        mongo9_legacy_volume: leagues-finance_mongo_data
+        mongo9_new_volume: shared_mongo_data
+        mongo9_consumers: [leagues-finance.finance-api, finance.queen]
+        mongo9_user: "{{ leagues_finance.mongo_root_username }}"
+        mongo9_password: "{{ leagues_finance.mongo_root_password }}"
+      when: "'shared' in (services | default([]))"
+      tags:
+        - user.docker.shared
+        - user.docker
+
+    - name: Migrate dontforget mongo 8 -> 9 (dump/restore onto a new volume)
+      ansible.builtin.import_tasks: tasks/mongo9_migrate.yml
+      vars:
+        mongo9_name: dontforget
+        mongo9_project: dontforget
+        mongo9_container: dontforget.mongo
+        mongo9_legacy_volume: dontforget_mongo_data
+        mongo9_new_volume: dontforget_mongo9_data
+        mongo9_consumers: [dontforget.web]
+        mongo9_user: "{{ vault_dontforget_mongo_root_username }}"
+        mongo9_password: "{{ vault_dontforget_mongo_root_password }}"
+      when: "'dontforget' in (services | default([]))"
+      tags:
+        - user.docker.dontforget
+        - user.docker
+
   roles:
     # Simple services — generic .env only
     # Traefik computes its dashboard basic-auth htpasswd entry first (seed:
@@ -721,10 +757,13 @@
     # Never wipe the volume during an upgrade: mongo 8 may need longer to
     # come up on existing data, and an unhealthy container here means the upgrade
     # failed, not that the volume is corrupt. The dedicated wait below fails loudly.
+    # Same for the mongo 9 migration run (shared_mongo9_migrating): the freshly
+    # restored volume must never be the one this deletes.
     - name: Remove corrupted mongo volume and restart if unhealthy
       when: >
         'shared' in (services | default([])) and
-        not (lf_mongo_upgrading | default(false)) and (
+        not (lf_mongo_upgrading | default(false)) and
+        not (shared_mongo9_migrating | default(false)) and (
         lf_mongo_info.container is none or
         lf_mongo_info.container.State.Health.Status != 'healthy')
       block:
@@ -734,9 +773,11 @@
             project_name: shared
             state: absent
 
-        - name: Remove leagues-finance mongo_data volume
+        # The volume shared.mongo mounts (mongo 9). NOT the legacy
+        # leagues-finance_mongo_data: that is the pre-9 rollback copy.
+        - name: Remove shared mongo_data volume
           community.docker.docker_volume:
-            name: leagues-finance_mongo_data
+            name: shared_mongo_data
             state: absent
 
         - name: Restart shared containers
