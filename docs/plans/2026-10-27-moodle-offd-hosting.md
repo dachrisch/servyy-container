@@ -275,10 +275,24 @@ Rehearsed on the test box, not prod (the blank instance there is untouched):
    ~40 k rows), autosave drafts, config logs — leave those alone.
    After the replace: **0 remaining hits** in live content, and a spot check shows the rewritten link
    pointing at the new host.
-5. **Still missing: the `moodledata`.** Without it `pluginfile.php` links 404 (images, PDFs, SCORM
-   content). The DB half is proven; the file half is not yet exercised.
+5. **`moodledata` — DONE 2026-11-04** (see below). The 2026-11-03 archive was rejected as
+   ASCII-mangled; Christoph's corrected binary export verified byte-for-byte and is imported.
 
-### Task 5 — file half: first archive REJECTED (2026-11-03)
+### Task 5 — file half: DONE (2026-11-04), first archive rejected (2026-11-03)
+
+The corrected archive (`moodledata.tar.gz`, 5,960,384,576 B, sha256 `4351b115…f3608`) passed the
+gate that the first one failed: **9,498 / 9,498 `filedir` files hash to their own filename**, all
+9,317 DB `contenthash` values present, 0 missing. Imported into `…/data/moodledata` (uid 65534,
+dirs `2770`), caches purged, cron clean. Afterwards: 0 DB hashes missing, 9,316/9,316
+`mdl_files.filesize` rows match on disk, and a `mod_resource` PDF fetched through `pluginfile.php`
+returns 200 with a body whose sha1 **equals** the DB contenthash.
+
+Still pending on this workstream: a **fresh `mysqldump`** (the imported DB is 2026-10-28; 181 files,
+219.5 MiB, on disk have no rows yet — a new dump also needs the ~134-row wwwroot replace re-run),
+the `restic-moodle` scope (Task 7 — today's coverage is two manual tarballs on the Storage Box), and
+`PLUGINS=enrol_waitlist`. Full detail: `history/2026-11-04_moodle-moodledata-ingested.md`.
+
+### Task 5 — the rejected 2026-11-03 archive (for the record)
 
 `moodledata.tar.gz` (5.95 GB, 2026-11-03) was delivered to the `leaguesphere` jail home and
 **rejected**: the export went through FTP in ASCII/auto mode, so every bare LF became CRLF inside

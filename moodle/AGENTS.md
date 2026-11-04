@@ -94,6 +94,34 @@ on the next deploy the container starts, notices the DB is older than the code, 
 `upgrade.php` automatically. Major versions (5.x) stay a **manual, rehearsed** event — Moodle 5.1+
 moves the docroot to `/public` and every plugin needs re-verification.
 
+## Verifying a `moodledata` export before importing it
+
+Every `filedir` file is named after the SHA1 of its content, so the *file set* looking complete proves
+nothing — the 2026-11-03 export had all 9,317 DB hashes present **by name** while 9,247 files were
+ASCII-mangled. Always hash the content against the filename, streaming it straight out of the tar
+(no extract, no disk needed):
+
+```bash
+ssh lehel.xyz "sudo python3 - <<'PY'
+import tarfile, hashlib
+p='/var/jail/home/leaguesphere/moodledata.tar.gz'
+ok=bad=0
+with tarfile.open(p,'r|gz') as tf:
+    for m in tf:
+        if not m.isfile(): continue
+        parts=m.name.split('/')
+        if len(parts)==5 and parts[1]=='filedir':
+            h=hashlib.sha1(); f=tf.extractfile(m)
+            while (b:=f.read(1<<20)): h.update(b)
+            ok += h.hexdigest()==parts[4]; bad += h.hexdigest()!=parts[4]
+print('filedir_sha1_ok', ok, 'bad', bad)   # bad must be 0
+PY"
+```
+
+Two corroborating signals from the bad export: every mtime equalled the download time, and any file
+whose content contains a bare LF failed. Note the Storage Box CIFS mount has thrown `Bad address` on
+a large single-stream `mv` — verify sha256 after copying, and retry with `cp`.
+
 ## Not done yet (see the plan)
 
 - restic scope `restic-moodle` + one *executed* restore drill (Task 7) — **before** real data lands.
