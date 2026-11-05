@@ -8,7 +8,37 @@ echo "📦 [Startup] Installing system packages..."
 # apt-get update
 # apt-get install -y git curl python3 python3-pip
 apk update
-apk add git curl github-cli nodejs npm python3 py3-pip openssh git-crypt gettext
+# openssh-client-default, NOT the `openssh` meta installed here since d0d95b7:
+# the meta pulls openssh-server, i.e. the sshd that showed up in this container
+# without anyone starting it. The base image ships no OpenSSH at all (its
+# /etc/apk/world is alpine-baselayout, alpine-keys, apk-tools, busybox, ...), so
+# this line alone is what put sshd on the filesystem. The client stays: `ssh`
+# for git/github, `ssh-keyscan` for known_hosts, `ssh-keygen` for commit signing.
+apk add git curl github-cli nodejs npm python3 py3-pip openssh-client-default git-crypt gettext
+
+# 1a. Purge any sshd this container already carries.
+# Containers created before the line above was fixed (2026-11-05) installed the
+# full openssh meta, i.e. openssh-server, on every boot. It never bound :22, but
+# it is Alpine/musl without PAM — precisely the recipe behind the Nov 2026
+# "sshole" bug: on musl, crypt() returns "*" when it cannot hash (passwords
+# > 256 bytes), so an account locked with a bare `*` in shadow accepts any
+# password of 257-1024 bytes. Fixed upstream in openssh 10.6p2; Alpine's master
+# got it 2026-11-05, but the v3.24 repo this image tracks still ships
+# 10.3_p1-r2. Nothing here needs sshd, and anything running as root in the
+# container (agents included) could start it.
+# `apk del openssh` (not openssh-server) is the effective command — removing
+# only the server package is refused while the meta depends on it. Guarded so a
+# failure can't kill the boot (set -e).
+if apk info -e openssh-server >/dev/null 2>&1; then
+    echo "🔒 [Startup] Removing openssh-server (this container runs no sshd)..."
+    if apk del openssh >/dev/null 2>&1; then
+        echo "📍 [Startup] openssh-server removed"
+    elif apk del openssh-server >/dev/null 2>&1; then
+        echo "📍 [Startup] openssh-server removed (direct)"
+    else
+        echo "⚠️ [Startup] openssh-server removal failed (ssh client unaffected)"
+    fi
+fi
 
 # 1b. Headless browser for the chrome-devtools MCP (record-tutorial & co.).
 # The ghcr.io/anomalyco/opencode:latest image does not ship chromium, but

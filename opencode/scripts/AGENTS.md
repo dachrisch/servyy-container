@@ -25,6 +25,12 @@ container are overwritten on restart — change the repo file and deploy it.
   `ssh codey.lehel.xyz "docker logs portainer.ofelia"` (Ofelia's prune output).
 - Session data lives in `/root/.local/share/opencode/opencode.db`; pruning runs
   nightly at 04:00 via Ofelia.
+- **No SSH daemon in this container.** The image ships no OpenSSH; `startup.sh`
+  installs `openssh-client-default` (ssh/scp/sftp/ssh-keygen) and never the
+  `openssh` meta, which would pull `openssh-server`. That matters because
+  Alpine/musl without PAM is the vulnerable combination in the 2026 "sshole"
+  musl OpenSSH auth bypass. Do not `apk add openssh` or start an sshd — nothing
+  here binds `:22`, and a server is a liability, not a feature.
 - Plugin-local tools: `session_list` / `session_send` reach other OpenCode
   sessions on this host; MCP servers `circleci`, `chrome-devtools` (headless
   chromium) and `docstash` are available.
