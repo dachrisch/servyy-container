@@ -1,16 +1,20 @@
 services:
   opencode:
     # PINNED to the V2 line on purpose. `latest` is NOT the newest V2 build: it
-    # currently points at the V1 line (ghcr latest = opencode 1.19.5), so
-    # floating on it silently DOWNGRADED the server on 2026-11-05 — V1 does not
-    # read the V2 database (/root/.local/share/opencode/opencode.db, which holds
-    # every session), so all history vanished from the UI while the data stayed
-    # on the volume. V2 reads/writes that DB; V1 answers /health with 401 and
-    # reads the legacy storage/ tree instead.
+    # points at the V1 line (ghcr latest = opencode 1.19.5), so floating on it
+    # silently DOWNGRADED the server on 2026-11-05 — V1 does not read the V2
+    # database (/root/.local/share/opencode/opencode.db, which holds every
+    # session), so all history vanished from the UI while the data stayed on the
+    # volume. V2 reads/writes that DB; V1 answers /health with 401 and reads the
+    # legacy storage/ tree instead. Never go back to `latest`.
+    # 2.2.5 is the newest 2.x tag on ghcr (last checked 2026-11-05). It was
+    # validated against a copy of this host's volume: it boots, migrates the DB
+    # (25 → 29 tables) and keeps every row (75 sessions / 10 419 messages /
+    # 33 projects), /health stays 200.
     # When bumping: verify with `docker run --rm --entrypoint sh <tag> -c
     # 'opencode --version'` that it prints `opencode v2.x.y`, and check against a
     # copy of the volume before pointing prod at it.
-    image: ghcr.io/anomalyco/opencode:2.1.2
+    image: ghcr.io/anomalyco/opencode:2.2.5
     container_name: opencode.web
     restart: unless-stopped
     entrypoint: [ "/bin/sh", "/scripts/startup.sh" ]
