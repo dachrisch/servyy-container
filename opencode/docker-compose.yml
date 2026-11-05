@@ -29,16 +29,16 @@ services:
     networks:
       - proxy
     healthcheck:
-      # Two assertions: liveness, then the auth contract. V2 answers /health
-      # 200 without auth (V1 answered 401), so the old `grep '401 Unauthorized'`
-      # probe both conflated liveness with auth and hid curl's exit status
-      # behind the pipeline. An unauthenticated /api/info must still be 401 —
-      # that is what catches a boot with a missing or rotated
-      # OPENCODE_SERVER_PASSWORD.
+      # Two assertions: liveness, then the auth contract.
+      # /health differs by image generation: 2.1.2 answered 200 unauthenticated,
+      # while ghcr `latest` (>=2026-10-28, the tag this file floats on) requires
+      # auth there too and answers 401 — which is why this accepts both instead
+      # of asserting 200. An unauthenticated /api/info must still be 401: that is
+      # what catches a boot with a missing or rotated OPENCODE_SERVER_PASSWORD.
       test:
         - CMD-SHELL
         - >-
-          curl -fsS -o /dev/null http://127.0.0.1:4096/health &&
+          curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4096/health | grep -qxE '200|401' &&
           curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4096/api/info | grep -qx 401
       interval: 30s
       timeout: 10s
