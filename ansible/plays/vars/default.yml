@@ -34,11 +34,23 @@ storagebox:
 
 backup_dir: "{{(storagebox.mount, 'backup', inventory_hostname) | path_join}}"
 
+# Attached Hetzner Cloud volume (created out of band — it is a billing action).
+# 50G, fsn1, attached to servy. 2026-11-05: servy's root filesystem reached 89%
+# with ~30G of containerd image layers plus ~1G/day of watchtower churn on it.
+# Both the containerd image store and docker's data-root live here now; the
+# moodle data has its own planned volume (see roles/user/tasks/moodle_volume.yml).
 extension_drive:
-  path: /mnt/10g_volume
-  device: /dev/disk/by-id/scsi-0HC_Volume_101343964
+  path: /mnt/servy-docker-data
+  device: /dev/disk/by-id/scsi-0HC_Volume_107380154
   fstype: ext4
   opts: discard,defaults
+
+# Containerd's image store. Docker 29 uses the containerd image store against the
+# system containerd (dockerd --containerd=/run/containerd/containerd.sock), so the
+# image layers live in containerd's `root` — NOT in docker's data-root. Moving only
+# data-root would leave ~30G of layers behind on the host root filesystem.
+containerd_store_path: "{{ extension_drive.path }}/containerd"
+containerd_config_path: /etc/containerd/config.toml
 
 # Journal log retention (declarative)
 # 200M (was 500M): the journal is a convenience log, not the audit trail —

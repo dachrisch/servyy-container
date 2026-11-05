@@ -28,7 +28,7 @@ provisioner:
       instance-docker:
         create_user: testuser
         with_fail2ban: false
-        has_10g_volume: false
+        has_extension_drive: false
         create_swap: false
         docker_cleanup:
           enabled: true

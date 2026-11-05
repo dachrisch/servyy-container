@@ -1,0 +1,57 @@
+---
+# Relocate containerd's image store onto the extension volume.
+#
+# Docker 29 (Ubuntu 24.04) runs with the containerd image store against the system
+# containerd — `dockerd --containerd=/run/containerd/containerd.sock` — so image
+# layers, snapshots and the content store live under containerd's `root`
+# (/var/lib/containerd by default), not under docker's data-root. On servy that was
+# ~30G of the 75G root filesystem plus ~1G/day of watchtower churn. Setting
+# `data-root` in daemon.json alone would not move any of it.
+#
+# The store itself is migrated out of band (stop docker+containerd, rsync, restart);
+# creating the volume and copying ~30G is not idempotent configuration. This file
+# only makes the *destination* declarative, and it refuses to point containerd at an
+# empty directory — a config pointing at a blank path would present a daemon with no
+# images and no containers, which looks identical to data loss.
+
+- name: Create the containerd store directory on the extension volume
+  file:
+    path: "{{ containerd_store_path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0711"
+  become: true
+  tags:
+    - system.containerd.store.directory
+
+- name: Check whether the extension-volume containerd store is already populated
+  stat:
+    path: "{{ containerd_store_path }}/io.containerd.metadata.v1.bolt"
+  register: containerd_store_populated
+  tags:
+    - system.containerd.store.check
+
+- name: Warn when the containerd store has not been migrated yet
+  debug:
+    msg: >-
+      {{ containerd_store_path }} has no containerd metadata bolt, so
+      {{ containerd_config_path }} is left alone and containerd keeps using its
+      default root. Migrate the store first (stop docker + containerd, rsync
+      /var/lib/containerd/ into {{ containerd_store_path }}/, start them again).
+  when: not containerd_store_populated.stat.exists
+  tags:
+    - system.containerd.store.check
+
+- name: Configure containerd root on the extension volume
+  template:
+    src: containerd-config.toml.j2
+    dest: "{{ containerd_config_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: containerd_store_populated.stat.exists
+  notify: restart containerd
+  tags:
+    - system.containerd.store.config

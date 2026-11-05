@@ -12,8 +12,8 @@
 # mount, and the ownership the two containers expect. Hosts without a volume
 # (servyy-test.lxd) skip the include entirely — see user.yml.
 #
-# Deliberately NOT mounted over /mnt/10g_volume: that path already holds ~36 GB
-# of docker layers on the root disk and mounting over it would hide them.
+# Deliberately NOT mounted over /mnt/servy-docker-data: that volume holds the
+# containerd image store and docker's data-root, and mounting over it would hide them.
 - name: Create the Moodle volume mount point
   file:
     path: "{{ moodle_volume_path }}"

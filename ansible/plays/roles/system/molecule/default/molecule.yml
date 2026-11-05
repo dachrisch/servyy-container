@@ -26,7 +26,7 @@ provisioner:
       instance:
         create_user: testuser
         with_fail2ban: false  # Skip fail2ban in CI (requires real logs)
-        has_10g_volume: false
+        has_extension_drive: false
         create_swap: false
         docker_cleanup:
           enabled: false

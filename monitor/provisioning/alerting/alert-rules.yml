@@ -749,10 +749,11 @@ groups:
           severity: critical
         isPaused: false
 
-      # HIGH: extension volume usage above 80% (replaces Monit's has_10g_volume
-      # check filesystem 10g_volume > 80% then alert). DORMANT: paused by default
-      # because lehel.xyz has has_10g_volume=false. A host with a secondary
-      # physical volume should unpause this rule (and tune the mount filter).
+      # HIGH: extension volume usage above 80%. ENABLED 2026-11-05 when
+      # servy got a 50G volume at /mnt/servy-docker-data holding the containerd
+      # image store + docker volumes. Scoped to that mount on purpose: a bare
+      # mountpoint!="/" filter also catches /boot/efi and the CIFS storagebox
+      # backup target, where being >80% full is not an incident.
       - uid: extension_disk_high_usage
         title: High Extension Drive Usage
         condition: C
@@ -764,7 +765,7 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
-              expr: '(1 - node_filesystem_avail_bytes{mountpoint!="/",fstype!~"tmpfs|fuse.lxcfs"} / node_filesystem_size_bytes{mountpoint!="/",fstype!~"tmpfs|fuse.lxcfs"}) * 100'
+              expr: '(1 - node_filesystem_avail_bytes{mountpoint="/mnt/servy-docker-data"} / node_filesystem_size_bytes{mountpoint="/mnt/servy-docker-data"}) * 100'
               intervalMs: 1000
               maxDataPoints: 43200
               refId: A
@@ -792,10 +793,10 @@ groups:
         for: 5m
         annotations:
           summary: 'Extension drive usage is high'
-          description: 'A non-root filesystem (e.g. extension volume) is {{ if $values.B }}{{ printf "%.1f" $values.B.Value }}%{{ else }}above 80%{{ end }} - check disk usage and retention'
+          description: 'The extension volume ({{ $labels.mountpoint }}) is {{ if $values.B }}{{ printf "%.1f" $values.B.Value }}%{{ else }}above 80%{{ end }} full - check image retention and docker prune behaviour'
         labels:
           severity: high
-        isPaused: true
+        isPaused: false
 
       # CRITICAL: a container's cgroup OOM killer fired. This is the alert the
       # 2026-10-29 incident was missing: 702 oom-kills in seven days, all of them

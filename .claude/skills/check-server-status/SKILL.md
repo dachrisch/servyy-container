@@ -41,7 +41,12 @@ this table — it drifts as services are added/removed.
    invoke the script (not from the target host), so they exercise the real
    public DNS + TLS + Traefik path.
 5. Note disk/memory: flag `df -h /` above ~90% used, or `free -h` available
-   memory in the low hundreds of MB with no swap headroom.
+   memory in the low hundreds of MB with no swap headroom. **servy also has
+   `/mnt/servy-docker-data`** (50G, since 2026-11-05): it holds the containerd
+   image store + docker's data-root, so it is the disk that actually churns —
+   flag it above 80% (Prometheus alerts at the same threshold). A full root
+   filesystem and a full volume have different causes: root fills from logs,
+   /home and moodle data; the volume fills from images (watchtower re-pulls).
 6. fail2ban should list 3 jails (`loki-blocklist`, `sshd`, `sshd-invalid-user`)
    on both hosts; monit summary should show every row `OK`.
 7. Timers: **check the schedule before calling anything late.** Half of them are

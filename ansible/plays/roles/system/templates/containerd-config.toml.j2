@@ -1,0 +1,11 @@
+# Rendered by ansible — roles/system/tasks/containerd_store.yml
+#
+# `root` is the only setting changed from containerd's defaults; everything else
+# (plugins, cgroup driver, sandboxers) keeps upstream defaults. version = 3 matches
+# containerd 2.x (servy runs 2.2.2 via docker.io; version 2 is accepted but deprecated).
+#
+# The store lives on the extension volume because the image layers are the single
+# biggest consumer of servy's root filesystem.
+version = 3
+root = "{{ containerd_store_path }}"
+state = "/run/containerd"

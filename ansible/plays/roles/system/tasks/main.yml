@@ -8,7 +8,12 @@
 - import_tasks: extension_drive.yml
   tags:
     - system.extension_drive
-  when: has_10g_volume | default(false)
+  when: has_extension_drive | default(false)
+
+- import_tasks: containerd_store.yml
+  tags:
+    - system.containerd.store
+  when: has_extension_drive | default(false)
 
 - import_tasks: storagebox.yml
   tags:
