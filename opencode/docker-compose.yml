@@ -1,10 +1,16 @@
 services:
   opencode:
-    # Floating: the pin kept losing fixes — prod ran 2.1.2 while the repo said
-    # 2.2.2, because watchtower only re-pulls the tag a container already has.
-    # Note the cost: scope=prod means a new upstream build replaces and
-    # restarts this container within ~2 h, possibly mid-session.
-    image: ghcr.io/anomalyco/opencode:latest
+    # PINNED to the V2 line on purpose. `latest` is NOT the newest V2 build: it
+    # currently points at the V1 line (ghcr latest = opencode 1.19.5), so
+    # floating on it silently DOWNGRADED the server on 2026-11-05 — V1 does not
+    # read the V2 database (/root/.local/share/opencode/opencode.db, which holds
+    # every session), so all history vanished from the UI while the data stayed
+    # on the volume. V2 reads/writes that DB; V1 answers /health with 401 and
+    # reads the legacy storage/ tree instead.
+    # When bumping: verify with `docker run --rm --entrypoint sh <tag> -c
+    # 'opencode --version'` that it prints `opencode v2.x.y`, and check against a
+    # copy of the volume before pointing prod at it.
+    image: ghcr.io/anomalyco/opencode:2.1.2
     container_name: opencode.web
     restart: unless-stopped
     entrypoint: [ "/bin/sh", "/scripts/startup.sh" ]
