@@ -109,8 +109,11 @@
       notice. Until then Moodle has files it cannot reference and a DB whose
       rows point at files that are not there.
 
-      Afterwards verify: owner 65534:65534 on the tree, dirs mode 2770,
-      and `docker exec -u 65534 moodle.moodle php admin/cli/purge_caches.php`.
+      Afterwards verify: owner 65534:65534 on the tree. Moodle re-applies its
+      own $CFG->directorypermissions (02777) to the dataroot on the next boot,
+      so a restored tree legitimately ends up at 2777 rather than the 2770 the
+      2026-11-04 import used, and `docker exec -u 65534 moodle.moodle php
+      admin/cli/purge_caches.php` should run clean.
       ════════════════════════════════════════════════════════════════════
   when:
     - (with_containers | default(false)) | bool
@@ -137,7 +140,7 @@
 
         cd {{ docker.remote_dir }}/moodle
         docker compose -p moodle stop moodle
-        gunzip -c data/db-backup/current/moodle.sql.gz \
+        sudo gunzip -c data/db-backup/current/moodle.sql.gz \
           | docker exec -i moodle.db sh -c \
               'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD"'
         docker compose -p moodle start moodle

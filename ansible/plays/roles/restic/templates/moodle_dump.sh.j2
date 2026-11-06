@@ -34,8 +34,11 @@ logdy info "Starting moodle database dump" container="$CONTAINER" target="$CUR"
 # The target tree lives under the service's data directory, which is root:root
 # 0750 (it holds the container datadirs) — hence sudo for the filesystem work.
 # `docker exec` itself needs no sudo ({{ create_user }} is in the docker group).
+# Modes are set explicitly (0755 dir / 0644 file): the host's sudo umask is 027,
+# which would otherwise leave a dump the operator cannot read during a restore
+# drill without sudo (found live on servyy-test, 2026-11-06).
 sudo rm -rf "$NEW"
-sudo mkdir -p "$NEW"
+sudo install -d -m 0755 "$NEW"
 
 # --single-transaction: consistent InnoDB snapshot without locking the site.
 # --skip-dump-date plus `gzip -n`: byte-identical output for unchanged data,
@@ -61,6 +64,7 @@ fi
 # Guard against a truncated/garbage dump replacing a good one: gzip integrity
 # plus a floor on size (the real dump is ~130 MB compressed; an empty moodle
 # database still exceeds 10 MB).
+sudo chmod 0644 "$NEW/moodle.sql.gz"
 if ! sudo gzip -t "$NEW/moodle.sql.gz"; then
     sudo rm -rf "$NEW"
     logdy error "Dump failed gzip integrity check" file="$NEW/moodle.sql.gz"
