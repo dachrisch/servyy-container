@@ -89,6 +89,11 @@
           - "'--single-transaction' in (moodle_dump_script.content | b64decode)"
           - "'MARIADB_ROOT_PASSWORD' in (moodle_dump_script.content | b64decode)"
           - "'/moodle/data/db-backup' in (moodle_dump_script.content | b64decode)"
+          # The precondition check must be privileged: on servy `data/` is
+          # root:root 0750, so a bare `[ -d "$CUR" ]` as the deploy user is
+          # always false and the swap silently nests the new dump inside the old.
+          - "'sudo test -d \"$CUR\"' in (moodle_dump_script.content | b64decode)"
+          - "'Swap did not take effect' in (moodle_dump_script.content | b64decode)"
 
     - name: Assert the moodle-db restic script refuses stale source data
       assert:
