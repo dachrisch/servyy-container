@@ -110,6 +110,10 @@ ordering cannot lose content.
   clean; Pushgateway shows `restic_snapshot_age_seconds{repo="moodle-files"}` / `{repo="moodle-db"}`
   and the three moodle log-freshness series; Grafana's provisioned rules contain the moodle
   conditions.
+- **Timer-driven runs** on prod: `moodle-dump` at 11:40 exposed learning 8 (nested dump, fixed in #274),
+  and after the fix the 11:53:52 timer produced snapshot `844e88fd` (128.158 MiB) of the corrected
+  `current/`; the 12:00:44 `restic-backup-home` run succeeded (`5a17cc81`, 1.572 GiB), confirming the
+  shared `restic_backup.sh.j2` change did not disturb the existing scopes.
 
 **Key learnings (all found the hard way)**
 
@@ -135,6 +139,16 @@ ordering cannot lose content.
    restore — do not "fix" it.
 7. **`bw sync` can fail with `invalid_grant`** on the controller (stale CLI token). `bw logout` +
    `BW_CLIENTID/… bw login --apikey` fixes it; the role only tolerates "already logged in" on stderr.
+8. **A privileged swap guarded by an unprivileged precondition is silently wrong.** The dump script's
+   `if [ -d "$CUR" ]` ran as the deploy user; on servy `moodle/data/` is `root:root 0750`, so `cda`
+   cannot even stat `current/` and the test was **always false**. The old set was never moved aside and
+   `mv new current` nested the fresh dump inside it (`current/new/moodle.sql.gz`) — restic kept
+   snapshotting the previous dump with a refreshed mtime, so the 2 h stale-source guard could not fire
+   either. Caught by the **first automatic prod run** (11:40), not by the drill, because
+   `servyy-test`'s `data/` is `0755`. Fixed in #274: `sudo test -d "$CUR"` plus a post-swap check that
+   `current/moodle.sql.gz` has exactly the byte size just dumped. Lesson: after any restore/backup
+   wiring, verify a **timer-driven** run on the real host — a manual run under different permissions
+   can hide this class of bug.
 
 ### Known issues & limitations
 
