@@ -288,9 +288,9 @@ dirs `2770`), caches purged, cron clean. Afterwards: 0 DB hashes missing, 9,316/
 returns 200 with a body whose sha1 **equals** the DB contenthash.
 
 Still pending on this workstream: a **fresh `mysqldump`** (the imported DB is 2026-10-28; 181 files,
-219.5 MiB, on disk have no rows yet — a new dump also needs the ~134-row wwwroot replace re-run),
-the `restic-moodle` scope (Task 7 — today's coverage is two manual tarballs on the Storage Box), and
-`PLUGINS=enrol_waitlist`. Full detail: `history/2026-11-04_moodle-moodledata-ingested.md`.
+219.5 MiB, on disk have no rows yet — a new dump also needs the ~134-row wwwroot replace re-run) and
+`PLUGINS=enrol_waitlist`. The backup gap is closed (Task 7, 2026-11-06). Full detail:
+`history/2026-11-04_moodle-moodledata-ingested.md`.
 
 ### Task 5 — the rejected 2026-11-03 archive (for the record)
 
@@ -342,17 +342,32 @@ lftp -u <user>,<pass> ftp://<host> -e "mirror -c -P 16 --parallel=8 / /moodledat
 
 ---
 
-## Task 7: Backups (before any real data lands — Task 5)
+## Task 7: Backups — ✅ DONE 2026-11-06 (PR #272)
 
-New restic scope `restic-moodle` → `sftp://storagebox/…/restic-moodle`:
+Delivered as **two** scopes, not one (a single repo would hide stale files behind the fresh hourly DB
+snapshot, and the two streams must not share locks/prune). Both gated on `moodle_enabled`, one shared
+password:
 
-- **files**: daily snapshot of `/mnt/moodle/moodledata`, retention 7 daily / 4 weekly / 6 monthly;
-- **db**: hourly `mariadb-backup` prepared set (same pattern as `restic-ls-db`, including binlogs so a
-  PITR drill is possible), retention 24 hourly / 14 daily / 6 monthly;
-- seed file `vars/.restic_password_moodle`, vaultwarden item, `restic_seeds` + `restic_vaultwarden_items`
-  entries, `system_probe` coverage.
+| Repo | Source | Timer | Retention |
+|---|---|---|---|
+| `restic-moodle-db` | `…/data/db-backup/current/` (logical `mariadb-dump --single-transaction`) | hourly `*:50`, dump `*:40` | 24 h / 14 d / 8 w / 6 mo |
+| `restic-moodle-files` | `…/data/moodledata` | daily `01:20` | 7 d / 4 w / 6 mo |
 
-Target: an **executed** restore drill on `servyy-test.lxd` before cutover, not just a documented one.
+- **db**: a logical `mariadb-dump`, not the `mariadb-backup` prepared set this task originally named.
+  Reasons: `log_bin` is OFF on this DB (so a physical set buys no PITR either way), it needs no extra
+  bind mount in `docker-compose.yml`, and it is the pattern already running in production for
+  `bnb-office.db` and the nightly LeagueSphere prod→stage sync. Binlogs for PITR remain an optional
+  follow-up (add `--log-bin` to the `db` command first).
+- seed file `vars/.restic_password_moodle`, Vaultwarden item, `restic_seeds` + `restic_vaultwarden_items`,
+  `system_probe` log + snapshot-age coverage, `restic-forget`/`restic-check` sections, and the
+  `restic-snapshot-alerts`/`log-freshness-alerts` rules.
+- **Executed** restore drill on `servyy-test.lxd`: total loss (both data dirs moved aside) → restic
+  restore of both scopes → fresh DB → dump import → app up. 497 tables / 39,374 `mdl_files` / 104
+  courses restored identically, HTTP 200, and the only file differences were the deliberately excluded
+  cache files.
+
+Runbook and operational detail: `moodle/AGENTS.md` → "Backups (restic)"; full record:
+`history/2026-11-06_moodle-restic-scopes.md`.
 
 ## Task 8: Upgrades
 

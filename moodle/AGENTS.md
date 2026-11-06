@@ -122,12 +122,67 @@ Two corroborating signals from the bad export: every mtime equalled the download
 whose content contains a bare LF failed. Note the Storage Box CIFS mount has thrown `Bad address` on
 a large single-stream `mv` — verify sha256 after copying, and retry with `cp`.
 
+## Backups (restic)
+
+Two scopes, both gated on `moodle_enabled` (`services_enabled.moodle`), sharing one password
+(`restic_password_moodle`, seed `plays/vars/.restic_password_moodle` + the Vaultwarden item
+`restic - moodle (lehel.xyz)`):
+
+| Repo | Source | Timer | Retention |
+|---|---|---|---|
+| `restic-moodle-db` | `…/data/db-backup/current/` — logical `mariadb-dump --single-transaction` written at `:40` | snapshot `*:50` (hourly) | 24 h / 14 d / 8 w / 6 mo + last 24 |
+| `restic-moodle-files` | `…/data/moodledata` (sudo) | daily `01:20` | 7 d / 4 w / 6 mo + last 7 |
+
+- **Two repos, not one with two tags:** the hourly DB stream and the ~6 GB file stream must not share
+  locks/prune, and `system_probe` reports one snapshot age per repo — one repo would hide stale files
+  behind a fresh DB snapshot.
+- **Logical dump, not `mariadb-backup`:** same pattern as `bnb-office.db` and the nightly LeagueSphere
+  prod→stage sync; needs no bind mount in `docker-compose.yml`, and `log_bin` is OFF on this DB so a
+  physical set would not buy PITR either. Want PITR? Add `--log-bin` to the `db` command in
+  `docker-compose.yml` first.
+- **Ordering matters:** files are snapshotted *after* the 00:40 dump, so the file set is a superset of
+  the DB's references. Files are content-addressed and never rewritten in place, so this cannot lose
+  content.
+- The dump script refuses to write a dump smaller than 10 MB or failing `gzip -t`, and the
+  `moodle-db` restic script **exits 1 if `current/` is older than 2 h** — a dead dump job must not keep
+  producing fresh-looking snapshots of old data.
+
+```bash
+# status / sizes
+ssh lehel.xyz 'systemctl --user list-timers --all | grep moodle'
+ssh lehel.xyz "sudo bash -c 'source /etc/restic/env.moodle-files && restic snapshots --no-lock'"
+# force a cycle
+ssh lehel.xyz 'systemctl --user start moodle-dump.service && systemctl --user start restic-backup-moodle-db.service'
+# logs
+ssh lehel.xyz 'sudo tail -20 /var/log/restic/backup-moodle-{db,files}.log /var/log/restic/moodle-dump.log'
+```
+
+**Restore runbook** (rehearsed end-to-end on `servyy-test.lxd` 2026-11-06 — full loss, both scopes):
+
+```bash
+cd /home/cda/servyy-container/moodle && docker compose -p moodle down
+sudo mv data/moodledata data/moodledata.aside && sudo mv data/mariadb data/mariadb.aside
+# re-hydrate both scopes through the restic role (other scopes skip on a healthy host):
+cd /home/cda/dev/infrastructure/container/ansible && ./servyy.sh --limit servy.lehel.xyz --tags restic.restore
+docker compose -p moodle up -d db                  # initialises a FRESH datadir
+for i in $(seq 1 40); do [ "$(docker inspect -f '{{.State.Health.Status}}' moodle.db)" = healthy ] && break; sleep 3; done
+sudo gunzip -c data/db-backup/current/moodle.sql.gz | docker exec -i moodle.db sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD"'   # ~7 min
+docker compose -p moodle up -d                     # app
+docker exec -u 65534 moodle.moodle php /var/www/html/admin/cli/purge_caches.php
+```
+
+Verify afterwards: `select count(*) from mdl_files` / `mdl_course` match the pre-loss numbers, and the
+front page returns 200. Two mode facts: the dump is written `0644` inside a `0755` dir on purpose (the
+host's sudo umask is 027), and Moodle re-applies its own `$CFG->directorypermissions` (`02777`) to the
+dataroot on the next boot, so a restored tree ends up `2777` rather than the import's `2770` — that is
+Moodle, not the restore.
+
 ## Not done yet (see the plan)
 
-- restic scope `restic-moodle` + one *executed* restore drill (Task 7) — **before** real data lands.
 - The `leaguesphere` side of the URL change: `MOODLE_URL` plus the hardcoded `/moodle/…` segments in
   `officials/service/moodle/`. Not touched yet on purpose — prod LeagueSphere still points at the old
   live offd.de until the search-replace is proven on the test box.
 - Plugin list → `PLUGINS` in `moodle.app.env.j2` (installed at every boot, so the code tree stays
   immutable).
 - SMTP env (`SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD`) once the mail decision is made.
+- Binlogs for point-in-time recovery (see "Backups" above).
