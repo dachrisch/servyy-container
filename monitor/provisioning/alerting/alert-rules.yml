@@ -1318,8 +1318,9 @@ groups:
     rules:
       # MEDIUM: a maintenance/backup log is stale. The staleness thresholds per log
       # (8d docker-cleanup, 32d kernel-cleanup, 2h restic home, 2h restic ls-db,
-      # 25h restic root/forget, 8d restic check) are evaluated here, matching
-      # Monit's per-file timestamps.
+      # 25h restic root/forget, 8d restic check, 25h restic moodle-files,
+      # 2h restic moodle-db, 2h moodle dump) are evaluated here, matching
+      # system_probe/defaults/main.yml `system_probe_log_checks`.
       - uid: stale_maintenance_log
         title: Stale Maintenance/Backup Log
         condition: C
@@ -1338,7 +1339,10 @@ groups:
                 system_log_freshness_seconds{log="restic-backup-ls-db"} > 7200 or
                 system_log_freshness_seconds{log="restic-backup-root"} > 90000 or
                 system_log_freshness_seconds{log="restic-forget"} > 90000 or
-                system_log_freshness_seconds{log="restic-check"} > 691200
+                system_log_freshness_seconds{log="restic-check"} > 691200 or
+                system_log_freshness_seconds{log="restic-backup-moodle-files"} > 90000 or
+                system_log_freshness_seconds{log="restic-backup-moodle-db"} > 7200 or
+                system_log_freshness_seconds{log="moodle-dump"} > 7200
               intervalMs: 1000
               maxDataPoints: 43200
               refId: A
@@ -1472,7 +1476,7 @@ groups:
     folder: Infrastructure
     interval: 1m
     rules:
-      # HIGH: prod DB has no successful backup in 2h. The `< 0` clause catches
+      # HIGH: prod DBs have no successful backup in 2h. The `< 0` clause catches
       # the unverifiable state (restic error, unreachable repo) — the probe
       # reports -1 exactly so an uncheckable DB alerts instead of going quiet.
       - uid: stale_restic_db_snapshot
@@ -1488,7 +1492,9 @@ groups:
             model:
               expr: >-
                 restic_snapshot_age_seconds{repo="db"} > 7200 or
-                restic_snapshot_age_seconds{repo="db"} < 0
+                restic_snapshot_age_seconds{repo="db"} < 0 or
+                restic_snapshot_age_seconds{repo="moodle-db"} > 7200 or
+                restic_snapshot_age_seconds{repo="moodle-db"} < 0
               intervalMs: 1000
               maxDataPoints: 43200
               refId: A
@@ -1515,14 +1521,14 @@ groups:
         execErrState: Error
         for: 10m
         annotations:
-          summary: 'No recent successful LeagueSphere DB backup'
+          summary: 'No recent successful LeagueSphere/Moodle DB backup'
           description: '{{ if $labels.repo }}The {{ $labels.repo }} restic repo has no successful snapshot within its threshold{{ else }}A restic repo has no successful snapshot within its threshold - backups may be failing (check for stale locks: restic list locks){{ end }}. Check system-restic-snapshots.sh on the host.'
         labels:
           severity: high
         isPaused: false
 
-      # MEDIUM: home/root have no successful backup within their thresholds
-      # (2h home hourly, 25h root daily).
+      # MEDIUM: home/root/moodle-files have no successful backup within their
+      # thresholds (2h home hourly, 25h root daily, 25h moodle files daily).
       - uid: stale_restic_snapshot
         title: Stale Restic Snapshot
         condition: C
@@ -1538,7 +1544,9 @@ groups:
                 restic_snapshot_age_seconds{repo="home"} > 7200 or
                 restic_snapshot_age_seconds{repo="home"} < 0 or
                 restic_snapshot_age_seconds{repo="root"} > 90000 or
-                restic_snapshot_age_seconds{repo="root"} < 0
+                restic_snapshot_age_seconds{repo="root"} < 0 or
+                restic_snapshot_age_seconds{repo="moodle-files"} > 90000 or
+                restic_snapshot_age_seconds{repo="moodle-files"} < 0
               intervalMs: 1000
               maxDataPoints: 43200
               refId: A
@@ -1565,7 +1573,7 @@ groups:
         execErrState: Error
         for: 10m
         annotations:
-          summary: 'No recent successful restic backup (home/root)'
+          summary: 'No recent successful restic backup (home/root/moodle-files)'
           description: '{{ if $labels.repo }}The {{ $labels.repo }} restic repo has no successful snapshot within its threshold{{ else }}A restic repo has no successful snapshot within its threshold - backups may be failing (check for stale locks: restic list locks){{ end }}. Check system-restic-snapshots.sh on the host.'
         labels:
           severity: medium

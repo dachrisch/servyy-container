@@ -1,0 +1,85 @@
+#!/bin/zsh
+# Logical MariaDB dump for the Moodle database -> prepared 'current' set.
+#
+# The restic `moodle-db` scope snapshots {{ moodle_dump_root }}/current, never
+# the live InnoDB datadir: a datadir copied while the server is running is
+# crash-inconsistent and churns gigabytes per hour.
+#
+# Logical (`mariadb-dump`), not a physical `mariadb-backup` prepared set, because
+# this is the pattern already running in production for bnb-office.db (daily,
+# since 2026-10) and for the nightly prod->stage LeagueSphere sync, it needs no
+# extra bind mount in moodle/docker-compose.yml, and `log_bin` is OFF on this
+# database so a physical set would buy no point-in-time recovery either.
+#
+# The password is read from the CONTAINER's own MARIADB_ROOT_PASSWORD (which the
+# mariadb image gets from db.env): no secret is interpolated by Ansible and none
+# ever appears in a host process list or in this file.
+set -euo pipefail
+
+if [ -f "/home/{{ create_user }}/.zshenv" ]; then
+    source "/home/{{ create_user }}/.zshenv"
+fi
+source "/home/{{ create_user }}/.zprezto/custom/functions/logdy"
+
+CONTAINER="{{ moodle_db_container }}"
+BACKUP_ROOT="{{ moodle_dump_root }}"
+NEW="$BACKUP_ROOT/new"
+CUR="$BACKUP_ROOT/current"
+
+export LOGDY_ALSO_TO_FILE="{{ log_file }}"
+LOG_FILE="{{ log_file }}"
+
+logdy info "Starting moodle database dump" container="$CONTAINER" target="$CUR"
+
+# The target tree lives under the service's data directory, which is root:root
+# 0750 (it holds the container datadirs) — hence sudo for the filesystem work.
+# `docker exec` itself needs no sudo ({{ create_user }} is in the docker group).
+sudo rm -rf "$NEW"
+sudo mkdir -p "$NEW"
+
+# --single-transaction: consistent InnoDB snapshot without locking the site.
+# --skip-dump-date plus `gzip -n`: byte-identical output for unchanged data,
+# which is what lets restic de-duplicate an hourly ~1.6 GB dump instead of
+# uploading a brand-new blob every hour.
+#
+# Quoting: DUMP_CMD is single-quoted here, so `$MARIADB_ROOT_PASSWORD` survives
+# unchanged into the container and is expanded there by the container's own
+# shell. `pipefail` (above) makes a failed mariadb-dump fail the pipeline
+# instead of just losing stdout.
+DUMP_CMD='exec mariadb-dump --single-transaction --quick --routines --events --triggers --hex-blob --skip-dump-date --default-character-set=utf8mb4 --databases {{ moodle_db_name | default("moodle") }} -uroot -p"$MARIADB_ROOT_PASSWORD"'
+
+if sudo CONTAINER="$CONTAINER" BACKUP_NEW="$NEW" DUMP_CMD="$DUMP_CMD" sh -c \
+    'docker exec "$CONTAINER" sh -c "$DUMP_CMD" | gzip -n > "$BACKUP_NEW/moodle.sql.gz"'; then
+    logdy info "Dump written" file="$NEW/moodle.sql.gz"
+else
+    EXIT_CODE=$?
+    sudo rm -rf "$NEW"
+    logdy error "moodle database dump failed" exit_code=$EXIT_CODE
+    exit $EXIT_CODE
+fi
+
+# Guard against a truncated/garbage dump replacing a good one: gzip integrity
+# plus a floor on size (the real dump is ~130 MB compressed; an empty moodle
+# database still exceeds 10 MB).
+if ! sudo gzip -t "$NEW/moodle.sql.gz"; then
+    sudo rm -rf "$NEW"
+    logdy error "Dump failed gzip integrity check" file="$NEW/moodle.sql.gz"
+    exit 1
+fi
+
+DUMP_BYTES=$(sudo stat -c %s "$NEW/moodle.sql.gz")
+if [ "$DUMP_BYTES" -lt 10485760 ]; then
+    sudo rm -rf "$NEW"
+    logdy error "Dump suspiciously small" file="$NEW/moodle.sql.gz" bytes=$DUMP_BYTES
+    exit 1
+fi
+
+# Atomic-ish swap on the host (new/ and current/ are on the same filesystem).
+sudo rm -rf "$CUR.old"
+if [ -d "$CUR" ]; then
+    sudo mv "$CUR" "$CUR.old"
+fi
+sudo mv "$NEW" "$CUR"
+sudo rm -rf "$CUR.old"
+
+logdy info "moodle dump refreshed" target="$CUR" bytes=$DUMP_BYTES

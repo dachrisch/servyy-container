@@ -58,6 +58,22 @@ apply_retention "/etc/restic/env.db" "db" \
     --keep-weekly {{ restic.retention.db.weekly }} \
     --keep-monthly {{ restic.retention.db.monthly }} || FAILED=1
 {% endif %}
+{% if moodle_enabled | default(false) | bool %}
+# Moodle files (daily) and Moodle DB dumps (hourly) live in SEPARATE repos with
+# their own retention — the file set is content-addressed and cheap to keep, the
+# hourly dump is replaceable but is the only copy of the DB rows.
+apply_retention "/etc/restic/env.moodle-files" "moodle-files" \
+    --keep-last {{ restic.retention.moodle_files.last }} \
+    --keep-daily {{ restic.retention.moodle_files.daily }} \
+    --keep-weekly {{ restic.retention.moodle_files.weekly }} \
+    --keep-monthly {{ restic.retention.moodle_files.monthly }} || FAILED=1
+apply_retention "/etc/restic/env.moodle-db" "moodle-db" \
+    --keep-last {{ restic.retention.moodle_db.last }} \
+    --keep-hourly {{ restic.retention.moodle_db.hourly }} \
+    --keep-daily {{ restic.retention.moodle_db.daily }} \
+    --keep-weekly {{ restic.retention.moodle_db.weekly }} \
+    --keep-monthly {{ restic.retention.moodle_db.monthly }} || FAILED=1
+{% endif %}
 
 if [ $FAILED -eq 0 ]; then
     logdy info "All repositories processed successfully"

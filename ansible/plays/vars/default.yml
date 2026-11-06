@@ -209,6 +209,14 @@ mkcert:
 # NOTE: renders as a string via Jinja; ALWAYS consume with `| bool`.
 leaguesphere_enabled: "{{ services_enabled.leaguesphere | default(false) }}"
 
+# moodle_enabled: does this host run the Moodle instance (OFFD / Flag Academy)?
+# Owns the moodle restic scopes (moodle-files + moodle-db), their dump/backup
+# timers, system_probe moodle entries and the restic forget/check moodle
+# sections. Derived from inventory `services_enabled.moodle` (servy: true,
+# servyy-test: true, codey: absent/false) — same shape as leaguesphere_enabled.
+# NOTE: renders as a string via Jinja; ALWAYS consume with `| bool`.
+moodle_enabled: "{{ services_enabled.moodle | default(false) }}"
+
 # Monitor stack identity (non-secret).
 # NOTE: the admin email lives in vars/secrets.yml as `monitor_admin_email` —
 # this file is public (not git-crypt encrypted), so no email addresses here.

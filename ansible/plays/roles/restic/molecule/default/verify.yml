@@ -14,6 +14,9 @@
         - restic-backup-root
         - restic-backup-ls-db
         - mariadb-backup-ls
+        - moodle-dump
+        - restic-backup-moodle-db
+        - restic-backup-moodle-files
       register: backup_timers
 
     - name: Assert all backup timers deployed
@@ -32,6 +35,9 @@
         - restic-backup-root
         - restic-backup-ls-db
         - mariadb-backup-ls
+        - moodle-dump
+        - restic-backup-moodle-db
+        - restic-backup-moodle-files
       register: backup_scripts
 
     - name: Assert backup scripts deployed executable
@@ -53,3 +59,38 @@
         that:
           - "'backup_type=\"db\"' in (ls_db_script.content | b64decode)"
           - "'/etc/restic/env.db' in (ls_db_script.content | b64decode)"
+
+    - name: Read moodle backup scripts
+      slurp:
+        src: "{{ script_dir }}/restic-backup-{{ item }}.sh"
+      loop:
+        - moodle-files
+        - moodle-db
+      register: moodle_scripts
+
+    - name: Assert moodle scripts target their own repos and run with sudo
+      assert:
+        that:
+          - "'backup_type=\"{{ item.item }}\"' in (item.content | b64decode)"
+          - "'/etc/restic/env.{{ item.item }}' in (item.content | b64decode)"
+          - "'sudo bash -c' in (item.content | b64decode)"
+      loop: "{{ moodle_scripts.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Read moodle dump script
+      slurp:
+        src: "{{ script_dir }}/moodle-dump.sh"
+      register: moodle_dump_script
+
+    - name: Assert dump script uses the container's own credentials and a single-transaction dump
+      assert:
+        that:
+          - "'--single-transaction' in (moodle_dump_script.content | b64decode)"
+          - "'MARIADB_ROOT_PASSWORD' in (moodle_dump_script.content | b64decode)"
+          - "'/moodle/data/db-backup' in (moodle_dump_script.content | b64decode)"
+
+    - name: Assert the moodle-db restic script refuses stale source data
+      assert:
+        that:
+          - "'Source data is stale' in (moodle_scripts.results[1].content | b64decode)"

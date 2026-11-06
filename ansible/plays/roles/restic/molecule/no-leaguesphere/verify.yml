@@ -16,9 +16,18 @@
         - "{{ unit_dir }}/restic-backup-ls-db.service"
         - "{{ unit_dir }}/restic-backup-ls-db.timer"
         - "{{ script_dir }}/restic-backup-ls-db.sh"
+        - "{{ unit_dir }}/moodle-dump.service"
+        - "{{ unit_dir }}/moodle-dump.timer"
+        - "{{ script_dir }}/moodle-dump.sh"
+        - "{{ unit_dir }}/restic-backup-moodle-db.service"
+        - "{{ unit_dir }}/restic-backup-moodle-db.timer"
+        - "{{ script_dir }}/restic-backup-moodle-db.sh"
+        - "{{ unit_dir }}/restic-backup-moodle-files.service"
+        - "{{ unit_dir }}/restic-backup-moodle-files.timer"
+        - "{{ script_dir }}/restic-backup-moodle-files.sh"
       register: stale_db_files
 
-    - name: Assert every stale db file was removed
+    - name: Assert every stale db/moodle file was removed
       assert:
         that:
           - not item.stat.exists

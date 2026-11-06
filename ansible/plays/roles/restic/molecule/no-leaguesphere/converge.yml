@@ -10,6 +10,7 @@
     remote_user_home: /home/testuser
     remote_user_systemd: /home/testuser/.config/systemd/user
     leaguesphere_enabled: false
+    moodle_enabled: false
     restic:
       home:
         source_path: /home/testuser
@@ -56,6 +57,17 @@
         - /home/testuser/.config/systemd/user/restic-backup-ls-db.service
         - /home/testuser/.config/systemd/user/restic-backup-ls-db.timer
         - /home/testuser/.backup-scripts/restic-backup-ls-db.sh
+        # Moodle fixtures: same "previously deployed unconditionally" shape, so
+        # the moodle cleanup block is actually exercised on a non-moodle host.
+        - /home/testuser/.config/systemd/user/moodle-dump.service
+        - /home/testuser/.config/systemd/user/moodle-dump.timer
+        - /home/testuser/.backup-scripts/moodle-dump.sh
+        - /home/testuser/.config/systemd/user/restic-backup-moodle-db.service
+        - /home/testuser/.config/systemd/user/restic-backup-moodle-db.timer
+        - /home/testuser/.backup-scripts/restic-backup-moodle-db.sh
+        - /home/testuser/.config/systemd/user/restic-backup-moodle-files.service
+        - /home/testuser/.config/systemd/user/restic-backup-moodle-files.timer
+        - /home/testuser/.backup-scripts/restic-backup-moodle-files.sh
       tags: [restic.backup]
 
     - name: Run restic backup schedules  # noqa: role-name[path]

@@ -38,6 +38,10 @@ check_repo "/etc/restic/env.root" "root" || FAILED=1
 {% if leaguesphere_enabled | default(false) | bool %}
 check_repo "/etc/restic/env.db" "db" || FAILED=1
 {% endif %}
+{% if moodle_enabled | default(false) | bool %}
+check_repo "/etc/restic/env.moodle-files" "moodle-files" || FAILED=1
+check_repo "/etc/restic/env.moodle-db" "moodle-db" || FAILED=1
+{% endif %}
 
 if [ $FAILED -eq 0 ]; then
     logdy info "All repository checks passed"
