@@ -1,7 +1,7 @@
 # Public-repo secret leak: five live credentials found in committed markdown, all rotated
 
 **Date:** 2026-11-06
-**Status:** ✅ All five rotated and verified; docs redacted
+**Status:** ✅ All five rotated and verified; docs redacted (PR #270, squashed as `d29e07f`)
 **Trigger:** pre-publication review of the repo for Renovate (compose files were already plaintext)
 
 ## Context
@@ -35,7 +35,7 @@ also have allowed pushes to the repos.
 Order: opencode (fastest, highest severity) → restic → finance DB → importer
 secret → APP_KEY (most disruptive).
 
-### 1. `opencode.server_password` — commit `c63b4b9`
+### 1. `opencode.server_password` — `PR #270`
 
 Renders three consumers, all redeployed together:
 
@@ -75,7 +75,7 @@ overwrite the host env file while it differs from the Ansible value — by desig
 The env file must be updated first, then the guard passes. Doing it the other
 way round aborts the play before anything is written.
 
-### 3. `finance.db_password` — commit `b7c1ec4`
+### 3. `finance.db_password` — `PR #270`
 
 `finance.db_password` is both the Firefly app user and the postgres superuser
 (`POSTGRES_USER=firefly`), and `pg_hba` enforces `scram-sha-256` on the docker
@@ -83,14 +83,14 @@ network. `ALTER USER firefly`, then re-rendered `shared.env` + `finance.env`
 (recreating firefly, importer, queen and shared.db). Verified: the new value
 authenticates over TCP, the old one gets `password authentication failed`.
 
-### 4. `finance.auto_import_secret` — commit `b389d20`
+### 4. `finance.auto_import_secret` — `PR #270`
 
 Compared with `hash_equals($secret, config('importer.auto_import_secret'))` in
 `AutoUploadController`, so the old value cannot match once the config changes.
 Verified present in both containers that load `finance.env`; `run-import.sh`
 reads it from the environment at runtime.
 
-### 5. `finance.app_key` — commit `94cbbb2`
+### 5. `finance.app_key` — `PR #270`
 
 Rotating APP_KEY was not free: Firefly stores its OAuth signing keypair
 **encrypted with APP_KEY** (`Support/System/OAuthKeys.php`). On the first boot
