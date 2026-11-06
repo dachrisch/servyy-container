@@ -209,6 +209,21 @@ mkcert:
 # NOTE: renders as a string via Jinja; ALWAYS consume with `| bool`.
 leaguesphere_enabled: "{{ services_enabled.leaguesphere | default(false) }}"
 
+# moodle_enabled: does this host run the Moodle instance (OFFD / Flag Academy)?
+# Owns the moodle restic scopes (moodle-files + moodle-db), their dump/backup
+# timers, system_probe moodle entries and the restic forget/check moodle
+# sections. Derived from inventory `services_enabled.moodle` (servy: true,
+# servyy-test: true, codey: absent/false) — same shape as leaguesphere_enabled.
+# NOTE: renders as a string via Jinja; ALWAYS consume with `| bool`.
+moodle_enabled: "{{ services_enabled.moodle | default(false) }}"
+
+# Resolved Moodle data root (moodledata + the MariaDB datadir + the dump dir).
+# Written with an `is defined` test rather than `| default(...)` because Jinja
+# evaluates a default() argument EAGERLY: `moodle_data_root | default(docker.
+# remote_dir ~ ...)` raised "'docker' is undefined" in the molecule scenarios,
+# which have no docker dict (CI caught it). Only the taken branch is evaluated.
+moodle_data_root_path: "{{ moodle_data_root if moodle_data_root is defined else docker.remote_dir ~ '/moodle/data' }}"
+
 # Monitor stack identity (non-secret).
 # NOTE: the admin email lives in vars/secrets.yml as `monitor_admin_email` —
 # this file is public (not git-crypt encrypted), so no email addresses here.

@@ -29,3 +29,33 @@
   tags:
     - testing.restic.check_recent
     - never
+
+# Same guard for the two moodle scopes: they exist only where moodle_enabled
+# (servy + servyy-test), so `--limit codey --tags testing.restic.check_recent`
+# must not fail on a missing env file. Each repo is reported separately: the
+# DB stream is hourly, the file stream daily.
+- name: Check moodle repo env files exist
+  stat:
+    path: "/etc/restic/env.{{ item }}"
+  loop:
+    - moodle-files
+    - moodle-db
+  register: restic_env_moodle
+  become: true
+  changed_when: false
+  tags:
+    - testing.restic.check_recent
+    - never
+
+- name: Check recent moodle snapshots (< 24h)
+  include_tasks: _restic_check_single.yml
+  vars:
+    item: "{{ moodle_repo.item }}"
+  loop: "{{ restic_env_moodle.results }}"
+  loop_control:
+    loop_var: moodle_repo
+    label: "{{ moodle_repo.item }}"
+  when: moodle_repo.stat.exists
+  tags:
+    - testing.restic.check_recent
+    - never

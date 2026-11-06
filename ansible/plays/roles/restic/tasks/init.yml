@@ -57,7 +57,11 @@
   vars:
     existing_content: "{{ item.content | b64decode }}"
     existing_pass: "{{ existing_content | regex_findall('export RESTIC_PASSWORD=\"(.*)\"') | first | default('') }}"
-    expected_pass: "{{ (item.item.item == 'home') | ternary(restic.home.password, (item.item.item == 'root') | ternary(restic.root.password, restic.db.password)) }}"
+    # Look the expected password up BY REPO NAME. Deliberately not a ternary
+    # chain: the previous home/root/else-db form silently compared every future
+    # repo (moodle-*) against the *db* password and would have failed the whole
+    # play on any host that runs Moodle without LeagueSphere.
+    expected_pass: "{{ restic[item.item.item].password }}"
   loop: "{{ slurped_restic_envs.results }}"
   when:
     - item.skipped is not defined
@@ -90,6 +94,19 @@
     path: /etc/restic/env.db
     state: absent
   when: not (leaguesphere_enabled | default(false) | bool)
+  become: true
+  become_user: root
+  tags:
+    - restic.init
+
+# Symmetric guard for the moodle scopes: a host that ran Moodle once must not
+# keep env files that nothing backs up or probes.
+- name: Remove stale moodle environment files where Moodle is not enabled
+  file:
+    path: "/etc/restic/env.{{ item }}"
+    state: absent
+  loop: "{{ restic_moodle_repo_names }}"
+  when: not (moodle_enabled | default(false) | bool)
   become: true
   become_user: root
   tags:
@@ -189,13 +206,16 @@
     - restic.init
 
 - name: Create restic repository directories on Storage Box
+  # Derived from each repo's OWN repository URL instead of being hardcoded per
+  # scope: the mkdir target can never drift from what `restic init` will use,
+  # and adding a scope needs no edit here. (The previous hardcoded three-line
+  # block had to be remembered for every new repo — and `db` maps to the
+  # `restic-ls-db` directory, so a name-only loop would have broken it.)
   shell: |
     sftp {{ restic.sftp.host_alias }} <<'EOF' 2>&1
-    -mkdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-home
-    -mkdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-root
-    {% if leaguesphere_enabled | default(false) | bool %}
-    -mkdir {{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-ls-db
-    {% endif %}
+    {% for name in restic_repo_names_enabled %}
+    -mkdir {{ restic[name].repository | regex_replace('^sftp://[^/]+/', '') }}
+    {% endfor %}
     EOF
   register: sftp_mkdir
   failed_when: false
@@ -283,6 +303,20 @@
     path: "{{ restic.logs.backup_ls_db }}"
     state: absent
   when: not (leaguesphere_enabled | default(false) | bool)
+  become: true
+  become_user: root
+  tags:
+    - restic.init
+
+- name: Remove stale moodle log files where Moodle is not enabled
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ restic.logs.backup_moodle_files }}"
+    - "{{ restic.logs.backup_moodle_db }}"
+    - "{{ restic.logs.moodle_dump }}"
+  when: not (moodle_enabled | default(false) | bool)
   become: true
   become_user: root
   tags:

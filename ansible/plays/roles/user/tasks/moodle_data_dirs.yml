@@ -18,9 +18,14 @@
     state: directory
     owner: "{{ item.owner }}"
     group: "{{ item.group }}"
-    mode: "0770"
+    mode: "{{ item.mode | default('0770') }}"
   become_user: root
   loop:
     - {name: moodledata, owner: 65534, group: 65534}
     - {name: mariadb, owner: 999, group: 999}
+    # Target for the hourly logical DB dump that the `moodle-db` restic scope
+    # snapshots. root-owned + 0755 because the dump script runs the write under
+    # sudo (`data/` itself is root:root 0750 and unreadable for {{ create_user }});
+    # NOT inside moodledata, which is the `moodle-files` snapshot root.
+    - {name: db-backup, owner: 0, group: 0, mode: '0755'}
   tags: [user.docker.moodle, user.docker]

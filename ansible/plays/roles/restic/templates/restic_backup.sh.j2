@@ -45,6 +45,18 @@ BACKUP_CMD="$BACKUP_CMD --exclude '{{ exclude }}'"
 # Add tag and host
 BACKUP_CMD="$BACKUP_CMD --tag {{ backup_name }} --host {{ inventory_hostname }}"
 
+{% if stale_guard_path is defined %}
+# Refuse to snapshot STALE source data. Without this, a broken dump job keeps
+# producing fresh-looking snapshots of the same old files, the snapshot-age
+# probe stays green, and the outage is only discovered at restore time.
+# sudo: the source paths for the sudo-backed scopes live under root-only
+# directories, where an unprivileged `find` would fail open (empty output).
+if [ -n "$(sudo find {{ stale_guard_path }} -maxdepth 0 -mmin +{{ stale_guard_max_age_minutes | default(120) }} 2>/dev/null)" ]; then
+    logdy error "Source data is stale, refusing to snapshot" path="{{ stale_guard_path }}"
+    exit 1
+fi
+{% endif %}
+
 logdy info "Running backup" command="$BACKUP_CMD"
 
 {% if with_sudo is defined %}

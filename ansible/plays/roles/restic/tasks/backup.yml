@@ -123,6 +123,148 @@
   tags:
     - restic.backup
 
+# ---------------------------------------------------------------------------
+# Moodle (OFFD / Flag Academy) — gated on moodle_enabled.
+#
+# Two independent scopes instead of one (see vars/restic.yml): the hourly DB
+# stream and the ~6 GB daily file stream must not share locks/prune, and the
+# snapshot-age probe reports one age per repo — a single repo would hide stale
+# files behind a fresh hourly DB snapshot.
+#
+# The dump is the pattern already proven in production: bnb-office.db's daily
+# `mariadb-dump` one-liner and the nightly LeagueSphere prod->stage sync. The
+# password is read from the container's own MARIADB_ROOT_PASSWORD, so nothing
+# secret is templated here and `no_log` is not needed.
+# ---------------------------------------------------------------------------
+- name: Create moodle backup directory
+  file:
+    path: "{{ moodle_data_root_path }}/db-backup"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+  become_user: root
+  when: moodle_enabled | default(false) | bool
+  tags:
+    - restic.backup
+
+- name: Deploy moodle database dump script
+  template:
+    src: moodle_dump.sh.j2
+    dest: "{{ remote_user_home }}/.backup-scripts/moodle-dump.sh"
+    mode: '0750'
+  vars:
+    # `name: moodle` in moodle/docker-compose.yml, so the MariaDB container is
+    # always `moodle.db` regardless of which directory the checkout lives in.
+    moodle_db_container: "moodle.db"
+    moodle_dump_root: "{{ moodle_data_root_path }}/db-backup"
+    log_file: "{{ restic.logs.moodle_dump }}"
+  when: moodle_enabled | default(false) | bool
+  tags:
+    - restic.backup
+
+- import_tasks: oneshot_include.yml
+  vars:
+    service:
+      name: moodle-dump
+      description: 'Logical MariaDB dump of the Moodle database'
+      schedule: '{{ restic.schedules.backup_moodle_dump }}'
+      command: "{{ remote_user_home }}/.backup-scripts/moodle-dump.sh"
+  when: moodle_enabled | default(false) | bool
+  tags:
+    - restic.backup
+
+- name: Deploy restic backup script for moodle-db
+  template:
+    src: restic_backup.sh.j2
+    dest: "{{ remote_user_home }}/.backup-scripts/restic-backup-moodle-db.sh"
+    mode: '0750'
+  vars:
+    backup_name: "moodle-db"
+    source_path: "{{ restic['moodle-db'].source_path }}"
+    exclude_caches: false
+    log_file: "{{ restic.logs.backup_moodle_db }}"
+    with_sudo: true
+    # A dump that stopped refreshing must not keep producing snapshots that look
+    # current: fail instead, so the newest-snapshot age crosses the 2 h alert.
+    stale_guard_path: "{{ restic['moodle-db'].source_path }}"
+    stale_guard_max_age_minutes: 120
+  when: moodle_enabled | default(false) | bool
+  tags:
+    - restic.backup
+
+- import_tasks: oneshot_include.yml
+  vars:
+    service:
+      name: restic-backup-moodle-db
+      description: 'Restic backup - moodle database dump'
+      schedule: '{{ restic.schedules.backup_moodle_db }}'
+      command: "{{ remote_user_home }}/.backup-scripts/restic-backup-moodle-db.sh"
+  when: moodle_enabled | default(false) | bool
+  tags:
+    - restic.backup
+
+- name: Deploy restic backup script for moodle-files
+  template:
+    src: restic_backup.sh.j2
+    dest: "{{ remote_user_home }}/.backup-scripts/restic-backup-moodle-files.sh"
+    mode: '0750'
+  vars:
+    backup_name: "moodle-files"
+    source_path: "{{ restic['moodle-files'].source_path }}"
+    excludes: "{{ restic['moodle-files'].excludes }}"
+    exclude_caches: "{{ restic.exclude_caches }}"
+    log_file: "{{ restic.logs.backup_moodle_files }}"
+    with_sudo: true
+  when: moodle_enabled | default(false) | bool
+  tags:
+    - restic.backup
+
+- import_tasks: oneshot_include.yml
+  vars:
+    service:
+      name: restic-backup-moodle-files
+      description: 'Restic backup - moodle dataroot'
+      schedule: '{{ restic.schedules.backup_moodle_files }}'
+      command: "{{ remote_user_home }}/.backup-scripts/restic-backup-moodle-files.sh"
+  when: moodle_enabled | default(false) | bool
+  tags:
+    - restic.backup
+
+- name: Clean up Moodle backup timers on hosts where Moodle is not enabled
+  when: not (moodle_enabled | default(false) | bool)
+  block:
+    - name: Stop Moodle backup timers
+      systemd:
+        scope: user
+        name: "{{ item }}.timer"
+        state: stopped
+        enabled: false
+      loop:
+        - moodle-dump
+        - restic-backup-moodle-db
+        - restic-backup-moodle-files
+      ignore_errors: true
+      tags:
+        - restic.backup
+    - name: Remove Moodle backup units and scripts
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ (remote_user_systemd, 'moodle-dump.service') | path_join }}"
+        - "{{ (remote_user_systemd, 'moodle-dump.timer') | path_join }}"
+        - "{{ (remote_user_home, '.backup-scripts', 'moodle-dump.sh') | path_join }}"
+        - "{{ (remote_user_systemd, 'restic-backup-moodle-db.service') | path_join }}"
+        - "{{ (remote_user_systemd, 'restic-backup-moodle-db.timer') | path_join }}"
+        - "{{ (remote_user_home, '.backup-scripts', 'restic-backup-moodle-db.sh') | path_join }}"
+        - "{{ (remote_user_systemd, 'restic-backup-moodle-files.service') | path_join }}"
+        - "{{ (remote_user_systemd, 'restic-backup-moodle-files.timer') | path_join }}"
+        - "{{ (remote_user_home, '.backup-scripts', 'restic-backup-moodle-files.sh') | path_join }}"
+      tags:
+        - restic.backup
+
 # Clean up DB backup timers on hosts where LeagueSphere is not enabled
 # (e.g. codey): they were deployed unconditionally before the leaguesphere
 # scoping, and would otherwise keep failing against the missing jail path.

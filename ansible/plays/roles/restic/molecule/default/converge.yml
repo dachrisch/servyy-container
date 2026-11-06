@@ -10,6 +10,12 @@
     remote_user_home: /home/testuser
     remote_user_systemd: /home/testuser/.config/systemd/user
     leaguesphere_enabled: true
+    # Moodle scopes: separate repos (files + db) with separate timers. The data
+    # root is injected because the role's fallback needs `docker.remote_dir`,
+    # which this scenario does not define.
+    moodle_enabled: true
+    moodle_data_root: /home/testuser/servyy-container/moodle/data
+    moodle_data_root_path: "{{ moodle_data_root }}"
     ls_prod:
       app:
         db_backup_user: test_backup_user
@@ -21,15 +27,28 @@
         source_path: /
       db:
         source_path: /var/jail/home/leaguesphere/container/deployed/mysql-backup/current
+      'moodle-files':
+        source_path: /home/testuser/servyy-container/moodle/data/moodledata
+        excludes:
+          - '/cache'
+          - '/localcache'
+      'moodle-db':
+        source_path: /home/testuser/servyy-container/moodle/data/db-backup/current
       schedules:
         backup_home: hourly
         backup_root: daily
         backup_ls_db: hourly
         backup_ls_db_dump: '*-*-* *:40:00'
+        backup_moodle_dump: '*-*-* *:40:00'
+        backup_moodle_db: '*-*-* *:50:00'
+        backup_moodle_files: '*-*-* 01:20:00'
       logs:
         backup_home: /var/log/restic/backup-home.log
         backup_root: /var/log/restic/backup-root.log
         backup_ls_db: /var/log/restic/backup-ls-db.log
+        backup_moodle_files: /var/log/restic/backup-moodle-files.log
+        backup_moodle_db: /var/log/restic/backup-moodle-db.log
+        moodle_dump: /var/log/restic/moodle-dump.log
         forget: /var/log/restic/forget.log
         check: /var/log/restic/check.log
       exclude_caches: true

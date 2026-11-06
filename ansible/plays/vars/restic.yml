@@ -145,7 +145,7 @@ restic:
   'moodle-files':
     repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-moodle-files"
     password: "{{ restic_password_moodle }}"
-    source_path: "{{ moodle_data_root | default(docker.remote_dir ~ '/moodle/data') }}/moodledata"
+    source_path: "{{ moodle_data_root_path }}/moodledata"
     excludes:
       - '/cache'
       - '/localcache'
@@ -166,7 +166,7 @@ restic:
   'moodle-db':
     repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-moodle-db"
     password: "{{ restic_password_moodle }}"
-    source_path: "{{ moodle_data_root | default(docker.remote_dir ~ '/moodle/data') }}/db-backup/current"
+    source_path: "{{ moodle_data_root_path }}/db-backup/current"
 
   # Backup schedules
   schedules:

@@ -24,6 +24,12 @@ restic_seeds:
     seed: "vars/.restic_password_root"
   - name: "restic - ls_db (lehel.xyz)"
     seed: "vars/.restic_password_ls_db"
+  # One password unlocks BOTH moodle repos (files + db). The seed file is
+  # LOCAL-ONLY (never committed, like the three above); Vaultwarden holds the
+  # copy. Pre-create it before the first run, otherwise seed_guard stops the
+  # play and asks for it interactively.
+  - name: "restic - moodle (lehel.xyz)"
+    seed: "vars/.restic_password_moodle"
 
 # Field is `secret` (not `password`) to match vaultwarden/tasks/push_items.yml's
 # generic item shape {name, secret, notes}.
@@ -37,15 +43,35 @@ restic_vaultwarden_items:
   - name: "restic - ls_db (lehel.xyz)"
     secret: "{{ restic_password_ls_db }}"
     notes: "RESTIC_PASSWORD for /etc/restic/env.ls_db (copy of Ansible seed vars/.restic_password_ls_db)"
+  # ONE password for both moodle repos (see vars/restic.yml for why they are
+  # separate repos). Pushed once, used by env.moodle-files and env.moodle-db.
+  - name: "restic - moodle (lehel.xyz)"
+    secret: "{{ restic_password_moodle }}"
+    notes: "RESTIC_PASSWORD for /etc/restic/env.moodle-files and /etc/restic/env.moodle-db (copy of Ansible seed vars/.restic_password_moodle)"
 
-# --- Leaguesphere-scoped repo lists -----------------------------------------
-# The `db` repo exists only where LeagueSphere runs. These derived lists are the
-# gating mechanism for every loop over repos (env files, sftp mkdir, init,
-# verify, log files). Each is a single Jinja expression so Ansible preserves
-# the list type at loop sites; the leaguesphere flag is coerced with `| bool`.
-restic_repo_names_enabled: "{{ ['home', 'root'] + (['db'] if (leaguesphere_enabled | default(false) | bool) else []) }}"
-restic_repos_enabled: "{{ [restic.home, restic.root] + ([restic.db] if (leaguesphere_enabled | default(false) | bool) else []) }}"
+# --- Scoped repo lists --------------------------------------------------------
+# `db` exists only where LeagueSphere runs; `moodle-files`/`moodle-db` only
+# where Moodle runs. These derived lists are the gating mechanism for every
+# loop over repos (env files, sftp mkdir, init, verify, log files). Each is a
+# single Jinja expression so Ansible preserves the list type at loop sites; both
+# flags are coerced with `| bool` (Jinja renders them as strings).
+# NOTE: repo names contain a dash — `restic['moodle-files']` (bracket syntax).
+restic_moodle_repo_names: "{{ ['moodle-files', 'moodle-db'] if (moodle_enabled | default(false) | bool) else [] }}"
+restic_moodle_repos: "{{ [restic['moodle-files'], restic['moodle-db']] if (moodle_enabled | default(false) | bool) else [] }}"
+restic_repo_names_enabled: >-
+  {{ ['home', 'root']
+     + (['db'] if (leaguesphere_enabled | default(false) | bool) else [])
+     + restic_moodle_repo_names }}
+restic_repos_enabled: >-
+  {{ [restic.home, restic.root]
+     + ([restic.db] if (leaguesphere_enabled | default(false) | bool) else [])
+     + restic_moodle_repos }}
+# The ls-db and moodle logs are scoped: creating them on a host that never runs
+# those backups would make the log-freshness probe green-on-nothing.
 restic_log_paths_enabled: >-
-  {{ restic.logs | dict2items | rejectattr('key', 'equalto', 'backup_ls_db')
+  {{ restic.logs | dict2items
+     | rejectattr('key', 'in', ['backup_ls_db', 'backup_moodle_files', 'backup_moodle_db', 'moodle_dump'])
      | map(attribute='value') | list
-     + (([restic.logs.backup_ls_db] if (leaguesphere_enabled | default(false) | bool) else [])) }}
+     + (([restic.logs.backup_ls_db] if (leaguesphere_enabled | default(false) | bool) else []))
+     + (([restic.logs.backup_moodle_files, restic.logs.backup_moodle_db, restic.logs.moodle_dump]
+         if (moodle_enabled | default(false) | bool) else [])) }}

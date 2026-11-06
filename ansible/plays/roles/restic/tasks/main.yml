@@ -80,6 +80,82 @@
     - restic
     - restic.restore
 
+# ----------------------------------------------------------------------------
+# MOODLE (OFFD / Flag Academy) — two scopes, both gated on moodle_enabled.
+#
+# Caveat: restore.yml's "containers are running" guard looks for a
+# docker-compose.yml in the restore target's PARENT. For the moodle paths the
+# parent is the data directory (no compose file there), so that guard is inert
+# — the only protection against overwriting a live site is restore.yml's
+# empty-target rule (or an explicit force_restore). Set force_restore only with
+# `docker compose -p moodle down` already done.
+# ----------------------------------------------------------------------------
+- name: Restore Moodle dataroot
+  include_tasks: restore.yml
+  vars:
+    restore_path: "{{ moodle_data_root_path }}/moodledata"
+    backup_name: "moodle-files"
+    owner: "65534"
+    group: "65534"
+    post_restore_notice: |
+      ════════════════════════════════════════════════════════════════════
+      ⚠️  MOODLE DATAROOT RESTORED — the DATABASE is a separate restore
+      ════════════════════════════════════════════════════════════════════
+      restic restored moodledata from the `moodle-files` repo to:
+        {{ moodle_data_root_path }}/moodledata
+
+      It is only half of a usable instance. The database is restored by the
+      `moodle-db` include (dump files) and must then be IMPORTED — see that
+      notice. Until then Moodle has files it cannot reference and a DB whose
+      rows point at files that are not there.
+
+      Afterwards verify: owner 65534:65534 on the tree. Moodle re-applies its
+      own $CFG->directorypermissions (02777) to the dataroot on the next boot,
+      so a restored tree legitimately ends up at 2777 rather than the 2770 the
+      2026-11-04 import used, and `docker exec -u 65534 moodle.moodle php
+      admin/cli/purge_caches.php` should run clean.
+      ════════════════════════════════════════════════════════════════════
+  when:
+    - (with_containers | default(false)) | bool
+    - moodle_enabled | default(false) | bool
+  tags:
+    - restic
+    - restic.restore
+
+- name: Restore Moodle database dump
+  include_tasks: restore.yml
+  vars:
+    restore_path: "{{ moodle_data_root_path }}/db-backup/current"
+    backup_name: "moodle-db"
+    owner: "root"
+    post_restore_notice: |
+      ════════════════════════════════════════════════════════════════════
+      ⚠️  MOODLE DB DUMP RESTORED — DB is NOT live yet
+      ════════════════════════════════════════════════════════════════════
+      restic restored the logical dump to:
+        {{ moodle_data_root_path }}/db-backup/current/moodle.sql.gz
+
+      The dump is a `mariadb-dump --databases moodle` and is NOT loaded into
+      the live database. Import it by hand (one-time, after a disaster):
+
+        cd {{ docker.remote_dir }}/moodle
+        docker compose -p moodle stop moodle
+        sudo gunzip -c data/db-backup/current/moodle.sql.gz \
+          | docker exec -i moodle.db sh -c \
+              'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD"'
+        docker compose -p moodle start moodle
+
+      A fresh/empty `data/mariadb` also needs the container to initialise it
+      first (start moodle.db once, let it become healthy, then import).
+      Then purge caches and confirm `upgrade.php --is-pending` exits 0.
+      ════════════════════════════════════════════════════════════════════
+  when:
+    - (with_containers | default(false)) | bool
+    - moodle_enabled | default(false) | bool
+  tags:
+    - restic
+    - restic.restore
+
 # RECOVERY (manual, after restore.yml repopulates current/):
 #   1. docker compose -p leaguesphere stop db
 #   2. empty /var/jail/home/leaguesphere/container/deployed/mysql-data

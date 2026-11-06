@@ -8,6 +8,8 @@
 # SCOPING (single source of truth lives in plays/vars/default.yml):
 # - `leaguesphere_enabled` gates the db/ls-db entries below (db repo exists only
 #   where LeagueSphere runs). ALWAYS consume with `| bool` (Jinja string caveat).
+# - `moodle_enabled` gates the moodle log/repo entries the same way (moodle-files
+#   and moodle-db repos exist only where Moodle runs).
 # - `skip_storagebox` (inventory/Test) empties the storagebox mount so the probe
 #   is not deployed where no mount is configured.
 # - `system_probe_push_enabled` gates ALL probes: they PUT to a local Pushgateway
@@ -49,17 +51,28 @@ system_probe_log_checks_base:
 
 # Scheduler-dead signal for the ls-db backup (a FAILING backup still touches
 # its log hourly, so real success is measured by the snapshot-age probe below).
+# Same for the moodle dump: its log proves the timer is firing, the
+# snapshot-age probe below proves the data is actually reaching the repo.
 system_probe_log_checks: >-
-  {{ system_probe_log_checks_base + ([{'name': 'restic-backup-ls-db',
-  'path': restic.logs.backup_ls_db, 'threshold_seconds': 7200}]
-  if (leaguesphere_enabled | default(false) | bool) else []) }}
+  {{ system_probe_log_checks_base
+     + ([{'name': 'restic-backup-ls-db',
+          'path': restic.logs.backup_ls_db, 'threshold_seconds': 7200}]
+        if (leaguesphere_enabled | default(false) | bool) else [])
+     + ([{'name': 'restic-backup-moodle-files',
+          'path': restic.logs.backup_moodle_files, 'threshold_seconds': 90000},
+         {'name': 'restic-backup-moodle-db',
+          'path': restic.logs.backup_moodle_db, 'threshold_seconds': 7200},
+         {'name': 'moodle-dump',
+          'path': restic.logs.moodle_dump, 'threshold_seconds': 7200}]
+        if (moodle_enabled | default(false) | bool) else []) }}
 
 # --- Restic snapshot-age probe -------------------------------------------------
 # Measures the age of the NEWEST snapshot per repo (actual backup success),
 # not log mtime (a failing job still touches its log every hour). Thresholds
 # are mirrored into the `restic-snapshot-alerts` Grafana group in
 # monitor/provisioning/alerting/alert-rules.yml — keep both in sync.
-# The db entry exists only where LeagueSphere runs (see header).
+# The db entry exists only where LeagueSphere runs, the moodle entries only
+# where Moodle runs (see header).
 system_probe_restic_repos_base:
   - name: home
     env_file: "/etc/restic/env.home"
@@ -69,9 +82,15 @@ system_probe_restic_repos_base:
     threshold_seconds: 90000         # 25 hours (daily backup)
 
 system_probe_restic_repos: >-
-  {{ system_probe_restic_repos_base + ([{'name': 'db',
-  'env_file': '/etc/restic/env.db', 'threshold_seconds': 7200}]
-  if (leaguesphere_enabled | default(false) | bool) else []) }}
+  {{ system_probe_restic_repos_base
+     + ([{'name': 'db',
+          'env_file': '/etc/restic/env.db', 'threshold_seconds': 7200}]
+        if (leaguesphere_enabled | default(false) | bool) else [])
+     + ([{'name': 'moodle-files',
+          'env_file': '/etc/restic/env.moodle-files', 'threshold_seconds': 90000},
+         {'name': 'moodle-db',
+          'env_file': '/etc/restic/env.moodle-db', 'threshold_seconds': 7200}]
+        if (moodle_enabled | default(false) | bool) else []) }}
 
 # --- Storagebox probe --------------------------------------------------------
 # Empty when the host skips the storagebox mount (e.g. skip_storagebox on test),
