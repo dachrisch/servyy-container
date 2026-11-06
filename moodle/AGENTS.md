@@ -143,9 +143,13 @@ Two scopes, both gated on `moodle_enabled` (`services_enabled.moodle`), sharing 
 - **Ordering matters:** files are snapshotted *after* the 00:40 dump, so the file set is a superset of
   the DB's references. Files are content-addressed and never rewritten in place, so this cannot lose
   content.
-- The dump script refuses to write a dump smaller than 10 MB or failing `gzip -t`, and the
-  `moodle-db` restic script **exits 1 if `current/` is older than 2 h** — a dead dump job must not keep
-  producing fresh-looking snapshots of old data.
+- The dump script refuses to write a dump smaller than 10 MB or failing `gzip -t`, **verifies after the
+  swap** that `current/moodle.sql.gz` has exactly the byte size just dumped (a nested
+  `current/new/` would otherwise leave the old dump in place), and the `moodle-db` restic script
+  **exits 1 if `current/` is older than 2 h** — a dead dump job must not keep producing fresh-looking
+  snapshots of old data.
+- `current/` must always contain **exactly one** `moodle.sql.gz`. If it ever contains a `new/`
+  subdirectory, the swap regressed (see `history/2026-11-06_moodle-restic-scopes.md`, learning 8).
 
 ```bash
 # status / sizes

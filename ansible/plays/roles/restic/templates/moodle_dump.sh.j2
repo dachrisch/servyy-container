@@ -79,11 +79,27 @@ if [ "$DUMP_BYTES" -lt 10485760 ]; then
 fi
 
 # Atomic-ish swap on the host (new/ and current/ are on the same filesystem).
+#
+# `sudo test`, not `[ -d ... ]`: on servy the parent `data/` is root:root 0750,
+# so the UNPRIVILEGED `cda` cannot even stat `current/`. The bare test returned
+# false while `current` existed, the old set was never moved aside, and
+# `mv new current` then nested the fresh dump INSIDE the old one
+# (`current/new/moodle.sql.gz`) — the repo kept backing up the previous dump with
+# a refreshed mtime. Caught on the first automatic prod run (2026-11-06); the
+# test box has `data/` 0755, which is why the drill could not see it.
 sudo rm -rf "$CUR.old"
-if [ -d "$CUR" ]; then
+if sudo test -d "$CUR"; then
     sudo mv "$CUR" "$CUR.old"
 fi
 sudo mv "$NEW" "$CUR"
 sudo rm -rf "$CUR.old"
+
+# Prove the swap actually took effect: a nested `current/new/` (the failure above)
+# leaves the OLD dump in place, and restic would happily snapshot it.
+SWAPPED_BYTES=$(sudo stat -c %s "$CUR/moodle.sql.gz" 2>/dev/null || echo 0)
+if [ "$SWAPPED_BYTES" -ne "$DUMP_BYTES" ]; then
+    logdy error "Swap did not take effect" expected_bytes=$DUMP_BYTES actual_bytes=$SWAPPED_BYTES target="$CUR/moodle.sql.gz"
+    exit 1
+fi
 
 logdy info "moodle dump refreshed" target="$CUR" bytes=$DUMP_BYTES
