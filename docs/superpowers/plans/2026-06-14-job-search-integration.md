@@ -281,7 +281,7 @@ The file is encrypted with git-crypt. Edit it directly — git-crypt will encryp
 Open the file and add this line alongside the other `vault_searxng_*` lines:
 
 ```yaml
-vault_job_search_jwt_secret: "4e5157bac2a373b95635c25a0faad92ed274b50583b1e8e50a60020cd9f0130d"
+vault_job_search_jwt_secret: "<redacted: rotated 2026-11-06>"
 ```
 
 - [ ] **Verify the file is recognised as unlocked (not binary)**

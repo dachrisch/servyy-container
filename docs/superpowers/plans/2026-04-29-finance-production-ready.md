@@ -209,12 +209,12 @@ In `ansible/plays/vars/secrets.yml`, locate the `finance:` section (around line 
 
 ```yaml
 finance:
-  app_key: "base64:QehH23iG/b5WgfC3Now8uX4QvWPNwNuG05y/vX+vJ2E="
-  db_password: "TJx8mP2kL9nQrWvSyZaFgHjUcDxEiBmKo5pLrStV"
+  app_key: "<redacted: rotated 2026-11-06>"
+  db_password: "<redacted: rotated 2026-11-06>"
   importer_client_id: "019dd522-67ee-7323-b602-298cd53fbaa2"
   importer_host: "finance-importer.lehel.xyz"
-  firefly_pam_token: "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIwMTlkZDRmZC0zZDMzLTcxZjktOGM2ZC0wMDE5NDVhODZjMDIiLCJqdGkiOiJiNGQwODYxOGFlMGIyNDM4NDBiYWUyZmY0NzA1OWE3MGRlNmI1NzMwNmJjYTY4YmE4N2RkNWJhNzc2YTY0MGVlMTk3NmZkNWEwYjZhMzY1NSIsImlhdCI6MTc3NzQwMDY5OC45NjMyMDksIm5iZiI6MTc3NzQwMDY5OC45NjMyMTcsImV4cCI6MTgwODkzNjY5OC44ODIyMzgsInN1YiI6IjEiLCJzY29wZXMiOltdfQ.j3xeLr3_SIJKBcD8wK_ac0U7DM8iyRJyqV-65Go1DjWnuLJLby0tBuUKd6r40ZhB7h36mYrkByq7t44_0KMVswbyyBljZpo3ViLl4nkh9MtcvEmv5B3xCwRLPM1wAfEDE4SZtAWW9aEhiuO1-zLcGi-1kKDNeYlWajPqfgvKly_1Z38zGSnnA5oqNAf_C3F8es9T_PXdok6MspeTzyGaf5iVihtH4FXQn6PVkLlsBc83OruCDcd85K4nFbxv23dVbtwJg4ZZwJcpW_2Sg8boyB2YTwT4bZ5zDeNn03qIoVlpuoWzWnhZbaYysc3PMkXuM9Mte_GGoIoFl5CiFzbuRE_y3IJx3jdB1hEqLEMTdd6bmSfld42m7-lrEyOouKH28LXjSiTolfiW5nHqWx01sPumYMclgt4P9GbxZMfylWHo1JwOs-iFOseFWFs4CFvDqCg2zj6IgwCIrVZ9_TsfwywHHKJSRzSYibD-pgfkKkj65ob6M2rvXCOp8p6JEeI1O_9Syfc69q2s-IMW3dUno41Gws8ZyxUu6_nBi3hI6UI1v5hpChHc1LiVNABwu-U3auv2LLSZFPZgJi677Llm-z9STzm2G-U_QoPpVWzSofNaQ6vj2uwOS9FdePXbrjvYHQ7N9gRBDk6mXNpNhFVW41d9MWTBxleVCrk4ze-Xai4"
-  auto_import_secret: "c23d424d0598432b"
+  firefly_pam_token: "<redacted-jwt>"
+  auto_import_secret: "<redacted: rotated 2026-11-06>"
   import_config:
     account_uuid: "3a715d83-78ff-48e0-9327-4117b02a5fad"
     account_id: 2
