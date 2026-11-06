@@ -44,14 +44,14 @@ Open `ansible/plays/vars/secrets.yml`. It currently has (around line 124):
 
 ```yaml
 opencode:
-  server_password: "pawing-thirsty-gumminess5-underwire-egomaniac"
+  server_password: "<redacted: rotated 2026-11-06>"
 ```
 
 Change it to:
 
 ```yaml
 opencode:
-  server_password: "pawing-thirsty-gumminess5-underwire-egomaniac"
+  server_password: "<redacted: rotated 2026-11-06>"
   api_key: "<TOKEN>"
 ```
 

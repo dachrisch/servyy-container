@@ -106,7 +106,7 @@ duckdns:
 
 ```yaml
 # REMOVED:
-duck_token: "92e71b0e-2361-40eb-8ee5-95ed52d09e5d"
+duck_token: "<redacted: rotated 2026-11-06>"
 ```
 
 **Result:** DuckDNS API token removed from secrets (no longer needed).

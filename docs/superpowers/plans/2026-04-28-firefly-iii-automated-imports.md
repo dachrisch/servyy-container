@@ -37,7 +37,7 @@ Run:
 openssl rand -hex 8
 ```
 
-Example output: `a3f7c2e1b9d4k6m8` (use this or generate your own)
+Example output: `<redacted: rotated 2026-11-06>` (use this or generate your own)
 
 - [ ] **Step 2: Edit secrets.yml and add the PAM token + secret**
 
@@ -49,8 +49,8 @@ finance:
   db_password: "..." # Keep existing
   importer_client_id: "..." # Keep existing
   importer_host: "..." # Keep existing
-  firefly_pam_token: "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIwMTlkZDRmZC0zZDMzLTcxZjktOGM2ZC0wMDE5NDVhODZjMDIiLCJqdGkiOiJiNGQwODYxOGFlMGIyNDM4NDBiYWUyZmY0NzA1OWE3MGRlNmI1NzMwNmJjYTY4YmE4N2RkNWJhNzc2YTY0MGVlMTk3NmZkNWEwYjZhMzY1NSIsImlhdCI6MTc3NzQwMDY5OC45NjMyMDksIm5iZiI6MTc3NzQwMDY5OC45NjMyMTcsImV4cCI6MTgwODkzNjY5OC44ODIyMzgsInN1YiI6IjEiLCJzY29wZXMiOltdfQ.j3xeLr3_SIJKBcD8wK_ac0U7DM8iyRJyqV-65Go1DjWnuLJLby0tBuUKd6r40ZhB7h36mYrkByq7t44_0KMVswbyyBljZpo3ViLl4nkh9MtcvEmv5B3xCwRLPM1wAfEDE4SZtAWW9aEhiuO1-zLcGi-1kKDNeYlWajPqfgvKly_1Z38zGSnnA5oqNAf_C3F8es9T_PXdok6MspeTzyGaf5iVihtH4FXQn6PVkLlsBc83OruCDcd85K4nFbxv23dVbtwJg4ZZwJcpW_2Sg8boyB2YTwT4bZ5zDeNn03qIoVlpuoWzWnhZbaYysc3PMkXuM9Mte_GGoIoFl5CiFzbuRE_y3IJx3jdB1hEqLEMTdd6bmSfld42m7-lrEyOouKH28LXjSiTolfiW5nHqWx01sPumYMclgt4P9GbxZMfylWHo1JwOs-iFOseFWFs4CFvDqCg2zj6IgwCIrVZ9_TsfwywHHKJSRzSYibD-pgfkKkj65ob6M2rvXCOp8p6JEeI1O_9Syfc69q2s-IMW3dUno41Gws8ZyxUu6_nBi3hI6UI1v5hpChHc1LiVNABwu-U3auv2LLSZFPZgJi677Llm-z9STzm2G-U_QoPpVWzSofNaQ6vj2uwOS9FdePXbrjvYHQ7N9gRBDk6mXNpNhFVW41d9MWTBxleVCrk4ze-Xai4"
-  auto_import_secret: "a3f7c2e1b9d4k6m8"  # Your generated secret from Step 1
+  firefly_pam_token: "<redacted-jwt>"
+  auto_import_secret: "<redacted: rotated 2026-11-06>"  # Your generated secret from Step 1
 ```
 
 - [ ] **Step 3: Commit secrets.yml update**
@@ -197,7 +197,7 @@ ssh lehel.xyz "docker exec finance.importer env | grep -E 'AUTO_IMPORT_SECRET|FI
 
 Expected output:
 ```
-AUTO_IMPORT_SECRET=a3f7c2e1b9d4k6m8
+AUTO_IMPORT_SECRET=<redacted: rotated 2026-11-06>
 FIREFLY_III_ACCESS_TOKEN=eyJ0eXAi...
 CAN_POST_FILES=true
 CAN_POST_AUTOIMPORT=true
@@ -214,7 +214,7 @@ Expected: Should list `import_config_2026-04-28.json`
 - [ ] **Step 4: Get the AUTO_IMPORT_SECRET and PAM token values for the curl command**
 
 You'll need these values:
-- `AUTO_IMPORT_SECRET` (from secrets.yml, e.g., `a3f7c2e1b9d4k6m8`)
+- `AUTO_IMPORT_SECRET` (from secrets.yml, e.g., `<redacted: rotated 2026-11-06>`)
 - `FIREFLY_III_ACCESS_TOKEN` (from secrets.yml, the long JWT)
 
 - [ ] **Step 5: Manually trigger the import via curl from lehel.xyz**

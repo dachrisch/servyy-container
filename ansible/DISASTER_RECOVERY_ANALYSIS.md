@@ -297,7 +297,7 @@ Before disaster recovery test:
 
 ```bash
 # On servyy-test.lxd
-export RESTIC_PASSWORD='2joaLNNlEuNvFBBCl0FjCLhyAJxKgoc2'
+export RESTIC_PASSWORD='<redacted: rotated 2026-11-06>'
 export RESTIC_REPOSITORY='sftp://storagebox/backup/servyy-test.lxd/restic-home'
 
 # List snapshots
