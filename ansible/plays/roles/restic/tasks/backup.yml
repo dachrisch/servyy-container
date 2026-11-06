@@ -138,7 +138,7 @@
 # ---------------------------------------------------------------------------
 - name: Create moodle backup directory
   file:
-    path: "{{ moodle_data_root | default(docker.remote_dir ~ '/moodle/data') }}/db-backup"
+    path: "{{ moodle_data_root_path }}/db-backup"
     state: directory
     owner: root
     group: root
@@ -158,7 +158,7 @@
     # `name: moodle` in moodle/docker-compose.yml, so the MariaDB container is
     # always `moodle.db` regardless of which directory the checkout lives in.
     moodle_db_container: "moodle.db"
-    moodle_dump_root: "{{ moodle_data_root | default(docker.remote_dir ~ '/moodle/data') }}/db-backup"
+    moodle_dump_root: "{{ moodle_data_root_path }}/db-backup"
     log_file: "{{ restic.logs.moodle_dump }}"
   when: moodle_enabled | default(false) | bool
   tags:

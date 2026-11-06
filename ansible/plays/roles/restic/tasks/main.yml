@@ -93,7 +93,7 @@
 - name: Restore Moodle dataroot
   include_tasks: restore.yml
   vars:
-    restore_path: "{{ moodle_data_root | default(docker.remote_dir ~ '/moodle/data') }}/moodledata"
+    restore_path: "{{ moodle_data_root_path }}/moodledata"
     backup_name: "moodle-files"
     owner: "65534"
     group: "65534"
@@ -102,7 +102,7 @@
       ⚠️  MOODLE DATAROOT RESTORED — the DATABASE is a separate restore
       ════════════════════════════════════════════════════════════════════
       restic restored moodledata from the `moodle-files` repo to:
-        {{ moodle_data_root | default(docker.remote_dir ~ '/moodle/data') }}/moodledata
+        {{ moodle_data_root_path }}/moodledata
 
       It is only half of a usable instance. The database is restored by the
       `moodle-db` include (dump files) and must then be IMPORTED — see that
@@ -125,7 +125,7 @@
 - name: Restore Moodle database dump
   include_tasks: restore.yml
   vars:
-    restore_path: "{{ moodle_data_root | default(docker.remote_dir ~ '/moodle/data') }}/db-backup/current"
+    restore_path: "{{ moodle_data_root_path }}/db-backup/current"
     backup_name: "moodle-db"
     owner: "root"
     post_restore_notice: |
@@ -133,7 +133,7 @@
       ⚠️  MOODLE DB DUMP RESTORED — DB is NOT live yet
       ════════════════════════════════════════════════════════════════════
       restic restored the logical dump to:
-        {{ moodle_data_root | default(docker.remote_dir ~ '/moodle/data') }}/db-backup/current/moodle.sql.gz
+        {{ moodle_data_root_path }}/db-backup/current/moodle.sql.gz
 
       The dump is a `mariadb-dump --databases moodle` and is NOT loaded into
       the live database. Import it by hand (one-time, after a disaster):

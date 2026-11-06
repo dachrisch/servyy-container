@@ -11,10 +11,11 @@
     remote_user_systemd: /home/testuser/.config/systemd/user
     leaguesphere_enabled: true
     # Moodle scopes: separate repos (files + db) with separate timers. The data
-    # root is injected because the role's fallback is `{{ docker.remote_dir }}/…`,
+    # root is injected because the role's fallback needs `docker.remote_dir`,
     # which this scenario does not define.
     moodle_enabled: true
     moodle_data_root: /home/testuser/servyy-container/moodle/data
+    moodle_data_root_path: "{{ moodle_data_root }}"
     ls_prod:
       app:
         db_backup_user: test_backup_user
