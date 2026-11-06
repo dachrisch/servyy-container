@@ -124,11 +124,16 @@ copies.
 
 - **The values remain in public git history.** Rotation, not deletion, is what
   neutralises them; all five are now invalid.
-- **`restic` backup of `/home/cda` has been failing since 06:04** with
-  restic exit 3: `/home/cda/servyy-container/moodle/data` is `root:root 0750`
-  (8 GB), unreadable by the `cda` user the timer runs as. This predates the
-  rotation and is still open — it needs either an exclude plus a separate
-  root-owned backup, or read access for the backup user.
+- **`restic` backup of `/home/cda` failed from 06:04** with restic exit 3:
+  `/home/cda/servyy-container/moodle/data` is `root:root 0750` (8 GB), unreadable
+  by the `cda` user the timer runs as. This predates the rotation. The repo
+  already excluded that path, but the host still ran an older copy of the script
+  (only `restic.init` had been re-rendered). Deployed `--tags restic.backup` and
+  re-ran the unit: `Backup completed successfully`.
+  **Still open:** `restic.yml`'s comment promises a dedicated `restic-moodle`
+  scope with a `mariadb-backup` dump, but that scope does not exist. Moodle data
+  is currently only in the daily root snapshot (`restic backup /`, which does not
+  exclude `/home`) — a live InnoDB datadir is not guaranteed consistent there.
 - **Stale checkouts on the hosts** still contain the old values in
   `ansible/plays/vars/secrets.yml` and the docs; they refresh on the next
   `user.docker.repo` run and hold nothing live.
@@ -142,7 +147,8 @@ copies.
 
 - Content-based secret scanning (gitleaks/trufflehog) must include `*.md`;
   path-based git-crypt rules cannot cover documentation.
-- Decide the Moodle backup fix above.
+- Build the `restic-moodle` scope (mariadb-backup + moodledata), or accept the
+  daily root snapshot as the Moodle backup.
 - Rotate the remaining non-leaked-but-adjacent items on their own schedule:
   `opencode.api_key` (the ForwardAuth key shared by four clients) was not
   exposed by this leak.
