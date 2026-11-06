@@ -62,12 +62,19 @@ apply_retention "/etc/restic/env.db" "db" \
 # Moodle files (daily) and Moodle DB dumps (hourly) live in SEPARATE repos with
 # their own retention — the file set is content-addressed and cheap to keep, the
 # hourly dump is replaceable but is the only copy of the DB rows.
+#
+# `--keep-tag baseline` makes a manual `restic tag --add baseline <id>` a real
+# pin: the pre-cutover baseline pair (files + dump) must outlive the GFS buckets
+# (which would drop it after ~6 monthly runs). Verified combinable with the
+# repo's own `--tag` filter on restic 0.18 (2026-11-06).
 apply_retention "/etc/restic/env.moodle-files" "moodle-files" \
+    --keep-tag baseline \
     --keep-last {{ restic.retention.moodle_files.last }} \
     --keep-daily {{ restic.retention.moodle_files.daily }} \
     --keep-weekly {{ restic.retention.moodle_files.weekly }} \
     --keep-monthly {{ restic.retention.moodle_files.monthly }} || FAILED=1
 apply_retention "/etc/restic/env.moodle-db" "moodle-db" \
+    --keep-tag baseline \
     --keep-last {{ restic.retention.moodle_db.last }} \
     --keep-hourly {{ restic.retention.moodle_db.hourly }} \
     --keep-daily {{ restic.retention.moodle_db.daily }} \

@@ -148,6 +148,10 @@ Two scopes, both gated on `moodle_enabled` (`services_enabled.moodle`), sharing 
   `current/new/` would otherwise leave the old dump in place), and the `moodle-db` restic script
   **exits 1 if `current/` is older than 2 h** — a dead dump job must not keep producing fresh-looking
   snapshots of old data.
+- **The pre-cutover baseline is pinned.** The first pair (files `5.781 GiB` + the 11:04 dump) is
+  tagged `baseline`, and both moodle forget calls pass `--keep-tag baseline`, so the tag survives the
+  GFS buckets instead of ageing out after ~6 monthly runs. Pin any later snapshot the same way:
+  `restic tag --add baseline <id>` inside the repo's env.
 - `current/` must always contain **exactly one** `moodle.sql.gz`. If it ever contains a `new/`
   subdirectory, the swap regressed (see `history/2026-11-06_moodle-restic-scopes.md`, learning 8).
 
