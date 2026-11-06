@@ -13,6 +13,17 @@
 # ONLY where LeagueSphere runs. Its presence is governed by `leaguesphere_enabled`
 # (vars/default.yml, derived from services_enabled.leaguesphere) — NOT by a flag
 # in this file. Every db consumer must gate on that flag.
+#
+# MOODLE SCOPING: the two `moodle-*` repos exist ONLY where Moodle runs
+# (`moodle_enabled`, same file/mechanism). They are deliberately SEPARATE repos
+# rather than one repo with two tags:
+#   * the DB stream is hourly and small, the file stream is daily and ~6 GB —
+#     separate repos keep a lock/prune on one from blocking the other;
+#   * system_probe reports one snapshot age per repo, so a single repo would
+#     hide stale files behind a fresh hourly DB snapshot.
+# Both use the same password (restic_password_moodle).
+# NOTE: repo names contain a dash — dereference them with `restic['moodle-files']`,
+# never attribute syntax.
 restic:
   # Home directory backup (hourly)
   home:
@@ -46,11 +57,22 @@ restic:
       - 'go/pkg'           # Go packages cache
       - 'go/bin'
 
-      # Moodle: moodledata (14 GB once migrated) and the MariaDB datadir live in
-      # the service dir. An hourly home snapshot of a live database is worthless
-      # and would upload gigabytes; they get their own restic scope
-      # (`restic-moodle`) with a mariadb-backup dump for the DB instead.
+      # Moodle: moodledata (~6 GB) and the MariaDB datadir live in the service
+      # dir. Two independent reasons to keep them out of the hourly home repo:
+      #   * the dataroot is root:root 0750 (files owned by 65534) — this job runs
+      #     unprivileged and cannot read it at all;
+      #   * a snapshot of a live database is worthless and uploading a 6 GB file
+      #     tree hourly is wasteful.
+      # They have dedicated scopes instead: `moodle-files` (daily snapshot) and
+      # `moodle-db` (hourly logical dump), both under `moodle_enabled`.
       - 'servyy-container/moodle/data'
+
+      # OpenCode's bind-mounted SSH dir. The container runs as root and writes
+      # id_github/id_servy/known_hosts as root, so the backup user cannot read
+      # them and restic aborts the whole home snapshot with exit 3 (measured
+      # 2026-11-06 on codey + servyy-test). They are deploy artifacts with their
+      # own seed files in plays/vars/ and a Vaultwarden copy — not home data.
+      - 'servyy-container/opencode/.ssh'
 
       # Temporary files
       - '**/*.tmp'
@@ -108,12 +130,58 @@ restic:
     password: "{{ restic_password_ls_db }}"
     source_path: "/var/jail/home/leaguesphere/container/deployed/mysql-backup/current"
 
+  # Moodle — the file half (daily). `moodledata/filedir` is content-addressed
+  # (SHA1 filenames), so a daily snapshot costs almost nothing after the first:
+  # files are added, not modified in place.
+  #
+  # The exclude list is the 2026-11-04 import's deliberate choice: caches,
+  # sessions and temp carry no recoverable state, only churn. `lang`, `models`,
+  # `secret`, `environment`, `diag`, `trashdir` and `.htaccess` are ALL kept.
+  #
+  # Runs with sudo (see backup.yml): the dataroot is root:root 0750 with
+  # files owned by uid 65534, so the unprivileged home backup cannot read it —
+  # which is exactly why the home repo excludes the whole `moodle/data` tree.
+  # Patterns are `/`-anchored to this snapshot root, not "anywhere in the tree".
+  'moodle-files':
+    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-moodle-files"
+    password: "{{ restic_password_moodle }}"
+    source_path: "{{ moodle_data_root | default(docker.remote_dir ~ '/moodle/data') }}/moodledata"
+    excludes:
+      - '/cache'
+      - '/localcache'
+      - '/muc'
+      - '/sessions'
+      - '/temp'
+
+  # Moodle — the database half (hourly). Captures the dump directory written by
+  # moodle-dump.sh (a `current/` symlink-free directory refreshed at :40), not
+  # the live InnoDB datadir: a live datadir is crash-inconsistent and churns
+  # gigabytes per hour.
+  #
+  # Logical `mariadb-dump` rather than a physical `mariadb-backup` prepared set:
+  # it is the pattern already running for bnb-office.db (daily, since 2026-10)
+  # and for the nightly prod->stage LeagueSphere sync, it needs no extra bind
+  # mount in moodle/docker-compose.yml, and `log_bin` is OFF on this DB so a
+  # physical set buys no PITR either way.
+  'moodle-db':
+    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-moodle-db"
+    password: "{{ restic_password_moodle }}"
+    source_path: "{{ moodle_data_root | default(docker.remote_dir ~ '/moodle/data') }}/db-backup/current"
+
   # Backup schedules
   schedules:
     backup_home: 'hourly'                      # Home: every hour at :00
     backup_root: 'daily'                       # Root: once per day at 00:00
     backup_ls_db: 'hourly'                     # DB: every hour at :00
     backup_ls_db_dump: '*-*-* *:40:00'        # mariadb-backup dump: :40 past every hour
+    # Moodle: dump at :40, snapshot at :50 (10 min after the dump — never
+    # snapshot a half-written `new/`), files daily at 01:20.
+    # 01:20 is deliberate: it is AFTER the 00:40 dump, so the file snapshot can
+    # only contain MORE blobs than the DB rows reference. Files are never
+    # rewritten in place, so this ordering cannot lose content.
+    backup_moodle_dump: '*-*-* *:40:00'
+    backup_moodle_db: '*-*-* *:50:00'
+    backup_moodle_files: '*-*-* 01:20:00'
     forget_daily: '*-*-* 05:00:00'            # Daily at 05:00 UTC
     check_weekly: 'Sun 06:00'                 # Weekly integrity check
 
@@ -144,6 +212,22 @@ restic:
       daily: 30      # a month of dailies
       weekly: 12
       monthly: 12
+    # Moodle files: Task 7 of the hosting plan (7 daily / 4 weekly / 6 monthly).
+    # `last` is the safety net when a schedule is misread; the file set is
+    # content-addressed, so these snapshots are cheap to keep.
+    moodle_files:
+      last: 7
+      daily: 7
+      weekly: 4
+      monthly: 6
+    # Moodle DB: a dump per hour, so both the hourly bucket and a longer
+    # daily/weekly tail (the file+DB pair from a bad week is the point).
+    moodle_db:
+      last: 24
+      hourly: 24
+      daily: 14
+      weekly: 8
+      monthly: 6
 
   # SFTP connection settings via SSH config
   sftp:
@@ -161,6 +245,9 @@ restic:
     backup_home: '/var/log/restic/backup-home.log'
     backup_root: '/var/log/restic/backup-root.log'
     backup_ls_db: '/var/log/restic/backup-ls-db.log'
+    backup_moodle_files: '/var/log/restic/backup-moodle-files.log'
+    backup_moodle_db: '/var/log/restic/backup-moodle-db.log'
+    moodle_dump: '/var/log/restic/moodle-dump.log'
     forget: '/var/log/restic/forget.log'
     check: '/var/log/restic/check.log'
 
