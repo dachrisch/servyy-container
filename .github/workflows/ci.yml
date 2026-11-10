@@ -264,6 +264,11 @@ jobs:
           cd opencode/scripts
           python -m unittest test_prune_sessions -v
 
+      - name: Run fail2ban blocklist regex tests
+        run: |
+          cd ansible/tests/fail2ban
+          python -m unittest -v test_blocklist_regex
+
   molecule-test:
     name: Molecule Test (${{ matrix.role }}/${{ matrix.scenario }})
     needs: [lint-yaml, lint-ansible, lint-python, syntax-check]

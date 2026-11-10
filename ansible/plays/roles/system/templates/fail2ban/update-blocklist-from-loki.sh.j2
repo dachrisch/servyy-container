@@ -84,14 +84,14 @@ get_rate_flood_ips() {
     local query='topk(50, sum by (ClientHost) (count_over_time({job="docker",container="traefik.traefik"} | json | DownstreamStatus="429" [2m])))'
 
     loki_query "$query" | \
-    jq -r '.data.result[] | select(.metric.ClientHost | test("^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$")) | select(.value[1] | tonumber >= '"$MIN_RATE_FLOOD"') | .metric.ClientHost + " traefik-rate-flood attempts=" + .value[1]' 2>/dev/null || true
+    jq -r '.data.result[] | select(.metric.ClientHost | test("^([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+|[0-9a-fA-F:]+)$")) | select(.value[1] | tonumber >= '"$MIN_RATE_FLOOD"') | .metric.ClientHost + " traefik-rate-flood attempts=" + .value[1]' 2>/dev/null || true
 }
 
 # Query Loki for top attacking IPs (SSH brute force)
 get_ssh_attackers() {
     log "Querying Loki for SSH brute force attackers..."
 
-    local query='topk(50, sum by (ip) (count_over_time({job="auth"} |~ "Invalid user" | regexp "from (?P<ip>[0-9.]+) port"['"$TIME_RANGE"'])))'
+    local query='topk(50, sum by (ip) (count_over_time({job="auth"} |~ "Invalid user" | regexp "from (?P<ip>[0-9a-fA-F:.]+) port"['"$TIME_RANGE"'])))'
 
     loki_query "$query" | \
     jq -r '.data.result[] | select(.value[1] | tonumber >= '"$MIN_SSH_ATTEMPTS"') | .metric.ip + " ssh-brute-force attempts=" + .value[1]' 2>/dev/null || true
@@ -101,10 +101,14 @@ get_ssh_attackers() {
 get_scanner_ips() {
     log "Querying Loki for scanner/bot IPs..."
 
-    local query='topk(50, sum by (ip) (count_over_time({job="docker"} |~ "(?i)(nikto|sqlmap|nmap|masscan|zgrab|nuclei|dirbuster)" | regexp "(?P<ip>[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)"['"$TIME_RANGE"'])))'
+    # The address comes from Traefik's ClientHost field, not from a text match: it is the
+    # only place the bare host appears. A dotted-quad regexp over the whole line silently
+    # extracted nothing (it was escaped for jq rather than for RE2, so Loki received `\\.`
+    # and matched a literal backslash), and it could not see a v6 client at all.
+    local query='topk(50, sum by (ip) (count_over_time({job="docker"} |~ "(?i)(nikto|sqlmap|nmap|masscan|zgrab|nuclei|dirbuster)" | regexp "\"ClientHost\":\"(?P<ip>[^\"]+)\""['"$TIME_RANGE"'])))'
 
     loki_query "$query" | \
-    jq -r '.data.result[] | select(.metric.ip | test("^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$")) | select(.value[1] | tonumber >= 1) | .metric.ip + " scanner-bot attempts=" + .value[1]' 2>/dev/null || true
+    jq -r '.data.result[] | select(.metric.ip | test("^([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+|[0-9a-fA-F:]+)$")) | select(.value[1] | tonumber >= 1) | .metric.ip + " scanner-bot attempts=" + .value[1]' 2>/dev/null || true
 }
 
 # Query for IPs with excessive 4xx errors
@@ -112,11 +116,13 @@ get_error_ips() {
     log "Querying Loki for IPs with excessive errors..."
 
     # Matches both plain-text access logs (" 404 ") and Traefik JSON logs
-    # ("DownstreamStatus":404) - the latter was previously invisible here.
-    local query='topk(50, sum by (ip) (count_over_time({job="docker"} |~ "\" 4[0-9][0-9] |\"DownstreamStatus\":4[0-9][0-9]" | regexp "(?P<ip>[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)"['"$TIME_RANGE"'])))'
+    # ("DownstreamStatus":404) - the latter was previously invisible here. Only the JSON
+    # form carries ClientHost, so a plain-text line no longer yields an address (and v6
+    # lines never did, under the dotted-quad regexp this replaces).
+    local query='topk(50, sum by (ip) (count_over_time({job="docker"} |~ "\" 4[0-9][0-9] |\"DownstreamStatus\":4[0-9][0-9]" | regexp "\"ClientHost\":\"(?P<ip>[^\"]+)\""['"$TIME_RANGE"'])))'
 
     loki_query "$query" | \
-    jq -r '.data.result[] | select(.metric.ip | test("^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$")) | select(.value[1] | tonumber >= '"$MIN_ERRORS"') | .metric.ip + " excessive-errors attempts=" + .value[1]' 2>/dev/null || true
+    jq -r '.data.result[] | select(.metric.ip | test("^([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+|[0-9a-fA-F:]+)$")) | select(.value[1] | tonumber >= '"$MIN_ERRORS"') | .metric.ip + " excessive-errors attempts=" + .value[1]' 2>/dev/null || true
 }
 
 # Query for IPs exceeding a sustained request rate (backstop for the limiter:

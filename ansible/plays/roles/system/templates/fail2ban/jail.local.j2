@@ -109,12 +109,13 @@ filter = loki-blocklist
 # IMPORTANT: Must use polling backend to read from log file instead of journal
 backend = polling
 banaction = iptables-multiport
-# v4 only, on purpose - do not add an inet6 twin here yet. Until the `proxy` Docker
-# network itself carries IPv6, Traefik records every v6 client as the docker-proxy
-# address (172.18.0.1, measured 2026-11-10 with a marked request), so a v6 rule could
-# never match a real attacker and would only look like coverage. Add the inet6 instance
-# together with that network change, and put it in the same forward-path chain.
+# Both families, in the same forward-path chain. This works only because the `proxy`
+# Docker network itself carries IPv6 (enabled 2026-11-11): without it, published v6 ports
+# were served by docker-proxy, Traefik recorded every v6 client as 172.18.0.1, and a v6
+# rule could never have matched a real attacker. With IPv6 on the network the packets are
+# DNAT'd instead, so they traverse FORWARD -> DOCKER-USER in ip6tables just like v4.
 action = iptables-multiport[port="%(port)s", protocol="tcp", chain="{{ fail2ban_web_tier_chain }}"]
+         ip6tables-multiport[port="%(port)s", protocol="tcp", chain="{{ fail2ban_web_tier_chain }}"]
 logpath = /var/log/fail2ban-loki.log
 maxretry = 1
 bantime = 86400
