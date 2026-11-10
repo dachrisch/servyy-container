@@ -188,20 +188,18 @@
           - "'iptables-multiport' in fail2ban_jail_effective_no_docker"
         fail_msg: "hosts without Docker must not hook a DOCKER-USER chain that does not exist"
 
-    # Both address families must be banned. `iptables-multiport` writes v4 rules only, and
-    # a second instance of it with family=inet6 is refused by the server, so the v6 twin is
-    # a separate action file shipped by this role.
-    - name: Verify the SSH jails ban both address families
+    # Both address families must be banned in every jail now: `iptables-multiport` writes
+    # v4 rules only, and a second instance of it with family=inet6 is refused by the
+    # server, so the v6 twin is a separate action file shipped by this role.
+    - name: Verify every jail bans both address families
       assert:
         that:
-          - '"ip6tables-multiport" in fail2ban_jail_effective'
-          - 'fail2ban_jail_effective.count("ip6tables-multiport") == 1'
-          - '"ip6tables-multiport" not in fail2ban_jail_effective.split("[loki-blocklist]")[1]'
+          - 'fail2ban_jail_effective.count("ip6tables-multiport") == 2'
+          - '"ip6tables-multiport" in fail2ban_jail_effective.split("[loki-blocklist]")[1]'
         fail_msg: >-
-          the SSH jails must ban through the ip6tables-multiport action too, and
-          loki-blocklist must stay v4-only until the proxy network carries IPv6 - see
-          history/2026-11-11_fail2ban-ipv6-ssh.md
-        success_msg: "SSH jails ban v4 and v6; the web-tier jail stays v4-only for now"
+          the SSH jails and loki-blocklist must each ban through the ip6tables-multiport
+          action too - see history/2026-11-11_fail2ban-ipv6-ssh.md
+        success_msg: "SSH and web-tier jails ban v4 and v6"
 
     # The SSH jails read the journal and must match both OpenSSH ident shapes. Inheriting
     # the package default made the same template behave differently per host: servy
