@@ -6,6 +6,27 @@
   tags:
     - system.fail2ban.install
 
+# The web-tier jail hooks its rules into DOCKER-USER instead of INPUT (see jail.local.j2).
+# Docker creates that chain when it starts; where it has not run yet, fail2ban's ban action
+# would fail with "No chain/target/match by that name" and silently ban nothing.
+- name: Check whether the DOCKER-USER chain exists
+  command: iptables -n -L DOCKER-USER
+  register: fail2ban_docker_user_chain
+  changed_when: false
+  failed_when: false
+  when: fail2ban_web_tier_chain == 'DOCKER-USER'
+  tags:
+    - system.fail2ban.config
+
+- name: Create the DOCKER-USER chain where Docker has not created it yet
+  command: iptables -N DOCKER-USER
+  changed_when: true
+  when:
+    - fail2ban_web_tier_chain == 'DOCKER-USER'
+    - fail2ban_docker_user_chain.rc | default(0) != 0
+  tags:
+    - system.fail2ban.config
+
 - name: Create fail2ban local configuration
   template:
     src: fail2ban/jail.local.j2

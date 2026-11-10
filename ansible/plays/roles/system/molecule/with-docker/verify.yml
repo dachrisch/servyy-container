@@ -142,3 +142,43 @@
         that:
           - "'05:00:00' in apt_timer_override_content.content | b64decode"
         fail_msg: "apt-daily-upgrade timer override does not contain expected run time"
+
+    # fail2ban itself is skipped in every scenario (with_fail2ban: false - it needs real
+    # logs), so guard the rendered jail config instead. Two things regressed silently
+    # before: the jail was reverted to all-ports (which REJECTs SSH for the banned IP) and
+    # it hooked INPUT, which forwarded container traffic never traverses.
+    - name: Render the fail2ban jail config from the role template
+      set_fact:
+        fail2ban_jail_conf: "{{ lookup('ansible.builtin.template', playbook_dir ~ '/../../templates/fail2ban/jail.local.j2') }}"
+      vars:
+        with_docker: true
+        fail2ban_web_tier_chain: DOCKER-USER
+
+    - name: Compute the effective jail config (comments stripped)
+      set_fact:
+        fail2ban_jail_effective: "{{ fail2ban_jail_conf.splitlines() | reject('match', '^\\s*#') | join('\\n') }}"
+
+    - name: Verify the web-tier jail is scoped to the web ports and hooks DOCKER-USER
+      assert:
+        that:
+          - "'[loki-blocklist]' in fail2ban_jail_effective"
+          - "'port = http,https' in fail2ban_jail_effective"
+          - "'banaction = iptables-multiport' in fail2ban_jail_effective"
+          - "'chain = DOCKER-USER' in fail2ban_jail_effective"
+          - "'http,https,ssh' not in fail2ban_jail_effective"
+          - "'iptables-allports' not in fail2ban_jail_effective"
+          - "'adding the offending IP to `ignoreip`' in fail2ban_jail_conf"
+        fail_msg: >-
+          loki-blocklist must stay scoped to http,https and hook DOCKER-USER instead of
+          INPUT - see history/2026-11-10_fail2ban-web-tier-chain-fix.md
+        success_msg: "loki-blocklist is scoped to http,https and hooks DOCKER-USER"
+
+    - name: Verify hosts without Docker keep the fail2ban default chain
+      assert:
+        that:
+          - "'chain = INPUT' in fail2ban_jail_conf_no_docker"
+        fail_msg: "hosts without Docker must not hook a DOCKER-USER chain that does not exist"
+      vars:
+        with_docker: false
+        fail2ban_web_tier_chain: "{{ 'DOCKER-USER' if (with_docker | default(false)) else 'INPUT' }}"
+        fail2ban_jail_conf_no_docker: "{{ lookup('ansible.builtin.template', playbook_dir ~ '/../../templates/fail2ban/jail.local.j2') }}"

@@ -1,0 +1,10 @@
+---
+# Chain the web-tier (`loki-blocklist`) jail hooks its rules into.
+#
+# Container traffic never traverses INPUT: Docker DNATs published ports in PREROUTING and
+# the packets are then *forwarded*, so INPUT only ever sees host-local sockets (sshd,
+# monit). A ban rule inserted into INPUT is therefore never consulted for Traefik.
+# DOCKER-USER is the first chain of the FORWARD path, ahead of Docker's own accepts.
+# Hosts without Docker have nothing to forward and keep the fail2ban default.
+# See history/2026-11-10_fail2ban-web-tier-chain-fix.md.
+fail2ban_web_tier_chain: "{{ 'DOCKER-USER' if (with_docker | default(false)) else 'INPUT' }}"
