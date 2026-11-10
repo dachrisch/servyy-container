@@ -15,11 +15,11 @@ maxretry = 5
 ignoreip = 127.0.0.1/8 ::1 {{ ansible_facts['default_ipv4']['address'] | default('') }}
 
 # Use iptables for banning, in both address families. `iptables-multiport` writes v4
-# rules only, so the action is instantiated twice: once for inet and once with
-# family="inet6", which action.d/iptables.conf maps to `ip6tables` through its
-# [Init?family=inet6] section. Without the second instance a v6 attacker is detected and
-# never banned - the filters already handle v6 (`<HOST>` matched real journal lines 2/2
-# when tested 2026-11-10), so this was purely a ban-side gap.
+# rules only, so the v6 twin is the role's own `ip6tables-multiport` action (same
+# machinery, `ip6tables`) rather than a second instance of the same action: fail2ban
+# identifies actions by name and refuses two of one name in a jail - at server start,
+# which `fail2ban-client -t` does not catch. Filters already handle v6 (`<HOST>` matched
+# real journal lines 2/2 when tested 2026-11-10), so this was purely a ban-side gap.
 banaction = iptables-multiport
 
 # Read the journal, not a log file. Declared here instead of inherited from the package:
@@ -39,7 +39,7 @@ backend = systemd
 # Action to take when banning. Spelled out rather than `%(action_)s` so the v6 twin is
 # visible where it matters; jails that must stay v4-only override it (see loki-blocklist).
 action = iptables-multiport[port="%(port)s", protocol="%(protocol)s", chain="%(chain)s"]
-         iptables-multiport[port="%(port)s", protocol="%(protocol)s", chain="%(chain)s", family="inet6"]
+         ip6tables-multiport[port="%(port)s", protocol="%(protocol)s", chain="%(chain)s"]
 
 #
 # SSH Protection
