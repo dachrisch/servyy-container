@@ -29,15 +29,40 @@ per-family blindness lasts.
 
 | File | Change |
 |---|---|
-| `ansible/plays/roles/system/templates/fail2ban/jail.local.j2` | `[DEFAULT]` spells the action out instead of `%(action_)s`, and instantiates it twice: once for inet, once with `family="inet6"`; `[loki-blocklist]` gets an explicit **v4-only** action instead of the jail-level `chain` option |
-| `ansible/plays/roles/system/molecule/with-docker/verify.yml` | asserts the inet6 instance exists exactly once and that `loki-blocklist` has none; web-tier chain assertions follow the chain into the action parameter |
+| `ansible/plays/roles/system/templates/fail2ban/action.d/ip6tables-multiport.conf.j2` | **new** — the v6 twin action (`ip6tables`, `icmp6-port-unreachable`), inheriting the rest of `iptables.conf` |
+| `ansible/plays/roles/system/tasks/fail2ban.yml` | deploys that action to `/etc/fail2ban/action.d/` |
+| `ansible/plays/roles/system/templates/fail2ban/jail.local.j2` | `[DEFAULT]` spells the action out instead of `%(action_)s` and lists **both** action names; `[loki-blocklist]` gets an explicit v4-only action instead of the jail-level `chain` option |
+| `ansible/plays/roles/system/molecule/with-docker/verify.yml` | asserts the v6 action exists exactly once and that `loki-blocklist` has none; web-tier chain assertions follow the chain into the action parameter |
 | `CLAUDE.md` | one more command: check the v6 ruleset |
 
-`action.d/iptables.conf` carries an `[Init?family=inet6]` section (`iptables = ip6tables
-<lockingopt>`, `blocktype = REJECT --reject-with icmp6-port-unreachable`), so the family
-parameter is all that is required — no custom action template. Both hosts have it: servy
-(fail2ban 1.1.0) and codey (1.0.2). The chain name stays `f2b-<jail>` in both families,
-which is intentional: the two rulesets are separate, so there is nothing to disambiguate.
+## The first attempt took fail2ban down on both hosts
+
+The first shape used the documented-looking trick of instantiating the *same* action twice
+with `family=inet6` (which `iptables.conf` supports via its `[Init?family=inet6]` section):
+
+```
+action = iptables-multiport[port="%(port)s", protocol="%(protocol)s", chain="%(chain)s"]
+         iptables-multiport[port="%(port)s", protocol="%(protocol)s", chain="%(chain)s", family="inet6"]
+```
+
+It deployed cleanly, `fail2ban-client -t` said `OK: configuration test is successful` — and
+the service then **failed to start on both hosts**:
+
+```
+fail2ban.transmitter ERROR Command ['server-stream', …] has failed.
+    Received ValueError('Action iptables-multiport already exists')
+```
+
+fail2ban identifies actions by name and refuses two of one name inside a jail. The check
+runs when the server starts, so the config test cannot see it. Both hosts were left with no
+bans at all for ~2 minutes until the previous `jail.local` was redeployed (9 + 1 + 82 bans
+re-applied from the database, chains intact).
+
+Two lessons, both now encoded above:
+
+- **`fail2ban-client -t` is not a deploy gate.** It parses; it does not start jails.
+- **A second instance needs a second action *name*.** Hence the role-owned
+  `ip6tables-multiport` action file instead of a duplicate instance.
 
 ## Why the web-tier jail deliberately stays v4
 
@@ -57,11 +82,18 @@ change that makes v6 clients visible — which is the next layer, not this one.
 
 ## Verification
 
-- **Both fail2ban versions accept the config**, tested without touching `/etc`: copy
-  `/etc/fail2ban` to `/tmp/f2bcheck`, drop in the rendered `jail.local`, then
-  `fail2ban-client -c /tmp/f2bcheck -t` → `OK: configuration test is successful` on servy
-  (1.1.0) and codey (1.0.2). `-d` shows two action instances per SSH jail, one carrying
-  `['family', 'inet6']`.
+- **Isolated fail2ban instance on servy** (the check that would have caught the first
+  attempt): a scratch config dir with one uniquely named jail, started with
+  `fail2ban-server -c /tmp/f2bt -s /tmp/f2bt/f2b.sock -b start`. The server came up, and a
+  ban per family produced the right rule in the right table:
+
+  ```
+  ip6tables -S f2b-sshdtest  → -s 2001:db8::55/128 -j REJECT --reject-with icmp6-port-unreachable
+  iptables  -S f2b-sshdtest  → -s 192.0.2.55/32   -j REJECT --reject-with icmp-port-unreachable
+  ```
+
+  The instance was then stopped, its chains were gone, and the production jails were
+  untouched (9 bans still installed). This is the gate for future changes to the action set.
 - Molecule: rendered-config assertions (see table).
 - `yamllint`, `ansible-lint`, `ansible-playbook --syntax-check` locally; molecule in CI.
 

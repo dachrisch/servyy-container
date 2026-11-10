@@ -1,0 +1,27 @@
+# Managed by Ansible - do not edit manually.
+#
+# IPv6 twin of `iptables-multiport`, so a jail can ban both address families.
+#
+# It exists as its own action file rather than as a second `iptables-multiport` instance
+# with `family=inet6`, because fail2ban identifies actions by name and refuses two of one
+# name inside a jail:
+#
+#   ValueError('Action iptables-multiport already exists')
+#
+# That check runs at **server start**, and `fail2ban-client -t` accepts the duplicate
+# config happily - measured 2026-11-11, when the duplicate-instance shape took fail2ban
+# down on both hosts while reporting a successful configuration test.
+#
+# Everything else is inherited from iptables.conf. The values from its
+# [Init?family=inet6] section are repeated here explicitly, because no `family` parameter
+# is passed to this action and that section therefore never applies - which would leave
+# `REJECT --reject-with icmp-port-unreachable`, a v4 reject type that ip6tables refuses.
+[INCLUDES]
+before = iptables.conf
+
+[Definition]
+type = multiport
+
+[Init]
+iptables = ip6tables <lockingopt>
+blocktype = REJECT --reject-with icmp6-port-unreachable

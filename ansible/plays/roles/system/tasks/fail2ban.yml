@@ -49,6 +49,20 @@
   tags:
     - system.fail2ban.config
 
+# The IPv6 ban action. fail2ban ships no ip6tables-* action any more, and a second
+# instance of iptables-multiport with family=inet6 is rejected at server start, so the
+# role provides the twin itself. See the template for the details.
+- name: Create IPv6 multiport ban action
+  template:
+    src: fail2ban/action.d/ip6tables-multiport.conf.j2
+    dest: /etc/fail2ban/action.d/ip6tables-multiport.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart fail2ban
+  tags:
+    - system.fail2ban.config
+
 - name: Create Traefik access log filter
   template:
     src: fail2ban/filter.d/traefik-access.conf.j2
