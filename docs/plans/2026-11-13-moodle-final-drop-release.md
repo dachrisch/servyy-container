@@ -25,6 +25,30 @@ import and the release: the site that was rehearsed *is* the production instance
 | Disk | 43 GB free on `/` — a 6 GB archive plus a 1.7 GB import fits with room to spare |
 | DNS | `offd.de` + `www.offd.de` → `85.13.146.136` (KAS), **TTL 7200**, MX at KAS (untouched by any of this) |
 
+## Rehearsal (2026-11-10, `servyy-test.lxd`)
+
+The scripts were run end to end on the test host with the real export — content 2026-11-04, and
+**twice** on the database, because the first pair taught something important:
+
+| Run | Dump | Result |
+|---|---|---|
+| 1 | `moodle-db-20261104` (ours, post-migration) | 15 m 39 s, exit 0. Extract 9 499 filedir files, 497 tables, **no** upgrade to run, **0** rows to rewrite (already migrated), 4 248 users / 104 courses / 14 waitlist instances |
+| 2 | `dump-OFFD-…20261028` (**Christoph's source**, 4.5.12, 119 lines with the old prefix) | 17 m 52 s, exit 0. 497 tables → **auto-upgrade 4.5.12 → 4.5.15**, **134 rows rewritten → 0 remaining**, 4 248 users / 104 courses / 14 waitlist instances |
+
+After run 2: site 200 (`<title>Startseite \| Flag Academy</title>`), `upgrade.php --is-pending` rc 0,
+`enrol: manual,guest,self,cohort,waitlist`, all 14 active Lehrgänge expose the method, the waitlist
+edit form returns 200, and a 29 375 166 B `mod_resource` PDF fetched over HTTP as a logged-in admin
+returns **200 with sha1 == the DB `contenthash`** (`%PDF-`), i.e. the same byte-identical result as
+the 2026-11-04 ingest.
+
+Two things the rehearsal settled:
+
+- **Rehearse against the source dump, not our own.** A dump taken from *our* instance is already
+  migrated — it can never exercise the auto-upgrade or the rewrite. Both silent no-ops on run 1.
+- **Expect slightly different numbers from the live instance.** The source dump has 39 355 file rows
+  / 9 301 contenthashes; the live DB shows 39 374 / 9 317 because the instance has since created 16
+  distinct H5P-library files. Not a regression, just time passing.
+
 ## Before Friday (do these first)
 
 - [ ] **Christoph: lower the TTL of `offd.de` *and* `www.offd.de` to 300** — at least 24 h ahead,
@@ -46,8 +70,8 @@ import and the release: the site that was rehearsed *is* the production instance
       leaves `/offd/moodle`.
 - [ ] Remove the stale `2026-10-28` dump from `/var/jail/home/leaguesphere/` before the new one
       lands (it is still there, 129 MB — importing it by mistake would lose three weeks).
-- [ ] Rehearse `import-offd-release.sh` on `servyy-test.lxd` with any export (the 2026-11-04 pair
-      is still on the Storage Box) so the script is not first exercised on release day.
+- [ ] Rehearse `import-offd-release.sh` — **done 2026-11-10** on `servyy-test.lxd`, twice (see
+      "Rehearsal" above): source dump 4.5.12 → 4.5.15, 134-row rewrite → 0, file fetched byte-identical.
 - [ ] Confirm SSH from the release workstation works (`:22` was REJECTed by fail2ban/`loki-blocklist`
       on 2026-11-10; a ban must not surprise us mid-window).
 
@@ -145,6 +169,12 @@ echo | openssl s_client -connect offd.de:443 -servername offd.de 2>/dev/null | o
 Expected transient during step 4: 1–3 minutes of `404`/TLS error on `offd.de` while the record
 propagates and the certificate is issued. Announce the window; the old site is in maintenance
 mode by then anyway.
+
+> **If every `curl` suddenly returns `000` in 0.02 s, the site is not down — your own IP is banned.**
+> `loki-blocklist` bans web ports (`http,https`) on Traefik abuse signatures, and a burst of smoke
+> tests is exactly that signature. Check `fail2ban-client status loki-blocklist` on servy, then
+> `fail2ban-client set loki-blocklist unbanip <ip>`. Happened on 2026-11-10 during the rehearsal's
+> verification curls; SSH stayed up throughout, which makes it look like a TLS problem.
 
 ### After DNS
 
