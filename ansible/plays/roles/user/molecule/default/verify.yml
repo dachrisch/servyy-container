@@ -26,3 +26,22 @@
         that:
           - zpreztorc_link.stat.exists
         fail_msg: "zpreztorc symlink not created"
+
+    # The proxy network cannot be created in this scenario (no Docker daemon), so guard
+    # the task definition instead: dropping enable_ipv6 turns published v6 ports back
+    # into docker-proxy traffic, which hides every v6 client behind the bridge address
+    # and makes the v6 fail2ban jails unfeedable.
+    - name: Read the docker setup tasks from the role
+      set_fact:
+        user_docker_setup: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../../tasks/docker_setup.yml') }}"
+
+    - name: Verify the proxy network is created with both address families
+      assert:
+        that:
+          - "'enable_ipv6: true' in user_docker_setup"
+          - "'docker_proxy_ipv6_subnet' in user_docker_setup"
+          - "'docker_proxy_ipv4_subnet' in user_docker_setup"
+        fail_msg: >-
+          the proxy network must be created with enable_ipv6 and both pinned subnets -
+          see history/2026-11-11_proxy-network-ipv6.md
+        success_msg: "proxy network keeps IPv6 and both pinned subnets"

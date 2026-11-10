@@ -810,6 +810,11 @@ ssh lehel.xyz "sudo fail2ban-client status sshd-invalid-user"
 # The SSH jails ban both families; a v6 attacker with no rule in the v6 chain is not
 # banned at all (iptables writes v4 rules only).
 ssh lehel.xyz "sudo ip6tables -S f2b-sshd | head -3"
+
+# v6 clients are only visible if the proxy network carries IPv6. Without it, [::]:443 is
+# served by docker-proxy and Traefik logs every v6 client as 172.18.0.1 - so no v6 ban
+# can ever match. Check with a marked request, not by assumption.
+ssh lehel.xyz "docker network inspect proxy --format '{{.EnableIPv6}} {{range .IPAM.Config}}{{.Subnet}} {{end}}'"
 ```
 
 ## Common Issues & Solutions

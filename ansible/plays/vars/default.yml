@@ -52,6 +52,15 @@ extension_drive:
 containerd_store_path: "{{ extension_drive.path }}/containerd"
 containerd_config_path: /etc/containerd/config.toml
 
+# IPv6 subnet for the `proxy` Docker network (see roles/user/tasks/docker_setup.yml).
+# A private ULA is deliberate: containers need no public address, inbound v6 is DNAT'd
+# to these addresses, and the host keeps its own prefix. Nothing routes to this range.
+docker_proxy_ipv6_subnet: "fd00:c0de:1::/64"
+# The v4 pool is pinned because it is already 172.18.0.0/16 on both hosts and several
+# allowlists reference that range (e.g. portainer-agent's master allowlist). Leaving it
+# implicit lets Docker pick a different pool when the network is recreated.
+docker_proxy_ipv4_subnet: "172.18.0.0/16"
+
 # Journal log retention (declarative)
 # 200M (was 500M): the journal is a convenience log, not the audit trail —
 # /var/log/security-audit + auditd are. Servy's root disk runs close to full.
