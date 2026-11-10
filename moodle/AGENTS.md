@@ -209,6 +209,12 @@ checkout *is* the deploy artifact, never copy them by hand:
 | `import-offd-release.sh <moodledata.tar.gz> <dump.sql.gz>` | content + DB in one pass | fresh logical dump as same-minute rollback point (refuses without one), app-only stop, extract over the dataroot, drop/re-import DB, wait for the image's own upgrade, `wwwroot-replace`, purge, counts. Does **not** touch `SITE_URL`/router/DNS — the site keeps its hostname, so the import is verifiable before cutover |
 | `wwwroot-replace.sh <old> <new> [--include-attempts]` | the measured 134-row rewrite | five live-content columns only; message history/drafts (~40 k more rows) untouched; idempotent |
 
+Rehearsed end to end on `servyy-test.lxd` on 2026-11-10, twice: a post-migration dump (extract +
+import, no upgrade, nothing to rewrite) and Christoph's **source** dump (4.5.12 → 4.5.15 upgrade
+plus 134 rows rewritten to 0). Rehearse against the *source* dump — our own dump is already migrated
+and silently exercises neither. Numbers and details:
+[the release plan](../docs/plans/2026-11-13-moodle-final-drop-release.md#rehearsal-2026-11-10-servyy-testlxd).
+
 Why hashing matters: the 2026-11-03 export had all 9 317 `contenthash` values present **by name**
 while 9 247 files were ASCII-mangled. A complete-looking file set proves nothing.
 
@@ -222,5 +228,3 @@ while 9 247 files were ASCII-mangled. A complete-looking file set proves nothing
   Until then the image writes its placeholder Gmail credentials on every boot and no mail leaves.
 - Binlogs for point-in-time recovery (see "Backups" above).
 - `www.offd.de`: still on the old host, no router here — decide redirect vs retirement.
-- The `import-offd-release.sh` rehearsal on `servyy-test.lxd` (the script is reviewed but has not
-  yet been run against a fresh export on the test host).

@@ -67,8 +67,6 @@ with nothing executable in the repo.
   Documented in three places, tested in molecule, but it is an upstream-implementation detail.
 - `qbehaviour_adaptiveallnothing` is still absent on purpose (no quiz uses it), so Moodle keeps
   one "missing from disk" notice.
-- `import-offd-release.sh` is reviewed but **not yet run against a fresh export on the test host**;
-  that rehearsal is the remaining pre-Friday item.
 
 ### Implementation Details
 
@@ -100,6 +98,18 @@ with nothing executable in the repo.
   method; `upgrade.php --is-pending` rc 0; site 200; cron still running (41 tasks in 30 min).
 - `verify-offd-export.sh`: PASS on the real archive; FAIL on a synthetic archive whose file content
   does not match its filename; FAIL on a dump with no `mdl_` schema.
+- **Rehearsal on `servyy-test.lxd` (2026-11-10), twice**, because the first run proved the point
+  that a self-taken dump is the wrong rehearsal material:
+  - post-migration dump (`moodle-db-20261104`): 15 m 39 s, exit 0 — 9 499 filedir files, 497 tables,
+    **no** upgrade pending already, **0** rows to rewrite.
+  - Christoph's source dump (`dump-OFFD-…20261028`, 4.5.12, 119 lines with the old prefix):
+    17 m 52 s, exit 0 — 497 tables, **auto-upgrade 4.5.12 → 4.5.15**, **134 rows rewritten → 0**,
+    4 248 users / 104 courses / 14 waitlist instances.
+  - After the second run: site 200, `--is-pending` 0, `enrol: manual,guest,self,cohort,waitlist`,
+    all 14 courses expose the method, the waitlist edit form 200, and a 29 375 166 B `mod_resource`
+    PDF over HTTP as a logged-in admin → **200, sha1 == DB `contenthash`**, `%PDF-`.
+  - Counts differ from the live instance by design: source dump 39 355 file rows / 9 301
+    contenthashes vs live 39 374 / 9 317 (the instance created 16 distinct H5P-library files since).
 
 **Key learnings**
 
@@ -128,6 +138,11 @@ with nothing executable in the repo.
    import script aborted with "cannot resolve the moodledata root" even though both paths were
    correct. Caught by adding `--dry-run` and running it against the real export on the host, not by
    reading the code. Every test below the data root now goes through `sudo`.
+8. **A dump of your own instance is not rehearsal material.** The obvious pair to rehearse with was
+   the one already on the Storage Box — but that dump was taken *after* the migration/rewrite, so
+   the import ran with "no upgrade pending" and "nothing to replace": two silent no-ops that look
+   like success. Only Christoph's original 2026-10-28 dump (4.5.12, old prefix present) exercises the
+   auto-upgrade and the 134-row rewrite. Friday is exactly that case, so the runbook now names it.
 
 ## Alternatives Considered
 
