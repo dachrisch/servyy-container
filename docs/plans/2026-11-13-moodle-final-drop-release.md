@@ -170,6 +170,12 @@ Expected transient during step 4: 1–3 minutes of `404`/TLS error on `offd.de` 
 propagates and the certificate is issued. Announce the window; the old site is in maintenance
 mode by then anyway.
 
+> **If every `curl` suddenly returns `000` in 0.02 s, the site is not down — your own IP is banned.**
+> `loki-blocklist` bans web ports (`http,https`) on Traefik abuse signatures, and a burst of smoke
+> tests is exactly that signature. Check `fail2ban-client status loki-blocklist` on servy, then
+> `fail2ban-client set loki-blocklist unbanip <ip>`. Happened on 2026-11-10 during the rehearsal's
+> verification curls; SSH stayed up throughout, which makes it look like a TLS problem.
+
 ### After DNS
 
 - [ ] `https://offd.de/` 200, real front page, no redirect to `m.`
