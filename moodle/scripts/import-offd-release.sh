@@ -7,6 +7,8 @@
 #
 # Options:
 #   --yes                 do not ask for confirmation
+#   --dry-run             print what would happen (paths, DB, top level, counts)
+#                         and exit without touching anything; implies --yes
 #   --target-url URL      rewrite teacher-entered links to this URL
 #                         (default: the instance's current SITE_URL from app.env)
 #   --include-attempts    also rewrite mdl_question_attempts.questionsummary
@@ -38,12 +40,14 @@ DUMP="${2:-}"
 shift 2 2>/dev/null || true
 
 ASSUME_YES=false
+DRY_RUN=false
 TARGET_URL=""
 INCLUDE_ATTEMPTS=""
 SKIP_FRESH_DUMP=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --yes) ASSUME_YES=true ;;
+    --dry-run) DRY_RUN=true; ASSUME_YES=true ;;
     --target-url) TARGET_URL="${2:-}"; shift ;;
     --include-attempts) INCLUDE_ATTEMPTS="--include-attempts" ;;
     --skip-fresh-dump) SKIP_FRESH_DUMP=true ;;
@@ -69,6 +73,7 @@ SITE_URL="$(sed -n 's/^SITE_URL=//p' "$SERVICE_DIR/app.env")"
 DB_NAME="$(sed -n 's/^MARIADB_DATABASE=//p' "$SERVICE_DIR/db.env")"
 DB_NAME="${DB_NAME:-moodle}"
 OLD_PREFIX="https://offd.de/offd/moodle"
+CURRENT="$DATA_ROOT/db-backup/current/moodle.sql.gz"
 
 printf 'archive      : %s\ncontent into : %s/moodledata\ndatabase     : %s (dropped and re-imported)\nlink rewrite : %s -> %s\n' \
   "$ARCHIVE" "$DATA_ROOT" "$DB_NAME" "$OLD_PREFIX" "$TARGET_URL"
@@ -83,8 +88,19 @@ db_health() { docker inspect -f '{{.State.Health.Status}}' moodle.db 2>/dev/null
 app_health() { docker inspect -f '{{.State.Health.Status}}' moodle.moodle 2>/dev/null || echo missing; }
 [[ "$(db_health)" == "healthy" ]] || fail "moodle.db is not healthy — fix that first"
 
+if [[ "$DRY_RUN" == true ]]; then
+  TOP="$(tar -tzf "$ARCHIVE" | awk 'NR==1{first=$0} END{sub(/^\.\//,"",first); split(first,a,"/"); print a[1]}')"
+  printf '\n\033[36mdry run\033[0m — nothing was changed\n'
+  printf 'app health     : %s\n' "$(app_health)"
+  printf 'archive top    : %s\n' "$TOP"
+  printf 'would extract  : -> %s/%s\n' "$DATA_ROOT" "$([[ "$TOP" == "moodledata" ]] && echo '' || echo 'moodledata')"
+  printf 'would import   : %s (%s tables in the dump)\n' "$DB_NAME" "$(gzip -dc "$DUMP" | grep -c '^CREATE TABLE')"
+  printf 'would rewrite  : %s -> %s\n' "$OLD_PREFIX" "$TARGET_URL"
+  printf 'rollback dump  : %s %s\n' "$CURRENT" "$([[ -f "$CURRENT" ]] && stat -c '%s bytes, %y' "$CURRENT" || echo MISSING)"
+  exit 0
+fi
+
 step "fresh rollback dump"
-CURRENT="$DATA_ROOT/db-backup/current/moodle.sql.gz"
 if [[ "$SKIP_FRESH_DUMP" != true ]]; then
   if [[ ! -f "$CURRENT" ]] || [[ $(( $(date +%s) - $(stat -c%Y "$CURRENT") )) -gt 3600 ]]; then
     printf 'triggering moodle-dump.service (rollback point for this import)\n'
@@ -109,8 +125,22 @@ fi
 step "extract content into the dataroot"
 # `head -1` would close the pipe early; under `set -o pipefail` the SIGPIPE from
 # tar then becomes a non-zero pipeline. awk reads the stream to the end instead.
-TOP="$(tar -tzf "$ARCHIVE" | awk 'NR==1{first=$0} END{split(first,a,"/"); print a[1]}')"
+TOP="$(tar -tzf "$ARCHIVE" | awk 'NR==1{first=$0} END{sub(/^\.\//,"",first); split(first,a,"/"); print a[1]}')"
+
+# If anything fails after this point the app is restarted *only* until the
+# database has been touched — serving a half-imported DB is worse than a stopped
+# container, so past that line it stays down for the operator.
+APP_STOPPED=false
+DB_TOUCHED=false
+restart_if_safe() {
+  if [[ "$APP_STOPPED" == true && "$DB_TOUCHED" == false ]]; then
+    ( cd "$SERVICE_DIR" && docker compose -p moodle up -d >/dev/null 2>&1 ) || true
+  fi
+}
+trap restart_if_safe EXIT
+
 docker stop moodle.moodle >/dev/null || fail "could not stop moodle.moodle"
+APP_STOPPED=true
 printf 'app container stopped; top level of archive: %s\n' "$TOP"
 if [[ "$TOP" == "moodledata" ]]; then DEST="$DATA_ROOT"; else DEST="$DATA_ROOT/moodledata"; fi
 sudo tar -xzf "$ARCHIVE" -C "$DEST" --no-same-owner || fail "extraction failed"
@@ -120,7 +150,11 @@ FILES="$(sudo find "$DATA_ROOT/moodledata/filedir" -type f | wc -l)"
 ok "extracted, ownership 65534, $FILES files in filedir"
 
 step "import the database (~8 min for 1.6 GB)"
-docker exec moodle.db sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -e "DROP DATABASE IF EXISTS `'"$DB_NAME"'`; CREATE DATABASE `'"$DB_NAME"'` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"' \
+# No backticks in the SQL: inside the container's `sh -c "…"` they would be command
+# substitution. The name comes from db.env, so validate it instead of quoting it.
+[[ "$DB_NAME" =~ ^[A-Za-z0-9_]+$ ]] || fail "unexpected database name '$DB_NAME' in db.env"
+DB_TOUCHED=true
+docker exec moodle.db sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -e "DROP DATABASE IF EXISTS '"$DB_NAME"'; CREATE DATABASE '"$DB_NAME"' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"' \
   || fail "could not recreate the database"
 gunzip -c "$DUMP" | docker exec -i moodle.db sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" "$1"' sh "$DB_NAME" \
   || fail "import failed"
@@ -129,6 +163,7 @@ ok "$TABLES tables imported"
 
 step "start the app and wait for the automatic 4.5.12 -> 4.5.15 upgrade"
 ( cd "$SERVICE_DIR" && docker compose -p moodle up -d >/dev/null ) || fail "compose up failed"
+APP_STOPPED=false
 for _ in $(seq 1 60); do [[ "$(app_health)" == "healthy" ]] && break; sleep 5; done
 [[ "$(app_health)" == "healthy" ]] || fail "moodle.moodle did not become healthy"
 for _ in $(seq 1 120); do
