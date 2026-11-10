@@ -107,7 +107,9 @@ else
 fi
 
 step "extract content into the dataroot"
-TOP="$(tar -tzf "$ARCHIVE" | head -1 | cut -d/ -f1)"
+# `head -1` would close the pipe early; under `set -o pipefail` the SIGPIPE from
+# tar then becomes a non-zero pipeline. awk reads the stream to the end instead.
+TOP="$(tar -tzf "$ARCHIVE" | awk 'NR==1{first=$0} END{split(first,a,"/"); print a[1]}')"
 docker stop moodle.moodle >/dev/null || fail "could not stop moodle.moodle"
 printf 'app container stopped; top level of archive: %s\n' "$TOP"
 if [[ "$TOP" == "moodledata" ]]; then DEST="$DATA_ROOT"; else DEST="$DATA_ROOT/moodledata"; fi

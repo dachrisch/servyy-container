@@ -57,7 +57,6 @@ gzip -t "$DUMP" || fail "dump fails gzip -t (truncated or corrupt upload)"
 ok "both streams decompress end to end"
 
 step "live database content hashes"
-sudo chmod 777 "$TMP"
 docker exec -i moodle.db sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" --batch --skip-column-names moodle' \
   <<'SQL' | tr -d '\r' > "$TMP/db_hashes"
 SELECT DISTINCT contenthash FROM mdl_files WHERE contenthash IS NOT NULL AND contenthash <> '';
@@ -67,6 +66,9 @@ DB_HASHES="$(wc -l < "$TMP/db_hashes")"
 ok "$DB_HASHES distinct contenthash values in mdl_files"
 
 step "one full pass over the archive (structure + sha1 + coverage)"
+# sudo is only for reading an archive that may be root-owned; the report itself is
+# written by this shell (unprivileged), which is why the redirect sits outside.
+# shellcheck disable=SC2024
 sudo python3 - "$ARCHIVE" "$TMP/db_hashes" > "$TMP/report" <<'PY'
 import hashlib, re, sys, tarfile
 
@@ -143,7 +145,7 @@ emit("orphans_not_in_db", len(orphans))
 PY
 
 cat "$TMP/report"
-get() { sed -n "s/^$1=//p" "$TMP/report" | head -1; }
+get() { sed -n "s/^$1=//p" "$TMP/report" | awk 'NR==1'; }
 
 [[ "$(get problems)" == "0" ]] || fail "unsafe entries in the archive (see problem= lines above)"
 ok "no symlinks/hardlinks/devices, no absolute or .. paths, no transient directories"
@@ -170,12 +172,15 @@ if [[ "$(get orphans_not_in_db)" != "0" ]]; then
 fi
 
 step "SQL dump"
+# grep reads to EOF on purpose: `grep -q` would exit at the first match and the
+# SIGPIPE would make the pipeline fail under `pipefail` (false FAIL, or a missed
+# hit for the CREATE DATABASE check).
 TABLES="$(gzip -dc "$DUMP" | grep -c '^CREATE TABLE' || true)"
 [[ "${TABLES:-0}" -ge 400 ]] || fail "only $TABLES CREATE TABLE statements — not the OFFD dump (497 expected)"
-gzip -dc "$DUMP" | grep -q 'mdl_config' || fail "no mdl_config table in the dump"
-if gzip -dc "$DUMP" | grep -Eq '^(CREATE DATABASE|USE )'; then
-  fail "dump contains CREATE DATABASE/USE — it would not import into the target database cleanly"
-fi
+HAS_CONFIG="$(gzip -dc "$DUMP" | grep -c 'mdl_config' || true)"
+[[ "$HAS_CONFIG" -gt 0 ]] || fail "no mdl_config table in the dump"
+STRAY="$(gzip -dc "$DUMP" | grep -cE '^(CREATE DATABASE|USE )' || true)"
+[[ "$STRAY" == "0" ]] || fail "dump contains CREATE DATABASE/USE — it would not import into the target database cleanly"
 ok "$TABLES tables, mdl_ schema, no CREATE DATABASE/USE"
 
 printf '\n\033[32mPASS\033[0m %s is safe to import.\n' "$(basename "$ARCHIVE")"

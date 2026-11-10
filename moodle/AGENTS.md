@@ -5,6 +5,7 @@ Live target: `https://offd.de` (root of the host — not a subpath). Rehearsal h
 `m.leaguesphere.app` (wildcard `*.leaguesphere.app` → servy, no DNS work needed).
 
 **Plan, verified baseline, cutover runbook:** [docs/plans/2026-10-27-moodle-offd-hosting.md](../docs/plans/2026-10-27-moodle-offd-hosting.md)
+**Final import + release procedure:** [docs/plans/2026-11-13-moodle-final-drop-release.md](../docs/plans/2026-11-13-moodle-final-drop-release.md)
 
 ## Layout
 
@@ -67,11 +68,23 @@ noreply address and the mail prefix.
 
 Third-party plugins live outside the image and are installed **at every boot** from `PLUGINS=`
 (`type_name=url`, space separated) in `moodle.app.env.j2`, so the code tree stays immutable.
-OFFD has exactly two, and only one is in use:
+The archives themselves are **vendored in git** ([`plugins/`](plugins/README.md)) and
+bind-mounted read-only at `/opt/moodle-plugins`, so no boot depends on an external download.
+`PLUGINS` is rendered from `moodle_plugin_enrol_waitlist_zip`, and
+`roles/user/tasks/moodle_plugins.yml` asserts the sha256 before compose runs — a missing or
+silently swapped archive would otherwise make the **container fail to start**.
 
-- **`enrol_waitlist`** (version `2025072001`) — **required**: 35 courses use the `waitlist`
-  enrolment method.
-- `qbehaviour_adaptiveallnothing` — installed in the DB, used by **no** quiz.
+- **`enrol_waitlist`** (version `2025072001`, upstream tag `v4.5-a3`) — **required**: the imported
+  DB references it and 35 courses use the `waitlist` enrolment method (21 active, the 2026
+  F2/F3/F4 Lehrgänge, 820 `user_enrolments`). Installed 2026-11-10; `enrol_get_plugins()` now
+  returns `manual,guest,self,cohort,waitlist`. Two non-obvious constraints, both learned the hard
+  way: the zip must have a single top-level `waitlist/` directory (the installer does
+  `mv waitlist <docroot>/enrol/waitlist` and dies otherwise), and the version must match
+  `mdl_config_plugins` exactly (a newer zip makes Moodle run that plugin's own upgrade steps
+  against the imported DB).
+- `qbehaviour_adaptiveallnothing` — present in the DB, **used by no quiz** (all 680 run
+  `deferredfeedback`, `immediatefeedback` or `immediatecbm`), so deliberately not installed.
+  Moodle shows one "missing from disk" notice; installing it later is the same procedure.
 
 ## Everyday operations
 
@@ -185,12 +198,29 @@ host's sudo umask is 027), and Moodle re-applies its own `$CFG->directorypermiss
 dataroot on the next boot, so a restored tree ends up `2777` rather than the import's `2770` — that is
 Moodle, not the restore.
 
+## Lift and shift of an export (scripts)
+
+Three scripts in [`scripts/`](scripts/), shipped to the host by the normal repo sync — the
+checkout *is* the deploy artifact, never copy them by hand:
+
+| Script | Does | Notes |
+|---|---|---|
+| `verify-offd-export.sh <moodledata.tar.gz> <dump.sql.gz>` | the gate, read-only | one pass over the archive: gzip, unsafe/symlink/`..`/transient entries, **every filedir file hashed against its own filename**, every DB `contenthash` present, plain `mdl_` dump. Non-zero exit = reject the export |
+| `import-offd-release.sh <moodledata.tar.gz> <dump.sql.gz>` | content + DB in one pass | fresh logical dump as same-minute rollback point (refuses without one), app-only stop, extract over the dataroot, drop/re-import DB, wait for the image's own upgrade, `wwwroot-replace`, purge, counts. Does **not** touch `SITE_URL`/router/DNS — the site keeps its hostname, so the import is verifiable before cutover |
+| `wwwroot-replace.sh <old> <new> [--include-attempts]` | the measured 134-row rewrite | five live-content columns only; message history/drafts (~40 k more rows) untouched; idempotent |
+
+Why hashing matters: the 2026-11-03 export had all 9 317 `contenthash` values present **by name**
+while 9 247 files were ASCII-mangled. A complete-looking file set proves nothing.
+
 ## Not done yet (see the plan)
 
-- The `leaguesphere` side of the URL change: `MOODLE_URL` plus the hardcoded `/moodle/…` segments in
-  `officials/service/moodle/`. Not touched yet on purpose — prod LeagueSphere still points at the old
-  live offd.de until the search-replace is proven on the test box.
-- Plugin list → `PLUGINS` in `moodle.app.env.j2` (installed at every boot, so the code tree stays
-  immutable).
+- The `leaguesphere` side of the URL change — prepared, not deployed: drop `/offd` from
+  `ansible/plays/roles/ls_app/templates/ls.env.j2:17` **and** the `/moodle/…` segments in
+  `officials/service/moodle/` (separate repo) in the same window, or one side points at a 404.
+  The webservice token comes from the dump, so it survives an import — test it, do not rotate it.
 - SMTP env (`SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD`) once the mail decision is made.
+  Until then the image writes its placeholder Gmail credentials on every boot and no mail leaves.
 - Binlogs for point-in-time recovery (see "Backups" above).
+- `www.offd.de`: still on the old host, no router here — decide redirect vs retirement.
+- The `import-offd-release.sh` rehearsal on `servyy-test.lxd` (the script is reviewed but has not
+  yet been run against a fresh export on the test host).
