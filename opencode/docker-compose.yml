@@ -14,7 +14,7 @@ services:
     # When bumping: verify with `docker run --rm --entrypoint sh <tag> -c
     # 'opencode --version'` that it prints `opencode v2.x.y`, and check against a
     # copy of the volume before pointing prod at it.
-    image: ghcr.io/anomalyco/opencode:2.2.6
+    image: ghcr.io/anomalyco/opencode:2.2.7
     container_name: opencode.web
     restart: unless-stopped
     entrypoint: [ "/bin/sh", "/scripts/startup.sh" ]
