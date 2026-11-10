@@ -108,10 +108,60 @@ ssh servy.lehel.xyz "sudo fail2ban-client status sshd-invalid-user"
 ssh codey.lehel.xyz "sudo fail2ban-client status sshd"
 ```
 
+## Deployed — 2026-11-10, both hosts
+
+Merged as `a9d43cc` (layer 1, #278) and `c268aa9` (layer 2, #279), with all 14 molecule
+jobs green before the atomic stack merge. Deployed with
+`./servyy.sh --limit <host> --tags system.fail2ban`: 3 changes on each host (the two
+templates) plus the handler restart. `fail2ban-client -t` OK, service active, no errors in
+the journal, on both.
+
+### What it bought, measured after deploy
+
+```
+journalctl _SYSTEMD_UNIT=ssh.service | grep -E 'Invalid user|Failed password for'
+  all:                                          1046
+  _COMM=sshd          (old journalmatch):          0
+  _COMM=sshd-session  (new journalmatch):       1046
+```
+
+`fail2ban-regex systemd-journal` against the deployed filter matches **4539** lines on
+servy and **3150** on codey. Before this change servy's `sshd-invalid-user` had 0 bans in
+its entire retained log.
+
+### Two things the deploy itself taught us
+
+- **A dormant web-tier ban went live.** `45.155.141.31` (the shared CGNAT address from the
+  incident) was still banned in `loki-blocklist` from 08:37 and had been harmless all day,
+  because the rule sat in `INPUT` where forwarded container traffic never arrives. The
+  moment layer 1 put it in `DOCKER-USER`, `bumbleflies.de` began answering `000` from the
+  operator's own line. Unbanned with `fail2ban-client set loki-blocklist unbanip`;
+  `ignoreip` deliberately untouched. That is the layer-1 defect proving itself fixed by
+  breaking something it had been silently ignoring.
+- **The chain is created lazily.** After the deploy codey's `loki-blocklist` had no
+  `f2b-loki-blocklist` chain and no jump, which reads like a failed action. It is not:
+  fail2ban creates the chain on the first ban. Proved by banning `192.0.2.55` (RFC 5737):
+  the chain, `-A DOCKER-USER … -j f2b-loki-blocklist` and the REJECT rule all appeared;
+  then unbanned and verified gone.
+
+### Method note
+
+`fail2ban-regex --journalmatch` does **not** restrict the input set. An old-vs-new
+comparison through it scanned the same ~42k lines both ways and "matched" the same 4539,
+which made the comparison worthless. Use `journalctl` with field selectors to measure what
+a journalmatch scopes; use `fail2ban-regex systemd-journal` only to prove a filter matches.
+
 ## Notes / follow-ups
 
 - **IPv6 is still uncovered** by both SSH jails (carried over from the layer below): the
-  `iptables-multiport` action writes v4 rules only.
+  `iptables-multiport` action writes v4 rules only. The filter side already handles it —
+  `<HOST>` matched real v6 journal lines 2/2 when tested 2026-11-10 — so this is purely a
+  ban-action gap.
+- **The web tier's IPv6 gap is worse than "uncovered": it is invisible.** Traefik records
+  v6 clients as the Docker bridge gateway (`172.18.0.1`), because the `proxy` network has
+  no IPv6 and `[::]:443` is served by docker-proxy, which re-originates the connection.
+  Measured 2026-11-10 with a marked request (`/__v6probe?x=1`). No log-based jail can
+  identify a v6 attacker until the container network itself carries IPv6.
 - **The CGNAT collision itself is unfixed by design.** `45.155.141.0/24` is a shared
   subscriber pool, so a neighbour's scanner gets the operator's address banned. That is a
   routing/identity problem, not a fail2ban one: dedicated public IPv4, or SSH over
