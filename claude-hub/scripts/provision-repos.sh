@@ -57,6 +57,60 @@ fi
 # 'gh-dash-crypt' is git-crypt encrypted and gets unlocked with CRYPT_KEY.
 ORGS="dachrisch bumbleflies"
 
+# KEEP IN SYNC with opencode/scripts/provision-dev.sh: a gh-dash-crypt checkout
+# is only usable when the key is installed, the smudge/clean filters are the real
+# git-crypt commands, and no encrypted file holds ciphertext in the working tree.
+# Ciphertext blobs left by an earlier filter-bypassed git run (`smudge = cat`)
+# show up as local modifications, which blocks the checkout/pull below AND makes
+# `git-crypt unlock` refuse (it requires a clean tree), so repair before updating.
+# See history/2026-11-10_opencode-gitcrypt-provision-repair.md.
+ensure_git_crypt() {
+  _dest="$1"; _name="$2"
+  _key_ok=0
+  [ -f "$_dest/.git/git-crypt/keys/default" ] && _key_ok=1
+  _smudge="$(git -C "$_dest" config --local --get filter.git-crypt.smudge 2>/dev/null || true)"
+  case "$_smudge" in
+    *git-crypt*) _filters_ok=1 ;;
+    *)           _filters_ok=0 ;;
+  esac
+
+  if [ "$_key_ok" = 1 ] && [ "$_filters_ok" = 0 ]; then
+    git -C "$_dest" config --local filter.git-crypt.smudge "$(command -v git-crypt) smudge"
+    git -C "$_dest" config --local filter.git-crypt.clean  "$(command -v git-crypt) clean"
+    git -C "$_dest" config --local filter.git-crypt.required true
+    log "restored git-crypt filters for $_name"
+  fi
+
+  if [ "$_key_ok" = 0 ]; then
+    ( cd "$_dest" && git-crypt unlock "$CRYPT_KEY" ) \
+      && log "git-crypt unlocked $_name" \
+      || { log "WARN: git-crypt unlock failed for $_name"; return 0; }
+  fi
+
+  # Re-smudge every encrypted file still holding ciphertext. Safe by
+  # construction: a file whose content is the `\0GITCRYPT\0` envelope cannot
+  # also contain an uncommitted plaintext edit.
+  ( cd "$_dest" && git-crypt status -e 2>/dev/null | sed 's/^ *encrypted: //' ) \
+    | while IFS= read -r _f; do
+        [ -n "$_f" ] || continue
+        head -c 10 "$_dest/$_f" 2>/dev/null | grep -q GITCRYPT || continue
+        git -C "$_dest" checkout -- "$_f" 2>/dev/null && log "re-smudged $_name:$_f"
+      done
+
+  _remaining="$(
+    ( cd "$_dest" && git-crypt status -e 2>/dev/null | sed 's/^ *encrypted: //' ) \
+      | while IFS= read -r _f; do
+          [ -n "$_f" ] || continue
+          head -c 10 "$_dest/$_f" 2>/dev/null | grep -q GITCRYPT && echo x
+        done | wc -l | tr -d ' '
+  )"
+  if [ "${_remaining:-0}" -eq 0 ]; then
+    log "$_name git-crypt working tree OK"
+  else
+    log "WARN: $_name still has $_remaining encrypted file(s) holding ciphertext - commit or stash local changes, then run 'git-crypt unlock' there"
+  fi
+}
+
 log "discovering repos with 'gh-dash' topic..."
 for target in $ORGS; do
   log "  checking $target..."
@@ -101,6 +155,9 @@ repos.forEach(function (r) {
     dest="$DEV_DIR/$dir"
     repo_url="https://github.com/$dir.git"
     if [ -d "$dest/.git" ]; then
+      if [ "$crypt" = "1" ] && [ -n "$CRYPT_KEY" ]; then
+        ensure_git_crypt "$dest" "$dir"
+      fi
       log "updating $dir"
       git -C "$dest" remote set-url origin "$repo_url"
       git -C "$dest" fetch --quiet origin "$branch" \
@@ -111,14 +168,8 @@ repos.forEach(function (r) {
       log "cloning $dir from $repo_url"
       git clone --quiet --branch "$branch" "$repo_url" "$dest" \
         || { log "ERROR: clone failed for $dir"; continue; }
-    fi
-    if [ "$crypt" = "1" ] && [ -n "$CRYPT_KEY" ]; then
-      if git -C "$dest" config --local --get filter.git-crypt.smudge >/dev/null 2>&1; then
-        log "$dir already git-crypt unlocked"
-      else
-        ( cd "$dest" && git-crypt unlock "$CRYPT_KEY" ) \
-          && log "git-crypt unlocked $dir" \
-          || log "WARN: git-crypt unlock failed for $dir"
+      if [ "$crypt" = "1" ] && [ -n "$CRYPT_KEY" ]; then
+        ensure_git_crypt "$dest" "$dir"
       fi
     fi
   done

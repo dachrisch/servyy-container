@@ -12,6 +12,24 @@ container are overwritten on restart — change the repo file and deploy it.
 - Shared checkouts live under `/root/dev` (volume `codey_dev_checkouts`, also
   referenced by the production-disabled `claude-hub` service). Repos there carry
   their own `AGENTS.md`; read those before changing code.
+- **git-crypt checkouts under `/root/dev`.** git-crypt state lives in
+  `<repo>/.git/git-crypt/keys/` — `./.git-crypt/` is a different thing (it is
+  only the GPG-escrow dir), so an empty `.git-crypt/` does *not* mean locked;
+  that misprobe caused a false "repo is locked" diagnosis on 2026-11-10
+  (`history/2026-11-10_opencode-gitcrypt-provision-repair.md`). The key itself
+  comes from `GIT_CRYPT_KEY_B64` and is installed by `provision-dev.sh`.
+  - Diagnose before concluding: `git config --local --get filter.git-crypt.smudge`
+    (must be the git-crypt command, not `cat`) and
+    `git-crypt status -e | head`.
+  - Secrets reading as `\0GITCRYPT\0` usually means the *working tree* holds
+    ciphertext, not that the repo is locked: run `git-crypt unlock "$KEYFILE"`
+    (or just restart the container, which re-provisions) instead of editing
+    files or hand-writing git config.
+  - **Never** run git with `-c filter.git-crypt.smudge=cat -c filter.git-crypt.clean=cat`.
+    It writes ciphertext blobs into the working tree and leaves the checkout
+    silently half-decrypted. If a binary merge forces it (encrypted YAML such as
+    `traefik/*.yaml` cannot be merged), re-run `git-crypt unlock` in that
+    checkout afterwards.
 - Infrastructure changes go through the `infrastructure/container` repo and
   Ansible (`cd ansible && ./servyy.sh --limit codey.lehel.xyz --tags <tag>`).
   Never make manual changes on the host.
