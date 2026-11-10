@@ -66,11 +66,19 @@ step() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 [[ -f "$ARCHIVE" && -f "$DUMP" ]] || fail "archive or dump not found"
 command -v docker >/dev/null || fail "docker not found — run this on servy"
 
-DATA_ROOT="$(sed -n 's/^MOODLE_DATA_ROOT=//p' "$SERVICE_DIR/.env")"
-SITE_URL="$(sed -n 's/^SITE_URL=//p' "$SERVICE_DIR/app.env")"
-[[ -n "$DATA_ROOT" && -d "$DATA_ROOT/moodledata" ]] || fail "cannot resolve MOODLE_DATA_ROOT from $SERVICE_DIR/.env"
+# The rendered .env / db.env are 0600 and root-owned on the host, so a cda-run
+# script may not be able to read them. Prefer the running containers: the
+# compose interpolation vars and the DB env are already resolved there.
+DATA_ROOT="$(sed -n 's/^MOODLE_DATA_ROOT=//p' "$SERVICE_DIR/.env" 2>/dev/null || true)"
+if [[ -z "$DATA_ROOT" ]]; then
+  DATA_ROOT="$(dirname "$(docker inspect moodle.moodle \
+    --format '{{range .Mounts}}{{if eq .Destination "/var/www/moodledata"}}{{.Source}}{{end}}{{end}}')")"
+fi
+SITE_URL="$(docker inspect moodle.moodle --format '{{range .Config.Env}}{{println .}}{{end}}' \
+  | sed -n 's/^SITE_URL=//p')"
+[[ -n "$DATA_ROOT" && -d "$DATA_ROOT/moodledata" ]] || fail "cannot resolve the moodledata root (checked .env and the moodle.moodle mounts)"
 [[ -n "$TARGET_URL" ]] || TARGET_URL="$SITE_URL"
-DB_NAME="$(sed -n 's/^MARIADB_DATABASE=//p' "$SERVICE_DIR/db.env")"
+DB_NAME="$(docker exec moodle.db printenv MARIADB_DATABASE 2>/dev/null || true)"
 DB_NAME="${DB_NAME:-moodle}"
 OLD_PREFIX="https://offd.de/offd/moodle"
 CURRENT="$DATA_ROOT/db-backup/current/moodle.sql.gz"
