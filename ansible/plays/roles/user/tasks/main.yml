@@ -108,6 +108,16 @@
     - services_enabled.moodle | default(false) | bool
     - moodle_volume_device is not defined
 
+# Fail the deploy (not the container boot) when a vendored plugin archive is
+# missing or was replaced without bumping the version.
+- import_tasks: moodle_plugins.yml
+  tags:
+    - user.docker.moodle
+    - user.docker
+  when:
+    - with_containers | default(false)
+    - services_enabled.moodle | default(false) | bool
+
 - import_tasks: dns.yml
   tags:
     - user.dns

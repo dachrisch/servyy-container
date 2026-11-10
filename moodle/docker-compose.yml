@@ -83,6 +83,12 @@ services:
       # the imported site produced 702 cgroup OOM kills in a week. Loaded after
       # the image's www.conf (zz- prefix), so it wins.
       - ./php-fpm-limits.conf:/etc/php83/php-fpm.d/zz-limits.conf:ro
+      # Vendored third-party plugin archives (moodle/plugins/README.md). The
+      # image installs them from PLUGINS= at every boot; mounting the checkout
+      # read-only keeps the docroot immutable without an external download, and
+      # a missing/renamed archive fails the *boot* (not a request) — hence the
+      # checksum assert in roles/user/tasks/moodle_plugins.yml.
+      - ./plugins:/opt/moodle-plugins:ro
     networks:
       - internal
       - proxy
