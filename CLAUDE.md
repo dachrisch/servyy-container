@@ -799,6 +799,13 @@ ssh lehel.xyz "sudo journalctl -u fail2ban -n 50 --no-pager"
 # Rules in INPUT with counters stuck at 0 mean the jail is banning nothing.
 ssh lehel.xyz "sudo iptables -S DOCKER-USER | grep f2b-loki-blocklist"
 ssh lehel.xyz "sudo iptables -S f2b-loki-blocklist | head -3"
+
+# The SSH jails read journald (`backend = systemd`), so fail2ban reporting
+# "No file is currently monitored" for logpath is expected, not a fault.
+# Check what the jail is actually matching: it must cover the whole ssh.service unit,
+# not `_COMM=sshd`, because OpenSSH >= 10 logs from `sshd-session`.
+ssh lehel.xyz "sudo journalctl _SYSTEMD_UNIT=ssh.service -n 200 --no-pager | grep -cE 'sshd-session|sshd\['"
+ssh lehel.xyz "sudo fail2ban-client status sshd-invalid-user"
 ```
 
 ## Common Issues & Solutions
