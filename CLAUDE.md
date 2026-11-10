@@ -794,6 +794,11 @@ ssh lehel.xyz "sudo bash /usr/local/bin/blocklist/update-from-loki.sh"
 
 # Check fail2ban logs
 ssh lehel.xyz "sudo journalctl -u fail2ban -n 50 --no-pager"
+
+# Web-tier bans must land in DOCKER-USER (container traffic never traverses INPUT).
+# Rules in INPUT with counters stuck at 0 mean the jail is banning nothing.
+ssh lehel.xyz "sudo iptables -S DOCKER-USER | grep f2b-loki-blocklist"
+ssh lehel.xyz "sudo iptables -S f2b-loki-blocklist | head -3"
 ```
 
 ## Common Issues & Solutions

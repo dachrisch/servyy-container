@@ -64,6 +64,15 @@ findtime = 600
 # Do NOT "fix" a lockout by adding the offending IP to `ignoreip` — that
 # disables the jail for that source altogether and leaves the next burst
 # unbounded. Fix the scope, not the target.
+#
+# The rules also have to land in a chain that container traffic traverses.
+# Docker DNATs published ports in PREROUTING and forwards the packets, so INPUT
+# only ever sees host-local sockets (sshd, monit) and a ban inserted there is
+# never consulted for Traefik. Measured 2026-11-10 on servy: 84 banned IPs, every
+# rule at "packets 0", while a hostile source served 52k requests unthrottled.
+# `chain` (fail2ban default INPUT) moves the jail's jump into DOCKER-USER, the
+# first chain of the FORWARD path, ahead of Docker's own accept rules.
+# See history/2026-11-10_fail2ban-web-tier-chain-fix.md.
 [loki-blocklist]
 enabled = true
 port = http,https
@@ -73,6 +82,7 @@ filter = loki-blocklist
 # IMPORTANT: Must use polling backend to read from log file instead of journal
 backend = polling
 banaction = iptables-multiport
+chain = {{ fail2ban_web_tier_chain }}
 logpath = /var/log/fail2ban-loki.log
 maxretry = 1
 bantime = 86400
