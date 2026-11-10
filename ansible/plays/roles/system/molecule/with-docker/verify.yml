@@ -182,3 +182,34 @@
         with_docker: false
         fail2ban_web_tier_chain: "{{ 'DOCKER-USER' if (with_docker | default(false)) else 'INPUT' }}"
         fail2ban_jail_conf_no_docker: "{{ lookup('ansible.builtin.template', playbook_dir ~ '/../../templates/fail2ban/jail.local.j2') }}"
+
+    # The SSH jails read the journal and must match both OpenSSH ident shapes. Inheriting
+    # the package default made the same template behave differently per host: servy
+    # (OpenSSH 10.2p1) logs from `sshd-session` and its invalid-user jail had 0 bans ever,
+    # while codey (OpenSSH 9.6p1) logs from `sshd` and banned normally.
+    - name: Render the custom SSH filter from the role template
+      set_fact:
+        fail2ban_ssh_filter: "{{ lookup('ansible.builtin.template', playbook_dir ~ '/../../templates/fail2ban/filter.d/sshd-custom.conf.j2') }}"
+
+    - name: Verify the SSH jails read the journal instead of a log file
+      assert:
+        that:
+          - '"backend = systemd" in fail2ban_jail_effective'
+          - '"/var/log/auth.log" not in fail2ban_jail_effective'
+          - '"_COMM=" not in fail2ban_jail_effective'
+          - 'fail2ban_jail_effective.count("journalmatch = _SYSTEMD_UNIT=ssh.service") == 2'
+        fail_msg: >-
+          both SSH jails must declare backend = systemd and match the whole ssh.service
+          unit - see history/2026-11-10_fail2ban-openssh10-sshd-session.md
+        success_msg: "SSH jails read the journal and match the whole ssh.service unit"
+
+    - name: Verify the custom SSH filter matches sshd and sshd-session idents
+      assert:
+        that:
+          - '"sshd(?:-session)?" in fail2ban_ssh_filter'
+          - 'fail2ban_ssh_filter.count("sshd(?:-session)?") == 4'
+        fail_msg: >-
+          all four failregexes must match sshd and sshd-session; hard-coding `sshd[`
+          leaves the jail blind on OpenSSH >= 10 (servy) - see
+          history/2026-11-10_fail2ban-openssh10-sshd-session.md
+        success_msg: "custom SSH filter matches both OpenSSH ident shapes"

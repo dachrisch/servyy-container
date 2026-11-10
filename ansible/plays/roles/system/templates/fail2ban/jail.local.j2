@@ -17,6 +17,16 @@ ignoreip = 127.0.0.1/8 ::1 {{ ansible_facts['default_ipv4']['address'] | default
 # Use iptables for banning
 banaction = iptables-multiport
 
+# Read the journal, not a log file. Declared here instead of inherited from the package:
+# /etc/fail2ban/jail.d/defaults-debian.conf already differs between our hosts (codey's
+# fail2ban 1.0.2 sets `backend` in [DEFAULT], servy's 1.1.0 sets it only on [sshd]), so
+# the same template produced a different log source per host. Inheriting it is also
+# fragile for the SSH jails below: codey has no /var/log/auth.log at all (measured
+# 2026-11-10), so their old `logpath` named a file that does not exist.
+# jail.local wins over jail.d, and [loki-blocklist] below overrides this with
+# `backend = polling` because it reads a file the blocklist script writes.
+backend = systemd
+
 # Email notifications (optional)
 # destemail = admin@{{ inventory_hostname }}
 # sender = fail2ban@{{ inventory_hostname }}
@@ -31,7 +41,15 @@ action = %(action_)s
 enabled = true
 port = ssh
 filter = sshd
-logpath = /var/log/auth.log
+# Match the whole unit rather than `_COMM=sshd`: OpenSSH >= 10 (servy, 10.2p1) logs
+# connection and authentication events from `sshd-session` and only the listener as
+# `sshd`, while OpenSSH 9.x (codey, 9.6p1) still logs everything as `sshd`. Ubuntu
+# 26.04's package pins `_COMM=sshd` in defaults-debian.conf, which hid 379 of the 400
+# sshd journal entries in a measured window (2026-11-10) - the jail was fed almost
+# nothing but the listener's `srclimit_penalise` notices, so it banned by accident.
+# No `logpath`: it is ignored under the systemd backend (fail2ban reports "No file is
+# currently monitored") and codey has no /var/log/auth.log to point at.
+journalmatch = _SYSTEMD_UNIT=ssh.service
 maxretry = 3
 bantime = 86400
 findtime = 3600
@@ -41,7 +59,9 @@ findtime = 3600
 enabled = true
 port = ssh
 filter = sshd-custom
-logpath = /var/log/auth.log
+# Same unit-wide match as [sshd] above - without it the jail inherits the filter's own
+# journalmatch, which is the narrower `_COMM=sshd` shape that misses `sshd-session`.
+journalmatch = _SYSTEMD_UNIT=ssh.service
 maxretry = 2
 bantime = 86400
 findtime = 600
