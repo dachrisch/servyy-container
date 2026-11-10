@@ -30,6 +30,15 @@ container are overwritten on restart — change the repo file and deploy it.
     silently half-decrypted. If a binary merge forces it (encrypted YAML such as
     `traefik/*.yaml` cannot be merged), re-run `git-crypt unlock` in that
     checkout afterwards.
+  - If `provision-dev.sh` logs `update failed` and `git status` shows an
+    encrypted file as modified while its working-tree content already looks
+    correct, check the blob: a file whose ciphertext blob is **22 bytes** is the
+    encryption of an *empty* file, and git-crypt cannot re-encrypt it back to
+    that blob (`clean` of empty input emits 0 bytes), so the path is modified
+    forever and blocks `checkout`/`pull`. Filter overrides do not help — git's
+    up-to-date check is stat/size based. Remedy: `git reset --hard origin/master`
+    in that checkout, and get the empty file deleted upstream (CI's
+    `validate-git-crypt.sh` now rejects that shape).
 - Infrastructure changes go through the `infrastructure/container` repo and
   Ansible (`cd ansible && ./servyy.sh --limit codey.lehel.xyz --tags <tag>`).
   Never make manual changes on the host.
