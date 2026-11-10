@@ -14,7 +14,12 @@ maxretry = 5
 # Ignore local IPs
 ignoreip = 127.0.0.1/8 ::1 {{ ansible_facts['default_ipv4']['address'] | default('') }}
 
-# Use iptables for banning
+# Use iptables for banning, in both address families. `iptables-multiport` writes v4
+# rules only, so the action is instantiated twice: once for inet and once with
+# family="inet6", which action.d/iptables.conf maps to `ip6tables` through its
+# [Init?family=inet6] section. Without the second instance a v6 attacker is detected and
+# never banned - the filters already handle v6 (`<HOST>` matched real journal lines 2/2
+# when tested 2026-11-10), so this was purely a ban-side gap.
 banaction = iptables-multiport
 
 # Read the journal, not a log file. Declared here instead of inherited from the package:
@@ -31,8 +36,10 @@ backend = systemd
 # destemail = admin@{{ inventory_hostname }}
 # sender = fail2ban@{{ inventory_hostname }}
 
-# Action to take when banning
-action = %(action_)s
+# Action to take when banning. Spelled out rather than `%(action_)s` so the v6 twin is
+# visible where it matters; jails that must stay v4-only override it (see loki-blocklist).
+action = iptables-multiport[port="%(port)s", protocol="%(protocol)s", chain="%(chain)s"]
+         iptables-multiport[port="%(port)s", protocol="%(protocol)s", chain="%(chain)s", family="inet6"]
 
 #
 # SSH Protection
@@ -102,7 +109,12 @@ filter = loki-blocklist
 # IMPORTANT: Must use polling backend to read from log file instead of journal
 backend = polling
 banaction = iptables-multiport
-chain = {{ fail2ban_web_tier_chain }}
+# v4 only, on purpose - do not add an inet6 twin here yet. Until the `proxy` Docker
+# network itself carries IPv6, Traefik records every v6 client as the docker-proxy
+# address (172.18.0.1, measured 2026-11-10 with a marked request), so a v6 rule could
+# never match a real attacker and would only look like coverage. Add the inet6 instance
+# together with that network change, and put it in the same forward-path chain.
+action = iptables-multiport[port="%(port)s", protocol="tcp", chain="{{ fail2ban_web_tier_chain }}"]
 logpath = /var/log/fail2ban-loki.log
 maxretry = 1
 bantime = 86400

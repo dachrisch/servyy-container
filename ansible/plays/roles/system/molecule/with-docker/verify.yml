@@ -164,7 +164,7 @@
           - "'[loki-blocklist]' in fail2ban_jail_effective"
           - "'port = http,https' in fail2ban_jail_effective"
           - "'banaction = iptables-multiport' in fail2ban_jail_effective"
-          - "'chain = DOCKER-USER' in fail2ban_jail_effective"
+          - "'DOCKER-USER' in fail2ban_jail_effective"
           - "'http,https,ssh' not in fail2ban_jail_effective"
           - "'iptables-allports' not in fail2ban_jail_effective"
           - "'adding the offending IP to `ignoreip`' in fail2ban_jail_conf"
@@ -173,15 +173,35 @@
           INPUT - see history/2026-11-10_fail2ban-web-tier-chain-fix.md
         success_msg: "loki-blocklist is scoped to http,https and hooks DOCKER-USER"
 
-    - name: Verify hosts without Docker keep the fail2ban default chain
-      assert:
-        that:
-          - "'chain = INPUT' in fail2ban_jail_conf_no_docker"
-        fail_msg: "hosts without Docker must not hook a DOCKER-USER chain that does not exist"
+    - name: Compute the effective no-Docker jail config (comments stripped)
+      set_fact:
+        fail2ban_jail_effective_no_docker: "{{ fail2ban_jail_conf_no_docker.splitlines() | reject('match', '^\\s*#') | join('\\n') }}"
       vars:
         with_docker: false
         fail2ban_web_tier_chain: "{{ 'DOCKER-USER' if (with_docker | default(false)) else 'INPUT' }}"
         fail2ban_jail_conf_no_docker: "{{ lookup('ansible.builtin.template', playbook_dir ~ '/../../templates/fail2ban/jail.local.j2') }}"
+
+    - name: Verify hosts without Docker keep the fail2ban default chain
+      assert:
+        that:
+          - "'DOCKER-USER' not in fail2ban_jail_effective_no_docker"
+          - "'iptables-multiport' in fail2ban_jail_effective_no_docker"
+        fail_msg: "hosts without Docker must not hook a DOCKER-USER chain that does not exist"
+
+    # Both address families must be banned. `iptables-multiport` writes v4 rules only, so
+    # the action is instantiated a second time with family="inet6"; without it a v6
+    # attacker is detected by the filter and never banned.
+    - name: Verify the SSH jails ban both address families
+      assert:
+        that:
+          - '"inet6" in fail2ban_jail_effective'
+          - 'fail2ban_jail_effective.count("inet6") == 1'
+          - '"inet6" not in fail2ban_jail_effective.split("[loki-blocklist]")[1]'
+        fail_msg: >-
+          the SSH jails must instantiate the ban action for inet6 as well, and
+          loki-blocklist must stay v4-only until the proxy network carries IPv6 - see
+          history/2026-11-11_fail2ban-ipv6-ssh.md
+        success_msg: "SSH jails ban v4 and v6; the web-tier jail stays v4-only for now"
 
     # The SSH jails read the journal and must match both OpenSSH ident shapes. Inheriting
     # the package default made the same template behave differently per host: servy
