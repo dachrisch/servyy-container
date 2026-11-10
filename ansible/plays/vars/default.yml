@@ -82,6 +82,10 @@ world_readable_paths_by_service:
     - loki.yml                    # loki (uid 10001)
   moodle:
     - php-fpm-limits.conf         # php-fpm runs as `nobody` in this image
+    # Bind-mounted at /opt/moodle-plugins and read by the image's boot-time
+    # plugin installer; 0644/0755 so it does not depend on that script running
+    # as root forever (moodle/plugins/README.md).
+    - plugins
 
 # Docker cleanup (aggressive, daily)
 # Host-level filter for Docker-published ports (system role, tasks/firewall.yml).
@@ -223,6 +227,15 @@ moodle_enabled: "{{ services_enabled.moodle | default(false) }}"
 # remote_dir ~ ...)` raised "'docker' is undefined" in the molecule scenarios,
 # which have no docker dict (CI caught it). Only the taken branch is evaluated.
 moodle_data_root_path: "{{ moodle_data_root if moodle_data_root is defined else docker.remote_dir ~ '/moodle/data' }}"
+
+# Vendored third-party plugin archive, installed by the image from PLUGINS= at
+# every boot and bind-mounted read-only at /opt/moodle-plugins
+# (moodle/plugins/README.md). The version is pinned by Christoph's database
+# (mdl_config_plugins → 2025072001), so the zip and this name move together;
+# `moodle_plugin_enrol_waitlist_sha256` is asserted before compose runs, because
+# a missing or silently replaced archive makes the container fail to START.
+moodle_plugin_enrol_waitlist_zip: enrol_waitlist-2025072001.zip
+moodle_plugin_enrol_waitlist_sha256: 0267ccb96ec6cae8349997bec899441500faf525eb3663c3608f53cca0192663
 
 # Monitor stack identity (non-secret).
 # NOTE: the admin email lives in vars/secrets.yml as `monitor_admin_email` —

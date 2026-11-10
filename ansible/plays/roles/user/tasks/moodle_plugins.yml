@@ -1,0 +1,34 @@
+---
+# Guard the vendored Moodle plugin archives before compose runs.
+#
+# The image installs every PLUGINS= entry at *container boot*: curl the archive,
+# unzip it, `mv waitlist <docroot>/enrol/waitlist`. A missing file, a renamed one
+# or a zip whose single top-level directory is not `waitlist/` does not degrade —
+# the init script exits 1 and the *container never starts*, which surfaces as
+# nginx 502 / healthcheck red / Traefik withdrawing the router. Asserting here
+# turns that into a deploy-time failure that names the file and the expected hash.
+#
+# The checksum also catches the quiet failure mode: swapping the archive for a
+# different plugin build without bumping the version (the database pins
+# mdl_config_plugins, so newer files would trigger the plugin's own upgrade
+# steps against the imported DB). Provenance and rebuild recipe:
+# moodle/plugins/README.md.
+- name: Stat vendored Moodle plugin archive
+  ansible.builtin.stat:
+    path: "{{ docker.remote_dir }}/moodle/plugins/{{ moodle_plugin_enrol_waitlist_zip }}"
+    checksum_algorithm: sha256
+  register: moodle_plugin_archive
+
+- name: Assert the vendored Moodle plugin archive is present and unmodified
+  ansible.builtin.assert:
+    that:
+      - moodle_plugin_archive.stat.exists
+      - moodle_plugin_archive.stat.checksum == moodle_plugin_enrol_waitlist_sha256
+    fail_msg: >-
+      moodle/plugins/{{ moodle_plugin_enrol_waitlist_zip }} is
+      {{ 'missing' if not moodle_plugin_archive.stat.exists
+         else 'modified (sha256 ' ~ (moodle_plugin_archive.stat.checksum | default('unreadable')) ~ ')' }};
+      expected sha256 {{ moodle_plugin_enrol_waitlist_sha256 }}.
+      The Moodle container installs PLUGINS from this archive at boot and will
+      NOT start without it — see moodle/plugins/README.md.
+    quiet: true

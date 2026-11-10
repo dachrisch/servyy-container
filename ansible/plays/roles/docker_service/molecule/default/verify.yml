@@ -318,3 +318,32 @@
       ansible.builtin.command:
         cmd: grep -q '^GF_SMTP_FROM_ADDRESS=monitor-test@example.org$' /home/molecule/monitor/grafana.env
       changed_when: false
+
+    # Moodle: a silently emptied PLUGINS= is invisible until the image boots and
+    # the 35 waitlist enrolment instances lose their method — or, with a bad
+    # archive, the container refuses to start at all.
+    - name: Read rendered moodle app.env
+      ansible.builtin.slurp:
+        src: /home/molecule/moodle/app.env
+      register: moodle_app_env
+
+    - name: Verify moodle PLUGINS is wired to the vendored waitlist archive
+      ansible.builtin.assert:
+        that:
+          - "'PLUGINS=enrol_waitlist=file:///opt/moodle-plugins/enrol_waitlist-2025072001.zip' in moodle_app_env.content | b64decode"
+        fail_msg: "moodle app.env does not install enrol_waitlist from /opt/moodle-plugins"
+
+    - name: Stat moodle plugin directory and vendored archive
+      ansible.builtin.stat:
+        path: "/home/molecule/moodle/plugins/{{ item }}"
+      loop:
+        - ""
+        - enrol_waitlist-2025072001.zip
+      register: moodle_plugin_paths
+
+    - name: Verify the plugin archive and its directory are readable by the container
+      ansible.builtin.assert:
+        that:
+          - moodle_plugin_paths.results[0].stat.mode == '0775'
+          - moodle_plugin_paths.results[1].stat.mode == '0664'
+        fail_msg: "plugins/ is {{ moodle_plugin_paths.results[0].stat.mode }}, archive is {{ moodle_plugin_paths.results[1].stat.mode }} (expected 0775 / 0664)"
