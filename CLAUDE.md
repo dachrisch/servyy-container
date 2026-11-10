@@ -806,6 +806,10 @@ ssh lehel.xyz "sudo iptables -S f2b-loki-blocklist | head -3"
 # not `_COMM=sshd`, because OpenSSH >= 10 logs from `sshd-session`.
 ssh lehel.xyz "sudo journalctl _SYSTEMD_UNIT=ssh.service -n 200 --no-pager | grep -cE 'sshd-session|sshd\['"
 ssh lehel.xyz "sudo fail2ban-client status sshd-invalid-user"
+
+# The SSH jails ban both families; a v6 attacker with no rule in the v6 chain is not
+# banned at all (iptables writes v4 rules only).
+ssh lehel.xyz "sudo ip6tables -S f2b-sshd | head -3"
 ```
 
 ## Common Issues & Solutions
