@@ -48,9 +48,22 @@
   tags:
     - user.docker.install.reboot
 
+# IPv6 on the proxy network, so published v6 ports are DNAT'd instead of being handled
+# by docker-proxy. The difference is not cosmetic: a proxied v6 connection is
+# re-originated from the bridge, so containers see the gateway address instead of the
+# client (Traefik logged 172.18.0.1 for a real v6 client, measured 2026-11-10) and no
+# log-based blocking can ever identify a v6 source. Both subnets are explicit: the v4
+# pool is referenced by allowlists, and the v6 one is a private ULA that nothing routes
+# to - DNAT does not need a public prefix on the containers.
+# Docker cannot change a network in place, so the cutover is a stop/recreate/start; see
+# history/2026-11-11_proxy-network-ipv6.md.
 - name: Create external network
   docker_network:
     name: proxy
+    enable_ipv6: true
+    ipam_config:
+      - subnet: "{{ docker_proxy_ipv4_subnet }}"
+      - subnet: "{{ docker_proxy_ipv6_subnet }}"
   tags:
     - user.docker.create.network
     - molecule-notest  # Requires Docker daemon access
