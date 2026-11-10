@@ -122,6 +122,12 @@ with nothing executable in the repo.
 6. **`--tags user.docker.repo` still reverts the Grafana provisioning renders** (learning 3 from the
    restic entry, confirmed again): `datasources.yml` came back with raw `{{ monitor.loki_tenant }}`
    and needed `--tags user.docker.env.monitor` immediately after.
+7. **A privileged path guarded by an unprivileged test is wrong again** — the exact class of bug the
+   dump script had (learning 8 in the restic entry). `data/` is `root:root 0750`, so
+   `[[ -d $DATA_ROOT/moodledata ]]` and `stat` on the rollback dump answered "no" for `cda` and the
+   import script aborted with "cannot resolve the moodledata root" even though both paths were
+   correct. Caught by adding `--dry-run` and running it against the real export on the host, not by
+   reading the code. Every test below the data root now goes through `sudo`.
 
 ## Alternatives Considered
 

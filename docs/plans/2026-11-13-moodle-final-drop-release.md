@@ -70,10 +70,20 @@ cd /home/cda/servyy-container/moodle
 sudo bash -c 'source /etc/restic/env.moodle-db    && restic tag --add pre-release latest'
 sudo bash -c 'source /etc/restic/env.moodle-files && restic tag --add pre-release latest'
 ./scripts/import-offd-release.sh /var/jail/home/leaguesphere/moodledata.tar.gz \
+                                 /var/jail/home/leaguesphere/dump-*.sql.gz --dry-run
+#    prints what it resolved (data root, DB name, archive top level, dump tables,
+#    rewrite target, age of the rollback dump) and changes nothing — do this first
+./scripts/import-offd-release.sh /var/jail/home/leaguesphere/moodledata.tar.gz \
                                  /var/jail/home/leaguesphere/dump-*.sql.gz
 #    rewrites https://offd.de/offd/moodle -> the current SITE_URL, so the site is
 #    immediately usable on m. and fully verifiable before anything public changes.
 ```
+
+Note: `data/` is `root:root 0750`, so the script's own `sudo` calls are required —
+a hand-run `test -f data/db-backup/current/moodle.sql.gz` answered "no" for a
+non-root user and produced a misleading "cannot resolve the data root" on the
+first dry run. `/var/jail/home/leaguesphere` is world-readable, the data root is
+not.
 
 If the import aborts: the previous dump is at `data/db-backup/current/moodle.sql.gz`
 (same-minute) and in both restic repos (`pre-release` tag). Restore with the runbook in
