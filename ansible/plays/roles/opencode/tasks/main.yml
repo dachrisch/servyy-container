@@ -275,12 +275,16 @@
     src: "{{ playbook_dir }}/../../opencode/scripts/provision-dev.sh"
     dest: "{{ ('/home/', create_user, 'servyy-container/opencode/scripts/provision-dev.sh') | path_join }}"
     mode: '0755'
-  # No restart handler: startup.sh runs this from the bind-mounted ./scripts on
-  # every boot, so the new file is picked up at the next container start.
-  # Without this task the script only arrived via the repo checkout sync in
-  # play 1 (tag user.docker.repo), which `--tags user.docker.opencode` skips —
-  # leaving a tagged deploy running a stale copy of the script that provisions
-  # dev checkouts and SSH/git-crypt credentials.
+  # Restarts the container on change, unlike the other ./scripts copies: this
+  # script is the ONLY thing that repairs a broken git-crypt checkout under
+  # /root/dev (a `filter.git-crypt.smudge = cat` pin, or ciphertext left behind
+  # by a filter-bypassed git run — see
+  # history/2026-11-10_opencode-gitcrypt-provision-repair.md), and it only ever
+  # runs from startup.sh. Without this notify a `--tags user.docker.opencode`
+  # deploy leaves the fix dormant until the next unrelated restart.
+  # `docker compose restart` only re-execs the entrypoint, so in-flight sessions
+  # are interrupted but no container is recreated (see handlers/main.yml).
+  notify: restart opencode container
   tags: [user.docker.opencode]
 
 - name: Deploy OpenCode config template
