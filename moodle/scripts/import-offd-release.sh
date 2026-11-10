@@ -76,7 +76,10 @@ if [[ -z "$DATA_ROOT" ]]; then
 fi
 SITE_URL="$(docker inspect moodle.moodle --format '{{range .Config.Env}}{{println .}}{{end}}' \
   | sed -n 's/^SITE_URL=//p')"
-[[ -n "$DATA_ROOT" && -d "$DATA_ROOT/moodledata" ]] || fail "cannot resolve the moodledata root (checked .env and the moodle.moodle mounts)"
+# `data/` is root:root 0750 (roles/user/tasks/moodle_data_dirs.yml), so every
+# test below the data root needs sudo — a plain `-d` silently answers "no" here.
+[[ -n "$DATA_ROOT" ]] && sudo test -d "$DATA_ROOT/moodledata" \
+  || fail "cannot resolve the moodledata root (checked .env and the moodle.moodle mounts)"
 [[ -n "$TARGET_URL" ]] || TARGET_URL="$SITE_URL"
 DB_NAME="$(docker exec moodle.db printenv MARIADB_DATABASE 2>/dev/null || true)"
 DB_NAME="${DB_NAME:-moodle}"
@@ -104,25 +107,25 @@ if [[ "$DRY_RUN" == true ]]; then
   printf 'would extract  : -> %s/%s\n' "$DATA_ROOT" "$([[ "$TOP" == "moodledata" ]] && echo '' || echo 'moodledata')"
   printf 'would import   : %s (%s tables in the dump)\n' "$DB_NAME" "$(gzip -dc "$DUMP" | grep -c '^CREATE TABLE')"
   printf 'would rewrite  : %s -> %s\n' "$OLD_PREFIX" "$TARGET_URL"
-  printf 'rollback dump  : %s %s\n' "$CURRENT" "$([[ -f "$CURRENT" ]] && stat -c '%s bytes, %y' "$CURRENT" || echo MISSING)"
+  printf 'rollback dump  : %s %s\n' "$CURRENT" "$(sudo test -f "$CURRENT" && sudo stat -c '%s bytes, %y' "$CURRENT" || echo MISSING)"
   exit 0
 fi
 
 step "fresh rollback dump"
 if [[ "$SKIP_FRESH_DUMP" != true ]]; then
-  if [[ ! -f "$CURRENT" ]] || [[ $(( $(date +%s) - $(stat -c%Y "$CURRENT") )) -gt 3600 ]]; then
+  if ! sudo test -f "$CURRENT" || [[ $(( $(date +%s) - $(sudo stat -c%Y "$CURRENT") )) -gt 3600 ]]; then
     printf 'triggering moodle-dump.service (rollback point for this import)\n'
     systemctl --user start moodle-dump.service || fail "could not start moodle-dump.service"
     for _ in $(seq 1 60); do
-      [[ -f "$CURRENT" ]] && [[ $(( $(date +%s) - $(stat -c%Y "$CURRENT") )) -lt 300 ]] && break
+      sudo test -f "$CURRENT" && [[ $(( $(date +%s) - $(sudo stat -c%Y "$CURRENT") )) -lt 300 ]] && break
       sleep 5
     done
   fi
-  [[ -f "$CURRENT" ]] || fail "no fresh dump at $CURRENT"
-  AGE=$(( $(date +%s) - $(stat -c%Y "$CURRENT") ))
+  sudo test -f "$CURRENT" || fail "no fresh dump at $CURRENT"
+  AGE=$(( $(date +%s) - $(sudo stat -c%Y "$CURRENT") ))
   [[ "$AGE" -lt 3600 ]] || fail "rollback dump is $((AGE / 60)) min old — refusing without a recent one"
-  ROUNDTRIP="$(gunzip -c "$CURRENT" | tail -c 200000 | grep -c 'Dump completed' || true)"
-  ok "rollback dump $(stat -c%s "$CURRENT") bytes, $((AGE / 60)) min old (gzip trailer seen: $ROUNDTRIP)"
+  ROUNDTRIP="$(sudo gunzip -c "$CURRENT" | tail -c 200000 | grep -c 'Dump completed' || true)"
+  ok "rollback dump $(sudo stat -c%s "$CURRENT") bytes, $((AGE / 60)) min old (gzip trailer seen: $ROUNDTRIP)"
   printf 'Reminder: also tag the restic pair, so retention cannot age this point out:\n'
   printf "  sudo bash -c 'source /etc/restic/env.moodle-db && restic tag --add pre-release latest'\n"
   printf "  sudo bash -c 'source /etc/restic/env.moodle-files && restic tag --add pre-release latest'\n"
