@@ -21,6 +21,7 @@ agent_config_plugins_src: "{{ lookup('env', 'HOME') }}/dev/infrastructure/setup-
 opencode_server_shared_skills:
   - adding-opencode-bot
   - gh-stack
+  - graphify
   - release-please
   - session-messaging
 # Guard against silent GitHub SSH key rotation: generating a new key when the

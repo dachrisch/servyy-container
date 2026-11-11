@@ -12,6 +12,12 @@ container are overwritten on restart — change the repo file and deploy it.
 - Shared checkouts live under `/root/dev` (volume `codey_dev_checkouts`, also
   referenced by the production-disabled `claude-hub` service). Repos there carry
   their own `AGENTS.md`; read those before changing code.
+- **graphify writes into whatever tree it scans.** `graphify-out/` (graph.json,
+  graph.html, GRAPH_REPORT.md) lands in the scanned directory — for a repo under
+  `/root/dev` that directory is shared with claude-hub, so `graphify-out/` is
+  pre-seeded in git's global excludes (`/root/.config/git/ignore`, written by
+  `startup.sh` §3c). Keep it out of commits; build graphs from a scratch copy
+  when a scan would otherwise pollute a checkout mid-task.
 - **git-crypt checkouts under `/root/dev`.** git-crypt state lives in
   `<repo>/.git/git-crypt/keys/` — `./.git-crypt/` is a different thing (it is
   only the GPG-escrow dir), so an empty `.git-crypt/` does *not* mean locked;

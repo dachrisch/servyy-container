@@ -114,6 +114,48 @@ unset GH_TOKEN || true
 git config --global rerere.enabled true || true
 git config --global remote.pushDefault origin || true
 
+# 3c. graphify CLI (required by the graphify skill).
+# The skill's own bootstrap cannot supply it here: ./skills is bind-mounted
+# read-only (`:ro` in docker-compose.yml), so `graphify install` cannot write
+# the skill into it, and the image ships no uv for `uv tool install` to use.
+# So the package must already be importable when a session starts it.
+# Installed at boot rather than baked in: the image is upstream
+# (ghcr.io/anomalyco/opencode), so there is no Dockerfile of ours to pin it in.
+# Wheel-only install, no compiler needed: every dependency of graphifyy ships a
+# musllinux_1_2_x86_64 wheel (networkx, numpy, rapidfuzz, pyyaml, tree-sitter
+# and its ~25 language packs). Lives in the image rootfs, so it re-installs on
+# container recreate (~40s); the import guard makes it a no-op within a boot,
+# and a failure here must never take the boot down with it.
+if ! python3 -c 'import graphify' 2>/dev/null; then
+    echo "🕸️ [Startup] Installing graphify CLI..."
+    python3 -m pip install --no-cache-dir --break-system-packages graphifyy \
+        && echo "📍 [Startup] graphify installed" \
+        || echo "⚠️ [Startup] graphify install failed (graphify skill unavailable)"
+else
+    echo "📍 [Startup] graphify CLI already present"
+fi
+
+# The CLI floats (pip installs latest on every recreate) while the skill is a
+# pinned copy shipped from setup-home's agent-config/skills/graphify (its
+# .graphify_version says which CLI it was generated for). Log the mismatch so a
+# lagging skill is visible in `docker logs` instead of silently missing flags.
+if command -v graphify >/dev/null 2>&1; then
+    skill_ver=$(cat /root/.config/opencode/skills/graphify/.graphify_version 2>/dev/null || true)
+    cli_ver=$(graphify --version 2>/dev/null | awk '{print $NF}' || true)
+    if [ -n "$skill_ver" ] && [ -n "$cli_ver" ] && [ "$skill_ver" != "$cli_ver" ]; then
+        echo "⚠️ [Startup] graphify CLI ${cli_ver} != shipped skill ${skill_ver}"
+        echo "⚠️ [Startup] Refresh agent-config/skills/graphify in setup-home if the skill lags the CLI"
+    fi
+fi
+
+# graphify writes graphify-out/ into every tree it scans. /root/dev holds shared
+# checkouts that claude-hub also uses, so keep graphs out of `git status` there
+# via git's own default global excludes file (no core.excludesFile needed).
+gitignore_global="/root/.config/git/ignore"
+mkdir -p "$(dirname "$gitignore_global")"
+grep -qxF 'graphify-out/' "$gitignore_global" 2>/dev/null \
+    || echo 'graphify-out/' >> "$gitignore_global"
+
 # 4. Configuration Substitution
 echo "⚙️ [Startup] Configuring OpenCode..."
 CONFIG_DIR="/root/.config/opencode"
