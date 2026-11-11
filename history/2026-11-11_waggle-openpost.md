@@ -108,6 +108,51 @@ cd /home/cda/servyy-container/waggle && docker compose down
 5. MCP endpoint (`/mcp`) is available on the same origin — an agent can draft and
    schedule through it instead of the UI.
 
+## Addendum — media serving: what broke and what did not (same day, later)
+
+Getting AI working produced a long false lead worth writing down.
+
+**Media serving was correct all along.** `publicurl.ResolveMediaURL` signs media URLs
+(HMAC-SHA256 over `<media_id>:<exp>`, 15-minute lifetime, key from
+`OPENPOST_MEDIA_SIGNING_KEY` falling back to `OPENPOST_ENCRYPTION_KEY`), and the
+`/media/:id` route accepts a valid signature without a session. Verified from off-host:
+
+| Request | Result |
+|---|---|
+| unsigned | `401` |
+| signed, valid | `200`, 877 461 bytes |
+| signed, expired | `401` |
+| signed, wrong signature | `401` |
+
+Positive proof no public mirror was ever needed: the media record carried
+`public_url_checked_at=20:39Z` with `public_url_status=200`, hours before any mirror
+existed.
+
+**The two false conclusions.** (1) A `401` on `/media/…` looked like broken media
+exposure; it was an unsigned request behaving as designed. (2) OpenPost's AI does not
+fetch media at all — `internal/ai/openrouter.go` inlines it as a `data:` URL — so the
+`Received 401 status code when fetching image from URL` error was produced by my own
+`curl`, never by OpenPost. A read-only nginx mirror of `./data/media` was added and has
+been **removed**; the stack is back to the documented shape.
+
+**The real bug, still present upstream (v7.39.0), path only — not serving:**
+
+```go
+local.go:124        Save() returns path (ABSOLUTE: /data/media/<id>.png)
+media.go:3687,3864  that value is persisted as media_attachments.file_path
+local.go:160        Open(id) → resolvePath(id)
+local.go:238        filepath.Join(baseDir, cleaned)   // treats it as a RELATIVE key
+                    ⇒ /data/media + /data/media/<id>.png
+```
+
+It breaks **internal** reads (publication build, Ideate) with
+`could not read selected asset N` while the UI and the signed public URL keep working,
+because those use the basename. Upstream fix: persist the relative key from `Save()` (or
+let `resolvePath` accept an absolute path inside `baseDir`). Until then a symlink
+`data/media/data -> /data` (created by Ansible in `docker_extras.yml`) makes the doubled
+path resolve; remove it once the app is fixed.
+
+
 ## Addendum — the first page load got the owner's own IP banned (same day)
 
 The first browser visit to `https://waggle.bumbleflies.de` rendered a 500 instead of the
