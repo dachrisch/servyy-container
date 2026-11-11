@@ -99,6 +99,23 @@
   tags:
     - user.docker.waggle
 
+# OpenPost stores media_attachments.file_path ABSOLUTE (/data/media/<id>.png) but
+# its publication-builder resolves media by joining OPENPOST_MEDIA_PATH onto that
+# value, i.e. /data/media + /data/media/<id>.png. Without this link the read
+# fails as "could not read selected asset N" and the build job dies, while the
+# UI still displays the same image (its /media route resolves the absolute path
+# correctly). The link makes the doubled path resolve to the real file.
+# Found 2026-11-11; remove once upstream stops double-prefixing.
+- name: Create Waggle media path-compat symlink
+  ansible.builtin.file:
+    path: "{{ (docker.remote_dir, 'waggle', 'data', 'media', 'data') | path_join }}"
+    src: /data
+    state: link
+    force: true
+    owner: "{{ create_user }}"
+  tags:
+    - user.docker.waggle
+
 - name: Resolve codey.lehel.xyz addresses for OpenCode SSH key restriction
   ansible.builtin.set_fact:
     opencode_codey_ipv4: "{{ lookup('dig', 'codey.lehel.xyz', 'qtype=A') }}"

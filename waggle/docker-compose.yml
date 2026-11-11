@@ -56,6 +56,31 @@ services:
     # take the box down. Raise it here if large uploads start getting killed.
     mem_limit: 1g
 
+  # Public read-only mirror of /data/media (see nginx-media.conf for why).
+  # Own Traefik router on /media/ with a high priority so it wins over the app's
+  # authenticated route for exactly that path prefix and nothing else.
+  media:
+    image: nginx:alpine
+    container_name: ${COMPOSE_PROJECT_NAME}.media
+    restart: unless-stopped
+    volumes:
+      - ./data/media:/data/media:ro
+      # world_readable_paths (vars/default.yml) makes this readable by the nginx
+      # worker, uid 101; the checkout's umask 007 would leave it 0660.
+      - ./nginx-media.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.${SERVICE_NAME}-media.rule=Host(`${SERVICE_HOST}`) && PathPrefix(`/media/`)
+      - traefik.http.routers.${SERVICE_NAME}-media.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.${SERVICE_NAME}-media.tls=${TRAEFIK_TLS:-true}
+      - traefik.http.routers.${SERVICE_NAME}-media.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypthttpresolver}
+      # Higher than any app router on this host, so /media/ never reaches the app.
+      - traefik.http.routers.${SERVICE_NAME}-media.priority=1000
+      - traefik.http.services.${SERVICE_NAME}-media.loadbalancer.server.port=80
+    mem_limit: 64m
+
 networks:
   proxy:
     external: true
