@@ -1,0 +1,9 @@
+/home/cda/dev/infrastructure/container/docs/superpowers/plans/2026-08-11-leaguesphere-maintenance-probe.md
+/home/cda/dev/infrastructure/container/docs/superpowers/plans/2026-06-22-leaguesphere-local-mariadb-migration.md
+/home/cda/dev/infrastructure/container/docs/superpowers/plans/2026-06-11-searxng-deployment-plan.md
+/home/cda/dev/infrastructure/container/docs/superpowers/plans/2026-06-29-restic-seed-guard.md
+/home/cda/dev/infrastructure/container/docs/superpowers/plans/2026-06-14-job-search-integration.md
+/home/cda/dev/infrastructure/container/docs/superpowers/plans/2026-06-27-opencode-dev-checkout-provisioning.md
+/home/cda/dev/infrastructure/container/docs/superpowers/plans/2026-08-28-portainer-agent-deployment.md
+/home/cda/dev/infrastructure/container/docs/superpowers/plans/2026-04-28-firefly-iii-automated-imports.md
+/home/cda/dev/infrastructure/container/docs/superpowers/plans/2026-08-08-opencode-api-key-forwardauth.md
