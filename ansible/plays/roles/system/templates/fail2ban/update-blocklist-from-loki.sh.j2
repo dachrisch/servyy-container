@@ -141,7 +141,13 @@ get_error_ips() {
 get_traefik_rate_limit_ips() {
     log "Querying Loki for high-request-rate clients..."
 
-    local query='topk(50, sum by (ClientHost) (count_over_time({job="docker",container="traefik.traefik"} | json | ClientHost=~".+" [1m])))'
+    # Same exclusion as the crawler query, same reason: a browser bulk-fetches
+    # /_app/immutable/* (396 requests per cold load at waggle, 2026-11-11) while a
+    # non-browser fetches documents. Counting build assets here made two ordinary
+    # page views in a minute look like a flood. A client that genuinely floods the
+    # assets is still caught: the limiter sheds it, and the 429 query is the
+    # primary flood signal.
+    local query='topk(50, sum by (ClientHost) (count_over_time({job="docker",container="traefik.traefik"} | json | ClientHost=~".+" | RequestPath!~"/_app/immutable/.*" [1m])))'
 
     loki_query "$query" | \
     jq -r '.data.result[] | select(.value[1] | tonumber >= '"$MIN_REQUEST_RATE"') | .metric.ClientHost + " traefik-rate-limit attempts=" + .value[1]' 2>/dev/null || true
@@ -162,7 +168,15 @@ get_traefik_malicious_bot_ips() {
 get_traefik_crawler_ips() {
     log "Querying Loki for aggressive crawler IPs..."
 
-    local query='topk(50, sum by (ClientHost) (count_over_time({job="docker",container="traefik.traefik"} | json | ClientHost=~".+" [2m])))'
+    # Bare request count per 2 minutes, EXCLUDING the SPA's immutable build assets
+    # (2026-11-11). Those are the one thing a browser requests in bulk — a single
+    # cold load of the OpenPost app at waggle.bumbleflies.de issues 396 requests,
+    # ~350 of them /_app/immutable/* — while a crawler asks for pages and leaves
+    # the chunks behind. Without this exclusion the threshold below (200) is
+    # satisfied by ONE ordinary page view, so the query banned real users,
+    # including the owner, on their first visit. Document pages and API calls
+    # still count, which is what the "aggressive crawler" signal was always about.
+    local query='topk(50, sum by (ClientHost) (count_over_time({job="docker",container="traefik.traefik"} | json | ClientHost=~".+" | RequestPath!~"/_app/immutable/.*" [2m])))'
 
     loki_query "$query" | \
     jq -r '.data.result[] | select(.value[1] | tonumber >= '"$MIN_CRAWLER_RATE"') | .metric.ClientHost + " traefik-aggressive-crawler attempts=" + .value[1]' 2>/dev/null || true
