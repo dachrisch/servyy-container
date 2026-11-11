@@ -111,7 +111,7 @@ get_scanner_ips() {
     jq -r '.data.result[] | select(.metric.ip | test("^([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+|[0-9a-fA-F:]+)$")) | select(.value[1] | tonumber >= 1) | .metric.ip + " scanner-bot attempts=" + .value[1]' 2>/dev/null || true
 }
 
-# Query for IPs with excessive 4xx errors
+# Query for IPs with excessive 4xx errors.
 get_error_ips() {
     log "Querying Loki for IPs with excessive errors..."
 
@@ -119,7 +119,17 @@ get_error_ips() {
     # ("DownstreamStatus":404) - the latter was previously invisible here. Only the JSON
     # form carries ClientHost, so a plain-text line no longer yields an address (and v6
     # lines never did, under the dotted-quad regexp this replaces).
-    local query='topk(50, sum by (ip) (count_over_time({job="docker"} |~ "\" 4[0-9][0-9] |\"DownstreamStatus\":4[0-9][0-9]" | regexp "\"ClientHost\":\"(?P<ip>[^\"]+)\""['"$TIME_RANGE"'])))'
+    #
+    # 429 is deliberately EXCLUDED (2026-11-11): it is our own edge-ratelimit doing the
+    # shedding, not the client probing, and it already has a purpose-built 2-minute signal
+    # (get_rate_flood_ips, >=200 per 2 min) plus the request-rate backstop. Counting it
+    # here meant a limiter misfire became a 24-hour ban: a chunk-heavy SPA cold load
+    # exceeded burst 50 at waggle.bumbleflies.de, retried after the 429s, produced 776 of
+    # them, and this query (>=100 4xx over 24 h) would have re-banned the owner hourly for
+    # the rest of the day even after the burst was raised.
+    # RE2 (Loki) has no lookahead, so "4xx but not 429" is enumerated instead:
+    #   400-419 = 4[01][0-9], 420-428 = 42[0-8], 430-499 = 4[3-9][0-9].
+    local query='topk(50, sum by (ip) (count_over_time({job="docker"} |~ "\" 4[0-9][0-9] |\"DownstreamStatus\":4[01][0-9]|\"DownstreamStatus\":42[0-8]|\"DownstreamStatus\":4[3-9][0-9]" | regexp "\"ClientHost\":\"(?P<ip>[^\"]+)\""['"$TIME_RANGE"'])))'
 
     loki_query "$query" | \
     jq -r '.data.result[] | select(.metric.ip | test("^([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+|[0-9a-fA-F:]+)$")) | select(.value[1] | tonumber >= '"$MIN_ERRORS"') | .metric.ip + " excessive-errors attempts=" + .value[1]' 2>/dev/null || true
