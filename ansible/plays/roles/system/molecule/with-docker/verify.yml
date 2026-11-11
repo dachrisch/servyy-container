@@ -231,3 +231,54 @@
           leaves the jail blind on OpenSSH >= 10 (servy) - see
           history/2026-11-10_fail2ban-openssh10-sshd-session.md
         success_msg: "custom SSH filter matches both OpenSSH ident shapes"
+
+    # The SSH jails ban for one hour and escalate, they do not ban flat for a day: a 24 h
+    # ban turned one mistyped password on the operator's own line into a day-long lockout.
+    # The slices keep every assertion inside the jail it belongs to, so a bantime that
+    # drifts into the wrong section (or a web-tier value that leaks into an SSH jail) fails.
+    - name: Slice the effective jail config per jail section
+      set_fact:
+        fail2ban_jail_default: "{{ fail2ban_jail_effective.split('[sshd]')[0] }}"
+        fail2ban_jail_sshd: "{{ fail2ban_jail_effective.split('[sshd]')[1].split('[sshd-invalid-user]')[0] }}"
+        fail2ban_jail_sshd_invalid: "{{ fail2ban_jail_effective.split('[sshd-invalid-user]')[1].split('[loki-blocklist]')[0] }}"
+        fail2ban_jail_loki: "{{ fail2ban_jail_effective.split('[loki-blocklist]')[1] }}"
+
+    - name: Render the fail2ban server config from the role template
+      set_fact:
+        fail2ban_server_conf: "{{ lookup('ansible.builtin.template', playbook_dir ~ '/../../templates/fail2ban/fail2ban.local.j2') }}"
+
+    - name: Compute the effective server config (comments stripped)
+      set_fact:
+        fail2ban_server_effective: "{{ fail2ban_server_conf.splitlines() | reject('match', '^\\s*#') | join('\\n') }}"
+
+    - name: Verify the SSH jails ban for one hour and escalate instead of banning for a day
+      assert:
+        that:
+          - '"bantime = 3600" in fail2ban_jail_sshd'
+          - '"bantime = 3600" in fail2ban_jail_sshd_invalid'
+          - '"86400" not in fail2ban_jail_sshd'
+          - '"86400" not in fail2ban_jail_sshd_invalid'
+          - '"bantime.increment = true" in fail2ban_jail_default'
+          - '"bantime.factor = 1" in fail2ban_jail_default'
+          - '"bantime.maxtime = 86400" in fail2ban_jail_default'
+          - '"dbpurgeage" not in fail2ban_jail_effective'
+          - '"bantime = 86400" in fail2ban_jail_loki'
+          - '"bantime.increment" not in fail2ban_jail_loki'
+        fail_msg: >-
+          the SSH jails must ban for one hour and escalate through [DEFAULT]
+          bantime.increment, while loki-blocklist stays flat at one day - see
+          history/2026-11-11_fail2ban-ssh-bantime-1h.md
+        success_msg: "SSH jails ban 1 h with escalation; the web-tier jail stays at one day"
+
+    # dbpurgeage is a SERVER option (fail2ban.conf [Definition]); a jail-level copy is
+    # silently ignored, which was measured on the test host on 2026-11-11. Keep it in the
+    # server template or the escalation history gets purged after a day.
+    - name: Verify the ban-history retention outlives the escalation curve
+      assert:
+        that:
+          - '"dbpurgeage = 604800" in fail2ban_server_effective'
+        fail_msg: >-
+          fail2ban.local must raise dbpurgeage to one week, otherwise bantime.increment
+          loses its history mid-escalation - see
+          history/2026-11-11_fail2ban-ssh-bantime-1h.md
+        success_msg: "ban history is retained for a week, past the 24 h escalation cap"

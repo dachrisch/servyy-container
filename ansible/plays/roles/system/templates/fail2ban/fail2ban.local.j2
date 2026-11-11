@@ -1,0 +1,17 @@
+# fail2ban server configuration
+# Managed by Ansible - do not edit manually
+#
+# Only the options this role actually needs to change. Everything else keeps the package
+# value from fail2ban.conf; fail2ban.local is read after it and wins.
+
+[Definition]
+# How long a source stays "known bad" in the ban database. `bantime.increment` (jail.local)
+# reads that history back to escalate repeat offenders, and the escalation curve
+# 1h -> 2h -> 4h -> 8h -> 16h already spans 31 h, so the default 1 day would purge the early
+# bans and silently reset the count. One week outlives bantime.maxtime (a day) with room to
+# spare.
+#
+# This MUST live here and not in jail.local: dbpurgeage is a server option
+# (fail2ban.conf [Definition]), so a jail-level copy is ignored - verified 2026-11-11,
+# `fail2ban-client get dbpurgeage` kept reporting 86400 with it in jail.local.
+dbpurgeage = 604800

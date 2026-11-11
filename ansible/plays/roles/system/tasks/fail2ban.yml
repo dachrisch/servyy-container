@@ -27,6 +27,17 @@
   tags:
     - system.fail2ban.config
 
+- name: Create fail2ban server configuration
+  template:
+    src: fail2ban/fail2ban.local.j2
+    dest: /etc/fail2ban/fail2ban.local
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart fail2ban
+  tags:
+    - system.fail2ban.config
+
 - name: Create fail2ban local configuration
   template:
     src: fail2ban/jail.local.j2

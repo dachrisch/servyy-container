@@ -2,8 +2,30 @@
 # Managed by Ansible - do not edit manually
 
 [DEFAULT]
-# Ban duration: 1 hour by default
+# Ban duration: 1 hour by default. Short on purpose: the SSH jails used to ban for a full
+# day, so one mistyped password on the operator's own line was a 24 h lockout out of
+# proportion to the event (see history/2026-11-11_fail2ban-ssh-bantime-1h.md).
 bantime = 3600
+
+# Escalate repeat offenders instead of one flat long ban: each successive ban for the same
+# source doubles, capped at a day. A one-off burst therefore costs the source an hour,
+# while a scanner that returns after every release works its way up: 1h -> 2h -> 4h -> 8h ->
+# 16h -> 24h. The jail-level `bantime` is the base; a jail whose bantime already equals
+# maxtime (loki-blocklist) stays flat at that value.
+#
+# `factor` multiplies on top of the built-in formula (`bantime * 2^bancount`), so it stays
+# at 1: with the default formula that already gives one doubling per successive ban, and
+# `factor = 2` would make the first re-ban 4 h instead of 2 h (measured 2026-11-11 on the
+# test host).
+bantime.increment = true
+bantime.factor = 1
+bantime.maxtime = 86400
+
+# Increment works from the ban database and forgets an entry after dbpurgeage (default
+# 1 day). The escalation 1h -> 2h -> 4h -> 8h -> 16h already spans 31 h, so the default
+# window would purge the early bans and silently reset the count. That window is a SERVER
+# option (fail2ban.conf [Definition]), not a jail one - it is deployed in fail2ban.local
+# (see fail2ban.local.j2) because setting it here has no effect.
 
 # Time window for counting failures
 findtime = 600
@@ -58,7 +80,10 @@ filter = sshd
 # currently monitored") and codey has no /var/log/auth.log to point at.
 journalmatch = _SYSTEMD_UNIT=ssh.service
 maxretry = 3
-bantime = 86400
+# One hour, escalating for repeat offenders via [DEFAULT] bantime.increment: a typo on the
+# operator's own line must not cost a day of access, and a real scanner is re-banned after
+# three more attempts (and then for longer).
+bantime = 3600
 findtime = 3600
 
 # Custom SSH filter for "Invalid user" attempts
@@ -70,7 +95,8 @@ filter = sshd-custom
 # journalmatch, which is the narrower `_COMM=sshd` shape that misses `sshd-session`.
 journalmatch = _SYSTEMD_UNIT=ssh.service
 maxretry = 2
-bantime = 86400
+# Same 1 h base as [sshd]; escalation lives in [DEFAULT] bantime.increment.
+bantime = 3600
 findtime = 600
 
 #
@@ -118,5 +144,7 @@ action = iptables-multiport[port="%(port)s", protocol="tcp", chain="{{ fail2ban_
          ip6tables-multiport[port="%(port)s", protocol="tcp", chain="{{ fail2ban_web_tier_chain }}"]
 logpath = /var/log/fail2ban-loki.log
 maxretry = 1
+# One day stays deliberate here (web abuse, not a typo): equal to [DEFAULT] bantime.maxtime,
+# so bantime.increment caps at the same value and this jail's effective ban is unchanged.
 bantime = 86400
 findtime = 86400
