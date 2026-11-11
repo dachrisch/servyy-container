@@ -649,8 +649,6 @@
         env_templates:
           - src: waggle.env.j2
             dest: .env
-        # nginx-media.conf is read by the media container's nginx worker (uid 101).
-        world_readable_paths: "{{ world_readable_paths_by_service[service_dir] | default([]) }}"
       when: "'waggle' in (services | default([]))"
       tags: [user.docker, user.docker.waggle]
 

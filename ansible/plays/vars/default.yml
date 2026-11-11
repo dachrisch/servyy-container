@@ -83,11 +83,6 @@ journald:
 world_readable_paths_by_service:
   traefik:
     - error-pages.html            # error-pages container (uid 10001)
-  waggle:
-    # The public /media/ mirror (nginx worker, uid 101) reads this bind-mounted
-    # config; the checkout's umask 007 leaves it 0660, so nginx would fail to
-    # start and /media/ would fall through to the app's authenticated route.
-    - nginx-media.conf
   achim-hoefer:
     - serve                       # nginx worker (uid 101)
   monitor:
