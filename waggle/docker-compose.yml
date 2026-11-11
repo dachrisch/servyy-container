@@ -1,0 +1,61 @@
+# Waggle — self-hosted OpenPost (social post scheduling) at waggle.bumbleflies.de.
+#
+# One container serves the app and runs the background jobs that publish
+# scheduled posts: a Go binary (Alpine runtime, uid/gid 1000) with SQLite and
+# local media under /data. There is no separate worker and no external database.
+#
+# uid 1000 is deliberate: it is `cda` on servy, i.e. the deploy checkout's
+# owner, so ./data works as a bind mount with no chown, and restic's home
+# backup (source_path: /home/cda) picks the database and media up for free.
+# The directory itself is created by Ansible (user.docker.waggle) — Docker
+# would create a missing bind source as root, and the container could not
+# write its database.
+#
+# Image is pinned per release, NOT `latest`: this container holds scheduled
+# posts and the encryption key thaws provider tokens, so a bump is a deploy
+# decision. No watchtower label (scope=prod), so nothing updates it unattended.
+name: waggle
+
+services:
+  openpost:
+    # Release tags: https://github.com/getopenpost/openpost/releases
+    # Bump OPENPOST_VERSION in the env template (or here) and redeploy.
+    image: ghcr.io/getopenpost/openpost:${OPENPOST_VERSION:-v7.39.0}
+    container_name: ${COMPOSE_PROJECT_NAME}.openpost
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      # /data/db/openpost.db + /data/media. Restores only work with the SAME
+      # OPENPOST_ENCRYPTION_KEY (provider credentials are sealed with it).
+      - ./data:/data
+    networks:
+      - proxy
+    labels:
+      - traefik.enable=true
+      # Plain HTTP -> HTTPS (the ACME HTTP-01 challenge is answered by Traefik
+      # itself on the `web` entrypoint, before any router matches).
+      - traefik.http.routers.${SERVICE_NAME}-http.entrypoints=web
+      - traefik.http.routers.${SERVICE_NAME}-http.rule=Host(`${SERVICE_HOST}`)
+      - traefik.http.routers.${SERVICE_NAME}-http.middlewares=${SERVICE_NAME}-https
+      - traefik.http.middlewares.${SERVICE_NAME}-https.redirectscheme.scheme=https
+      # The service itself.
+      - traefik.http.routers.${SERVICE_NAME}.rule=Host(`${SERVICE_HOST}`)
+      - traefik.http.routers.${SERVICE_NAME}.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.${SERVICE_NAME}.tls=${TRAEFIK_TLS:-true}
+      # HTTP-01, not the default DNS-01: that resolver only knows Porkbun, and
+      # bumbleflies.de is at Strato (same reason as bnb-office/queen).
+      - traefik.http.routers.${SERVICE_NAME}.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypthttpresolver}
+      - traefik.http.services.${SERVICE_NAME}.loadbalancer.server.port=8080
+    # The image ships its own healthcheck (wget --spider /api/v1/health, 30s),
+    # so Traefik withdraws the router if the app stops answering.
+    # Publishing runs inside this process: a redeploy must not cut a post off
+    # mid-delivery, so give SIGTERM room to finish (default is 10s).
+    stop_grace_period: 60s
+    # Host has 7G RAM with ~3G available and already runs ~53 containers.
+    # Headroom for ffmpeg in the video editor without letting a runaway encode
+    # take the box down. Raise it here if large uploads start getting killed.
+    mem_limit: 1g
+
+networks:
+  proxy:
+    external: true

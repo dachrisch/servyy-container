@@ -32,6 +32,8 @@
       - dir: monitor
       - dir: moodle
         depends: traefik
+      - dir: waggle
+        depends: traefik
     services_root: "{{ docker.remote_dir }}"
   tags:
     - user.docker.services.script
@@ -78,6 +80,24 @@
   when: with_containers | default(false)
   tags:
     - user.docker.opencode
+
+- name: Create Waggle data directory
+  file:
+    path: "{{ (docker.remote_dir, 'waggle', 'data', item) | path_join }}"
+    state: directory
+    owner: "{{ create_user }}"
+    group: "docker"
+    mode: '0775'
+  loop:
+    - db
+    - media
+  # The OpenPost image runs as uid/gid 1000 (the alpine `openpost` user), which
+  # is `create_user` here — so the checkout owner is enough and no chown to a
+  # foreign uid is needed. Both subdirectories are created because Docker makes a
+  # missing bind-mount SOURCE as root, and the container then cannot write
+  # /data/db/openpost.db.
+  tags:
+    - user.docker.waggle
 
 - name: Resolve codey.lehel.xyz addresses for OpenCode SSH key restriction
   ansible.builtin.set_fact:

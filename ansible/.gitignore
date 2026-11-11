@@ -32,6 +32,15 @@ vars/.moodle_db_root_password
 plays/vars/.moodle_admin_password
 vars/.moodle_admin_password
 
+# Waggle (OpenPost) deployment secrets — generated and persisted by Ansible via
+# lookup('password', 'vars/.waggle_*' ...). JWT_SECRET is session-only, but
+# ENCRYPTION_KEY unseals the stored provider tokens: losing it loses every
+# connected account.
+plays/vars/.waggle_jwt_secret
+vars/.waggle_jwt_secret
+plays/vars/.waggle_encryption_key
+vars/.waggle_encryption_key
+
 
 # Vaultwarden master password, manually dropped here for one-off runs - never commit
 .vw_master_pw

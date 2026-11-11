@@ -633,6 +633,25 @@
       when: "'bnb-office' in (services | default([]))"
       tags: [user.docker, user.docker.bnb-office]
 
+    # Waggle — self-hosted OpenPost (social post scheduling) at
+    # waggle.bumbleflies.de. Custom service_host: the public name is on the
+    # bumbleflies.de wildcard, not {dir}.{domain}. Not `dns_short_name`: that
+    # only composes names under `domain`.
+    #
+    # All three public URLs derive from service_host, so moving the instance to
+    # another hostname is an inventory change here — but it also invalidates
+    # every provider OAuth callback and requires reconnecting the accounts.
+    - role: docker_service
+      vars:
+        service_dir: waggle
+        service_name: waggle
+        service_host: "{{ waggle_service_host | default('waggle.bumbleflies.de') }}"
+        env_templates:
+          - src: waggle.env.j2
+            dest: .env
+      when: "'waggle' in (services | default([]))"
+      tags: [user.docker, user.docker.waggle]
+
     # Moodle (OFFD / Flag Academy) — the referee-training platform that replaces
     # Christoph's FTP-only shared hosting. Plan: docs/plans/2026-10-27-moodle-offd-hosting.md
     #
