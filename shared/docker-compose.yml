@@ -18,7 +18,7 @@ services:
     # onto a NEW volume (pre_tasks in plays/user.yml). A database gets an exact
     # tag: a major/minor step is a deliberate change, never a watchtower pull.
     # See history/2026-11-03_shared-mongo9-kernel7.md.
-    image: mongo:9.0.4
+    image: mongo:9.0.8
     container_name: ${COMPOSE_PROJECT_NAME}.mongo
     restart: unless-stopped
     # 512m: ~285M resident + ~88M in swap measured 2026-10-29. The cap stops the

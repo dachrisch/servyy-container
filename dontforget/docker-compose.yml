@@ -7,7 +7,7 @@ services:
     # dump/restore onto a NEW volume (pre_tasks in plays/user.yml). Exact tag:
     # a database major/minor step is a deliberate change.
     # See history/2026-11-03_shared-mongo9-kernel7.md.
-    image: mongo:9.0.4
+    image: mongo:9.0.8
     container_name: ${COMPOSE_PROJECT_NAME}.mongo
     restart: unless-stopped
     # No `command: ["--auth"]`: with a flag as the first arg the official
