@@ -107,3 +107,40 @@ cd /home/cda/servyy-container/waggle && docker compose down
    `vault_gmail_smtp_password` already exists if we want to wire it.
 5. MCP endpoint (`/mcp`) is available on the same origin — an agent can draft and
    schedule through it instead of the UI.
+
+## Addendum — the first page load got the owner's own IP banned (same day)
+
+The first browser visit to `https://waggle.bumbleflies.de` rendered a 500 instead of the
+app, and the visiting address was banned for 24 h by `loki-blocklist`. Not a Waggle fault;
+two pre-existing edge-guard defects that only a chunk-heavy SPA could expose.
+
+**Chain of events.**
+
+1. A cold load of the OpenPost SPA fetched the shell plus ~20 JS chunks, CSS and preloads
+   over one HTTP/2 connection — more than `edge-ratelimit`'s `burst: 50`
+   (`traefik/dynamic.yaml`). Traefik shed the excess with 429s (`OriginStatus: 0`, never
+   reaching the container).
+2. SvelteKit could not hydrate, rendered its own error route (the "500 | Internal Error"
+   page — not Traefik's branded one), and the browser retried: **776 × 429 in 2 minutes**.
+3. The blocklist queries read that as a flood (`traefik-rate-flood attempts=687`,
+   `traefik-rate-limit attempts=776`, `traefik-aggressive-crawler attempts=791` at
+   20:07:04) and banned the client — the owner's own egress address — on 80/443.
+
+**Fixes (commit `d54f046`).**
+
+| Change | Why |
+|---|---|
+| `edge-ratelimit` `burst: 50 → 200` | A normal client must never be shed before the app has finished loading. 200 ≈ two SPA cold loads, still a quarter of the 40k+/2m a real flood produces. The 25 r/s sustained rate is unchanged, and the `>=600 req/min` backstop query carries the flood signal. |
+| `get_error_ips` excludes 429 | 429 is *our* limiter shedding, not a client probing, and it already has a purpose-built 2-minute signal. Counting it turned a limiter misfire into a re-ban every hour for the rest of the day (`>=100 4xx/24h`). RE2 has no lookahead, so 4xx-minus-429 is enumerated by range. |
+
+**Second trap found while applying it.** `dynamic.yaml` is a single-file bind mount, so a
+`git` checkout swaps the inode and the container keeps serving the old file — a deploy
+appears applied while nothing changes. The config was written through the container
+(`docker exec -i ... cat > /etc/traefik/dynamic.yaml`) so `watch: true` reloaded it without
+a restart; 80 parallel requests then returned 80 × 200 (21 × 429 before). Documented in
+`traefik/AGENTS.md`.
+
+**Verification.** Browser load: welcome screen with Sign In / Create Account, no console
+errors. `curl` burst 80/80 → 200. Unbanned by hand
+(`fail2ban-client set loki-blocklist unbanip …`) — the historical 429 lines would otherwise
+have kept us banned through the hourly `full` run.

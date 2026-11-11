@@ -17,6 +17,18 @@ The reverse proxy for every host (servy + codey). Deployed by
 
 ## Rules that bite
 
+* **Editing `dynamic.yaml` on a running host needs more than a deploy.** The file is a
+  single-file bind mount (`./dynamic.yaml:/etc/traefik/dynamic.yaml`), and a `git`
+  checkout replaces it with a NEW inode — the container keeps the old one, so a deploy
+  *looks* applied while Traefik keeps serving the previous config (`watch: true` only
+  fires on changes to the inode it already has). Observed 2026-11-11: `edge-ratelimit`
+  burst 50→200 was deployed, `grep` inside the container still said 50, and 21 of 80
+  requests were still shed. Apply either by
+  `docker exec -i traefik.traefik sh -c 'cat > /etc/traefik/dynamic.yaml' < dynamic.yaml`
+  (keeps the inode, `watch` reloads in ~3 s, no downtime) or by recreating the container
+  (`docker compose up -d --force-recreate traefik` — a few seconds of no routing).
+  Verify inside the container, never by grepping the host checkout.
+
 * **A service is only routable when it opts in.** `providers.docker.exposedByDefault` is
   `false` (since 2026-10-29): a compose service without `traefik.enable=true` gets no
   router at all and answers the catchall 404 while its container looks perfectly healthy.
