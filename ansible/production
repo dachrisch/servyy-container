@@ -69,11 +69,10 @@ prod:
         # until the Strato DNS for ibs.bricksnbytes.de is flipped). DNS for
         # ibs.bumbleflies.de already points at servy; own Traefik router/cert.
         bnb_office_alt_host: ibs.bumbleflies.de
-        # Waggle: signup is OPEN for the first deploy only — the first account
-        # created in the UI becomes the instance administrator. Flip this to
-        # true and redeploy the moment that account exists. Remove it (template
-        # default is `true` = closed) once it has served its purpose.
-        waggle_disable_registrations: false
+        # Waggle: signup was open for the first deploy only — that account is now
+        # the instance administrator (created 2026-11-11), so public signup is
+        # closed. Reopen by setting the host var false and redeploying.
+        waggle_disable_registrations: true
         # --- Moodle (OFFD / Flag Academy) ---------------------------------
         # Deliberately NO dedicated volume: the blank instance and the dry run use
         # existing server storage (moodle_data_root below), and a volume is only
