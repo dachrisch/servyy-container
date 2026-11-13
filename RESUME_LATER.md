@@ -18,9 +18,9 @@ Written: 2026-10-27 22:5x (Europe/Berlin)
   `roles/docker_service/tasks/deploy.yml`, templates `moodle.env.j2` / `moodle.db.env.j2` /
   `moodle.config.php.j2`, `roles/user/tasks/moodle_volume.yml` + `moodle_data_dirs.yml`,
   `vault_moodle_db_{,root_}password` seeds, prod + testing inventory entries.
-- **Live URL: https://m.leaguesphere.app/** — blank instance reinstalled on the new image,
-  `200 Startseite | moodle`, `/login/index.php` 200 with form, Let's Encrypt cert (HTTP-01) valid to
-  2027-01-25. Version `4.5.15 (Build 20261005)`, PHP 8.3.36.
+- **Live URL: https://offd.de/** — the A record moved off the KAS host to servy on 2026-11-13;
+  `m.leaguesphere.app` (wildcard → servy) still answers and redirects to the wwwroot. PHP 8.3.36,
+  Let's Encrypt cert via HTTP-01.
   Blank-instance admin is `admin` with `vault_moodle_admin_password` (Ansible seed at
   `ansible/plays/vars/.moodle_admin_password`, generated on the controller). Earlier throwaway
   credentials are void: the instance was reinstalled on the new image and its database wiped.

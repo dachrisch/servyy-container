@@ -1,8 +1,9 @@
 # moodle/ — Moodle (OFFD / Flag Academy)
 
 Christoph's referee-training platform, moved off €15/month FTP-only shared hosting onto servy.
-Live target: `https://offd.de` (root of the host — not a subpath). Rehearsal hostname:
-`m.leaguesphere.app` (wildcard `*.leaguesphere.app` → servy, no DNS work needed).
+Live: `https://offd.de` (root of the host — not a subpath). `m.leaguesphere.app` still resolves to
+servy through the `*.leaguesphere.app` wildcard and Moodle redirects it to the configured wwwroot,
+so old links and bookmarks keep working.
 
 **Plan, verified baseline, cutover runbook:** [docs/plans/2026-10-27-moodle-offd-hosting.md](../docs/plans/2026-10-27-moodle-offd-hosting.md)
 **Final import + release procedure:** [docs/plans/2026-11-13-moodle-final-drop-release.md](../docs/plans/2026-11-13-moodle-final-drop-release.md)
