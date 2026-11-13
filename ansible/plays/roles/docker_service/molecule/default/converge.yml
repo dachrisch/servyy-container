@@ -81,7 +81,7 @@
     - name: Create 0660 vendored plugin archive for moodle
       ansible.builtin.copy:
         content: "PK\u0003\u0004placeholder\n"
-        dest: /home/molecule/moodle/plugins/enrol_waitlist-2025072001.zip
+        dest: /home/molecule/moodle/plugins/enrol_waitlist-2026051200.zip
         mode: "0660"
 
   tasks:
@@ -146,7 +146,7 @@
           - plugins
         vault_moodle_db_password: test-moodle-db-pw
         vault_moodle_admin_password: test-moodle-admin-pw
-        moodle_plugin_enrol_waitlist_zip: enrol_waitlist-2025072001.zip
+        moodle_plugin_enrol_waitlist_zip: enrol_waitlist-2026051200.zip
         moodle_plugin_enrol_waitlist_sha256: deadbeef
 
     - name: Deploy manual service (env only, no compose)

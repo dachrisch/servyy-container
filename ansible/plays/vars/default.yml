@@ -239,12 +239,16 @@ moodle_data_root_path: "{{ moodle_data_root if moodle_data_root is defined else 
 
 # Vendored third-party plugin archive, installed by the image from PLUGINS= at
 # every boot and bind-mounted read-only at /opt/moodle-plugins
-# (moodle/plugins/README.md). The version is pinned by Christoph's database
-# (mdl_config_plugins → 2025072001), so the zip and this name move together;
+# (moodle/plugins/README.md). 2026051200 (4.5-b) is upstream's security-fix
+# release and sits deliberately ONE version ahead of what the database pins
+# (2025072001), so Moodle runs the plugin's own upgrade once on the next boot:
+# xmldb_enrol_waitlist_upgrade() has no step between those versions and
+# db/install.xml is byte-identical, so that is version bookkeeping, not a schema
+# change. Any FURTHER bump needs the same check first.
 # `moodle_plugin_enrol_waitlist_sha256` is asserted before compose runs, because
 # a missing or silently replaced archive makes the container fail to START.
-moodle_plugin_enrol_waitlist_zip: enrol_waitlist-2025072001.zip
-moodle_plugin_enrol_waitlist_sha256: 0267ccb96ec6cae8349997bec899441500faf525eb3663c3608f53cca0192663
+moodle_plugin_enrol_waitlist_zip: enrol_waitlist-2026051200.zip
+moodle_plugin_enrol_waitlist_sha256: 2266fa07d360414efc1af74e592f988a09e14af4af60def5063752a548a0c090
 
 # Monitor stack identity (non-secret).
 # NOTE: the admin email lives in vars/secrets.yml as `monitor_admin_email` —

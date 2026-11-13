@@ -330,7 +330,7 @@
     - name: Verify moodle PLUGINS is wired to the vendored waitlist archive
       ansible.builtin.assert:
         that:
-          - "'PLUGINS=enrol_waitlist=file:///opt/moodle-plugins/enrol_waitlist-2025072001.zip' in moodle_app_env.content | b64decode"
+          - "'PLUGINS=enrol_waitlist=file:///opt/moodle-plugins/enrol_waitlist-2026051200.zip' in moodle_app_env.content | b64decode"
         fail_msg: "moodle app.env does not install enrol_waitlist from /opt/moodle-plugins"
 
     - name: Stat moodle plugin directory and vendored archive
@@ -338,7 +338,7 @@
         path: "/home/molecule/moodle/plugins/{{ item }}"
       loop:
         - ""
-        - enrol_waitlist-2025072001.zip
+        - enrol_waitlist-2026051200.zip
       register: moodle_plugin_paths
 
     - name: Verify the plugin archive and its directory are readable by the container

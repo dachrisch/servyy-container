@@ -76,14 +76,19 @@ bind-mounted read-only at `/opt/moodle-plugins`, so no boot depends on an extern
 `roles/user/tasks/moodle_plugins.yml` asserts the sha256 before compose runs — a missing or
 silently swapped archive would otherwise make the **container fail to start**.
 
-- **`enrol_waitlist`** (version `2025072001`, upstream tag `v4.5-a3`) — **required**: the imported
-  DB references it and 35 courses use the `waitlist` enrolment method (21 active, the 2026
-  F2/F3/F4 Lehrgänge, 820 `user_enrolments`). Installed 2026-11-10; `enrol_get_plugins()` now
-  returns `manual,guest,self,cohort,waitlist`. Two non-obvious constraints, both learned the hard
-  way: the zip must have a single top-level `waitlist/` directory (the installer does
-  `mv waitlist <docroot>/enrol/waitlist` and dies otherwise), and the version must match
-  `mdl_config_plugins` exactly (a newer zip makes Moodle run that plugin's own upgrade steps
-  against the imported DB).
+- **`enrol_waitlist`** (version `2026051200`, upstream commit `1bfd5b5a43`, release `4.5-b`) —
+  **required**: the DB references it and 52 courses have a `waitlist` enrolment instance (14
+  active 2026 F2/F3/F4 Lehrgänge, 820 `user_enrolments`); `enrol_get_plugins()` returns
+  `manual,guest,self,cohort,waitlist`. Installed 2026-11-10 as `2025072001`, bumped 2026-11-13 to
+  the upstream **security-fix** release (capability checks in `enroluser.php`/`users.php`/
+  `unenrol.php` had been commented out, `profile/assign.php` had no CSRF check, `faculty.php` was
+  an unauthenticated endpoint). Three non-obvious constraints, learned the hard way: the zip must
+  have a single top-level `waitlist/` directory (the installer does `mv waitlist
+  <docroot>/enrol/waitlist` and dies otherwise); upstream's *tags* do not match their contents
+  (`v4.5b` holds the older `2025072000`), so pin a commit sha; and a zip newer than
+  `mdl_config_plugins` makes Moodle run that plugin's own upgrade steps against the DB — fine only
+  when `db/install.xml` and `db/upgrade.php` are unchanged across the jump, which was checked for
+  this bump.
 - `qbehaviour_adaptiveallnothing` — present in the DB, **used by no quiz** (all 680 run
   `deferredfeedback`, `immediatefeedback` or `immediatecbm`), so deliberately not installed.
   Moodle shows one "missing from disk" notice; installing it later is the same procedure.
