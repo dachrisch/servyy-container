@@ -130,7 +130,9 @@ ssh servyy-test.lxd 'zcat /home/cda/moodle-prebooking.sql.gz | docker exec -i mo
    waiting list" is only half the story — capacity on the list is a separate number.
 2. **Promotion is synchronous and FIFO.** `user_delete_response(..., $syncwaitinglist = true)` promotes
    under a `bookingoption_capacity_<id>` lock, sorted by `timemodified` then answer id. No task needed,
-   no fan-out race.
+   no fan-out race. Gotcha for scripted cancellations: `$syncwaitinglist` is the **fourth** parameter —
+   `user_delete_response($userid, true)` sets `$cancelreservation` instead, returns `true`, and quietly
+   leaves the booking in place.
 3. **Course enrolment is opt-in at three levels** (instance `autoenrol`, option `courseid`, target
    course's manual instance) and never retroactive — plan the 820 enrolments as a data migration.
 4. **A plugin instance's settings are cached**, so scripted changes must purge
@@ -139,6 +141,25 @@ ssh servyy-test.lxd 'zcat /home/cda/moodle-prebooking.sql.gz | docker exec -i mo
    task is a no-op; the default template additionally leaves `{$a->…}` placeholders in the body.
 6. Setting `enrolmentstatus` to 2 (enrol now) takes the option out of `enrol_bookedusers_tocourse`
    entirely (`WHERE enrolmentstatus < 1`), which is why the backfill task ignored an earlier booking.
+
+### Visual walkthrough (for the OFFD decision)
+
+A before/after page with screenshots from both states was produced for the office: DocStash draft
+`Warteliste: Was sich für Teilnehmer/innen ändert` (slug `nx616d`, workspace-private). It pairs the
+current `enrol_waitlist` enrol page with the booking option list, the "on the waiting list" state and
+the promoted state, plus a phone-width view.
+
+To produce comparable screenshots the test host now carries demo data that **must not be mistaken for
+real configuration**:
+
+- Course 116 was renamed `Lehrgang F3 06.02.2027` (shortname `f3-2027`) and its booking instance to
+  `Anmeldung Lehrgang F3`; intro text rewritten so the page reads like a live one.
+- Option 5 (`F3 Lehrgang 06.02.2027`) was created for the shots: 25 seats, 5 waiting-list places,
+  filled with 25 arbitrary student accounts; `courseid = 0`, so this option enrols nobody into a course.
+  The original spike options 2 and 3 are kept but set `invisible = 1`.
+- Demo accounts: `demo-referee` (4261, "Sandra Berger", booked after promotion) and `demo-waitlist`
+  (4262, "Michael Hofer", on the waiting list), both `DemoPass2026!`.
+- Admin's `lang` preference was set to `de` for the German admin screens.
 
 ### Known issues & limitations
 
