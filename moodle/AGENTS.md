@@ -222,11 +222,16 @@ while 9 247 files were ASCII-mangled. A complete-looking file set proves nothing
 
 ## Not done yet (see the plan)
 
-- The `leaguesphere` side of the URL change — prepared, not deployed: drop `/offd` from
-  `ansible/plays/roles/ls_app/templates/ls.env.j2:17` **and** the `/moodle/…` segments in
-  `officials/service/moodle/` (separate repo) in the same window, or one side points at a 404.
-  The webservice token comes from the dump, so it survives an import — test it, do not rotate it.
 - SMTP env (`SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD`) once the mail decision is made.
   Until then the image writes its placeholder Gmail credentials on every boot and no mail leaves.
+  The export carried **empty** SMTP settings — the old site used KAS's local MTA via PHP `mail()`,
+  which does not exist in this container. Needs a relay (likely the existing `noreply@offd.de`
+  mailbox at KAS). Values must come from Ansible: anything edited in the Moodle UI is overwritten at
+  the next boot by `02-configure-moodle.sh`.
+- IPv6, optional: the KAS zone publishes no AAAA, so v6-only clients fall back to IPv4 and work.
+  Adding `AAAA offd.de → 2a01:4f8:c013:f6f4::1` (Traefik already listens on `[::]:443`, no local
+  firewall) is a separate change that has not been exercised end to end — verify from a v6 client
+  before and after.
 - Binlogs for point-in-time recovery (see "Backups" above).
-- `www.offd.de`: still on the old host, no router here — decide redirect vs retirement.
+- Old host cleanup after ~2 weeks, once nobody has asked for a rollback (still in maintenance mode,
+  still holds the pre-migration data).
