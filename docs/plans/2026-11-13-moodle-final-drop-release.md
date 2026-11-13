@@ -98,9 +98,15 @@ sudo bash -c 'source /etc/restic/env.moodle-files && restic tag --add pre-releas
 #    prints what it resolved (data root, DB name, archive top level, dump tables,
 #    rewrite target, age of the rollback dump) and changes nothing — do this first
 ./scripts/import-offd-release.sh /var/jail/home/leaguesphere/moodledata.tar.gz \
-                                 /var/jail/home/leaguesphere/dump-*.sql.gz
-#    rewrites https://offd.de/offd/moodle -> the current SITE_URL, so the site is
-#    immediately usable on m. and fully verifiable before anything public changes.
+                                 /var/jail/home/leaguesphere/dump-*.sql.gz \
+                                 --target-url https://offd.de
+#    --target-url is deliberate: it rewrites https://offd.de/offd/moodle straight to
+#    the FINAL host instead of the current SITE_URL. Content is then finished at
+#    import time and the cutover has no content mutation left in it — one pass, not
+#    two. The cost is cosmetic: during verification on m. the 136 rewritten links
+#    point at offd.de, which still serves the old site until DNS moves. Pluginfile
+#    links in question text already point at offd.de today, so this is the steady
+#    state of this instance, not a new anomaly.
 ```
 
 Note: `data/` is `root:root 0750`, so the script's own `sudo` calls are required —
@@ -141,16 +147,28 @@ SQL
 Order matters: **site first, LeagueSphere second, DNS last.**
 
 ```bash
-# 1. SITE_URL -> offd.de  (one inventory value + the health-probe host)
-#    ansible/production:                     moodle_service_host: offd.de
-#    ansible/plays/vars/secrets.yml:         docker.services[moodle].host: offd.de
+# 0. the image bump goes FIRST, in the calm part of the day.
+#    moodle/docker-compose.yml pins erseco/alpine-moodle:4.5.16 (renovate, 2026-11-12)
+#    while the running container is v4.5.15. Deploying it together with the host
+#    change would put a second Moodle upgrade inside the DNS window, where nobody can
+#    tell which half broke. Validated on servyy-test.lxd first: 4.5.15 -> 4.5.16,
+#    plugin keeps version 2025072001, site 200, --is-pending 0.
 cd /home/cda/dev/infrastructure/container/ansible
 ./servyy.sh --limit servy.lehel.xyz --tags user.docker.repo,user.docker.moodle
 ./servyy.sh --limit servy.lehel.xyz --tags user.docker.env.monitor   # repo sync reverts these renders
+#    verify: release 4.5.16, enrol: manual,guest,self,cohort,waitlist, site 200
 
-# 2. rewrite teacher-entered links to the new root (idempotent, measured 134 rows)
+# 1. SITE_URL -> offd.de  (one inventory value + the health-probe host)
+#    ansible/production:                     moodle_service_host: offd.de
+#    ansible/plays/vars/secrets.yml:         docker.services[moodle].host: offd.de
+./servyy.sh --limit servy.lehel.xyz --tags user.docker.repo,user.docker.moodle
+./servyy.sh --limit servy.lehel.xyz --tags user.docker.env.monitor
+
+# 2. links are already at https://offd.de (import ran with --target-url). Verify,
+#    do not rewrite — the rewrite is idempotent but a second pass here would be a
+#    content mutation inside the window for no reason.
 cd /home/cda/servyy-container/moodle
-./scripts/wwwroot-replace.sh https://offd.de/offd/moodle https://offd.de
+./scripts/wwwroot-replace.sh https://offd.de/offd/moodle https://offd.de   # expect 0 rows
 docker exec -u 65534 moodle.moodle php /var/www/html/admin/cli/purge_caches.php
 
 # 3. LeagueSphere: drop /offd in ls.env.j2 AND deploy the app code change (no /moodle/),

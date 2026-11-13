@@ -82,11 +82,13 @@ prod:
         # Setting moodle_volume_device here (plus moodle_volume_path) would switch
         # roles/user/tasks/moodle_volume.yml back on; nothing else changes.
         moodle_data_root: /home/cda/servyy-container/moodle/data
-        # Rehearsal hostname, resolved by the *.leaguesphere.app wildcard that
-        # already points at servy — no DNS change needed to start. It feeds the
-        # Traefik router AND $CFG->wwwroot, so cutover to offd.de is this one
-        # line plus the A record.
-        moodle_service_host: m.leaguesphere.app
+        # Public hostname. Feeds the Traefik router AND $CFG->wwwroot. Until
+        # 2026-11-13 this was the rehearsal name m.leaguesphere.app (the
+        # *.leaguesphere.app wildcard already pointed at servy, so the migration
+        # could be verified before any DNS change). The A record at KAS now
+        # moves to servy; m.leaguesphere.app keeps resolving here and Moodle
+        # redirects it to this wwwroot.
+        moodle_service_host: offd.de
     codey.lehel.xyz:
         domain: lehel.xyz
         # codey also uses domain `lehel.xyz` (its public names are explicit records:
