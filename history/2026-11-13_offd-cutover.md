@@ -118,8 +118,16 @@ wildcard but answers 502. No user ever had that address; it was the rehearsal ho
 
 ## Open
 
-- **Email.** Needs SMTP credentials for `noreply@offd.de` (or a KAS mailbox/relay), then
-  `SMTP_HOST/PORT/USER/PASSWORD/PROTOCOL` in `moodle.app.env.j2` fed from the vault, so the image
-  writes real values at every boot.
-- **IPv6**, optional: `AAAA offd.de → 2a01:4f8:c013:f6f4::1` once a v6 client has confirmed the path.
-- **Old host cleanup** after ~2 weeks, once nobody has asked for a rollback.
+- **Old host cleanup** after ~2 weeks, once nobody has asked for a rollback. It is still in
+  maintenance mode and still holds the pre-migration data.
+- Binlogs for point-in-time recovery (see "Backups" above).
+
+Closed since the first draft of this entry, for the record:
+
+- **Email** — `SMTP_HOST/PORT/USER/PASSWORD/PROTOCOL` now come from `vault_moodle_smtp_*` via
+  `moodle.app.env.j2`, so `02-configure-moodle.sh` writes them into `mdl_config` at every boot.
+  Sending authenticates as the KAS mailbox `support@offd.de`; the visible sender stays
+  `noreply@offd.de`, which KAS accepts for its own domain. Verified by sending through Moodle's own
+  `email_to_user()` and reading the message back over IMAP — the placeholder Gmail rows are gone.
+- **IPv6** — `AAAA offd.de` and `www.offd.de → 2a01:4f8:c013:f6f4::1`, confirmed from a real
+  Android client that pulled a full page over v6.

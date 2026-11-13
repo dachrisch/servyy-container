@@ -222,16 +222,23 @@ while 9 247 files were ASCII-mangled. A complete-looking file set proves nothing
 
 ## Not done yet (see the plan)
 
-- SMTP env (`SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD`) once the mail decision is made.
-  Until then the image writes its placeholder Gmail credentials on every boot and no mail leaves.
-  The export carried **empty** SMTP settings — the old site used KAS's local MTA via PHP `mail()`,
-  which does not exist in this container. Needs a relay (likely the existing `noreply@offd.de`
-  mailbox at KAS). Values must come from Ansible: anything edited in the Moodle UI is overwritten at
-  the next boot by `02-configure-moodle.sh`.
-- IPv6, optional: the KAS zone publishes no AAAA, so v6-only clients fall back to IPv4 and work.
-  Adding `AAAA offd.de → 2a01:4f8:c013:f6f4::1` (Traefik already listens on `[::]:443`, no local
-  firewall) is a separate change that has not been exercised end to end — verify from a v6 client
-  before and after.
 - Binlogs for point-in-time recovery (see "Backups" above).
 - Old host cleanup after ~2 weeks, once nobody has asked for a rollback (still in maintenance mode,
   still holds the pre-migration data).
+
+## Settled at the 2026-11-13 cutover
+
+- **Mail works.** The export carried **empty** SMTP settings (`smtphosts`, `smtpuser`, `smtppass`,
+  `smtpsecure`) because the old site used the KAS host's local MTA via PHP `mail()`, which this
+  container does not have. `vault_moodle_smtp_*` now feed `SMTP_HOST/PORT/USER/PASSWORD/PROTOCOL`
+  through `moodle.app.env.j2`, and `02-configure-moodle.sh` writes them into `mdl_config` at every
+  boot. Authenticates as the KAS mailbox `support@offd.de` (STARTTLS, 587); the visible sender stays
+  `noreply@offd.de`, which KAS accepts for its own domain. Verified by sending through Moodle's
+  `email_to_user()` and reading it back over IMAP.
+  Never edit these in the Moodle UI — the boot script overwrites `mdl_config` on every restart.
+- **IPv6 is on.** `AAAA` for `offd.de` and `www.offd.de` → `2a01:4f8:c013:f6f4::1`; confirmed by a
+  real Android client that pulled a full page over v6 (Traefik listens on `[::]:443`, no local
+  firewall). Note KAS exposes **no TTL control** — the zone is served at 7200, so any DNS change has
+  a two-hour tail.
+- **`www.offd.de` redirects** to the apex with a permanent 301 (router + `redirectregex` middleware
+  in `moodle/docker-compose.yml`). `m.leaguesphere.app` is retired: its router no longer exists.
