@@ -6,9 +6,9 @@
     owner: "{{create_user}}"
   vars:
     # Entries may carry an explicit `host` when the service is not reachable
-    # under the {dir}.{domain} convention (moodle is served at
-    # m.leaguesphere.app until the offd.de cutover). Everything else keeps the
-    # derived name, so this stays backwards compatible.
+    # under the {dir}.{domain} convention (moodle is served at offd.de, not
+    # moodle.lehel.xyz). Everything else keeps the derived name, so this stays
+    # backwards compatible.
     test_urls: >-
       {{ (docker.services | rejectattr('host', 'defined')
             | map(attribute='dir') | product([domain]) | map('join', '.') | list)
