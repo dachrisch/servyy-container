@@ -123,6 +123,21 @@ services:
       - traefik.http.routers.${SERVICE_NAME}-http.rule=Host(`${TRAEFIK_HTTP_REDIRECT_HOST:-moodle-http-redirect.invalid}`)
       - traefik.http.routers.${SERVICE_NAME}-http.middlewares=${SERVICE_NAME}-https-redirect
       - traefik.http.middlewares.${SERVICE_NAME}-https-redirect.redirectscheme.scheme=https
+      # www -> apex, permanent. www.offd.de resolves to this host through the KAS
+      # zone (added at the 2026-11-13 cutover). Without a router it falls through
+      # to Traefik's default certificate, which a visitor experiences as "this
+      # site is not secure" on a site that is otherwise fine. The middleware
+      # answers before the backend is reached, so the router only needs a service
+      # to be valid — it never proxies anything.
+      - traefik.http.routers.${SERVICE_NAME}-www.rule=Host(`www.${SERVICE_HOST}`)
+      - traefik.http.routers.${SERVICE_NAME}-www.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.${SERVICE_NAME}-www.tls=${TRAEFIK_TLS:-true}
+      - traefik.http.routers.${SERVICE_NAME}-www.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypthttpresolver}
+      - traefik.http.routers.${SERVICE_NAME}-www.middlewares=${SERVICE_NAME}-www-redirect
+      - traefik.http.routers.${SERVICE_NAME}-www.service=${SERVICE_NAME}
+      - traefik.http.middlewares.${SERVICE_NAME}-www-redirect.redirectregex.regex=^https?://www\.${SERVICE_HOST}/(.*)
+      - traefik.http.middlewares.${SERVICE_NAME}-www-redirect.redirectregex.replacement=https://${SERVICE_HOST}/$1
+      - traefik.http.middlewares.${SERVICE_NAME}-www-redirect.redirectregex.permanent=true
 
 networks:
   internal:
