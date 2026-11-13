@@ -14,7 +14,12 @@ apk update
 # /etc/apk/world is alpine-baselayout, alpine-keys, apk-tools, busybox, ...), so
 # this line alone is what put sshd on the filesystem. The client stays: `ssh`
 # for git/github, `ssh-keyscan` for known_hosts, `ssh-keygen` for commit signing.
-apk add git curl github-cli nodejs npm python3 py3-pip openssh-client-default git-crypt gettext
+# bash: the base image is Alpine/BusyBox, which ships only /bin/sh -> busybox.
+# Without it, `#!/bin/bash` scripts (agent skills such as check-server-status)
+# die with `env: can't execute 'bash': No such file or directory` (exit 127) and
+# the agent's `shell` tool can only offer sh/ash -- see
+# history/2026-11-13_opencode-container-bash.md.
+apk add git curl github-cli nodejs npm python3 py3-pip openssh-client-default git-crypt gettext bash
 
 # 1a. Purge any sshd this container already carries.
 # Containers created before the line above was fixed (2026-11-05) installed the

@@ -58,6 +58,9 @@ container are overwritten on restart — change the repo file and deploy it.
   `ssh codey.lehel.xyz "docker logs portainer.ofelia"` (Ofelia's prune output).
 - Session data lives in `/root/.local/share/opencode/opencode.db`; pruning runs
   nightly at 04:00 via Ofelia.
+- **`bash` is installed by `startup.sh`** (Alpine ships only BusyBox `sh`), and the
+  agent `shell` tool runs `/bin/bash`; `#!/bin/bash` skill scripts work. See
+  `history/2026-11-13_opencode-container-bash.md`.
 - **No SSH daemon in this container.** The image ships no OpenSSH; `startup.sh`
   installs `openssh-client-default` (ssh/scp/sftp/ssh-keygen) and never the
   `openssh` meta, which would pull `openssh-server`. That matters because
