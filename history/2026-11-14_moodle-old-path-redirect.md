@@ -84,14 +84,27 @@ by deleting labels.
 - `a72ab42` feat(moodle): 301 old /offd/moodle/… links to the root
 - `0e7fae8` test(docker_service): pass the moodle SMTP vault vars to the molecule scenario
 
-**Testing & Verification:**
+**Testing & Verification** (deployed 2026-11-14 10:58 UTC, PR #300, merge `5982314`):
 
-- Rendered with the production `.env` on the host (`docker compose -f … config`): rule, regex,
-  replacement and certresolver all interpolate as intended.
-- `curl -sI` on old paths (with and without query string) → `301` + correct `Location`; the excluded
-  `admin/cron.php` still `404`; front page still `200`; `upgrade.php --is-pending` still `0`.
-- Post-deploy: container healthy, no OOM, backups unaffected. 24 h later the old-path 404 count should
-  collapse to the cron hits only.
+| Request | Result |
+|---|---|
+| `GET /offd/moodle/course/view.php?id=124` | **301** → `https://offd.de/course/view.php?id=124` |
+| `GET /offd/moodle/mod/forum/view.php?id=1658&page=2` | **301**, **query preserved** |
+| `GET /offd/moodle` and `/offd/moodle/` | **301** → `https://offd.de/` |
+| `GET /offd/moodle/admin/cron.php?password=…` | **404** (exclusion works) |
+| `curl -L …/offd/moodle/login/index.php` | **200** at `https://offd.de/login/index.php` |
+| `https://offd.de/` | **200** |
+| `https://www.offd.de/offd/moodle/` | **301** → apex (two hops, as designed) |
+
+`HEAD` requests answer **308** where `GET` answers **301** — that is Traefik 3.7's method-preserving
+permanent redirect, not a misconfiguration; the pre-existing `www` middleware behaves identically.
+
+Post-deploy on the box: container `healthy`, 0 restarts, 0 5xx, no boot errors; `upgrade.php
+--is-pending` → rc 0; `$CFG->release` 4.5.16, `wwwroot` `https://offd.de`, plugin `2026051200`;
+counts unchanged (4 266 users / 120 courses / 40 999 file rows) and the image re-applied the SMTP
+vars to `mdl_config` on boot as it always does. Also rendered with the production `.env` on the host
+(`docker compose -f … config`) beforehand: rule, regex, replacement and certresolver all interpolate
+as intended.
 
 ### Key Learnings
 
