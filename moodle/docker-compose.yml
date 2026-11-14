@@ -138,6 +138,33 @@ services:
       - traefik.http.middlewares.${SERVICE_NAME}-www-redirect.redirectregex.regex=^https?://www\.${SERVICE_HOST}/(.*)
       - traefik.http.middlewares.${SERVICE_NAME}-www-redirect.redirectregex.replacement=https://${SERVICE_HOST}/$1
       - traefik.http.middlewares.${SERVICE_NAME}-www-redirect.redirectregex.permanent=true
+      # Old deep links (/offd/moodle/…) -> root paths, permanent 301. The
+      # imported wwwroot was https://offd.de/offd/moodle, so every pre-cutover
+      # URL maps 1:1 by stripping the prefix. The 2026-11-13 import rewrote the
+      # five content columns but not message history, notifications or question
+      # attempts (~14k rows still hold the old path), and external sites still
+      # link to it — measured 2026-11-14: 360 old-path 404s/day, referrers
+      # safv.ch and 5erdffl.de. A redirect consolidates them without touching
+      # user data.
+      #
+      # The match is gated on TRAEFIK_HTTP_REDIRECT_HOST like the http router:
+      # empty on a TLS-less host (servyy-test) falls back to the reserved
+      # non-matching host, so the redirect can never point at a missing https
+      # listener.
+      #
+      # /offd/moodle/admin/cron.php is excluded deliberately: the old KAS host
+      # still calls it every minute with its own cron password, and a redirect
+      # would aim that unknown password at the real cron endpoint. It keeps
+      # answering 404 until the old host is decommissioned.
+      - traefik.http.routers.${SERVICE_NAME}-oldpath.rule=Host(`${TRAEFIK_HTTP_REDIRECT_HOST:-moodle-http-redirect.invalid}`) && (Path(`/offd/moodle`) || PathPrefix(`/offd/moodle/`)) && !Path(`/offd/moodle/admin/cron.php`)
+      - traefik.http.routers.${SERVICE_NAME}-oldpath.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+      - traefik.http.routers.${SERVICE_NAME}-oldpath.tls=${TRAEFIK_TLS:-true}
+      - traefik.http.routers.${SERVICE_NAME}-oldpath.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypthttpresolver}
+      - traefik.http.routers.${SERVICE_NAME}-oldpath.middlewares=${SERVICE_NAME}-oldpath-redirect
+      - traefik.http.routers.${SERVICE_NAME}-oldpath.service=${SERVICE_NAME}
+      - traefik.http.middlewares.${SERVICE_NAME}-oldpath-redirect.redirectregex.regex=^https?://${SERVICE_HOST}/offd/moodle/?(.*)
+      - traefik.http.middlewares.${SERVICE_NAME}-oldpath-redirect.redirectregex.replacement=https://${SERVICE_HOST}/$1
+      - traefik.http.middlewares.${SERVICE_NAME}-oldpath-redirect.redirectregex.permanent=true
 
 networks:
   internal:

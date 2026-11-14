@@ -13,7 +13,7 @@ had that address.
 
 | Container | Image | Purpose |
 |---|---|---|
-| `moodle.moodle` | `erseco/alpine-moodle:v4.5.15` | nginx + php-fpm + **cron**, one container, configured by env |
+| `moodle.moodle` | `erseco/alpine-moodle:4.5.16` | nginx + php-fpm + **cron**, one container, configured by env |
 | `moodle.db` | `mariadb@sha256:2bdff15…` (already on the host) | project-internal DB, no published port |
 
 There is **no separate cron container, no `config.php` in git, and no Dockerfile**: the image writes
@@ -247,3 +247,22 @@ while 9 247 files were ASCII-mangled. A complete-looking file set proves nothing
   a two-hour tail.
 - **`www.offd.de` redirects** to the apex with a permanent 301 (router + `redirectregex` middleware
   in `moodle/docker-compose.yml`). `m.leaguesphere.app` is retired: its router no longer exists.
+
+## Old `/offd/moodle/…` links redirect to the root
+
+The pre-cutover wwwroot was `https://offd.de/offd/moodle`, so old URLs map 1:1 to the new site by
+stripping the prefix. The import rewrote the five content columns only — message history,
+notifications and question attempts still hold the old path (~14k rows), and other sites link to it
+(measured 2026-11-14, one day after cutover: **360 old-path 404s/day**, referrers `safv.ch` and
+`5erdffl.de`). A second Traefik router (`${SERVICE_NAME}-oldpath`, `Path`/`PathPrefix` + `!Path`)
+answers them with a permanent 301 to `https://offd.de/<rest>`; the query string survives because the
+regex captures it.
+
+- **Do not "simplify" the rule to a plain `PathPrefix`.** The `!Path('/offd/moodle/admin/cron.php')`
+  exclusion keeps the **old KAS host's** web cron return
+  a 404 instead of being redirected onto our real `admin/cron.php` with its own (unknown) password.
+  It is the top source of that traffic: ~1 300 requests/day from `85.13.146.136`.
+- The match is gated on `TRAEFIK_HTTP_REDIRECT_HOST` (empty on the TLS-less test host), so the
+  redirect cannot point at a missing https listener there — same trick as the http→https router.
+- Rewriting the leftover message/notification rows was rejected: the redirect also covers external
+  links and browser bookmarks that no database rewrite can reach.
