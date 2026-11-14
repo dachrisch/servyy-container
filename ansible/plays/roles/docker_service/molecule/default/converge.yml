@@ -146,6 +146,14 @@
           - plugins
         vault_moodle_db_password: test-moodle-db-pw
         vault_moodle_admin_password: test-moodle-admin-pw
+        # SMTP is load-bearing: the image rewrites mdl_config from these on every
+        # boot, and the pre-cutover export carried empty values (the old KAS host
+        # sent through a local MTA). Without them the template fails to render.
+        vault_moodle_smtp_host: smtp.example.invalid
+        vault_moodle_smtp_port: "587"
+        vault_moodle_smtp_user: moodle@example.invalid
+        vault_moodle_smtp_password: test-moodle-smtp-pw
+        vault_moodle_smtp_protocol: tls
         moodle_plugin_enrol_waitlist_zip: enrol_waitlist-2026051200.zip
         moodle_plugin_enrol_waitlist_sha256: deadbeef
 

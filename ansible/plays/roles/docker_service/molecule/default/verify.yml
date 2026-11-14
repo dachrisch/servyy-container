@@ -333,6 +333,18 @@
           - "'PLUGINS=enrol_waitlist=file:///opt/moodle-plugins/enrol_waitlist-2026051200.zip' in moodle_app_env.content | b64decode"
         fail_msg: "moodle app.env does not install enrol_waitlist from /opt/moodle-plugins"
 
+    # Mail is not optional on this deployment: the image overwrites smtphosts,
+    # smtpuser, smtppass and smtpsecure from these vars on every boot, so a
+    # missing or renamed template line silently breaks outbound mail.
+    - name: Verify moodle SMTP settings are rendered from the vault vars
+      ansible.builtin.assert:
+        that:
+          - "'SMTP_HOST=smtp.example.invalid' in moodle_app_env.content | b64decode"
+          - "'SMTP_PORT=587' in moodle_app_env.content | b64decode"
+          - "'SMTP_USER=moodle@example.invalid' in moodle_app_env.content | b64decode"
+          - "'SMTP_PROTOCOL=tls' in moodle_app_env.content | b64decode"
+        fail_msg: "moodle app.env is missing the KAS SMTP wiring (mail would fall back to the image placeholders)"
+
     - name: Stat moodle plugin directory and vendored archive
       ansible.builtin.stat:
         path: "/home/molecule/moodle/plugins/{{ item }}"
