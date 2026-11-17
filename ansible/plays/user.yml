@@ -441,7 +441,10 @@
         # project/container name is "portainer" so the container is
         # portainer.agent (matching the server's portainer.portainer).
         project_name: portainer
-        service_host: "a.codey.lehel.xyz"
+        # Per-host: the master reaches each agent by its own name, and the agent
+        # reports that same name to Portainer. Defaults keep codey unchanged.
+        service_host: "{{ portainer_agent_service_host | default('a.codey.lehel.xyz') }}"
+        agent_name: "{{ portainer_agent_name | default('codey') }}"
         env_templates:
           - src: portainer-agent/docker.env.j2
             dest: .env

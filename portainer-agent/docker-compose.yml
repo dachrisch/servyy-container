@@ -16,8 +16,12 @@ services:
     # Explicit agent name. portainer/agent has no -n/--name flag, so it reports
     # its container hostname (portainer.agent, which contains a dot) and Portainer
     # rejects it as an invalid environment name. Setting the container hostname to
-    # a dot-free value makes the agent report "codey".
-    hostname: codey
+    # a dot-free value makes the agent report that name.
+    #
+    # Templated as AGENT_NAME (portainer_agent_name in ansible/production) so a
+    # second agent — the Oracle replica — does not report the same "codey" name
+    # and collide with this one in the Portainer environment list.
+    hostname: ${AGENT_NAME}
     networks:
       - proxy
     labels:
