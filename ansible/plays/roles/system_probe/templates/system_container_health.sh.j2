@@ -31,6 +31,9 @@ check_container() {
   # One string, used by both the first attempt and the retry below: two inline
   # copies could silently diverge, and the health branch is what decides
   # "healthy" vs "unhealthy".
+  # The raw-guard's end tag sits before the closing quote on purpose: placed at
+  # the end of the line, trim_blocks eats the newline and glues the next comment
+  # onto this line.
   local fmt={% raw %}'{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}{% endraw %}'
   # One transient dockerd hiccup must not read as "down": pushes are 5-10 min
   # apart (timer *:0/5 + RandomizedDelaySec=5m), so a single failed inspect would

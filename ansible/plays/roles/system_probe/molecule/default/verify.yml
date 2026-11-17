@@ -112,3 +112,10 @@
           # parse as "unhealthy" and container_unhealthy fires for all of them.
           - "('{' ~ '{else}}none{' ~ '{end}}') in (container_script.content | b64decode)"
           - "'.State.Health.Status' in (container_script.content | b64decode)"
+          # Without the `none` arm every image that declares no healthcheck is
+          # parsed as unhealthy and container_unhealthy fires for all of them.
+          - "'healthy|none) healthy=1' in (container_script.content | b64decode)"
+          # Distinctive fragment of the stopped-branch printf: deleting it makes
+          # a stopped container emit no series at all, which the not-running rule
+          # resolves to Normal (noDataState: OK) instead of firing.
+          - "'tier=\"%s\"} 0' in (container_script.content | b64decode)"
