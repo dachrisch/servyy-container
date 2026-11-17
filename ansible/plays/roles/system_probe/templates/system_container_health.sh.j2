@@ -26,13 +26,36 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 check_container() {
-  local container_name="$1" service_dir="$2"
-  local running
-  running=$(docker container inspect "$container_name" --format={% raw %}'{{.State.Running}}'{% endraw %} 2>/dev/null) || running="false"
+  local container_name="$1" service_dir="$2" tier="$3"
+  local state running health healthy
+  # One string, used by both the first attempt and the retry below: two inline
+  # copies could silently diverge, and the health branch is what decides
+  # "healthy" vs "unhealthy".
+  local fmt={% raw %}'{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}{% endraw %}'
+  # One transient dockerd hiccup must not read as "down": pushes are 5-10 min
+  # apart (timer *:0/5 + RandomizedDelaySec=5m), so a single failed inspect would
+  # keep a healthy container at 0 until the next push. Second attempt only on
+  # failure, so the steady-state cost stays one exec per container.
+  # Images without a healthcheck have no .State.Health at all -> "none", which
+  # counts as healthy.
+  state=$(docker container inspect "$container_name" --format="$fmt" 2>/dev/null) || {
+    sleep 2
+    state=$(docker container inspect "$container_name" --format="$fmt" 2>/dev/null)
+  } || state="false none"
+  running="${state%% *}"
+  health="${state##* }"
+  case "$health" in
+    healthy|none) healthy=1 ;;
+    *) healthy=0 ;;
+  esac
   if [ "$running" = "true" ]; then
-    printf 'system_container_running{name="%s",service="%s"} 1\n' "$container_name" "$service_dir"
+    printf 'system_container_running{name="%s",service="%s",tier="%s"} 1\n' "$container_name" "$service_dir" "$tier"
+    # Emitted only while the container runs: a stopped container is already
+    # covered by system_container_running 0, and reporting it here as well
+    # would fire two alerts for one failure.
+    printf 'system_container_healthy{name="%s",service="%s",tier="%s"} %s\n' "$container_name" "$service_dir" "$tier" "$healthy"
   else
-    printf 'system_container_running{name="%s",service="%s"} 0\n' "$container_name" "$service_dir"
+    printf 'system_container_running{name="%s",service="%s",tier="%s"} 0\n' "$container_name" "$service_dir" "$tier"
     all_running=0
   fi
 }
@@ -48,13 +71,16 @@ check_container() {
 payload_file=$(mktemp)
 {
   echo "# TYPE system_container_running gauge"
-{% for item in docker.services if not ('manual' in item) %}
+  echo "# TYPE system_container_healthy gauge"
+{% set probe_services = (docker.services | rejectattr('manual', 'defined') | map('combine', {'tier': 'app'}) | list)
+     + (docker_backend_services | default([]) | map('combine', {'tier': 'backend'}) | list) %}
+{% for item in probe_services %}
 {%   set project = item.dir %}
 {%   set services = (lookup('file', (system_probe_docker_local_dir, item.dir, 'docker-compose.yml') | path_join ) | from_yaml)['services'] %}
 {%   for svc in services | dict2items %}
 {%     set raw_name = svc.value.container_name | default(project + '.' + svc.key) %}
 {%     set container_name = raw_name | replace('${COMPOSE_PROJECT_NAME}', project) %}
-  check_container "{{ container_name }}" "{{ item.dir }}"
+  check_container "{{ container_name }}" "{{ project }}" "{{ item.tier }}"
 {%   endfor %}
 {% endfor %}
   echo "# TYPE system_container_health_probe_success gauge"
