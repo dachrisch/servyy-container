@@ -1,0 +1,44 @@
+---
+# Shared-mongo user provisioning.
+#
+# Creates (or re-aligns the roles of) dedicated, database-scoped users in the
+# shared project's mongo container, so a consumer never has to authenticate as
+# shared's root (`lf_admin`). Currently used for dontforget, which moved its db
+# into shared.mongo on 2026-11-17: history/2026-11-17_dontforget-shared-mongo.md.
+#
+# Idempotent: a re-run with an unchanged user touches nothing, so the task only
+# reports `changed` on the deploy that actually creates/repairs a user.
+#
+# Why a role and not an init script: /docker-entrypoint-initdb.d runs only on a
+# FRESH volume. shared_mongo_data already exists, so a user added that way would
+# never be created on the hosts that matter.
+#
+# Password rotation is opt-in: the stored password hash cannot be compared to
+# the vault value, so re-applying it on every deploy would report `changed`
+# forever. Set `shared_mongo_rotate_passwords: true` for the deploy after
+# changing a password in vault, then drop it again.
+#
+# Roles are grant-by-name on the user's OWN database only; there is no `admin`
+# or `root` role here on purpose.
+
+# Root credentials of the shared mongo instance. The same pair the shared
+# compose file seeds (MONGO_INITDB_ROOT_*) and leagues-finance/queen use.
+shared_mongo_container: shared.mongo
+shared_mongo_root_username: "{{ leagues_finance.mongo_root_username }}"
+shared_mongo_root_password: "{{ leagues_finance.mongo_root_password }}"
+
+# List of users to manage:
+#   - name: string
+#     password: string
+#     database: string          # db the user is defined in + scoped to
+#     roles: [readWrite, ...]   # granted on `database` only (default readWrite)
+shared_mongo_users: []
+
+# Re-apply the vault password on an existing user (see header).
+shared_mongo_rotate_passwords: false
+
+# How long to wait for shared.mongo to report healthy before failing loudly.
+# A deploy that needs this role must not proceed against a mongo that is not
+# there — the consumer would start and point at nothing.
+shared_mongo_wait_retries: 30
+shared_mongo_wait_delay: 10

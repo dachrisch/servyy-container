@@ -1,0 +1,42 @@
+---
+# Ensure the shared-mongo container is actually answering before touching it.
+- name: Wait for {{ shared_mongo_container }} to become healthy
+  community.docker.docker_container_info:
+    name: "{{ shared_mongo_container }}"
+  register: shared_mongo_users_info
+  until: >-
+    shared_mongo_users_info.container is not none and
+    (shared_mongo_users_info.container.State.Health.Status | default('')) == 'healthy'
+  retries: "{{ shared_mongo_wait_retries }}"
+  delay: "{{ shared_mongo_wait_delay }}"
+  changed_when: false
+
+# One mongosh call for the whole list: it prints a JSON array of the users it
+# had to create or repair, so `changed` is decided by what mongo actually did
+# rather than by hoping `createUser` fails on the second run.
+- name: Ensure dedicated MongoDB users
+  community.docker.docker_container_exec:
+    container: "{{ shared_mongo_container }}"
+    argv:
+      - mongosh
+      - admin
+      - --quiet
+      - -u
+      - "{{ shared_mongo_root_username }}"
+      - -p
+      - "{{ shared_mongo_root_password }}"
+      - --authenticationDatabase
+      - admin
+      - --eval
+      - "{{ lookup('ansible.builtin.template', 'ensure_users.js.j2') }}"
+  register: shared_mongo_users_result
+  # Passwords appear in the eval script (and in argv inside the container), the
+  # same way the existing mongo migration tasks pass root credentials.
+  no_log: true
+  changed_when: (shared_mongo_users_result.stdout | trim) != '[]'
+
+- name: Report what changed in shared.mongo
+  ansible.builtin.debug:
+    msg: >-
+      shared.mongo users: {{ shared_mongo_users_result.stdout | from_json }}
+  when: (shared_mongo_users_result.stdout | trim) != '[]'

@@ -1,0 +1,30 @@
+// Rendered by the shared_mongo_users role. Creates or re-aligns each configured
+// user and prints a JSON array of what it had to change ("[]" = nothing).
+// Runs as shared's root user, so it may act on any database.
+const users = {{ shared_mongo_users | to_json }};
+const rotate = {{ shared_mongo_rotate_passwords | bool | to_json }};
+const changed = [];
+const roleKey = function (list) {
+  return JSON.stringify(list.map(function (r) { return r.role + '@' + r.db; }).sort());
+};
+users.forEach(function (u) {
+  const d = db.getSiblingDB(u.database);
+  const roles = (u.roles || ['readWrite']).map(function (r) {
+    return { role: r, db: u.database };
+  });
+  const current = d.getUser(u.name);
+  if (current === null) {
+    d.createUser({ user: u.name, pwd: u.password, roles: roles });
+    changed.push(u.name + ':created');
+    return;
+  }
+  if (roleKey(current.roles) !== roleKey(roles)) {
+    d.updateUser(u.name, { roles: roles });
+    changed.push(u.name + ':roles');
+  }
+  if (rotate) {
+    d.updateUser(u.name, { pwd: u.password });
+    changed.push(u.name + ':password');
+  }
+});
+print(JSON.stringify(changed));

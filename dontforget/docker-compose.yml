@@ -1,32 +1,11 @@
 name: dontforget
 
 services:
-  mongo:
-    # Pinned to 9.0.4: Linux >= 6.19 (servy runs 7.0) breaks mongo 8.x
-    # (SERVER-121912), and 9.0 cannot open FCV 8.2 data, so the switch was a
-    # dump/restore onto a NEW volume (pre_tasks in plays/user.yml). Exact tag:
-    # a database major/minor step is a deliberate change.
-    # See history/2026-11-03_shared-mongo9-kernel7.md.
-    image: mongo:9.0.8
-    container_name: ${COMPOSE_PROJECT_NAME}.mongo
-    restart: unless-stopped
-    # No `command: ["--auth"]`: with a flag as the first arg the official
-    # entrypoint skips initdb, so MONGO_INITDB_ROOT_* would never be created on
-    # a fresh volume. The entrypoint adds --auth itself when they are set.
-    env_file:
-      - web.env
-    volumes:
-      # mongo 9 data. The pre-9 volume dontforget_mongo_data is no longer
-      # mounted but kept untouched as the rollback copy.
-      - mongo_data:/data/db
-    networks:
-      - internal
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-
+  # The app container only (API + built frontend from one image). Its database
+  # is shared.mongo since 2026-11-17: the app's own mongo container is gone, the
+  # `dontforget` db and a dedicated user (dontforget_app, scoped to that db)
+  # live in the shared project, reached cross-project as shared.mongo.
+  # history/2026-11-17_dontforget-shared-mongo.md.
   web:
     image: dachrisch/dontforget:latest
     container_name: ${COMPOSE_PROJECT_NAME}.web
@@ -43,11 +22,13 @@ services:
     environment:
       NODE_ENV: production
       PORT: "3000"
-    depends_on:
-      mongo:
-        condition: service_healthy
+    # No `depends_on`: compose cannot depend on a service of another project.
+    # Ordering is the deploy's job — the shared role runs before this one, so
+    # shared.mongo is already healthy when this container starts. On host boot
+    # the two restart in arbitrary order, and the app retries its connection
+    # (restart: unless-stopped) until mongo answers.
     networks:
-      - internal
+      - shared_backend
       - proxy
     labels:
       - traefik.enable=true
@@ -102,14 +83,11 @@ services:
       - traefik.http.routers.${SERVICE_NAME}-bf-http.rule=Host(`${BUMBLEFLIES_HOST:-dontforget-bf-http-unset.invalid}`)
       - traefik.http.routers.${SERVICE_NAME}-bf-http.middlewares=${SERVICE_NAME}-https-redirect
 
-volumes:
-  mongo_data:
-    # Explicit name: the migration pre_tasks in plays/user.yml key off it
-    # (absent = not migrated yet).
-    name: dontforget_mongo9_data
-
 networks:
-  internal:
-    internal: true
+  # Owned by the shared project — deploy shared FIRST. The old per-service
+  # `internal` network went away with its mongo container.
+  shared_backend:
+    name: shared_backend
+    external: true
   proxy:
     external: true

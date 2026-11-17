@@ -1,0 +1,253 @@
+---
+# One-time move of dontforget's database out of its retired mongo container and
+# into the shared project's mongo (shared.mongo).
+#
+# Context: dontforget ran its own mongo container since it was deployed
+# (2026-08-09, history/2026-08-09_dontforget-deployment.md) and was the only
+# service left out of the data-layer consolidation (c82b387). Its compose file
+# no longer defines a mongo service; the db now lives in shared_mongo_data and
+# the app authenticates as a db-scoped user (shared_mongo_users role).
+# See history/2026-11-17_dontforget-shared-mongo.md.
+#
+# Trigger: the retired container still runs AND shared.mongo is healthy AND
+# shared.mongo does not have the `dontforget` db yet. Afterwards every task
+# skips, so the import stays harmless once the move is done.
+#
+# Safety:
+#   - the dump is kept on the host in dontforget/.backup/ (gitignored, covered by
+#     the restic home backup),
+#   - the retired volume dontforget_mongo9_data is never touched (rollback copy),
+#   - the restore is verified against per-collection document counts and the
+#     consumers stay stopped if they differ (the app role starts them again).
+# Rollback: restore the mongo service block in dontforget/docker-compose.yml and
+# the DATABASE_URL from the pre-2026-11-17 template, redeploy, then restore the
+# dump into the recreated container.
+#
+# Runs in pre_tasks (plays/user.yml), i.e. before the service roles start the
+# app, so the app never sees an empty database.
+
+- name: Inspect the retired dontforget mongo container
+  community.docker.docker_container_info:
+    name: dontforget.mongo
+  register: df_mongo_pre_info
+
+- name: Inspect shared mongo
+  community.docker.docker_container_info:
+    name: shared.mongo
+  register: df_mongo_shared_info
+
+- name: List the databases in shared mongo
+  community.docker.docker_container_exec:
+    container: shared.mongo
+    argv:
+      - mongosh
+      - admin
+      - --quiet
+      - -u
+      - "{{ leagues_finance.mongo_root_username }}"
+      - -p
+      - "{{ leagues_finance.mongo_root_password }}"
+      - --authenticationDatabase
+      - admin
+      - --eval
+      - >-
+        print(JSON.stringify(
+        db.adminCommand({listDatabases: 1, nameOnly: true}).databases
+        .map(d => d.name).sort()))
+  register: df_mongo_shared_dbs
+  changed_when: false
+  when:
+    - df_mongo_shared_info.container is not none
+    - df_mongo_shared_info.container.State.Running | default(false)
+
+- name: Decide whether the dontforget db still has to move
+  ansible.builtin.set_fact:
+    df_mongo_legacy_running: >-
+      {{ df_mongo_pre_info.container is not none and
+         (df_mongo_pre_info.container.State.Running | default(false)) }}
+    df_mongo_shared_running: >-
+      {{ df_mongo_shared_info.container is not none and
+         (df_mongo_shared_info.container.State.Running | default(false)) }}
+    df_mongo_migrating: >-
+      {{ df_mongo_pre_info.container is not none and
+         (df_mongo_pre_info.container.State.Running | default(false)) and
+         df_mongo_shared_info.container is not none and
+         (df_mongo_shared_info.container.State.Running | default(false)) and
+         'dontforget' not in (df_mongo_shared_dbs.stdout | default('[]') | from_json) }}
+
+# Never drop the retired container while its data has no reachable home: that
+# would leave the app pointing at a db nothing copied.
+- name: Refuse to retire dontforget's mongo without a reachable shared mongo
+  ansible.builtin.assert:
+    that: df_mongo_shared_running | bool
+    fail_msg: >-
+      dontforget.mongo still holds the data, but shared.mongo is not running, so
+      the db cannot be moved. Deploy the shared service first
+      (--tags user.docker.shared), then re-run this deploy.
+    quiet: true
+  when: df_mongo_legacy_running | bool
+
+- name: Move the dontforget db into shared mongo
+  when: df_mongo_migrating | bool
+  block:
+    - name: Timestamp and paths for the pre-migration dump
+      ansible.builtin.set_fact:
+        df_mongo_dump_file: >-
+          {{ (docker.remote_dir, 'dontforget', '.backup',
+              'dontforget-db-' ~ now(utc=true).strftime('%Y%m%dT%H%M%SZ') ~ '.archive.gz') | path_join }}
+        # Per-collection document counts (as JSON) for the verify step.
+        df_mongo_count_js: >-
+          const d = db.getSiblingDB('dontforget');
+          const out = {};
+          d.getCollectionInfos({type: 'collection'}).map(c => c.name)
+            .filter(c => !c.startsWith('system.')).sort()
+            .forEach(c => { out[c] = d.getCollection(c).countDocuments({}); });
+          print(JSON.stringify(out));
+
+    # Freeze writes. The dontforget role later in this play starts it again.
+    # Plain `docker stop`: docker_container state=stopped would CREATE a missing
+    # container on a host that has none.
+    - name: Stop the dontforget app
+      ansible.builtin.shell: >-
+        docker stop dontforget.web 2>/dev/null ||
+        ! docker container inspect dontforget.web >/dev/null 2>&1
+      changed_when: true
+
+    - name: Count documents in the retired container
+      community.docker.docker_container_exec:
+        container: dontforget.mongo
+        argv:
+          - mongosh
+          - admin
+          - --quiet
+          - -u
+          - "{{ vault_dontforget_mongo_root_username }}"
+          - -p
+          - "{{ vault_dontforget_mongo_root_password }}"
+          - --authenticationDatabase
+          - admin
+          - --eval
+          - "{{ df_mongo_count_js }}"
+      register: df_mongo_counts_before
+      changed_when: false
+
+    - name: Dump the dontforget db inside the retired container
+      community.docker.docker_container_exec:
+        container: dontforget.mongo
+        argv:
+          - mongodump
+          - --db
+          - dontforget
+          - -u
+          - "{{ vault_dontforget_mongo_root_username }}"
+          - -p
+          - "{{ vault_dontforget_mongo_root_password }}"
+          - --authenticationDatabase
+          - admin
+          - --gzip
+          - --archive=/tmp/dontforget.archive.gz
+
+    - name: Copy the dump to the host
+      ansible.builtin.shell: >-
+        mkdir -p {{ (docker.remote_dir, 'dontforget', '.backup') | path_join | quote }} &&
+        docker cp dontforget.mongo:/tmp/dontforget.archive.gz {{ df_mongo_dump_file | quote }} &&
+        test -s {{ df_mongo_dump_file | quote }}
+      changed_when: true
+
+    - name: Copy the dump into shared mongo
+      ansible.builtin.command: >-
+        docker cp {{ df_mongo_dump_file | quote }} shared.mongo:/tmp/dontforget.archive.gz
+      changed_when: true
+
+    # admin.* / config.* stay out: shared.mongo already has its own root user
+    # (seeded from the shared env file) and its own server config.
+    - name: Restore the dontforget db into shared mongo
+      community.docker.docker_container_exec:
+        container: shared.mongo
+        argv:
+          - mongorestore
+          - -u
+          - "{{ leagues_finance.mongo_root_username }}"
+          - -p
+          - "{{ leagues_finance.mongo_root_password }}"
+          - --authenticationDatabase
+          - admin
+          - --gzip
+          - --archive=/tmp/dontforget.archive.gz
+          - --nsExclude=admin.*
+          - --nsExclude=config.*
+
+    - name: Count documents in shared mongo
+      community.docker.docker_container_exec:
+        container: shared.mongo
+        argv:
+          - mongosh
+          - admin
+          - --quiet
+          - -u
+          - "{{ leagues_finance.mongo_root_username }}"
+          - -p
+          - "{{ leagues_finance.mongo_root_password }}"
+          - --authenticationDatabase
+          - admin
+          - --eval
+          - "{{ df_mongo_count_js }}"
+      register: df_mongo_counts_after
+      changed_when: false
+
+    - name: Assert the restore matches the retired container
+      ansible.builtin.assert:
+        that:
+          - (df_mongo_counts_after.stdout | from_json) == (df_mongo_counts_before.stdout | from_json)
+        fail_msg: >-
+          Document counts differ after moving the dontforget db into shared.mongo.
+          before={{ df_mongo_counts_before.stdout }}
+          after={{ df_mongo_counts_after.stdout }}.
+          The retired container and the dump {{ df_mongo_dump_file }} are intact.
+          The app stays stopped; see the rollback note at the top of
+          plays/tasks/dontforget_mongo_migrate.yml.
+        success_msg: "dontforget db moved to shared.mongo: {{ df_mongo_counts_after.stdout }}"
+
+    - name: Remove the in-container dump copies
+      community.docker.docker_container_exec:
+        container: "{{ item }}"
+        argv: [rm, -f, /tmp/dontforget.archive.gz]
+      loop:
+        - dontforget.mongo
+        - shared.mongo
+
+- name: Re-read the shared mongo database list
+  community.docker.docker_container_exec:
+    container: shared.mongo
+    argv:
+      - mongosh
+      - admin
+      - --quiet
+      - -u
+      - "{{ leagues_finance.mongo_root_username }}"
+      - -p
+      - "{{ leagues_finance.mongo_root_password }}"
+      - --authenticationDatabase
+      - admin
+      - --eval
+      - >-
+        print(JSON.stringify(
+        db.adminCommand({listDatabases: 1, nameOnly: true}).databases
+        .map(d => d.name).sort()))
+  register: df_mongo_shared_dbs_after
+  changed_when: false
+  when:
+    - df_mongo_shared_running | bool
+    - "'dontforget' not in (df_mongo_shared_dbs.stdout | default('[]') | from_json)"
+
+# The db is in shared.mongo (verified above when this run migrated it), so the
+# retired container is only an unmonitored orphan: it is no longer in the
+# compose file, hence no longer in the container-health probe. The volume and
+# the dump stay behind as the rollback copy.
+- name: Remove the retired dontforget.mongo container
+  community.docker.docker_container:
+    name: dontforget.mongo
+    state: absent
+  when:
+    - df_mongo_pre_info.container is not none
+    - "'dontforget' in (df_mongo_shared_dbs_after.stdout | default(df_mongo_shared_dbs.stdout | default('[]')) | from_json)"
