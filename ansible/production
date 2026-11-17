@@ -91,6 +91,13 @@ prod:
         moodle_service_host: offd.de
     codey.lehel.xyz:
         domain: lehel.xyz
+        # Pinned to the IP on purpose (2026-11-17): DNS for codey.lehel.xyz now
+        # points at the Oracle replacement, so resolving this inventory host by
+        # name would silently target the NEW box while the playbook still
+        # believes it is the old one — and would deploy twice, since
+        # oracle-codey.lehel.xyz is listed separately. The alphavps box is
+        # reachable by IP only; this host entry is its rollback/removal handle.
+        ansible_host: 217.217.227.124
         # codey also uses domain `lehel.xyz` (its public names are explicit records:
         # code.lehel.xyz, h.code.lehel.xyz), so the traefik role's default would give
         # codey's dashboard the same host as servy's. The `*.lehel.xyz` wildcard
