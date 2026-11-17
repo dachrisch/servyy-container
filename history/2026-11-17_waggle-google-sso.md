@@ -127,3 +127,24 @@ screen is still in *Testing* status, only its test users can complete the flow.
   release exists). A restart interrupts nothing long-lived, but a publish in
   flight is the one thing it can cut (10s SIGTERM, see the stop-timeout note).
 - Everything else on the host is unchanged; no other service opted into `pull`.
+
+## Outcome
+
+Google sign-in is live and in use: the first account is linked
+(`christian.daehn@bumbleflies.de`, linked + used 2026-11-17 15:31 local) and a
+Google login was confirmed by the operator. The "no Google button / no account"
+path is unchanged for everyone else on purpose — see the onboarding note below.
+
+**Adding colleagues stays a manual, closed-door operation.** Registrations remain
+`OPENPOST_DISABLE_REGISTRATIONS=true`; the operator invites people by hand
+instead of opening a signup window. That means each person needs an account
+*before* an invitation can be accepted (`AcceptInvitation` requires an existing
+authenticated user whose email equals the invited one), and this build has no
+admin user-creation endpoint (`/admin/users` is list-only). The only account
+path is therefore a short, deliberate `waggle_disable_registrations: false`
+window in `ansible/production`, then flipping it back — documented here so the
+next person does not search for an invite-only flow that does not exist.
+
+Invitation email will not send: no `OPENPOST_EMAIL_PROVIDER`/Resend key is
+configured, so the UI says "Email delivery is not configured" and shows a
+one-time copyable invite link. Same cause as password reset being unavailable.
