@@ -566,8 +566,8 @@ templates those braces and the text renders broken.
 
 Run: `yamllint -c .yamllint.yml monitor/provisioning/alerting/alert-rules.yml`
 Expected: exit 0 with ~38 `line-length` warnings — the file has 34 at baseline
-because every rule carries one long single-quoted `description`, and the new
-ones add more of the same shape. Do not fold only the new ones into `>-`
+(37 once the three new rules land) because every rule carries one long
+single-quoted `description`, and the new ones add more of the same shape. Do not fold only the new ones into `>-`
 block scalars: that makes them the only rules in the file that look different.
 CI does not lint `monitor/` (`yamllint` runs on `ansible/plays` only).
 
