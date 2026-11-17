@@ -101,9 +101,24 @@ restic:
       - /mnt
       - /media
 
-      # Container runtime layers (NEVER backup - rebuildable)
-      - /var/lib/docker
+      # Container runtime layers. Docker's own internals are rebuildable, but the
+      # VOLUMES are not: opencode keeps its sessions DB in
+      # /var/lib/docker/volumes/opencode_opencode_root, which neither `home`
+      # (only /home/cda) nor a blanket /var/lib/docker exclusion would ever
+      # capture — so until 2026-11-17 the dev gateway had no backup at all.
+      # Exclude the rebuildable internals individually and keep volumes/.
       - /var/lib/containerd
+      - /var/lib/docker/overlay2
+      - /var/lib/docker/image
+      - /var/lib/docker/buildkit
+      - /var/lib/docker/containers
+      - /var/lib/docker/network
+      - /var/lib/docker/plugins
+      - /var/lib/docker/tmp
+      # Rebuildable from git by provision-dev.sh; ~6.6G of checkout on codey.
+      # Excluded to keep the snapshot small — uncommitted work in there is NOT
+      # covered, which is the accepted trade.
+      - /var/lib/docker/volumes/codey_dev_checkouts
 
       # Caches
       - /var/cache
