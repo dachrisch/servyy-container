@@ -126,18 +126,30 @@ git config --global remote.pushDefault origin || true
 # So the package must already be importable when a session starts it.
 # Installed at boot rather than baked in: the image is upstream
 # (ghcr.io/anomalyco/opencode), so there is no Dockerfile of ours to pin it in.
-# Wheel-only install, no compiler needed: every dependency of graphifyy ships a
+#
+# x86_64 only, on purpose. Every dependency of graphifyy is published as a
 # musllinux_1_2_x86_64 wheel (networkx, numpy, rapidfuzz, pyyaml, tree-sitter
-# and its ~25 language packs). Lives in the image rootfs, so it re-installs on
-# container recreate (~40s); the import guard makes it a no-op within a boot,
-# and a failure here must never take the boot down with it.
-if ! python3 -c 'import graphify' 2>/dev/null; then
-    echo "🕸️ [Startup] Installing graphify CLI..."
-    python3 -m pip install --no-cache-dir --break-system-packages graphifyy \
-        && echo "📍 [Startup] graphify installed" \
-        || echo "⚠️ [Startup] graphify install failed (graphify skill unavailable)"
-else
+# and its ~25 language packs). On aarch64 (the Oracle A1 replica) pip ignores
+# those wheels, tries to compile every tree-sitter language pack from source,
+# and fails after ~44s -- on every single boot, for nothing. Skip instead of
+# paying that, and say so plainly rather than only after a failed install.
+#
+# Backgrounded where it does run: opencode is a Node app, so upgrading the
+# Python packages underneath it cannot affect the running server -- the only
+# consumers are the graphify CLI and yt_upload.py, both invoked later. A
+# transient "not installed yet" in the first seconds of a session is a far
+# better trade than blocking every boot on it.
+if python3 -c 'import graphify' 2>/dev/null; then
     echo "📍 [Startup] graphify CLI already present"
+elif [ "$(uname -m)" != "x86_64" ]; then
+    echo "📍 [Startup] graphify skipped on $(uname -m) (x86_64-only wheels)"
+else
+    echo "🕸️ [Startup] Installing graphify CLI (background)..."
+    (
+        python3 -m pip install --no-cache-dir --break-system-packages graphifyy \
+            && echo "📍 [Startup] graphify installed" \
+            || echo "⚠️ [Startup] graphify install failed (graphify skill unavailable)"
+    ) &
 fi
 
 # The CLI floats (pip installs latest on every recreate) while the skill is a
@@ -199,9 +211,30 @@ git config --global url."git@github.com:".insteadOf "https://github.com/"
 # code-server --install-extension <extension-id>
 
 # 6. Provision dev checkouts & credentials (idempotent, runs every boot)
+#
+# Blocking only on a host that has never provisioned. The script is idempotent
+# and mostly git fetch/pull round-trips over 16 repos, which measured ~43s per
+# boot on the replica -- pure start-up latency once the checkouts exist.
+# The sentinel lives in /root/dev, which is a bind-mounted volume, so it
+# survives container recreates and only a genuinely fresh host pays the cost.
+# It is written only on success, so a failed first provision retries next boot
+# instead of silently locking in an empty /root/dev.
 if [ -f /scripts/provision-dev.sh ]; then
-    echo "🌱 [Startup] Provisioning dev checkouts..."
-    sh /scripts/provision-dev.sh || echo "⚠️ [Startup] provision-dev.sh reported issues (continuing)"
+    if [ -f /root/dev/.provisioned ]; then
+        echo "🌱 [Startup] Refreshing dev checkouts (background)..."
+        (
+            sh /scripts/provision-dev.sh > /tmp/provision-dev.log 2>&1 \
+                && echo "📍 [Startup] dev checkouts refreshed" \
+                || echo "⚠️ [Startup] provision-dev reported issues (continuing)"
+        ) &
+    else
+        echo "🌱 [Startup] Provisioning dev checkouts (first boot, blocking)..."
+        if sh /scripts/provision-dev.sh; then
+            mkdir -p /root/dev && touch /root/dev/.provisioned
+        else
+            echo "⚠️ [Startup] provision-dev reported issues (retrying next boot)"
+        fi
+    fi
 fi
 
 echo "🚀 [Startup] Setup complete. Launching application..."
