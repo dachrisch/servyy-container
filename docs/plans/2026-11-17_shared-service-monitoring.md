@@ -85,13 +85,19 @@ Docker healthchecks, Pushgateway (PUT semantics), Grafana file provisioning
    would need no Ansible work, but it duplicates liveness detection that already
    lives in the probe, adds a second mechanism for the same question, and still
    cannot see Docker health.
-6. **No double paging.** `system_container_running` is shared with the existing
-   `container_not_running` rule, so it is narrowed to `tier!="backend"`; the
-   backend series are covered by the new CRITICAL rule instead.
+6. **No double paging, in both directions.** `system_container_running` and
+   `system_container_healthy` are shared with the existing app rules, so those are
+   narrowed to `tier!="backend"` and two CRITICAL backend mirrors cover the data
+   layer. A stopped container drops out of the healthy series entirely
+   (`system_container_healthy` is emitted only while running), so "down" and
+   "unhealthy" can never both fire for it.
 7. **`for:` must span a push gap.** The probe pushes every 5 min with up to 5 min
-   of `RandomizedDelaySec`, so a `for:` shorter than ~10 min lets ONE bad push
-   page. Both new rules use 10 min (and the probe retries a failed `inspect`
-   once, Task 1), so two consecutive pushes have to agree.
+   of `RandomizedDelaySec`, so consecutive pushes are 0–10 min apart, and
+   Pushgateway keeps serving the last pushed value until the next PUT. A `for:`
+   below 10 min therefore lets a single bad push page; 10 min covers the typical
+   gap and absorbs one bad push unless the next one is also ~10 min late. The
+   price is time-to-page: a real stop pages 11–20 min later. Shorter is not
+   defensible without a second confirmation source.
 8. **`system_container_healthy` counts `starting` as unhealthy.** The Docker
    healthcheck has not passed yet, so "answering" is not established; the 10 min
    `for:` absorbs normal restart windows (the shared healthchecks retry
@@ -110,6 +116,20 @@ Docker healthchecks, Pushgateway (PUT semantics), Grafana file provisioning
 - **Backup content verification** (are the volumes really inside the restic
   snapshot): `restic-snapshot-alerts` proves backups succeed, not their content.
   Worth its own follow-up, unrelated to monitoring.
+- **Lowering `container_health_probe_stale`'s 90-minute threshold**: this change
+  makes the probe the only critical path for the data layer, while the probe's own
+  death is only signalled at MEDIUM after 90 minutes, and
+  `container_health_probe_failure` reads a series that vanishes with the job.
+  Worse, if the timer dies while a `0` sits in Pushgateway,
+  `backend_container_not_running` fires forever and can never resolve. A ~30 min
+  threshold (3 pushes of slack) is a one-liner worth doing soon.
+- **Crash-looping backend container**: each brief stop makes the healthy series
+  vanish, and `noDataState: OK` resets the `for` clock, while `running`
+  alternates 0/1 — so neither rule reaches 10 min even though every consumer is
+  down. A cAdvisor rule on
+  `changes(container_start_time_seconds{name=~"shared\\..*"}[30m])` would close
+  it with no probe cost. (A *paused* container is likewise invisible:
+  `running=1`, health frozen.)
 - **`container_not_running` still uses `for: 2m`**, shorter than a full push gap
   (5 min + up to 5 min jitter). The probe's inspect retry removes the common
   single-hiccup case, but one wrong *push* can still fire it; aligning it to
@@ -355,21 +375,21 @@ alone), in `monitor/provisioning/alerting/alert-rules.yml` around `:1876`:
 
 ```yaml
             model:
-              # Backend containers have their own CRITICAL rule below
-              # (backend_container_down): a data-layer outage must not page
-              # twice for one container.
+              # Backend containers have their own CRITICAL rules below
+              # (backend_container_not_running / backend_container_unhealthy): a
+              # data-layer outage must not page twice for one container.
               expr: system_container_running{tier!="backend"}
 ```
 
-**Step 2: Add `backend_container_down`** (critical)
+**Step 2: Add `backend_container_not_running`** (critical)
 
 ```yaml
       # CRITICAL, where a single app container is MEDIUM above: `shared` is the
       # data layer for leagues-finance, queen and dontforget — one dead
       # container takes all three down. Selects on tier, so future backend
       # services (a second db, a queue) are covered without touching this rule.
-      - uid: backend_container_down
-        title: Backend Container Down
+      - uid: backend_container_not_running
+        title: Backend Container Not Running
         condition: C
         data:
           - refId: A
@@ -405,28 +425,36 @@ alone), in `monitor/provisioning/alerting/alert-rules.yml` around `:1876`:
         noDataState: OK
         execErrState: Error
         # 10m, not 1m: the probe pushes every 5 min with up to 5 min of
-        # RandomizedDelaySec, so `for` must span a full push gap or ONE bad push
-        # fires a critical on a phantom (the probe retries its inspect once, see
-        # Task 1, but the retry cannot help if the whole push was wrong). At 10m
-        # two consecutive pushes have to agree before anyone is paged.
+        # RandomizedDelaySec, so consecutive pushes are 0-10 min apart - and
+        # Pushgateway keeps serving the last pushed value until the next PUT, so
+        # a phantom 0 stays visible for up to that whole gap. 10m covers the
+        # typical gap and absorbs one bad push unless the next one is also ~10
+        # min late (the retry handles a failed inspect, not a wrong push). Cost:
+        # a real stop pages 11-20 min later (0-10 min to the next push, then the
+        # 10 min of `for`).
         for: 10m
         annotations:
           summary: 'Backend container {{ $labels.name }} is not running'
-          description: 'Container {{ $labels.name }} (service {{ $labels.service }}) is down. The shared data layer backs leagues-finance, queen and dontforget: expect errors in all of them until it is back. Check `docker logs {{ $labels.name }}` and the volume/mem_limit of that container.'
+          description: 'Container {{ $labels.name }} (service {{ $labels.service }}) is not running. The shared data layer backs leagues-finance, queen and dontforget: expect errors in all of them until it is back. Check `docker logs --tail 50 {{ $labels.name }}` for the exit reason and `docker inspect {{ $labels.name }}` for the exit code / OOMKilled flag.'
         labels:
           severity: critical
         missingSeriesEvalsToResolve: 3
         isPaused: false
 ```
 
-**Step 3: Add `container_unhealthy`** (medium)
+**Step 3: Add `container_unhealthy`** (medium, app tier only)
 
 ```yaml
       # MEDIUM: running, but its own healthcheck says unhealthy. This is the
       # gap the probe had until now: an unhealthy mongo keeps .State.Running
       # true, so nothing fired while every consumer's queries failed. `for: 10m`
       # because the shared containers need ~2.5min (5 x 30s) to be marked
-      # unhealthy at all; shorter would page on a normal restart.
+      # unhealthy at all; shorter would page on a normal restart. Scoped to the
+      # app tier: the data layer's equivalent is CRITICAL (next step).
+      # from: 300s, NOT 900: a range query keeps returning the last sample for
+      # the whole window, so a container seen unhealthy and then STOPPED would
+      # still read "unhealthy" for 15 min - a guaranteed duplicate page next to
+      # the not-running rule (and a false "the container runs" in the text).
       - uid: container_unhealthy
         title: Container Unhealthy
         condition: C
@@ -434,11 +462,11 @@ alone), in `monitor/provisioning/alerting/alert-rules.yml` around `:1876`:
           - refId: A
             queryType: ''
             relativeTimeRange:
-              from: 900
+              from: 300
               to: 0
             datasourceUid: prometheus
             model:
-              expr: system_container_healthy
+              expr: system_container_healthy{tier!="backend"}
               intervalMs: 1000
               maxDataPoints: 43200
               refId: A
@@ -473,16 +501,83 @@ alone), in `monitor/provisioning/alerting/alert-rules.yml` around `:1876`:
         isPaused: false
 ```
 
-**Step 4: Validate the YAML**
+**Step 4: Add `backend_container_unhealthy`** (critical) and renumber below
+
+Same shape, placed directly after `container_unhealthy`:
+
+```yaml
+      # CRITICAL, mirroring the down / not-running pairing above: the shared
+      # healthchecks are protocol level (mongosh ping, valkey-cli ping,
+      # pg_isready), so "unhealthy for 10 minutes" means the data layer is not
+      # answering for leagues-finance, queen and dontforget - the same blast
+      # radius as a stopped container, hence the same severity. The app-tier
+      # equivalent above stays MEDIUM: a single app that is up but degraded is
+      # not host-fatal.
+      - uid: backend_container_unhealthy
+        title: Backend Container Unhealthy
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: system_container_healthy{tier="backend"}
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: lt
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: 'Backend container {{ $labels.name }} is unhealthy'
+          description: 'The shared data layer (service {{ $labels.service }}) has been answering its healthcheck as unhealthy for 10+ minutes, so leagues-finance, queen and dontforget are erroring against it. It is still running - this is "up but not answering". Run `docker inspect {{ $labels.name }}` and read State.Health.Log; the container keeps running while unhealthy, so a restart is the usual fix.'
+        labels:
+          severity: critical
+        missingSeriesEvalsToResolve: 3
+        isPaused: false
+```
+
+Do NOT put `--format '{{json .State.Health.Log}}'` in an annotation — Grafana
+templates those braces and the text renders broken.
+
+**Step 5: Validate the YAML**
 
 Run: `yamllint -c .yamllint.yml monitor/provisioning/alerting/alert-rules.yml`
-Expected: exit 0 with **36** `line-length` warnings — the file has 34 at baseline
-because every rule carries one long single-quoted `description`, and the two new
-ones add two more of the same shape. Do not fold only the new ones into `>-`
+Expected: exit 0 with ~38 `line-length` warnings — the file has 34 at baseline
+because every rule carries one long single-quoted `description`, and the new
+ones add more of the same shape. Do not fold only the new ones into `>-`
 block scalars: that makes them the only rules in the file that look different.
 CI does not lint `monitor/` (`yamllint` runs on `ansible/plays` only).
 
-**Step 5: Commit**
+Also assert the group holds **7** rules in this order: `container_not_running`,
+`backend_container_not_running`, `container_unhealthy`,
+`backend_container_unhealthy`, `containers_all_down`,
+`container_health_probe_failure`, `container_health_probe_stale`; and that no
+`backend_container_down` string survives anywhere (`grep -rn`).
+
+**Step 6: Commit**
 
 ```bash
 git add monitor/provisioning/alerting/alert-rules.yml
@@ -600,11 +695,11 @@ ssh lehel.xyz 'set -a; . /home/cda/servyy-container/monitor/grafana.env; set +a
 AUTH=$(printf "admin:%s" "$GF_SECURITY_ADMIN_PASSWORD" | base64 -w0)
 docker exec monitor.grafana wget -qO- --header="Authorization: Basic $AUTH" \
   http://localhost:3000/api/v1/provisioning/alert-rules \
-  | grep -oE "\"uid\":\"(backend_container_down|container_unhealthy)\"" | sort -u'
+  | grep -oE "\"uid\":\"(backend_container_not_running|backend_container_unhealthy|container_unhealthy)\"" | sort -u'
 ```
-Expected: two UIDs, one per new rule (the `container-health-alerts` group goes
-from 4 rules to 6; it must NOT be empty — if it is, Grafana rejected the file
-and the reason is in `docker logs monitor.grafana --since 5m`).
+Expected: three UIDs (the `container-health-alerts` group goes from 4 rules to 7;
+it must NOT be empty — if it is, Grafana rejected the file and the reason is in
+`docker logs monitor.grafana --since 5m`).
 
 **Step 6: Prove the alert path actually fires (non-destructive)**
 
