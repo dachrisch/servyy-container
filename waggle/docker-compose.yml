@@ -11,21 +11,25 @@
 # would create a missing bind source as root, and the container could not
 # write its database.
 #
-# Image tracks `latest` (operator request, 2026-11-17), but nothing updates it
-# unattended: there is no watchtower label (scope=prod) and the deploy role is
-# told to pull on every run, so the tag only moves when someone deploys. A
-# deploy therefore IS the upgrade decision, and it is not free to undo: startup
-# applies the app's migrations, and an older binary can fail to read a newer
-# schema — rolling back means restoring the matching database backup too.
+# Image tracks `latest` with the watchtower `prod` scope (operator request,
+# 2026-11-17), so `portainer.watchtower-prod` may roll this container to a new
+# release on its own, every 2h, with no deploy. That is the intent — but it is
+# the one container here where an unattended update has consequences that
+# watchtower cannot undo: startup applies the app's migrations, and the health
+# gate can only roll back the *image*, not the schema. A release that migrates
+# and then fails to become healthy therefore leaves a newer database behind an
+# older binary. Recover from /home/cda/waggle-backup-*.tar.gz + `.env`, never by
+# just re-tagging.
 name: waggle
 
 services:
   openpost:
     # `latest` by operator request; release notes:
     # https://github.com/getopenpost/openpost/releases
-    # `compose_pull: always` in user.yml is what makes this tag actually move —
-    # the role's otherwise-default `missing` policy would keep the first pulled
-    # `latest` forever, which looks the same but silently stops upgrading.
+    # Two things move this tag: watchtower-prod (2h poll) and a deploy, where
+    # `compose_pull: always` in user.yml pulls immediately → the role's
+    # otherwise-default `missing` policy would keep the first pulled `latest`
+    # forever, which looks the same but silently stops upgrading.
     image: ghcr.io/getopenpost/openpost:latest
     container_name: ${COMPOSE_PROJECT_NAME}.openpost
     restart: unless-stopped
@@ -52,6 +56,10 @@ services:
       # bumbleflies.de is at Strato (same reason as bnb-office/queen).
       - traefik.http.routers.${SERVICE_NAME}.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypthttpresolver}
       - traefik.http.services.${SERVICE_NAME}.loadbalancer.server.port=8080
+      # Unattended updates by portainer.watchtower-prod (2h poll, cleanup on,
+      # health-gated). See the header for why that is a real risk on THIS
+      # container: the app migrates its own database at startup.
+      - com.centurylinklabs.watchtower.scope=prod
     # The image ships its own healthcheck (wget --spider /api/v1/health, 30s),
     # so Traefik withdraws the router if the app stops answering.
     # Publishing runs inside this process: a redeploy must not cut a post off

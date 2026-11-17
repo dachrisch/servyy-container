@@ -12,8 +12,9 @@ Two changes to Waggle (`waggle.bumbleflies.de`, self-hosted OpenPost):
 1. **Google sign-in** is wired to the existing bumbleflies-only Google OAuth
    client — the one already shared by `finance.leaguesphere.app`, `queen` and
    `live.bumbleflies.de`. It is additive: the password login stays.
-2. **The image tag moved from a pinned release to `latest`**, and the deploy is
-   now what advances it (the role had no way to pull a moving tag).
+2. **The image tag moved from a pinned release to `latest`**, the deploy is what
+   advances it, and `portainer.watchtower-prod` is allowed to advance it too
+   (`scope=prod`).
 
 ## Context
 
@@ -59,7 +60,7 @@ replaced by a staler lie. The role gained an opt-in `pull` parameter (same
 | File | Change |
 |---|---|
 | `ansible/plays/roles/docker_service/templates/waggle.env.j2` | New *Sign-in (Google SSO)* section: `OPENPOST_AUTH_GOOGLE_CLIENT_ID`/`_SECRET` from `leagues_finance.*`, with the redirect URI, the "set both or neither" rule and the subject-not-email matching note. |
-| `waggle/docker-compose.yml` | `image:` → `ghcr.io/getopenpost/openpost:latest`, interpolation dropped. Header reworded: `latest` still only moves on a deploy, and a deploy runs migrations so a rollback needs the matching DB restore. |
+| `waggle/docker-compose.yml` | `image:` → `ghcr.io/getopenpost/openpost:latest`, interpolation dropped. Header reworded: the tag moves on a deploy *and* under watchtower-prod, and a new release runs migrations, so a failed new image can leave a newer schema behind an older binary. New label `com.centurylinklabs.watchtower.scope=prod`. |
 | `ansible/plays/roles/docker_service/tasks/deploy.yml` | New `pull: "{{ compose_pull | default(omit) }}"` on `docker_compose_v2` — `omit` preserves compose's `missing` policy for every other service. |
 | `ansible/plays/user.yml` | Waggle role block: `compose_pull: always`. |
 
@@ -75,6 +76,7 @@ cd ansible && ./servyy.sh --limit servy.lehel.xyz \
   --tags "user.docker.repo,user.docker.waggle"
 
 ssh servy.lehel.xyz "docker inspect waggle.openpost --format '{{.Config.Image}}'"
+ssh servy.lehel.xyz "docker inspect waggle.openpost --format '{{index .Config.Labels \"com.centurylinklabs.watchtower.scope\"}}'"  # prod
 ssh servy.lehel.xyz "docker exec waggle.openpost env | grep AUTH_GOOGLE"
 curl -fsS https://waggle.bumbleflies.de/api/v1/ready
 curl -fsS https://waggle.bumbleflies.de/api/v1/auth/oidc/providers   # [{"id":"google",...}]
@@ -101,9 +103,19 @@ screen is still in *Testing* status, only its test users can complete the flow.
   `ErrEmailConflict`. Existing password accounts therefore link Google once via
   *Settings → Security*, which is also the safety property: nobody can take over
   an account by owning its email.
-- **`latest` with no watchtower label.** The tag moves only when a human runs a
-  deploy. The tradeoff accepted: a jump can span migrations (this one went
-  v7.39.0 → v7.42.2), and rolling back needs the matching database backup.
+- **`latest` under watchtower-prod, no pin.** The 2026-11-11 entry argued the
+  opposite (pin per release, no watchtower label); the operator reversed that on
+  2026-11-17. Accepted tradeoff: releases arrive within the 2h poll, health
+  gating rolls back a container that never becomes healthy — but it can only
+  restore the *image*, never the schema the failed release already migrated. A
+  bad release that migrates and then fails health is therefore a manual restore
+  from `/home/cda/waggle-backup-*.tar.gz`.
+- **`stop_grace_period: 60s` is NOT honored by watchtower.** The fork stops
+  containers with `--stop-timeout` (= `WATCHTOWER_TIMEOUT`), 10s here, which
+  overrides the container's 60s grace. An unattended update can therefore
+  SIGKILL a publish in flight. Left as-is — the odds of a 2h poll landing inside
+  a delivery are small — but this is the knob to turn (`WATCHTOWER_TIMEOUT=60s`
+  in `portainer/docker-compose.yml`, fleet-wide) if a cut-off post is ever seen.
 
 ## Impact Assessment
 
@@ -111,4 +123,7 @@ screen is still in *Testing* status, only its test users can complete the flow.
   database and media are untouched by the recreate.
 - The version jump is the substantive risk, not the SSO or the tag syntax: the
   app applies its own migrations at startup.
+- From now on this container may restart itself every 2h poll (only when a new
+  release exists). A restart interrupts nothing long-lived, but a publish in
+  flight is the one thing it can cut (10s SIGTERM, see the stop-timeout note).
 - Everything else on the host is unchanged; no other service opted into `pull`.
