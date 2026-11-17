@@ -85,6 +85,17 @@ Docker healthchecks, Pushgateway (PUT semantics), Grafana file provisioning
    would need no Ansible work, but it duplicates liveness detection that already
    lives in the probe, adds a second mechanism for the same question, and still
    cannot see Docker health.
+6. **No double paging.** `system_container_running` is shared with the existing
+   `container_not_running` rule, so it is narrowed to `tier!="backend"`; the
+   backend series are covered by the new CRITICAL rule instead.
+7. **`for:` must span a push gap.** The probe pushes every 5 min with up to 5 min
+   of `RandomizedDelaySec`, so a `for:` shorter than ~10 min lets ONE bad push
+   page. Both new rules use 10 min (and the probe retries a failed `inspect`
+   once, Task 1), so two consecutive pushes have to agree.
+8. **`system_container_healthy` counts `starting` as unhealthy.** The Docker
+   healthcheck has not passed yet, so "answering" is not established; the 10 min
+   `for:` absorbs normal restart windows (the shared healthchecks retry
+   5 × 30s).
 
 ## Out of scope (deliberate)
 
@@ -99,6 +110,20 @@ Docker healthchecks, Pushgateway (PUT semantics), Grafana file provisioning
 - **Backup content verification** (are the volumes really inside the restic
   snapshot): `restic-snapshot-alerts` proves backups succeed, not their content.
   Worth its own follow-up, unrelated to monitoring.
+- **A staleness rule for the container-health job itself** (`absent(system_container_running)`):
+  `container_health_probe_failure` only reads a series that disappears with the
+  job, so a dead timer is caught only by `container_health_probe_stale`'s own
+  logic. This becomes more important once the probe is the critical signal for
+  the data layer; still out of scope here.
+- **Deduplicating a dir listed in both `docker.services` and
+  `docker_backend_services`**: it would emit two series (different `tier`) and two
+  inspects per container. Guarded by a comment and the Task 3 skill note rather
+  than a `unique` assert.
+- **Host-gating `docker_backend_services`** (like `leaguesphere_enabled` gates the
+  db entries in `roles/system_probe/defaults/main.yml`): safe today because the
+  probe only deploys where `monitor` is enabled, and no such host lacks
+  `shared`. Enabling `monitor` on a host without `shared` would fire a CRITICAL
+  for a service that host never runs.
 - Retiring `monit_cleanup` / the `container_health_probe_*` rules.
 
 ---
@@ -165,6 +190,27 @@ Append to `molecule/default/verify.yml` (after the existing
       assert:
         that:
           - "'# TYPE system_container_healthy gauge' in (container_script.content | b64decode)"
+          # The asserts below are what actually pin the emission path: the
+          # `# TYPE` line above alone stays green if both printfs (or the
+          # --format) are broken, and a broken --format makes every container
+          # report running=0 -> containers_all_down pages on deploy.
+          - "'system_container_healthy{name=\"%s\",service=\"%s\",tier=\"%s\"}' in (container_script.content | b64decode)"
+          - "'system_container_running{name=\"%s\",service=\"%s\",tier=\"%s\"}' in (container_script.content | b64decode)"
+          # Concatenated on purpose: a literal `{{` inside a conditional string
+          # is itself parsed as an embedded template — it errors on ansible-core
+          # 2.20 (`'in <string>' requires string as left operand, not
+          # UndefinedMarker`), and `{% raw %}` is a hard syntax error inside a
+          # `that:` expression, not a workaround.
+          - "('{' ~ '{if .State.Health}' ~ '}') in (container_script.content | b64decode)"
+          # Distinctive fragment of the running-branch printf only: the
+          # `system_container_running{name="%s",…}` needle above also matches the
+          # stopped-branch printf, so deleting just one of the two stayed green.
+          - "'tier=\"%s\"} 1' in (container_script.content | b64decode)"
+          - "'.State.Health.Status' in (container_script.content | b64decode)"
+          # The healthcheck-less fallback: without it every image that declares
+          # no healthcheck parses as unhealthy, and container_unhealthy fires for
+          # all of them.
+          - "('{' ~ '{else}}none{' ~ '{end}}') in (container_script.content | b64decode)"
 ```
 
 **Step 4: Run molecule to verify it fails**
@@ -197,12 +243,20 @@ Replace `templates/system_container_health.sh.j2:28-38` with:
 check_container() {
   local container_name="$1" service_dir="$2" tier="$3"
   local state running health healthy
-  # ONE inspect per container: a second call would double the docker exec churn
-  # (history/2026-10-30_load-alert-tuning.md). Images without a healthcheck
-  # have no .State.Health at all -> "none", which counts as healthy.
-  state=$(docker container inspect "$container_name" \
-    --format={% raw %}'{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}'{% endraw %} 2>/dev/null) \
-    || state="false none"
+  # One string, used by the first attempt and the retry: two inline copies could
+  # silently diverge, and the health branch is what decides healthy vs
+  # unhealthy. Images without a healthcheck have no .State.Health at all ->
+  # "none", which counts as healthy.
+  local fmt={% raw %}'{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}'{% endraw %}
+  # ONE inspect per container in the steady state (history/2026-10-30_load-alert-tuning.md).
+  # The SECOND attempt only runs on failure: pushes are 5-10 min apart (timer
+  # *:0/5 + RandomizedDelaySec=5m), so without the retry one dockerd hiccup keeps
+  # a healthy container at 0 until the next push and fires container_not_running
+  # (for: 2m) on a phantom.
+  state=$(docker container inspect "$container_name" --format="$fmt" 2>/dev/null) || {
+    sleep 2
+    state=$(docker container inspect "$container_name" --format="$fmt" 2>/dev/null)
+  } || state="false none"
   running="${state%% *}"
   health="${state##* }"
   case "$health" in
@@ -278,7 +332,23 @@ side effects of docker.services."
 - Modify: `monitor/provisioning/alerting/alert-rules.yml` (group
   `container-health-alerts`, after `container_not_running`)
 
-**Step 1: Add `backend_container_down`** (critical)
+**Step 1: Scope the existing per-container rule to app containers**
+
+`system_container_running` now also carries the backend containers, so the
+untouched `container_not_running` rule would fire a MEDIUM *and* the new
+CRITICAL for the same stopped `shared.mongo` — one failure, two pages. Narrow it
+(only the expression changes; leave `for`, annotations and everything else
+alone), in `monitor/provisioning/alerting/alert-rules.yml` around `:1876`:
+
+```yaml
+            model:
+              # Backend containers have their own CRITICAL rule below
+              # (backend_container_down): a data-layer outage must not page
+              # twice for one container.
+              expr: system_container_running{tier!="backend"}
+```
+
+**Step 2: Add `backend_container_down`** (critical)
 
 ```yaml
       # CRITICAL, where a single app container is MEDIUM above: `shared` is the
@@ -321,7 +391,12 @@ side effects of docker.services."
                     type: lt
         noDataState: OK
         execErrState: Error
-        for: 1m
+        # 10m, not 1m: the probe pushes every 5 min with up to 5 min of
+        # RandomizedDelaySec, so `for` must span a full push gap or ONE bad push
+        # fires a critical on a phantom (the probe retries its inspect once, see
+        # Task 1, but the retry cannot help if the whole push was wrong). At 10m
+        # two consecutive pushes have to agree before anyone is paged.
+        for: 10m
         annotations:
           summary: 'Backend container {{ $labels.name }} is not running'
           description: 'Container {{ $labels.name }} (service {{ $labels.service }}) is down. The shared data layer backs leagues-finance, queen and dontforget: expect errors in all of them until it is back. Check `docker logs {{ $labels.name }}` and the volume/mem_limit of that container.'
@@ -331,7 +406,7 @@ side effects of docker.services."
         isPaused: false
 ```
 
-**Step 2: Add `container_unhealthy`** (medium)
+**Step 3: Add `container_unhealthy`** (medium)
 
 ```yaml
       # MEDIUM: running, but its own healthcheck says unhealthy. This is the
@@ -385,13 +460,13 @@ side effects of docker.services."
         isPaused: false
 ```
 
-**Step 3: Validate the YAML**
+**Step 4: Validate the YAML**
 
 Run: `yamllint -c .yamllint.yml monitor/provisioning/alerting/alert-rules.yml`
 Expected: no output. (`monitor/` is not in CI's yamllint scope — `yamllint` runs
 on `ansible/plays` only — so this is a manual check.)
 
-**Step 4: Commit**
+**Step 5: Commit**
 
 ```bash
 git add monitor/provisioning/alerting/alert-rules.yml
@@ -548,3 +623,19 @@ The PUT push replaces the job group each run, so reverting the template drops th
 - The `for: 10m` on `container_unhealthy` is tuned to the 2.5-minute unhealthy
   detection of the 30s/5-retry healthchecks; if those intervals change, revisit
   it (`history/2026-10-30_load-alert-tuning.md`).
+- One bad push must never page: the probe interval is 5 min with up to 5 min of
+  `RandomizedDelaySec`, which is why both new rules use `for: 10m` and why the
+  probe retries a failed `inspect` once. Tightening `for:` below ~10 min
+  reintroduces phantom criticals.
+- The molecule asserts pin the two `printf` format strings, the running-branch
+  discriminator, the health-status field and the `else}}none` fallback precisely
+  because a broken `--format` renders green everywhere else and only shows up in
+  production (`containers_all_down`, or `container_unhealthy` for every
+  healthcheck-less container). Mutation-tested: each of those five mutations
+  fails the assert.
+- The retry doubles the exposure of a *hung* (not failing) `inspect`, and the
+  `system-container-health` unit has no `TimeoutStartSec` (`Type=oneshot`,
+  `TimeoutStartUSec=infinity`). Worst case measured on the current 35 containers
+  when every inspect fails: ~74 s, against a 5-minute timer, so no overlap today.
+  Revisit if the host grows past ~90 containers or if dockerd can hang instead of
+  erroring.
