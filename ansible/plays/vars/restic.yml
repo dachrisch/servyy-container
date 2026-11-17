@@ -25,10 +25,20 @@
 # NOTE: repo names contain a dash — dereference them with `restic['moodle-files']`,
 # never attribute syntax.
 restic:
+  # Which directory this host owns under the Storage Box `backup/` share.
+  #
+  # Defaults to inventory_hostname, but is overridable PER HOST. That override
+  # matters from 2026-11-17: the Oracle box took over the inventory name
+  # `codey.lehel.xyz` from the alphavps box, whose snapshots already live under
+  # `backup/codey.lehel.xyz/`. Both hosts share restic_password_root, so letting
+  # them resolve to the same path would put two machines in one repository —
+  # and either host's `forget --prune` would happily delete the other's
+  # snapshots per its own retention. Pin `restic_repo_name` on the renamed hosts.
+  #
   # Home directory backup (hourly)
   home:
     enabled: true
-    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-home"
+    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ restic_repo_name | default(inventory_hostname) }}/restic-home"
     password: "{{ restic_password_home }}"
     source_path: "{{ remote_user_home }}"
     excludes:
@@ -85,7 +95,7 @@ restic:
   # Root filesystem backup (daily)
   root:
     enabled: true
-    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-root"
+    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ restic_repo_name | default(inventory_hostname) }}/restic-root"
     password: "{{ restic_password_root }}"
     source_path: "/"
     includes:
@@ -141,7 +151,7 @@ restic:
   # NO `enabled` key on this repo — consumers (restic init/backup tasks,
   # system_probe defaults, forget/check templates) gate on that flag instead.
   db:
-    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-ls-db"
+    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ restic_repo_name | default(inventory_hostname) }}/restic-ls-db"
     password: "{{ restic_password_ls_db }}"
     source_path: "/var/jail/home/leaguesphere/container/deployed/mysql-backup/current"
 
@@ -158,7 +168,7 @@ restic:
   # which is exactly why the home repo excludes the whole `moodle/data` tree.
   # Patterns are `/`-anchored to this snapshot root, not "anywhere in the tree".
   'moodle-files':
-    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-moodle-files"
+    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ restic_repo_name | default(inventory_hostname) }}/restic-moodle-files"
     password: "{{ restic_password_moodle }}"
     source_path: "{{ moodle_data_root_path }}/moodledata"
     excludes:
@@ -179,7 +189,7 @@ restic:
   # mount in moodle/docker-compose.yml, and `log_bin` is OFF on this DB so a
   # physical set buys no PITR either way.
   'moodle-db':
-    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ inventory_hostname }}/restic-moodle-db"
+    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ restic_repo_name | default(inventory_hostname) }}/restic-moodle-db"
     password: "{{ restic_password_moodle }}"
     source_path: "{{ moodle_data_root_path }}/db-backup/current"
 

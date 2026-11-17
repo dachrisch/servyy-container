@@ -88,29 +88,45 @@ prod:
         # could be verified before any DNS change). The A record at KAS now
         # moves to servy; m.leaguesphere.app keeps resolving here and Moodle
         # redirects it to this wwwroot.
-        moodle_service_host: offd.de
+        moodle_service_host: offd.de    # The live dev gateway. Moved 2026-11-17 from the alphavps box to the Oracle
+    # Always Free A1 (aarch64) — see history/2026-11-17_oracle-codey-replication.md.
+    # It keeps the codey NAME because that is what the service names, the
+    # Portainer environment and every dependent service refer to; only the
+    # machine underneath changed.
     codey.lehel.xyz:
+        ansible_host: 138.2.180.191
+        # Without IdentitiesOnly the local ssh-agent offers every key it holds
+        # and sshd drops the connection with "Too many authentication
+        # failures" (MaxAuthTries) before reaching the one that is authorized.
+        ansible_ssh_common_args: '-o IdentitiesOnly=yes'
+        # The Oracle image boots with only the `ubuntu` user and no root login,
+        # so the system play connects as `ubuntu` (NOPASSWD sudo) and then
+        # creates `cda` exactly as it does everywhere else.
+        root_user: ubuntu
+        # IPv6 from the VCN's /56 (scripts/provision-oracle-codey.sh prints both
+        # values). The gateway is the subnet router's EUI-64 link-local from
+        # virtual-router-mac 00:00:17:cf:07:24. Static, because accept_ra=0 once
+        # Docker enables forwarding, so the RA-derived address never renews and
+        # would expire after ~2.5h.
+        ipv6_address: 2603:c020:802e:5f01:0:876f:f045:3504
+        ipv6_gateway: fe80::200:17ff:fecf:724
+        # Portainer agent: this host is the "codey" environment.
+        portainer_agent_service_host: a.codey.lehel.xyz
+        portainer_agent_name: codey
+        # Restic identity is pinned: it defaults to inventory_hostname, and this
+        # host took over the name the OLD box used, whose snapshots live under
+        # backup/codey.lehel.xyz/. Same repo path + same password would put two
+        # machines in one repository, where either side's forget/prune can delete
+        # the other's snapshots. Keep the path this host actually backs up into.
+        restic_repo_name: oracle-codey.lehel.xyz
         domain: lehel.xyz
-        # Pinned to the IP on purpose (2026-11-17): DNS for codey.lehel.xyz now
-        # points at the Oracle replacement, so resolving this inventory host by
-        # name would silently target the NEW box while the playbook still
-        # believes it is the old one — and would deploy twice, since
-        # oracle-codey.lehel.xyz is listed separately. The alphavps box is
-        # reachable by IP only; this host entry is its rollback/removal handle.
-        ansible_host: 217.217.227.124
-        # codey also uses domain `lehel.xyz` (its public names are explicit records:
-        # code.lehel.xyz, h.code.lehel.xyz), so the traefik role's default would give
-        # codey's dashboard the same host as servy's. The `*.lehel.xyz` wildcard
-        # resolves every such name to servy, so codey's router was unreachable and
-        # duplicated servy's. Record created 2026-10-29: traefik.code CNAME
-        # codey.lehel.xyz.
         traefik_service_host: traefik.code.lehel.xyz
         with_docker: true
         with_containers: true
         has_extension_drive: false
         create_swap: true
-        swap_space_override: 5G  # 29GB root disk — 10G default swap was too large
-        ansible_user: root
+        # No Hetzner Storage Box *mount* here (restic reaches it over SFTP).
+        skip_storagebox: true
         services_enabled:
           traefik: true
           opencode:
@@ -119,64 +135,40 @@ prod:
             dns_expose: true           # Create explicit DNS entry in Porkbun
           opencode-authgate: true
           portainer-agent: true
-          # DevHub — RETIRED 2026-11-17 as part of the codey → Oracle move.
-          # dachrisch/devhub is published amd64-only, so it cannot run on the
-          # A1 replica (aarch64) and would be the one service left behind on
-          # codey. Deactivated here instead of migrated. The container and its
-          # devhub_sqlite_data volume are stopped but NOT deleted, so this is
-          # reversible by flipping the flag back and redeploying.
-          # h.code.lehel.xyz now has no backend (dead record).
+          # Retired 2026-11-17: dachrisch/devhub is published amd64-only and
+          # cannot run on the A1's aarch64 kernel. Container and its
+          # devhub_sqlite_data volume are stopped, not deleted.
           devhub: false
           claude-hub: false
 
-    # Oracle Always Free A1 (aarch64) instance created by
-    # scripts/provision-oracle-codey.sh — a server-level replica of
-    # codey.lehel.xyz, intended to take over codey's role once verified.
+    # The retired alphavps box that used to BE codey. Kept in the inventory only
+    # as a rollback/removal handle: DNS no longer points here (reachable by IP),
+    # and `a.codey.lehel.xyz` now resolves to the Oracle box, so its Portainer
+    # agent is no longer reachable by name either.
     #
-    # Two host-specific differences from codey.lehel.xyz:
-    #   * The Oracle Ubuntu image boots with only the `ubuntu` user and no root
-    #     login, so the system play connects as `ubuntu` (NOPASSWD sudo) and
-    #     then creates `cda` exactly as it does everywhere else.
-    #   * There is no Hetzner Storage Box reachable from Oracle, so the
-    #     storagebox mount and its restic target are skipped.
-    oracle-codey.lehel.xyz:
-        ansible_host: 138.2.180.191
-        # Without IdentitiesOnly the local ssh-agent offers every key it holds
-        # and sshd drops the connection with "Too many authentication
-        # failures" (MaxAuthTries) before reaching the one that is authorized.
-        ansible_ssh_common_args: '-o IdentitiesOnly=yes'
-        # IPv6 from the VCN's /56 (scripts/provision-oracle-codey.sh prints both
-        # values). The gateway is the subnet router's EUI-64 link-local from
-        # virtual-router-mac 00:00:17:cf:07:24. Static, because accept_ra=0 once
-        # Docker enables forwarding, so the RA-derived address never renews.
-        ipv6_address: 2603:c020:802e:5f01:0:876f:f045:3504
-        ipv6_gateway: fe80::200:17ff:fecf:724
-        # Portainer agent: its own name and route, so the master (servy) can
-        # register this host as a second environment alongside codey. Recorded
-        # directly as A + AAAA like a.codey.lehel.xyz.
-        portainer_agent_service_host: a.codacle.lehel.xyz
-        portainer_agent_name: codacle
+    # Renamed from `codey.lehel.xyz` when the role moved, because two inventory
+    # hosts cannot share a name — and resolving it by DNS would have hit the
+    # Oracle box twice.
+    alphavps:
+        ansible_host: 217.217.227.124
+        ansible_user: root
+        # Keep its existing backup lineage: its snapshots are already under
+        # backup/codey.lehel.xyz/ from before the rename.
+        restic_repo_name: codey.lehel.xyz
         domain: lehel.xyz
-        root_user: ubuntu
-        # Parallel name while codey keeps serving code.lehel.xyz. codacle is
-        # recorded explicitly in Porkbun (A + AAAA) because the *.lehel.xyz
-        # wildcard points at servy, so an unrecorded name never reaches here.
         traefik_service_host: traefik.code.lehel.xyz
         with_docker: true
         with_containers: true
         has_extension_drive: false
         create_swap: true
-        skip_storagebox: true
+        swap_space_override: 5G  # 29GB root disk — 10G default swap was too large
         services_enabled:
           traefik: true
           opencode:
             enabled: true
-            dns_short_name: "code"     # Canonical name (code.lehel.xyz)
-            dns_expose: true           # Create explicit DNS entry in Porkbun
+            dns_short_name: "code"
+            dns_expose: true
           opencode-authgate: true
           portainer-agent: true
-          # devhub is disabled until it has an arm64 image: dachrisch/devhub is
-          # published amd64-only (checked 2026-11-17 against the registry
-          # manifest), so it cannot start on the A1's aarch64 kernel.
           devhub: false
           claude-hub: false
