@@ -103,3 +103,9 @@ system_probe_storagebox_threshold_pct: 50
 # which skips services tagged `manual`). Container names are resolved at deploy time
 # from each service's docker-compose.yml, mirroring check_docker_compose.sh.j2.
 system_probe_docker_local_dir: "{{ docker.local_dir }}"
+
+# The template also iterates `docker_backend_services` (plays/vars/default.yml):
+# backend-only services with no Traefik router / no public name, which must not
+# appear in `docker.services` because that list also drives Pi-hole DNS,
+# test_host.sh URLs and servyy-test /etc/hosts. Consume it with `| default([])`
+# so hosts and molecule scenarios that do not define it keep rendering.

@@ -238,6 +238,12 @@ ANOTHER_VAR={{ another_value }}
   2026-10-10: it runs on codey, the probe runs on servy, and the stale
   entry kept firing `container_not_running` for `opencode.web`).
   Codey-only/test-only DNS goes to `ansible/servyy.yml` `testing.extra_hosts`.
+- `ansible/plays/vars/default.yml` → `docker_backend_services[]` — services the
+  container-health probe must watch that must NOT be in `docker.services`
+  (backend-only, no Traefik router: `shared`). `docker.services` also creates
+  Pi-hole DNS, `test_host.sh` URLs and servyy-test `/etc/hosts`, so a
+  backend-only service listed there gets a name with no router behind it: the
+  ping check gets a 404 and can never pass.
 - `ansible/plays/roles/user/tasks/docker_extras.yml` → `forall_docker_services.sh`
   hardcoded list (`- {dir: service-name}`).
 - Secrets block in `ansible/plays/vars/secrets.yml` (if needed):
@@ -421,12 +427,16 @@ roles:
 - [ ] `ansible/plays/vars/secrets.yml`: remove the `docker.services[]` entry
   (probe/dns/host_ping/testing hosts) + `ansible/servyy.yml`
   `testing.extra_hosts` entry if one was added
+- [ ] `ansible/plays/vars/default.yml`: remove the `docker_backend_services[]`
+  entry (otherwise `backend_container_not_running` alerts forever for a service
+  nothing deploys)
 - [ ] `ansible/plays/roles/user/tasks/docker_extras.yml`: remove from the
   `forall_docker_services.sh` list
 - [ ] `docker rm -f <project>.<svc>` orphans + compose `--remove-orphans` deploy
   (or `ansible-playbook plays/remove_service.yml -e "target_host=..."`)
 - [ ] Redeploy probes: `--tags "system.probe"` (PUT semantics drop retired series)
-- [ ] Grafana: no `system_container_running{name="<removed>.*"}`, `container_not_running` OK
+- [ ] Grafana: no `system_container_running{name="<removed>.*"}` and the rule for its
+  tier OK (`container_not_running` for app, `backend_container_not_running` for backend)
 - [ ] DNS/TLS: remove dead A records + Traefik routers if service was exposed
 - [ ] Docs: update `.claude/skills/check-server-status/SKILL.md` enabled-services table
 

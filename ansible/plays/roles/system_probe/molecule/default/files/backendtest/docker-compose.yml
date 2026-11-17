@@ -1,0 +1,6 @@
+services:
+  mongo:
+    # ${COMPOSE_PROJECT_NAME} on purpose: the probe must resolve it to the
+    # directory name, exactly as it does for shared.mongo.
+    container_name: ${COMPOSE_PROJECT_NAME}.mongo
+    image: mongo:9.0.8

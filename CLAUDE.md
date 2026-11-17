@@ -439,6 +439,9 @@ git status | grep "deleted:" # Verify removal
 # Checklist for the full list:
 # - ansible/plays/user.yml: docker_service role invocation
 # - ansible/plays/vars/secrets.yml: docker.services[] entry + secrets block
+# - ansible/plays/vars/default.yml: docker_backend_services[] entry (probe-only
+#   backend services; otherwise backend_container_not_running alerts forever for
+#   a service nothing deploys)
 # - ansible/plays/roles/user/tasks/docker_extras.yml: forall list entry
 # - ansible/servyy.yml: testing.extra_hosts entry (if added)
 # - ansible/testing: services_enabled entry (if present)
@@ -464,7 +467,8 @@ cd ansible && ./servyy.sh --limit servy.lehel.xyz --tags "system.probe"
 # Verify in output:
 # - Service role should be skipped (when condition: service not in enabled list)
 # - No "Deploy {service}" task should run
-# - Grafana: no system_container_running{name="{service}.*"}, container_not_running OK
+# - Grafana: no system_container_running{name="{service}.*"} and the rule for its
+#   tier Normal (container_not_running for app, backend_container_not_running for backend)
 ```
 
 ### Recovery (if needed)
@@ -1051,6 +1055,12 @@ stale alerts):
   here (e.g. `opencode` was removed 2026-10-10 — it runs on codey while
   the probe runs on servy); put test-only DNS in `ansible/servyy.yml`
   `testing.extra_hosts` instead.
+- `ansible/plays/vars/default.yml` → `docker_backend_services[]` (`- {dir}`):
+  services the container-health probe must watch that must NOT be in
+  `docker.services` (backend-only, no Traefik router: `shared`). That list
+  also creates Pi-hole DNS, `host_ping.yml` URLs and testing `/etc/hosts`,
+  so a backend-only service there gets a name with no router behind it: the
+  ping check gets a 404 and can never pass.
 - `ansible/plays/roles/user/tasks/docker_extras.yml` → `forall_docker_services.sh` list.
 - Secrets block in `ansible/plays/vars/secrets.yml` + env template under
   `ansible/plays/roles/docker_service/templates/<service>/` if needed.

@@ -72,3 +72,50 @@
       assert:
         that:
           - "'probetest.app' in (container_script.content | b64decode)"
+
+    - name: Assert backend service resolved from its compose file
+      assert:
+        that:
+          - "'backendtest.mongo' in (container_script.content | b64decode)"
+
+    - name: Assert both tiers are emitted
+      assert:
+        that:
+          - >-
+            'check_container "probetest.app" "probetest" "app"'
+            in (container_script.content | b64decode)
+          - >-
+            'check_container "backendtest.mongo" "backendtest" "backend"'
+            in (container_script.content | b64decode)
+
+    - name: Assert the health metric is declared
+      assert:
+        that:
+          - "'# TYPE system_container_healthy gauge' in (container_script.content | b64decode)"
+
+    # The asserts above pass even if the emission path itself is broken (both
+    # printf lines deleted, or the inspect --format mangled so every container
+    # reports 0). Pin the format strings and the health branch of the --format.
+    - name: Assert the emission path is intact
+      assert:
+        that:
+          - "'system_container_healthy{name=\"%s\",service=\"%s\",tier=\"%s\"}' in (container_script.content | b64decode)"
+          - "'system_container_running{name=\"%s\",service=\"%s\",tier=\"%s\"}' in (container_script.content | b64decode)"
+          # Concatenated on purpose: a literal `{{` inside a conditional string
+          # is itself parsed as an embedded template (deprecated in 2.20).
+          - "('{' ~ '{if .State.Health}' ~ '}') in (container_script.content | b64decode)"
+          # Distinctive fragment of the running-branch printf only: the plain
+          # `system_container_running{name="%s",…}` needle above also matches the
+          # stopped-branch printf, so deleting one of the two stayed invisible.
+          - "'tier=\"%s\"} 1' in (container_script.content | b64decode)"
+          # The healthcheck-less fallback: without it, images with no healthcheck
+          # parse as "unhealthy" and container_unhealthy fires for all of them.
+          - "('{' ~ '{else}}none{' ~ '{end}}') in (container_script.content | b64decode)"
+          - "'.State.Health.Status' in (container_script.content | b64decode)"
+          # Without the `none` arm every image that declares no healthcheck is
+          # parsed as unhealthy and container_unhealthy fires for all of them.
+          - "'healthy|none) healthy=1' in (container_script.content | b64decode)"
+          # Distinctive fragment of the stopped-branch printf: deleting it makes
+          # a stopped container emit no series at all, which the not-running rule
+          # resolves to Normal (noDataState: OK) instead of firing.
+          - "'tier=\"%s\"} 0' in (container_script.content | b64decode)"

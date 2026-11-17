@@ -25,6 +25,9 @@
     docker:
       services:
         - dir: probetest
+    # Backend-only services: watched by the probe, never exposed via DNS/ping.
+    docker_backend_services:
+      - dir: backendtest
     system_probe_docker_local_dir: "{{ playbook_dir }}/files"
   tasks:
     - name: Run system_probe role  # noqa: role-name[path]
