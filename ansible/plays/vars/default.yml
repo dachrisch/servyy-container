@@ -65,7 +65,8 @@ docker_proxy_ipv4_subnet: "172.18.0.0/16"
 # Container-health probe: services to watch that must NEVER be listed in
 # `docker.services`. That list also creates Pi-hole DNS records, test_host.sh
 # URLs and servyy-test /etc/hosts entries — all of which assume a public
-# {dir}.{domain} endpoint. shared has no Traefik router and no name at all.
+# {dir}.{domain} endpoint. shared has no Traefik router: a name for it would
+# resolve and then 404, so its ping check could never pass.
 # Consumed only by system_probe/templates/system_container_health.sh.j2.
 # See history/2026-11-17_shared-service-monitoring.md.
 docker_backend_services:
