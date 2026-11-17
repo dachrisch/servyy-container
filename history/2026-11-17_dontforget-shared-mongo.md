@@ -92,8 +92,11 @@ rehearsed on production without touching the live db instead.
 
 ```bash
 cd ansible
-./servyy.sh --tags "user.docker.repo,user.docker.shared,user.docker.dontforget" --limit lehel.xyz
+./servyy.sh --tags "user.docker.repo,user.docker.shared,user.docker.dontforget" --limit servy.lehel.xyz
 ```
+
+`--limit` takes the INVENTORY name (`servy.lehel.xyz`), not the SSH alias
+`lehel.xyz`: the alias matches no host, so the run silently does nothing.
 
 Each tag is load-bearing (Ansible tag matching is exact, not hierarchical):
 
