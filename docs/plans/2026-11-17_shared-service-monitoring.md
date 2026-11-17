@@ -25,8 +25,8 @@ Docker healthchecks, Pushgateway (PUT semantics), Grafana file provisioning
 ## Current state (verified on servy 2026-11-17)
 
 - `shared.mongo` (mongo:9.0.8), `shared.redis` (valkey 9), `shared.db`
-  (postgres 15) serve leagues-finance, queen **and** dontforget since
-  2026-11-17 (`history/2026-11-17_dontforget-shared-mongo.md`).
+  (postgres 15) serve leagues-finance, finance (Firefly), queen **and**
+  dontforget since 2026-11-17 (`history/2026-11-17_dontforget-shared-mongo.md`).
 - The container-health probe is built from `docker.services`
   (`ansible/plays/vars/secrets.yml:68`), which contains **no `shared` entry and
   no `dontforget` entry** — neither has ever been probed. The deployed script
@@ -96,7 +96,7 @@ Docker healthchecks, Pushgateway (PUT semantics), Grafana file provisioning
    Pushgateway keeps serving the last pushed value until the next PUT. A `for:`
    below 10 min therefore lets a single bad push page; 10 min covers the typical
    gap and absorbs one bad push unless the next one is also ~10 min late. The
-   price is time-to-page: a real stop pages 11–20 min later. Shorter is not
+   price is time-to-page: a real stop pages 10–20 min later. Shorter is not
    defensible without a second confirmation source.
 8. **`system_container_healthy` counts `starting` as unhealthy.** The Docker
    healthcheck has not passed yet, so "answering" is not established; the 10 min
@@ -385,7 +385,7 @@ alone), in `monitor/provisioning/alerting/alert-rules.yml` around `:1876`:
 
 ```yaml
       # CRITICAL, where a single app container is MEDIUM above: `shared` is the
-      # data layer for leagues-finance, queen and dontforget — one dead
+      # data layer for leagues-finance, finance (Firefly), queen and dontforget — one dead
       # container takes all three down. Selects on tier, so future backend
       # services (a second db, a queue) are covered without touching this rule.
       - uid: backend_container_not_running
@@ -430,12 +430,12 @@ alone), in `monitor/provisioning/alerting/alert-rules.yml` around `:1876`:
         # a phantom 0 stays visible for up to that whole gap. 10m covers the
         # typical gap and absorbs one bad push unless the next one is also ~10
         # min late (the retry handles a failed inspect, not a wrong push). Cost:
-        # a real stop pages 11-20 min later (0-10 min to the next push, then the
+        # a real stop pages 10-20 min later (0-10 min to the next push, then the
         # 10 min of `for`).
         for: 10m
         annotations:
           summary: 'Backend container {{ $labels.name }} is not running'
-          description: 'Container {{ $labels.name }} (service {{ $labels.service }}) is not running. The shared data layer backs leagues-finance, queen and dontforget: expect errors in all of them until it is back. Check `docker logs --tail 50 {{ $labels.name }}` for the exit reason and `docker inspect {{ $labels.name }}` for the exit code / OOMKilled flag.'
+          description: 'Container {{ $labels.name }} (service {{ $labels.service }}) is not running. The shared data layer backs leagues-finance, finance (Firefly), queen and dontforget: expect errors in all of them until it is back. Check `docker logs --tail 50 {{ $labels.name }}` for the exit reason and `docker inspect {{ $labels.name }}` for the exit code / OOMKilled flag.'
         labels:
           severity: critical
         missingSeriesEvalsToResolve: 3
@@ -506,10 +506,10 @@ alone), in `monitor/provisioning/alerting/alert-rules.yml` around `:1876`:
 Same shape, placed directly after `container_unhealthy`:
 
 ```yaml
-      # CRITICAL, mirroring the down / not-running pairing above: the shared
+      # CRITICAL, mirroring the not-running / unhealthy pairing above: the shared
       # healthchecks are protocol level (mongosh ping, valkey-cli ping,
       # pg_isready), so "unhealthy for 10 minutes" means the data layer is not
-      # answering for leagues-finance, queen and dontforget - the same blast
+      # answering for leagues-finance, finance (Firefly), queen and dontforget - the same blast
       # radius as a stopped container, hence the same severity. The app-tier
       # equivalent above stays MEDIUM: a single app that is up but degraded is
       # not host-fatal.
@@ -552,7 +552,7 @@ Same shape, placed directly after `container_unhealthy`:
         for: 10m
         annotations:
           summary: 'Backend container {{ $labels.name }} is unhealthy'
-          description: 'The shared data layer (service {{ $labels.service }}) has been answering its healthcheck as unhealthy for 10+ minutes, so leagues-finance, queen and dontforget are erroring against it. It is still running - this is "up but not answering". Run `docker inspect {{ $labels.name }}` and read State.Health.Log; the container keeps running while unhealthy, so a restart is the usual fix.'
+          description: 'The shared data layer (service {{ $labels.service }}) has been reported unhealthy by its own healthcheck for 10+ minutes (or has not finished starting), so leagues-finance, finance (Firefly), queen and dontforget are erroring against it. It is still running - "up but not answering". Read State.Health.Log via `docker inspect {{ $labels.name }}` before restarting it; an unclean mongo shutdown costs recovery time.'
         labels:
           severity: critical
         missingSeriesEvalsToResolve: 3
@@ -627,7 +627,7 @@ and in the removal checklist, next to the `docker.services[]` line:
 probe as tier="backend", no public name)`.
 
 **Step 3:** Write `history/2026-11-17_shared-service-monitoring.md` with:
-problem (shared in no probe list; `running` ≠ `healthy`; three apps behind one
+problem (shared in no probe list; `running` ≠ `healthy`; four apps behind one
 data layer), what changed (the probe template + `docker_backend_services` + the
 alert rules, the metric schema with the `tier` label), the verification evidence
 from Task 4, rollback (`git revert` + `--tags system.probe` +
