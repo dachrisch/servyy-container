@@ -1,0 +1,55 @@
+# Static IPv6 for hosts on a VCN that has an IPv6 prefix.
+#
+# Why static and not just accept the router advertisement: OCI does deliver the
+# address and default route by RA, but Docker sets
+# net.ipv6.conf.*.forwarding=1, which leaves accept_ra=0. The RA-derived address
+# and route then carry expiry timers and are never renewed (measured on
+# oracle-codey: the default route expired in ~2.5h), so IPv6 dies silently and
+# does not come back after a reboot. Pinning the address and the VCN virtual
+# router as the gateway makes the host independent of RA entirely.
+#
+# Required host vars (set in ansible/production):
+#   ipv6_address  e.g. 2603:c020:802e:5f01:0:876f:f045:3504
+#   ipv6_gateway  the subnet router's EUI-64 link-local, e.g.
+#                 fe80::200:17ff:fecf:724
+# Optional:
+#   ipv6_interface  defaults to the default IPv4 interface (enp0s6 on OCI)
+#
+# The gateway is the EUI-64 of the subnet's virtual-router-mac, which is stable
+# for the life of the subnet: MAC 00:00:17:cf:07:24 -> fe80::200:17ff:fecf:724.
+- name: Deploy static IPv6 netplan config
+  ansible.builtin.copy:
+    dest: /etc/netplan/60-ipv6.yaml
+    owner: root
+    group: root
+    mode: '0600'
+    content: |
+      network:
+        version: 2
+        ethernets:
+          {{ ipv6_interface | default(ansible_facts['default_ipv4']['interface']) }}:
+            accept-ra: false
+            addresses:
+              - {{ ipv6_address }}/128
+            routes:
+              - to: "::/0"
+                via: "{{ ipv6_gateway }}"
+                on-link: true
+  register: ipv6_netplan
+  tags:
+    - system.ipv6
+
+- name: Validate netplan config
+  ansible.builtin.command:
+    cmd: netplan generate
+  changed_when: false
+  when: ipv6_netplan is changed
+  tags:
+    - system.ipv6
+
+- name: Apply netplan
+  ansible.builtin.command:
+    cmd: netplan apply
+  when: ipv6_netplan is changed
+  tags:
+    - system.ipv6

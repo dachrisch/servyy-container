@@ -24,6 +24,12 @@
     - system.swap
   when: create_swap | default(false)
 
+# Only hosts whose VCN carries an IPv6 prefix; see tasks/ipv6.yml.
+- import_tasks: ipv6.yml
+  tags:
+    - system.ipv6
+  when: ipv6_address is defined
+
 - import_tasks: monit.yml
   tags:
     - system.monit

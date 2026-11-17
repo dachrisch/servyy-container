@@ -112,8 +112,64 @@ prod:
             dns_expose: true           # Create explicit DNS entry in Porkbun
           opencode-authgate: true
           portainer-agent: true
-          # DevHub — generic docker_service (must be `true`, not a dict, so it is
-          # picked up by the user.yml docker_service block). Exposed at
-          # h.code.lehel.xyz via Porkbun A/AAAA records → codey (217.217.227.124).
-          devhub: true
+          # DevHub — RETIRED 2026-11-17 as part of the codey → Oracle move.
+          # dachrisch/devhub is published amd64-only, so it cannot run on the
+          # A1 replica (aarch64) and would be the one service left behind on
+          # codey. Deactivated here instead of migrated. The container and its
+          # devhub_sqlite_data volume are stopped but NOT deleted, so this is
+          # reversible by flipping the flag back and redeploying.
+          # h.code.lehel.xyz now has no backend (dead record).
+          devhub: false
+          claude-hub: false
+
+    # Oracle Always Free A1 (aarch64) instance created by
+    # scripts/provision-oracle-codey.sh — a server-level replica of
+    # codey.lehel.xyz, intended to take over codey's role once verified.
+    #
+    # Two host-specific differences from codey.lehel.xyz:
+    #   * The Oracle Ubuntu image boots with only the `ubuntu` user and no root
+    #     login, so the system play connects as `ubuntu` (NOPASSWD sudo) and
+    #     then creates `cda` exactly as it does everywhere else.
+    #   * There is no Hetzner Storage Box reachable from Oracle, so the
+    #     storagebox mount and its restic target are skipped.
+    oracle-codey.lehel.xyz:
+        ansible_host: 138.2.180.191
+        # Without IdentitiesOnly the local ssh-agent offers every key it holds
+        # and sshd drops the connection with "Too many authentication
+        # failures" (MaxAuthTries) before reaching the one that is authorized.
+        ansible_ssh_common_args: '-o IdentitiesOnly=yes'
+        # IPv6 from the VCN's /56 (scripts/provision-oracle-codey.sh prints both
+        # values). The gateway is the subnet router's EUI-64 link-local from
+        # virtual-router-mac 00:00:17:cf:07:24. Static, because accept_ra=0 once
+        # Docker enables forwarding, so the RA-derived address never renews.
+        ipv6_address: 2603:c020:802e:5f01:0:876f:f045:3504
+        ipv6_gateway: fe80::200:17ff:fecf:724
+        # Portainer agent: its own name and route, so the master (servy) can
+        # register this host as a second environment alongside codey. Recorded
+        # directly as A + AAAA like a.codey.lehel.xyz.
+        portainer_agent_service_host: a.codacle.lehel.xyz
+        portainer_agent_name: codacle
+        domain: lehel.xyz
+        root_user: ubuntu
+        # Parallel name while codey keeps serving code.lehel.xyz. codacle is
+        # recorded explicitly in Porkbun (A + AAAA) because the *.lehel.xyz
+        # wildcard points at servy, so an unrecorded name never reaches here.
+        traefik_service_host: traefik.codacle.lehel.xyz
+        with_docker: true
+        with_containers: true
+        has_extension_drive: false
+        create_swap: true
+        skip_storagebox: true
+        services_enabled:
+          traefik: true
+          opencode:
+            enabled: true
+            dns_short_name: "codacle"  # Parallel name (codacle.lehel.xyz)
+            dns_expose: true           # Create explicit DNS entry in Porkbun
+          opencode-authgate: true
+          portainer-agent: true
+          # devhub is disabled until it has an arm64 image: dachrisch/devhub is
+          # published amd64-only (checked 2026-11-17 against the registry
+          # manifest), so it cannot start on the A1's aarch64 kernel.
+          devhub: false
           claude-hub: false
