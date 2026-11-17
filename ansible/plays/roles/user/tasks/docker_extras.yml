@@ -116,26 +116,39 @@
   tags:
     - user.docker.waggle
 
-- name: Resolve codey.lehel.xyz addresses for OpenCode SSH key restriction
-  ansible.builtin.set_fact:
-    opencode_codey_ipv4: "{{ lookup('dig', 'codey.lehel.xyz', 'qtype=A') }}"
-    opencode_codey_ipv6: "{{ lookup('dig', 'codey.lehel.xyz', 'qtype=AAAA') }}"
-  tags:
-    - user.docker.opencode
-    - user.ssh.opencode
-
-- name: Authorize OpenCode container SSH key (scoped to local docker networks + codey.lehel.xyz)
+# The OpenCode container runs on the opencode host (codey.lehel.xyz) and reaches
+# this host over the public internet, so its key is scoped to that host's
+# addresses plus the local docker networks. Those addresses used to come from a
+# deploy-time `dig` of codey.lehel.xyz, which pinned them to whatever DNS said
+# on the day of the last deploy: after the 2026-11-17 Oracle cutover the live
+# host was 138.2.180.191 while the deployed allow-list still held the retired
+# VPS (217.217.227.124), so `ssh servy.lehel.xyz` from inside the container
+# failed with "Permission denied (publickey)" and the check-server-status skill
+# could not run. Reading hostvars instead makes an address change a reviewed
+# inventory edit that lands in the same deploy, and any re-run repairs a stale
+# line.
+- name: Authorize OpenCode container SSH key (scoped to docker networks + the opencode host)
   ansible.posix.authorized_key:
     user: "{{ create_user }}"
     key: "{{ opencode.servy_ssh_pubkey }}"
-    key_options: >-
-      from="172.16.0.0/12,127.0.0.1{{
-      ',' + opencode_codey_ipv4 + '/32' if opencode_codey_ipv4 not in ['', 'NXDOMAIN'] else ''
-      }}{{
-      ',' + opencode_codey_ipv6 + '/128' if opencode_codey_ipv6 not in ['', 'NXDOMAIN'] else ''
-      }}"
+    key_options: 'from="{{ opencode_ssh_allowed_sources | join(",") }}"'
     comment: "opencode-container-servy"
     state: present
+  vars:
+    # Empty dict when codey is not in this inventory (e.g. `-i testing`), which
+    # leaves only the docker-network entries.
+    opencode_ssh_peer: "{{ hostvars['codey.lehel.xyz'] | default({}) }}"
+    opencode_ssh_peer_ipv4: "{{ opencode_ssh_peer.ansible_host | default('') }}"
+    opencode_ssh_peer_ipv6: "{{ opencode_ssh_peer.ipv6_address | default('') }}"
+    # Only IP literals are allowed through: a hostname (servyy-test.lxd uses its
+    # name as ansible_host) is not a valid `from=` pattern, and sshd would reject
+    # every connection rather than ignore it.
+    opencode_ssh_allowed_sources: >-
+      {{ ['172.16.0.0/12', '127.0.0.1']
+         + ([opencode_ssh_peer_ipv4 ~ '/32']
+            if opencode_ssh_peer_ipv4 is match('^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$') else [])
+         + ([opencode_ssh_peer_ipv6 ~ '/128']
+            if opencode_ssh_peer_ipv6 is match('^[0-9a-fA-F:]+$') else []) }}
   tags:
     - user.docker.opencode
     - user.ssh.opencode

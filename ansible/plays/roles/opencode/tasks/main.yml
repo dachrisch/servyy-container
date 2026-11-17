@@ -153,26 +153,53 @@
     owner: "{{ create_user }}"
     group: "{{ create_user }}"
   # Same root-owned file issue as the GitHub known_hosts task above.
+  #
+  # Deliberately still a repo-pinned constant: this is a DIFFERENT machine's key,
+  # so there is nothing local to read it from, and a keyscan would turn the pin
+  # into trust-on-first-use. A servy rebuild therefore stays an explicit repo
+  # change ("REMOTE HOST IDENTIFICATION HAS CHANGED" from the container) rather
+  # than silently accepting whatever answers.
   become: true
   become_user: root
   vars:
     opencode_known_hosts: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/known_hosts') | path_join }}"
 
-- name: Ensure codey.lehel.xyz is in known_hosts
+- name: Read this host's own ed25519 SSH host key
+  ansible.builtin.slurp:
+    src: /etc/ssh/ssh_host_ed25519_key.pub
+  register: opencode_own_host_key
+  become: true
+  become_user: root
+  tags: [user.docker.opencode, opencode.known_hosts]
+
+- name: Ensure this host's own key is in known_hosts
   ansible.builtin.lineinfile:
     path: "{{ opencode_known_hosts }}"
-    line: "codey.lehel.xyz ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEURPNKnc3F5o6cG7SqzttrBv9JjkmZxk3WnG71MPm4U"
+    regexp: '^{{ inventory_hostname | regex_escape }} '
+    line: >-
+      {{ inventory_hostname }}
+      {{ (opencode_own_host_key.content | b64decode).split()[0] }}
+      {{ (opencode_own_host_key.content | b64decode).split()[1] }}
     create: true
     mode: '0600'
     owner: "{{ create_user }}"
     group: "{{ create_user }}"
-  # opencode runs on codey.lehel.xyz itself; this lets the container reach its
-  # own host via id_servy (already authorized there) for host-level tasks it
-  # can't do from inside its own container, same as the servy.lehel.xyz entry above.
+  # opencode runs on this host itself; this lets the container reach its own
+  # host via id_servy (already authorized there) for host-level tasks it can't
+  # do from inside its own container, same as the servy.lehel.xyz entry above.
+  #
+  # Pinned from the host's OWN /etc/ssh key rather than the repo, because the
+  # hardcoded constant went stale the moment the codey role moved to a new
+  # machine (2026-11-17 Oracle cutover): the container then hit "REMOTE HOST
+  # IDENTIFICATION HAS CHANGED" for codey.lehel.xyz — and that is the exact name
+  # the check-server-status skill ssh's to. `regexp` (not a bare `line`) is what
+  # repairs an existing stale entry: without it lineinfile would append a second
+  # line and the old key would keep winning the mismatch check.
   become: true
   become_user: root
   vars:
     opencode_known_hosts: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/known_hosts') | path_join }}"
+  tags: [user.docker.opencode, opencode.known_hosts]
 
 - name: Ensure SERVICE_ROOT_HOST is set in OpenCode .env
   ansible.builtin.lineinfile:
