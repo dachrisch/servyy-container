@@ -154,7 +154,7 @@ prod:
         # Parallel name while codey keeps serving code.lehel.xyz. codacle is
         # recorded explicitly in Porkbun (A + AAAA) because the *.lehel.xyz
         # wildcard points at servy, so an unrecorded name never reaches here.
-        traefik_service_host: traefik.codacle.lehel.xyz
+        traefik_service_host: traefik.code.lehel.xyz
         with_docker: true
         with_containers: true
         has_extension_drive: false
@@ -164,7 +164,7 @@ prod:
           traefik: true
           opencode:
             enabled: true
-            dns_short_name: "codacle"  # Parallel name (codacle.lehel.xyz)
+            dns_short_name: "code"     # Canonical name (code.lehel.xyz)
             dns_expose: true           # Create explicit DNS entry in Porkbun
           opencode-authgate: true
           portainer-agent: true
