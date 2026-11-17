@@ -644,11 +644,16 @@
     # All three public URLs derive from service_host, so moving the instance to
     # another hostname is an inventory change here — but it also invalidates
     # every provider OAuth callback and requires reconnecting the accounts.
+    #
+    # compose_pull: always — the compose file tracks `latest`, so the deploy is
+    # what advances the version. Without it the role's `missing` default would
+    # quietly keep the first pulled `latest` forever.
     - role: docker_service
       vars:
         service_dir: waggle
         service_name: waggle
         service_host: "{{ waggle_service_host | default('waggle.bumbleflies.de') }}"
+        compose_pull: always
         env_templates:
           - src: waggle.env.j2
             dest: .env

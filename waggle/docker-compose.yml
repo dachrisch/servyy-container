@@ -11,16 +11,22 @@
 # would create a missing bind source as root, and the container could not
 # write its database.
 #
-# Image is pinned per release, NOT `latest`: this container holds scheduled
-# posts and the encryption key thaws provider tokens, so a bump is a deploy
-# decision. No watchtower label (scope=prod), so nothing updates it unattended.
+# Image tracks `latest` (operator request, 2026-11-17), but nothing updates it
+# unattended: there is no watchtower label (scope=prod) and the deploy role is
+# told to pull on every run, so the tag only moves when someone deploys. A
+# deploy therefore IS the upgrade decision, and it is not free to undo: startup
+# applies the app's migrations, and an older binary can fail to read a newer
+# schema — rolling back means restoring the matching database backup too.
 name: waggle
 
 services:
   openpost:
-    # Release tags: https://github.com/getopenpost/openpost/releases
-    # Bump OPENPOST_VERSION in the env template (or here) and redeploy.
-    image: ghcr.io/getopenpost/openpost:${OPENPOST_VERSION:-v7.39.0}
+    # `latest` by operator request; release notes:
+    # https://github.com/getopenpost/openpost/releases
+    # `compose_pull: always` in user.yml is what makes this tag actually move —
+    # the role's otherwise-default `missing` policy would keep the first pulled
+    # `latest` forever, which looks the same but silently stops upgrading.
+    image: ghcr.io/getopenpost/openpost:latest
     container_name: ${COMPOSE_PROJECT_NAME}.openpost
     restart: unless-stopped
     env_file: .env

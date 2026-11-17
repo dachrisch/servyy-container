@@ -9,6 +9,11 @@
     # Opt-in image rebuild for services whose image is built from the repo
     # itself (moodle). Default is `omit`, i.e. compose's own `missing` policy, so
     # every pre-built-image service behaves exactly as before.
+    # See the `build` note: `omit` keeps compose's own `missing` policy for
+    # every other service. Services on a moving tag (waggle's `latest`) opt in
+    # to `always`, so a deploy actually picks up the newer image instead of
+    # reusing the tag already in the local store.
+    pull: "{{ compose_pull | default(omit) }}"
     build: "{{ compose_build | default(omit) }}"
     state: present
   tags: [molecule-notest]
