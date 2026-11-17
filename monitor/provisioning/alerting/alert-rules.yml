@@ -2025,7 +2025,7 @@ groups:
         missingSeriesEvalsToResolve: 3
         isPaused: false
 
-      # CRITICAL, mirroring the down / not-running pairing above: the shared
+      # CRITICAL, mirroring the not-running / unhealthy pairing above: the shared
       # healthchecks are protocol level (mongosh ping, valkey-cli ping,
       # pg_isready), so "unhealthy for 10 minutes" means the data layer is not
       # answering for leagues-finance, queen and dontforget - the same blast
@@ -2068,10 +2068,12 @@ groups:
                     type: lt
         noDataState: OK
         execErrState: Error
+        # Time-to-page is the sibling's 11-20 min plus the ~2.5 min the shared
+        # healthcheck needs before it reports unhealthy at all.
         for: 10m
         annotations:
           summary: 'Backend container {{ $labels.name }} is unhealthy'
-          description: 'The shared data layer (service {{ $labels.service }}) has been answering its healthcheck as unhealthy for 10+ minutes, so leagues-finance, queen and dontforget are erroring against it. It is still running - this is "up but not answering". Run `docker inspect {{ $labels.name }}` and read State.Health.Log; the container keeps running while unhealthy, so a restart is the usual fix.'
+          description: 'The shared data layer (service {{ $labels.service }}) has been reported unhealthy by its own healthcheck for 10+ minutes (or has not finished starting), so leagues-finance, queen and dontforget are erroring against it. It is still running - "up but not answering". Read State.Health.Log via `docker inspect {{ $labels.name }}` before restarting it; an unclean mongo shutdown costs recovery time.'
         labels:
           severity: critical
         missingSeriesEvalsToResolve: 3
