@@ -439,6 +439,9 @@ git status | grep "deleted:" # Verify removal
 # Checklist for the full list:
 # - ansible/plays/user.yml: docker_service role invocation
 # - ansible/plays/vars/secrets.yml: docker.services[] entry + secrets block
+# - ansible/plays/vars/default.yml: docker_backend_services[] entry (probe-only
+#   backend services; otherwise backend_container_not_running alerts forever for
+#   a service nothing deploys)
 # - ansible/plays/roles/user/tasks/docker_extras.yml: forall list entry
 # - ansible/servyy.yml: testing.extra_hosts entry (if added)
 # - ansible/testing: services_enabled entry (if present)
@@ -1051,6 +1054,12 @@ stale alerts):
   here (e.g. `opencode` was removed 2026-10-10 — it runs on codey while
   the probe runs on servy); put test-only DNS in `ansible/servyy.yml`
   `testing.extra_hosts` instead.
+- `ansible/plays/vars/default.yml` → `docker_backend_services[]` (`- {dir}`):
+  services the container-health probe must watch that must NOT be in
+  `docker.services` (backend-only, no Traefik router: `shared`). That list
+  also creates Pi-hole DNS, `host_ping.yml` URLs and testing `/etc/hosts`,
+  so a backend-only service there produces a name that cannot resolve and a
+  ping check that can never pass.
 - `ansible/plays/roles/user/tasks/docker_extras.yml` → `forall_docker_services.sh` list.
 - Secrets block in `ansible/plays/vars/secrets.yml` + env template under
   `ansible/plays/roles/docker_service/templates/<service>/` if needed.
