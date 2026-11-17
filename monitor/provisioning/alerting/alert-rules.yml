@@ -1873,7 +1873,10 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
-              expr: system_container_running
+              # Backend containers have their own CRITICAL rule below
+              # (backend_container_down): a data-layer outage must not page
+              # twice for one container.
+              expr: system_container_running{tier!="backend"}
               intervalMs: 1000
               maxDataPoints: 43200
               refId: A
@@ -1910,6 +1913,111 @@ groups:
         # 2026-10-27 and the opencode probe entry both left a permanent
         # "Alerting" for a container that no longer exists). Resolve after 3
         # consecutive missing evaluations (~3m).
+        missingSeriesEvalsToResolve: 3
+        isPaused: false
+
+      # CRITICAL, where a single app container is MEDIUM above: `shared` is the
+      # data layer for leagues-finance, queen and dontforget — one dead
+      # container takes all three down. Selects on tier, so future backend
+      # services (a second db, a queue) are covered without touching this rule.
+      - uid: backend_container_down
+        title: Backend Container Down
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: system_container_running{tier="backend"}
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: lt
+        noDataState: OK
+        execErrState: Error
+        # 10m, not 1m: the probe pushes every 5 min with up to 5 min of
+        # RandomizedDelaySec, so `for` must span a full push gap or ONE bad push
+        # fires a critical on a phantom (the probe retries its inspect once, but
+        # the retry cannot help if the whole push was wrong). At 10m two
+        # consecutive pushes have to agree before anyone is paged.
+        for: 10m
+        annotations:
+          summary: 'Backend container {{ $labels.name }} is not running'
+          description: 'Container {{ $labels.name }} (service {{ $labels.service }}) is down. The shared data layer backs leagues-finance, queen and dontforget: expect errors in all of them until it is back. Check `docker logs {{ $labels.name }}` and the volume/mem_limit of that container.'
+        labels:
+          severity: critical
+        missingSeriesEvalsToResolve: 3
+        isPaused: false
+
+      # MEDIUM: running, but its own healthcheck says unhealthy. This is the
+      # gap the probe had until now: an unhealthy mongo keeps .State.Running
+      # true, so nothing fired while every consumer's queries failed. `for: 10m`
+      # because the shared containers need ~2.5min (5 x 30s) to be marked
+      # unhealthy at all, and because pushes are 5-10 min apart - a shorter
+      # window would page on a normal restart or a single bad push.
+      - uid: container_unhealthy
+        title: Container Unhealthy
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: system_container_healthy
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: lt
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: 'Container {{ $labels.name }} is unhealthy'
+          description: 'The container runs but its healthcheck has failed for 10 minutes (service {{ $labels.service }}). It keeps running while unhealthy - this is the difference between "up" and "answering". Run `docker inspect {{ $labels.name }}` and read State.Health.Log for the failing probe output.'
+        labels:
+          severity: medium
         missingSeriesEvalsToResolve: 3
         isPaused: false
 
