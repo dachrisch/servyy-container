@@ -172,8 +172,9 @@ registry instead — stop and investigate (tag mismatch / `--pull` behavior).
 - **Secrets** come from the Ansible-rendered env file on host (git-crypt in the
   repo). Don't hand-author `web.env`; copy the rendered one.
 - **Host port 27017 is free** since `job-search` was retired (2026-10-27) —
-  dontforget's mongo stays internal (no published port), so don't add a host
-  port mapping just because the port opened up.
+  dontforget has no mongo container at all since 2026-11-17 (its db is in
+  `shared.mongo`), so don't add a host port mapping just because the port
+  opened up.
 - **servyy-test IP can change** if the LXD container is recreated — re-derive
   `$IP` rather than caching it.
 - **Replacing** recreates only the app container; the db volume persists. Use

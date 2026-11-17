@@ -184,43 +184,6 @@
         - user.docker.leagues-finance
         - user.docker
 
-    # Same one-time MongoDB auth migration for dontforget (DBS-1820 fix).
-    - name: Check current dontforget mongo container
-      community.docker.docker_container_info:
-        name: dontforget.mongo
-      register: df_mongo_pre_auth_info
-      when: "'dontforget' in (services | default([]))"
-      tags:
-        - user.docker.dontforget
-        - user.docker
-
-    - name: Ensure dontforget MongoDB root user exists before auth is enforced
-      community.docker.docker_container_exec:
-        container: dontforget.mongo
-        argv:
-          - mongosh
-          - admin
-          - --quiet
-          - --eval
-          - >-
-            db.createUser({user: "{{ vault_dontforget_mongo_root_username }}",
-            pwd: "{{ vault_dontforget_mongo_root_password }}",
-            roles: [{role: "root", db: "admin"}]})
-      register: df_mongo_user_create
-      changed_when: df_mongo_user_create.rc == 0
-      failed_when: >-
-        df_mongo_user_create.rc != 0 and
-        'already exists' not in (df_mongo_user_create.stdout | default('') ~ df_mongo_user_create.stderr | default('')) and
-        'requires authentication' not in (df_mongo_user_create.stdout | default('') ~ df_mongo_user_create.stderr | default('')) and
-        'not authorized' not in (df_mongo_user_create.stdout | default('') ~ df_mongo_user_create.stderr | default(''))
-      when:
-        - "'dontforget' in (services | default([]))"
-        - df_mongo_pre_auth_info.container is defined
-        - df_mongo_pre_auth_info.container is not none
-      tags:
-        - user.docker.dontforget
-        - user.docker
-
     # One-time MongoDB 7 -> 8 upgrade prep (shares the mongo:8 image with dontforget).
     # Runs only while the container is still on a mongo:7 image: assert FCV is 7.0
     # (mongod 8 refuses to start on older FCV data) and dump into <service>/.backup/
@@ -323,17 +286,8 @@
         - user.docker.shared
         - user.docker
 
-    - name: Migrate dontforget mongo 8 -> 9 (dump/restore onto a new volume)
-      ansible.builtin.import_tasks: tasks/mongo9_migrate.yml
-      vars:
-        mongo9_name: dontforget
-        mongo9_project: dontforget
-        mongo9_container: dontforget.mongo
-        mongo9_legacy_volume: dontforget_mongo_data
-        mongo9_new_volume: dontforget_mongo9_data
-        mongo9_consumers: [dontforget.web]
-        mongo9_user: "{{ vault_dontforget_mongo_root_username }}"
-        mongo9_password: "{{ vault_dontforget_mongo_root_password }}"
+    - name: Move the dontforget db into shared mongo
+      ansible.builtin.import_tasks: tasks/dontforget_mongo_migrate.yml
       when: "'dontforget' in (services | default([]))"
       tags:
         - user.docker.dontforget
@@ -544,6 +498,26 @@
       when: "'shared' in (services | default([]))"
       tags: [user.docker, user.docker.shared]
 
+    # Dedicated, db-scoped users in shared.mongo. Runs directly after the shared
+    # role (so shared.mongo is up) and before every consumer role, so a consumer
+    # never starts against a user that does not exist yet.
+    # dontforget moved its db into shared.mongo on 2026-11-17 and holds no root
+    # grant: history/2026-11-17_dontforget-shared-mongo.md.
+    - role: shared_mongo_users
+      vars:
+        shared_mongo_users:
+          - name: "{{ vault_dontforget_mongo_username }}"
+            password: "{{ vault_dontforget_mongo_password }}"
+            database: dontforget
+            # readWrite: the app owns its collections and indexes.
+            # dbAdmin: collMod / index management for its schema migrations.
+            # Both are scoped to the `dontforget` db only.
+            roles: [readWrite, dbAdmin]
+      when:
+        - "'shared' in (services | default([]))"
+        - "'dontforget' in (services | default([]))"
+      tags: [user.docker, user.docker.shared, user.docker.dontforget]
+
     - role: docker_service
       vars:
         service_dir: leagues-finance
@@ -593,8 +567,9 @@
       when: "'thore' in (services | default([]))"
       tags: [user.docker, user.docker.sproutlings]
 
-    # dontforget — one app container (serves the API and the built
-    # frontend from a single image) + an internal-only mongo container
+    # dontforget — one app container (serves the API and the built frontend from
+    # a single image). Its db is shared.mongo since 2026-11-17; the dedicated
+    # user is provisioned by the shared_mongo_users role above.
     - role: docker_service
       vars:
         service_dir: dontforget
