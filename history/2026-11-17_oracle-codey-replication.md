@@ -176,15 +176,16 @@ Two things worth remembering:
 
 ### Known Issues & Limitations
 
-- `codacle.lehel.xyz` no longer has a router (the host now serves the canonical
-  names), so it returns the catch-all. Its A/AAAA records and the
-  `traefik.codacle` CNAME are now dead; delete them or add an alias router.
-  `a.codacle.lehel.xyz` must STAY — it is the Portainer agent's registered URL.
-- No restic backup target configured on this host (no Hetzner Storage Box from
-  Oracle). The old box still has one.
+- The Oracle machine's OS hostname is still `oracle-codey` (deliberate: renaming
+  it changes the restic `host` tag, which the forget/check scripts filter on).
+  It is what Portainer displays.
+- `codey_dev_checkouts` is NOT backed up (~6.6 G, rebuildable by
+  `provision-dev.sh`), so uncommitted work in `/root/dev` has no safety net.
 - The fleet-wide error-pages defect (catch-all requests return 502 instead of a
   themed 404) is visible on any hostname without a router, including
   `codey.lehel.xyz`. Pre-existing, unrelated to this work.
+- `codacle.lehel.xyz` has no explicit record; it still resolves via the
+  `*.lehel.xyz` wildcard to servy, like any unrecorded name.
 
 ## DNS cutover (2026-11-17)
 
@@ -210,8 +211,10 @@ Then the records were replaced:
 | `a.codacle` | A/AAAA → Oracle | unchanged — Portainer agent URL |
 
 `code` is deliberately a direct A/AAAA rather than a CNAME to `codey`, because
-`codey.lehel.xyz` must keep resolving to the old box: it is both the rollback
-target and the hostname Ansible and SSH use to reach it.
+at cutover time `codey.lehel.xyz` still pointed at the old box (it was both the
+rollback target and the Ansible/SSH identity). A CNAME would have dragged that
+identity along with the service name. `codey.lehel.xyz` was moved to Oracle in
+a second, separate step — see Completion below.
 
 Verified after propagation (Cloudflare, Google and Quad9 all returned the new
 v4+v6): UI 200 with a valid cert, `traefik.code` 401 (dashboard auth intact),
@@ -219,9 +222,78 @@ and from servy — where dontforget, groceries and queen actually run —
 `/api/model` with a valid key returns 200. The authgate/forwardAuth chain the
 consumers use is unchanged by the move.
 
-**Rollback:** re-point `code` at `217.217.227.124` /
-`2a01:8740:1:fa3::54ad` (TTL 300, so minutes). The old box was never
-decommissioned and still runs the full stack.
+## Completion (2026-11-17): names follow the role, the old box is retired
+
+**`codey.lehel.xyz` also moved to Oracle**, so the name follows the role rather
+than the machine. Final zone — every `code*` name resolves to the A1:
+
+| Name | → |
+|---|---|
+| `code.lehel.xyz` | Oracle (A + AAAA) |
+| `codey.lehel.xyz` | Oracle (A + AAAA) |
+| `a.codey.lehel.xyz` | Oracle (A + AAAA) — Portainer agent |
+| `traefik.code.lehel.xyz` | CNAME → `code` |
+| `codacle`, `a.codacle`, `traefik.codacle` | **deleted** |
+| `h.code.lehel.xyz` | deleted earlier (devhub retired) |
+
+**Inventory restructured**, because two hosts cannot share a name and resolving
+`codey.lehel.xyz` by DNS would have targeted Oracle twice:
+
+| Inventory host | ansible_host | Identifies |
+|---|---|---|
+| `codey.lehel.xyz` | 138.2.180.191 | the Oracle box (live) |
+| `alphavps` | 217.217.227.124 | the retired box |
+
+Verified by asking each host its own hostname (`codey.lehel.xyz` → `oracle-codey`,
+`alphavps` → `codey`), not by trusting the DNS record.
+
+**Restic repo paths had to be decoupled.** They default to `inventory_hostname`,
+so renaming Oracle to `codey.lehel.xyz` would have pointed it at
+`backup/codey.lehel.xyz/` — where the OLD box's snapshots live. Both hosts share
+`restic_password_root`, so they would have ended up in one repository where
+either side's `forget --prune` can delete the other's snapshots. Added a per-host
+`restic_repo_name` override; verified distinct:
+
+```
+codey.lehel.xyz -> backup/oracle-codey.lehel.xyz/restic-root
+alphavps        -> backup/codey.lehel.xyz/restic-root
+```
+
+**Portainer:** the `codacle` environment was deleted and `codey` now points at
+the Oracle agent. This needed care — both agents report the name `codey`, so
+Portainer looked correct while still talking to alphavps. Two things masked it:
+servy's cached DNS (waited out) and Portainer's persistent agent websocket
+(restarted the container). Settled by comparing **engine IDs**, not names:
+`1a320be2` = alphavps, `9b8d5741` = Oracle.
+
+**Restic added to the Oracle host** (home hourly + root daily, weekly check,
+daily forget) and — importantly — the `root` repo previously excluded
+`/var/lib/docker` wholesale as "rebuildable". That is true of `overlay2` and the
+image layers but false of the volumes: opencode keeps its sessions DB in
+`/var/lib/docker/volumes/opencode_opencode_root`, and `home` only covers
+`/home/cda`, so **the dev gateway had no backup at all on either box**. Now only
+the rebuildable internals are excluded. Verified in the snapshot:
+`.../share/opencode/opencode.db` present, 38 370 volume entries, 0 checkout
+entries, 0 overlay2 entries, 7.05 GiB / 277 462 files.
+
+**The old box was torn down.** Containers stopped and removed without `-v`, so
+all four volumes (11 G, including the old opencode DB and its checkouts) remain
+on disk; nothing was irreversibly destroyed. Its inventory entry is kept as a
+cleanup handle with **every service pinned false**, so a stray `./servyy.sh`
+cannot resurrect the stack — verified by running the same `services`-fact
+expression `user.yml` uses: `alphavps` → NOTHING, `codey.lehel.xyz` → the four
+live services.
+
+That teardown also resolved the cert-renewal contention noted during the
+cutover: the old box's Traefik was the only other thing renewing `code` and
+`traefik.code` via DNS-01 on the same `_acme-challenge` TXT records. With it
+gone, Oracle is the sole renewer.
+
+**Rollback** is no longer "flip DNS back" — the old stack is gone. It now
+requires re-enabling the alphavps services in the inventory, deploying, and
+re-pointing `code`/`codey` at `217.217.227.124` / `2a01:8740:1:fa3::54ad`
+(TTL 300). The volumes are intact, so the data survives.
+
 
 ## Alternatives Considered
 
