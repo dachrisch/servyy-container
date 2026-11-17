@@ -110,6 +110,18 @@ Docker healthchecks, Pushgateway (PUT semantics), Grafana file provisioning
 - **Backup content verification** (are the volumes really inside the restic
   snapshot): `restic-snapshot-alerts` proves backups succeed, not their content.
   Worth its own follow-up, unrelated to monitoring.
+- **`container_not_running` still uses `for: 2m`**, shorter than a full push gap
+  (5 min + up to 5 min jitter). The probe's inspect retry removes the common
+  single-hiccup case, but one wrong *push* can still fire it; aligning it to
+  `10m` like the two new rules is the obvious follow-up. Left alone here to keep
+  the diff to the new signal.
+- **`containers_all_down` now averages over a bigger population**: the three
+  `shared.*` series join `avg(system_container_running)` (32 → 35 series as the
+  probe stood at deploy time), so its "majority down" threshold shifts slightly.
+  Intended — the backend containers
+  belong in the host-wide signal — but worth knowing when reading the number.
+  It also has no `missingSeriesEvalsToResolve`, unlike `container_not_running`;
+  pre-existing asymmetry, out of scope here.
 - **A staleness rule for the container-health job itself** (`absent(system_container_running)`):
   `container_health_probe_failure` only reads a series that disappears with the
   job, so a dead timer is caught only by `container_health_probe_stale`'s own
@@ -303,7 +315,8 @@ The trailing `all_running` log line and the curl PUT stay as they are —
 **Step 8: Run molecule for both scenarios**
 
 Run: `cd ansible/plays/roles/system_probe && molecule test`
-Expected: `default` PASS (including the three new asserts) and `no-sink` PASS
+Expected: `default` PASS (including the new asserts — six needles in the emission
+task, plus the fixture/tier/TYPE ones) and `no-sink` PASS
 (no monitor sink → probe not deployed; `docker_backend_services` is irrelevant
 there).
 
@@ -463,8 +476,11 @@ alone), in `monitor/provisioning/alerting/alert-rules.yml` around `:1876`:
 **Step 4: Validate the YAML**
 
 Run: `yamllint -c .yamllint.yml monitor/provisioning/alerting/alert-rules.yml`
-Expected: no output. (`monitor/` is not in CI's yamllint scope — `yamllint` runs
-on `ansible/plays` only — so this is a manual check.)
+Expected: exit 0 with **36** `line-length` warnings — the file has 34 at baseline
+because every rule carries one long single-quoted `description`, and the two new
+ones add two more of the same shape. Do not fold only the new ones into `>-`
+block scalars: that makes them the only rules in the file that look different.
+CI does not lint `monitor/` (`yamllint` runs on `ansible/plays` only).
 
 **Step 5: Commit**
 
@@ -483,7 +499,13 @@ git commit -m "feat(monitor): alert on backend containers down and unhealthy con
   dns, host_ping, testing hosts) and the removal checklist.
 - Modify: `.claude/skills/check-server-status/SKILL.md:23` — the enabled-services
   table entry for servy.
-- Create: `history/2026-11-17_shared-service-monitoring.md`
+- Modify: `ansible/plays/roles/system_probe/defaults/main.yml` — its header calls
+  itself the scoping summary but documents only `system_probe_docker_local_dir`
+  in the container-health section; it must point at `docker_backend_services`
+  (in `plays/vars/default.yml`) as the second list the template consumes.
+- Create: `history/2026-11-17_shared-service-monitoring.md` — EXACTLY that
+  filename: `ansible/plays/vars/default.yml` and the probe template already
+  reference it, and a different name leaves two dangling links.
 
 **Step 1:** In `manage-service/SKILL.md`, after the `docker.services[]` bullet,
 add:
@@ -639,3 +661,9 @@ The PUT push replaces the job group each run, so reverting the template drops th
   when every inspect fails: ~74 s, against a 5-minute timer, so no overlap today.
   Revisit if the host grows past ~90 containers or if dockerd can hang instead of
   erroring.
+- Molecule never EXECUTES the rendered script — it asserts on its text. The
+  needles are mutation-tested (each of the eight now fails a specific mutant) but
+  they pin strings, not behaviour: a refactor that moves the printfs into a
+  helper breaks them, and a logic change that keeps the strings passes. A small
+  stub-`docker` bash test would cover behaviour; out of scope for this task, and
+  the deploy-time drill in Task 4 is the behavioural check that matters.
