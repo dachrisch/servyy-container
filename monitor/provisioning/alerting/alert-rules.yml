@@ -1962,12 +1962,12 @@ groups:
         # a phantom 0 stays visible for up to that whole gap. 10m covers the
         # typical gap and absorbs one bad push unless the next one is also ~10
         # min late (the retry handles a failed inspect, not a wrong push). Cost:
-        # a real stop pages 11-20 min later (0-10 min to the next push, then the
+        # a real stop pages 10-20 min later (0-10 min to the next push, then the
         # 10 min of `for`).
         for: 10m
         annotations:
           summary: 'Backend container {{ $labels.name }} is not running'
-          description: 'Container {{ $labels.name }} (service {{ $labels.service }}) is not running. The shared data layer backs leagues-finance, queen and dontforget: expect errors in all of them until it is back. Check `docker logs --tail 50 {{ $labels.name }}` for the exit reason and `docker inspect {{ $labels.name }}` for the exit code / OOMKilled flag.'
+          description: 'Container {{ $labels.name }} (service {{ $labels.service }}) is not running. The shared data layer backs leagues-finance, finance (Firefly), queen and dontforget: expect errors in all of them until it is back. Check `docker logs --tail 50 {{ $labels.name }}` for the exit reason and `docker inspect {{ $labels.name }}` for the exit code / OOMKilled flag.'
         labels:
           severity: critical
         missingSeriesEvalsToResolve: 3
@@ -2073,7 +2073,7 @@ groups:
         for: 10m
         annotations:
           summary: 'Backend container {{ $labels.name }} is unhealthy'
-          description: 'The shared data layer (service {{ $labels.service }}) has been reported unhealthy by its own healthcheck for 10+ minutes (or has not finished starting), so leagues-finance, queen and dontforget are erroring against it. It is still running - "up but not answering". Read State.Health.Log via `docker inspect {{ $labels.name }}` before restarting it; an unclean mongo shutdown costs recovery time.'
+          description: 'The shared data layer (service {{ $labels.service }}) has been reported unhealthy by its own healthcheck for 10+ minutes (or has not finished starting), so leagues-finance, finance (Firefly), queen and dontforget are erroring against it. It is still running - "up but not answering". Read State.Health.Log via `docker inspect {{ $labels.name }}` before restarting it; an unclean mongo shutdown costs recovery time.'
         labels:
           severity: critical
         missingSeriesEvalsToResolve: 3

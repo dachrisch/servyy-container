@@ -2,13 +2,14 @@
 
 ## Problem
 
-`shared` (mongo / valkey / postgres) is the data layer for leagues-finance,
-queen and — since 2026-11-17 — dontforget
-(`history/2026-11-17_dontforget-shared-mongo.md`). It was in no probe list and
+`shared` (mongo / valkey / postgres) is the data layer for four services:
+leagues-finance (mongo + redis), finance/Firefly (postgres), queen (mongo +
+redis) and — since 2026-11-17 — dontforget (mongo,
+`history/2026-11-17_dontforget-shared-mongo.md`). It was in no probe list and
 in no alert. The container-health probe is built from `docker.services`
 (`ansible/plays/vars/secrets.yml`), which has never held a `shared` entry, and
-the deployed script (`~/.system-probes/system-container-health.sh`) had **34
-`check_container` calls, none of them a shared container**. All three
+the deployed script (`~/.system-probes/system-container-health.sh`) has **32
+`check_container` calls, none of them a shared container**. All four
 consumers could be erroring against a dead database while every signal on the
 host stayed green, and even if `shared` had been listed, `container_not_running`
 would have treated it like any single app container — medium severity, no hint
@@ -22,7 +23,9 @@ and nothing notices. There was no `system_container_healthy` series at all.
 Pi-hole DNS records (`roles/user/tasks/dns.yml`), `test_host.sh` URLs
 (`roles/user/tasks/host_ping.yml`) and servyy-test `/etc/hosts` entries
 (`roles/testing/tasks/resolve.yml`), all of which assume a public
-`{dir}.{domain}` endpoint. `shared` has no Traefik router and no name.
+`{dir}.{domain}` endpoint. `shared` has no Traefik router, so a
+`shared.lehel.xyz` record would resolve and every request to it would get
+Traefik's 404.
 
 ## Solution
 
@@ -57,14 +60,17 @@ is hoisted into one variable and the inspect is retried once, because pushes
 are 5 min apart with up to 5 min of `RandomizedDelaySec` — without the retry a
 single dockerd hiccup would read as "down" for up to 10 min.
 
-The molecule asserts pin the emission path itself (both `printf` format
-strings, the running-branch discriminator, the `--format` health field, the
-`else}}none` fallback, the tiered `check_container` calls, the backend compose
-resolution). Each of the 8 needles was proven to fail a specific silent-failure
-mutant — a broken `--format`, for instance, renders green everywhere else and
-only shows up in production as `containers_all_down` or an unhealthy alert for
-every healthcheck-less container. Molecule asserts on the script's text, never
-executes it, and cannot run on this laptop, so CI is the runner.
+The molecule asserts pin the emission path itself (the `# TYPE` line, both
+`printf` format strings, the running-branch discriminator, the `--format`
+health field and the `else}}none` fallback among the eight needles). Each
+needle was proven to fail a specific silent-failure mutant — a broken
+`--format`, for instance, renders green everywhere else and only shows up in
+production as `containers_all_down` or an unhealthy alert for every
+healthcheck-less container. Separate asserts cover the `tier` value on both
+`check_container` call sites and the backend compose-name resolution; those
+were not part of the mutation round. Molecule asserts on the rendered text
+only, never executes the script, and cannot run on this laptop, so CI is the
+runner.
 
 ### Alert rules — `container-health-alerts` (7 rules)
 
@@ -76,7 +82,7 @@ executes it, and cannot run on this laptop, so CI is the runner.
 | `backend_container_unhealthy` (new) | critical | 10m | `system_container_healthy{tier="backend"}` |
 | `containers_all_down` | critical | 5m | `avg(system_container_running)` — unchanged |
 | `container_health_probe_failure` | medium | 10m | unchanged |
-| `container_health_probe_stale` | medium | — | unchanged |
+| `container_health_probe_stale` | medium | 1m | unchanged |
 
 Review-driven decisions worth keeping:
 
@@ -89,15 +95,15 @@ Review-driven decisions worth keeping:
   bug.** A range query keeps returning the last sample for the whole window, so
   a container seen unhealthy and then stopped would still read unhealthy for 15
   minutes — a guaranteed duplicate page next to the not-running rule. Fixed to
-  `300`, the file's norm.
+  `300`, the value 42 of the 46 rules that set a range use.
 - **Backend "up but not answering" is CRITICAL, like "down".** The shared
   healthchecks are protocol-level (`mongosh ping`, `valkey-cli ping`,
   `pg_isready`), so one dead or unanswering container takes leagues-finance,
-  queen and dontforget down. A single app container that is up but degraded
-  stays MEDIUM.
+  finance/Firefly, queen and dontforget down. A single app container that is up
+  but degraded stays MEDIUM.
 - **`for: 10m` on both criticals, not 1m.** Consecutive pushes are 0–10 min
   apart and Pushgateway keeps serving the last value until the next PUT, so a
-  shorter window lets ONE bad push page. Cost: a real stop pages 11–20 min
+  shorter window lets ONE bad push page. Cost: a real stop pages 10–20 min
   later (plus ~2.5 min for the healthcheck to report unhealthy in the health
   case).
 - **The down rule is `backend_container_not_running`, not
@@ -112,9 +118,11 @@ Review-driven decisions worth keeping:
 
 Local, before the deploy:
 
-- The template was rendered and the result exercised against a stub `docker`
-  binary (running / stopped / unhealthy / healthcheck-less branches), which is
-  the only check that exercises behaviour rather than the needles' strings.
+- Molecule asserts on the **rendered text** only; it does not execute the
+  script. The behavioural matrix (healthy / none / unhealthy / starting /
+  stopped / inspect-fail / daemon-unreachable) was run ad hoc during review
+  against a stub `docker` binary and is **not committed** — the deploy drill
+  further down is the real behavioural check.
 - `ansible-playbook plays/system.yml --syntax-check` and
   `ansible-playbook servyy.yml --syntax-check` pass.
 - `yamllint` on `monitor/provisioning/alerting/alert-rules.yml`: **34 → 37**
@@ -128,10 +136,12 @@ PENDING — filled in after the 2026-11-17 deploy:
   changed tasks and anything unexpected.
 - PENDING — `~/.system-probes/system-container-health.sh` run by hand:
   `all_running=1 probe_success=1 pushed=1`.
-- PENDING — `curl http://localhost:9091/metrics/job/system_container_health`
-  shows the 3 `shared.*` series (`shared.mongo`, `shared.redis`, `shared.db`)
-  with `tier="backend"` and `running=1` plus `system_container_healthy 1`, and
-  no series left without a `tier` (the PUT replaced the group).
+- PENDING — `curl -s http://localhost:9091/metrics | grep
+  '^system_container_running'` shows the 3 `shared.*` series (`shared.mongo`,
+  `shared.redis`, `shared.db`) with `tier="backend"` and `running=1` plus
+  `system_container_healthy 1`, and no series left without a `tier` (the PUT
+  replaced the group). A GET of a job path (`/metrics/job/...`) answers 405;
+  read the aggregate page.
 - PENDING — 7 rules loaded in `container-health-alerts` via
   `/api/v1/provisioning/alert-rules` (must not be empty; if it is, Grafana
   rejected the file — check `docker logs monitor.grafana --since 5m`).
@@ -144,15 +154,19 @@ PENDING — filled in after the 2026-11-17 deploy:
 ## Rollback
 
 ```bash
-git revert 6b60005 65399b2
+git revert --no-commit fd3cd88 41bc6e6 2254b61 65399b2 6b60005
+git commit -m "revert: shared-service monitoring"
 cd ansible && ./servyy.sh --tags "user.docker.repo,system.probe" --limit servy.lehel.xyz
 ssh lehel.xyz "docker restart monitor.grafana"
 ```
 
+The reverts must go in reverse-chronological order (latest first): reverting
+only `6b60005 65399b2` conflicts in `verify.yml` and the template, because
+`2254b61` and the alert corrections touch the same lines. `2254b61` is the
+probe hardening, `41bc6e6`/`fd3cd88` the alert corrections.
+
 `--limit` takes the inventory name (`servy.lehel.xyz`), not the SSH alias
 `lehel.xyz` — the alias matches no host and the run silently does nothing.
-Revert the follow-up commits too (`2254b61` hardening, `41bc6e6` and `fd3cd88`
-alert corrections) if the goal is the exact pre-change files.
 
 No manual series cleanup: every probe run PUTs the whole
 `system_container_health` job group (a POST would merge, a PUT replaces), so

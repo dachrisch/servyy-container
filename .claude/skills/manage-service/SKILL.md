@@ -242,8 +242,8 @@ ANOTHER_VAR={{ another_value }}
   container-health probe must watch that must NOT be in `docker.services`
   (backend-only, no Traefik router: `shared`). `docker.services` also creates
   Pi-hole DNS, `test_host.sh` URLs and servyy-test `/etc/hosts`, so a
-  backend-only service listed there produces a name that cannot resolve and a
-  ping check that can never pass.
+  backend-only service listed there gets a name with no router behind it: the
+  ping check gets a 404 and can never pass.
 - `ansible/plays/roles/user/tasks/docker_extras.yml` → `forall_docker_services.sh`
   hardcoded list (`- {dir: service-name}`).
 - Secrets block in `ansible/plays/vars/secrets.yml` (if needed):
@@ -435,7 +435,8 @@ roles:
 - [ ] `docker rm -f <project>.<svc>` orphans + compose `--remove-orphans` deploy
   (or `ansible-playbook plays/remove_service.yml -e "target_host=..."`)
 - [ ] Redeploy probes: `--tags "system.probe"` (PUT semantics drop retired series)
-- [ ] Grafana: no `system_container_running{name="<removed>.*"}`, `container_not_running` OK
+- [ ] Grafana: no `system_container_running{name="<removed>.*"}` and the rule for its
+  tier OK (`container_not_running` for app, `backend_container_not_running` for backend)
 - [ ] DNS/TLS: remove dead A records + Traefik routers if service was exposed
 - [ ] Docs: update `.claude/skills/check-server-status/SKILL.md` enabled-services table
 

@@ -467,7 +467,8 @@ cd ansible && ./servyy.sh --limit servy.lehel.xyz --tags "system.probe"
 # Verify in output:
 # - Service role should be skipped (when condition: service not in enabled list)
 # - No "Deploy {service}" task should run
-# - Grafana: no system_container_running{name="{service}.*"}, container_not_running OK
+# - Grafana: no system_container_running{name="{service}.*"} and the rule for its
+#   tier Normal (container_not_running for app, backend_container_not_running for backend)
 ```
 
 ### Recovery (if needed)
@@ -1058,8 +1059,8 @@ stale alerts):
   services the container-health probe must watch that must NOT be in
   `docker.services` (backend-only, no Traefik router: `shared`). That list
   also creates Pi-hole DNS, `host_ping.yml` URLs and testing `/etc/hosts`,
-  so a backend-only service there produces a name that cannot resolve and a
-  ping check that can never pass.
+  so a backend-only service there gets a name with no router behind it: the
+  ping check gets a 404 and can never pass.
 - `ansible/plays/roles/user/tasks/docker_extras.yml` → `forall_docker_services.sh` list.
 - Secrets block in `ansible/plays/vars/secrets.yml` + env template under
   `ansible/plays/roles/docker_service/templates/<service>/` if needed.
