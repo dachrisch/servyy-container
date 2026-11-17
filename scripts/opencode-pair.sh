@@ -4,9 +4,11 @@
 # Usage:
 #   ./opencode-pair.sh [ssh-target] [public-host]
 #
-# Defaults to codey.lehel.xyz / code.lehel.xyz. For the Oracle replica:
-#   SSH_OPTS='-i ~/.ssh/id_rsa -o IdentitiesOnly=yes' \
-#     ./opencode-pair.sh cda@138.2.180.191 codacle.lehel.xyz
+# Defaults to codey.lehel.xyz / code.lehel.xyz — since the 2026-11-17 cutover
+# codey IS the Oracle box, so the defaults are correct for the live instance.
+# IdentitiesOnly matters there: without it the local agent offers enough keys to
+# trip sshd's MaxAuthTries before reaching the authorized one.
+#   SSH_OPTS='-o IdentitiesOnly=yes' ./opencode-pair.sh
 #
 # Don't use `opencode pair` here: it creates the code on its background service
 # (127.0.0.1 only), not on the Traefik-facing server on :4096, so the browser
