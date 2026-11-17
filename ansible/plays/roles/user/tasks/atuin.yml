@@ -154,9 +154,21 @@
     cmd: atuin sync
   when: login is changed
 
+- name: Check whether atuin keeps its config in the legacy location
+  ansible.builtin.stat:
+    path: "{{ (atuin_home, '.atuin/config.toml') | path_join }}"
+  register: atuin_legacy_config
+
+# atuin 18.24.8 creates ~/.atuin/config.toml on a fresh `atuin login`, while
+# 18.24.3 (servy, codey) uses the XDG path ~/.config/atuin/config.toml. Writing
+# to a path the binary does not read leaves these settings silently inert, so
+# follow whichever file this host actually has.
 - name: Set atuin filenames
   set_fact:
-    config_dir: .config/atuin/config.toml
+    config_dir: >-
+      {{ '.atuin/config.toml'
+         if atuin_legacy_config.stat.exists
+         else '.config/atuin/config.toml' }}
 
 - name: Set auto-sync
   lineinfile:

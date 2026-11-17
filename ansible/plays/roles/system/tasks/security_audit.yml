@@ -36,6 +36,11 @@
     set -o pipefail
     rm -f /usr/share/keyrings/trivy.gpg
     curl -fsSL https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor -o /usr/share/keyrings/trivy.gpg
+    # gpg --dearmor honours the umask, so on a host with a restrictive umask
+    # the keyring lands as 0640 root:root. apt verifies repos as the _apt user
+    # and then reports NO_PUBKEY, failing "Add Trivy APT repository" outright.
+    # Force the mode apt expects rather than relying on the ambient umask.
+    chmod 0644 /usr/share/keyrings/trivy.gpg
   args:
     executable: /bin/bash
   become: true
@@ -130,10 +135,13 @@
 
 - name: Clone testssl.sh
   git:
-    repo: https://github.com/drwetter/testssl.sh.git
+    # Canonical home: drwetter/testssl.sh was moved to the testssl org. The old
+    # URL now advertises zero refs, so a fresh clone there can never satisfy a
+    # version pin ("pathspec 'v3.2.4' did not match any file(s)"). v3.2.4 does
+    # not exist in the canonical repo either; v3.2.3 is its newest 3.2 release.
+    repo: https://github.com/testssl/testssl.sh.git
     dest: "{{ security_audit.script_dir }}/testssl.sh"
-    depth: 1
-    version: v3.2.4
+    version: v3.2.3
   become: true
   when: security_audit.tools.testssl | default(true)
   tags:
