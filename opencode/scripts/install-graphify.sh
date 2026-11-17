@@ -32,9 +32,12 @@ fi
 
 if [ "$(uname -m)" = "x86_64" ]; then
     # Not our problem here: every dependency ships a musllinux_1_2_x86_64 wheel.
+    # Still installed into $DEST rather than the image rootfs, so it survives
+    # container recreates instead of re-running pip (~40s) on every boot.
     echo "🕸️ [graphify] installing from wheels (x86_64)..."
-    python3 -m pip install --no-cache-dir --break-system-packages graphifyy \
-        && echo "📍 [graphify] installed" \
+    python3 -m pip install --target "$DEST" --break-system-packages --quiet graphifyy \
+        && PYTHONPATH="$DEST" python3 -c 'import graphify' 2>/dev/null \
+        && echo "📍 [graphify] installed into $DEST ($(du -sh "$DEST" 2>/dev/null | cut -f1))" \
         || { echo "⚠️ [graphify] install failed"; exit 1; }
     exit 0
 fi

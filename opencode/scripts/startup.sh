@@ -153,11 +153,7 @@ else
     # (/root/.graphify-pkgs, put on sys.path by PYTHONPATH in docker-compose.yml).
     echo "🕸️ [Startup] Installing graphify CLI (background)..."
     (
-        if [ "$(uname -m)" = "x86_64" ]; then
-            python3 -m pip install --no-cache-dir --break-system-packages graphifyy
-        else
-            sh /scripts/install-graphify.sh
-        fi \
+        sh /scripts/install-graphify.sh \
             && echo "📍 [Startup] graphify installed" \
             || echo "⚠️ [Startup] graphify install failed (graphify skill unavailable)"
     ) &
