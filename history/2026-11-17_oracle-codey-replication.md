@@ -1,7 +1,7 @@
 # ADR: Replicate codey.lehel.xyz onto an Oracle Always Free A1 instance
 
 **Date:** 2026-11-17
-**Status:** Proposed — server-level replica verified, data migration and DNS cutover outstanding
+**Status:** Accepted — replica built, state migrated, DNS cut over on 2026-11-17
 **Relates to:** ADR (Oracle free-tier capability survey, 2026-11-17)
 
 ## Context
@@ -176,11 +176,52 @@ Two things worth remembering:
 
 ### Known Issues & Limitations
 
-- devhub not replicated (amd64-only image).
-- opencode state (sessions DB, checkouts) is a **fresh** provision, not a copy of
-  codey's — no `opencode_opencode_root` / `codey_dev_checkouts` data migration yet.
-- No restic backup target configured on this host.
-- DNS still points at codey; cutover not performed.
+- `codacle.lehel.xyz` no longer has a router (the host now serves the canonical
+  names), so it returns the catch-all. Its A/AAAA records and the
+  `traefik.codacle` CNAME are now dead; delete them or add an alias router.
+  `a.codacle.lehel.xyz` must STAY — it is the Portainer agent's registered URL.
+- No restic backup target configured on this host (no Hetzner Storage Box from
+  Oracle). The old box still has one.
+- The fleet-wide error-pages defect (catch-all requests return 502 instead of a
+  themed 404) is visible on any hostname without a router, including
+  `codey.lehel.xyz`. Pre-existing, unrelated to this work.
+
+## DNS cutover (2026-11-17)
+
+Done only after the replica was proved to behave identically. Pre-flight, with
+DNS still pointing at alphavps, forced `Host` resolution at the replica and
+checked the exact path the dependent services use:
+
+| Check | Result |
+|---|---|
+| UI `/` | 200, `ssl_verify_result=0` |
+| `/api/model` with a valid `X-Api-Key` | 200 |
+| `/api/model` with no key | 401 |
+| `/api/model` with a bogus key | 401 |
+
+Then the records were replaced:
+
+| Record | Before | After |
+|---|---|---|
+| `code` | CNAME → `codey.lehel.xyz` | **A/AAAA → Oracle** |
+| `traefik.code` | CNAME → `codey.lehel.xyz` | CNAME → `code.lehel.xyz` |
+| `h.code` | A/AAAA → alphavps | **deleted** (devhub retired) |
+| `codey` / `a.codey` | A/AAAA → alphavps | **unchanged** — rollback + Ansible/SSH identity |
+| `a.codacle` | A/AAAA → Oracle | unchanged — Portainer agent URL |
+
+`code` is deliberately a direct A/AAAA rather than a CNAME to `codey`, because
+`codey.lehel.xyz` must keep resolving to the old box: it is both the rollback
+target and the hostname Ansible and SSH use to reach it.
+
+Verified after propagation (Cloudflare, Google and Quad9 all returned the new
+v4+v6): UI 200 with a valid cert, `traefik.code` 401 (dashboard auth intact),
+and from servy — where dontforget, groceries and queen actually run —
+`/api/model` with a valid key returns 200. The authgate/forwardAuth chain the
+consumers use is unchanged by the move.
+
+**Rollback:** re-point `code` at `217.217.227.124` /
+`2a01:8740:1:fa3::54ad` (TTL 300, so minutes). The old box was never
+decommissioned and still runs the full stack.
 
 ## Alternatives Considered
 
