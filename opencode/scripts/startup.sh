@@ -141,12 +141,23 @@ git config --global remote.pushDefault origin || true
 # better trade than blocking every boot on it.
 if python3 -c 'import graphify' 2>/dev/null; then
     echo "📍 [Startup] graphify CLI already present"
-elif [ "$(uname -m)" != "x86_64" ]; then
-    echo "📍 [Startup] graphify skipped on $(uname -m) (x86_64-only wheels)"
 else
+    # Backgrounded: opencode is a Node app, so upgrading the Python packages
+    # underneath it cannot affect the running server -- the only consumers are
+    # the graphify CLI and yt_upload.py, both invoked later. A transient "not
+    # installed yet" in the first seconds of a session is a far better trade
+    # than blocking every boot on it.
+    #
+    # On aarch64 there are no prebuilt wheels for the core tree-sitter package,
+    # so scripts/install-graphify.sh compiles it once into the persistent volume
+    # (/root/.graphify-pkgs, put on sys.path by PYTHONPATH in docker-compose.yml).
     echo "🕸️ [Startup] Installing graphify CLI (background)..."
     (
-        python3 -m pip install --no-cache-dir --break-system-packages graphifyy \
+        if [ "$(uname -m)" = "x86_64" ]; then
+            python3 -m pip install --no-cache-dir --break-system-packages graphifyy
+        else
+            sh /scripts/install-graphify.sh
+        fi \
             && echo "📍 [Startup] graphify installed" \
             || echo "⚠️ [Startup] graphify install failed (graphify skill unavailable)"
     ) &

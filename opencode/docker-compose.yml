@@ -21,6 +21,15 @@ services:
     environment:
       # Prepend /opencode/bin to PATH so gh wrapper is used before real gh binary
       PATH: /opencode/bin:${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}
+      # graphify on aarch64 (the Oracle replica). No aarch64/musl wheel exists for
+      # the core `tree-sitter` package, so it must be compiled from source — and
+      # most language packs need an older wheel-available version than pip picks
+      # by default. Both are done once, at build time, into the persistent /root
+      # volume (scripts/install-graphify.sh). PYTHONPATH is what makes that
+      # install visible without baking it into the image; a missing directory is
+      # silently ignored by Python, so this is harmless on hosts that don't have
+      # it (codey installs graphify into the image rootfs instead).
+      PYTHONPATH: /root/.graphify-pkgs
       # prune-sessions.py retention: only sessions/tool-output/snapshots older than 7 days are pruned
       OPENCODE_PRUNE_HOURS: "168"
     env_file:
