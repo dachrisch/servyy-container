@@ -200,3 +200,23 @@
   failed_when: false
   tags:
     - user.repo.submodules
+
+# Same lesson as the world-readable block above, for the opposite direction: a checkout
+# under umask 007 leaves every directory 0770, and zsh's compinit treats a group-writable
+# $fpath directory as insecure -- it prints "insecure directories" and BLOCKS the login on
+# "Ignore insecure directories and continue [y] or abort compinit [n]?" until answered.
+#
+# It has to happen HERE and not only in zprezto.yml: a `--tags user.repo.zpresto` run
+# re-creates the 0770 tree without running the zprezto tasks, which put the prompt back on
+# both servers on 2026-11-17 minutes after the first fix. The zprezto checkout holds no
+# git-crypt'd or container-consumed secrets, so group/other write can simply go.
+- name: "Make [ {{remote_dir}} ] unwritable for group and others"
+  # The checkout re-applies umask 007 to every file it rewrites, so this narrowing does real
+  # work on every run even though the end state is stable -- same as the chown above, hence
+  # the same `changed_when: false`. A failure (rc != 0) still fails the task.
+  ansible.builtin.command: "chmod -R go-w {{ remote_dir | quote }}"
+  changed_when: false
+  when: secure_checkout_modes | default(false)
+  tags:
+    - user.repo.clone
+    - user.repo.secure.modes

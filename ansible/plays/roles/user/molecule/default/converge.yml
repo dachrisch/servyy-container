@@ -23,6 +23,28 @@
         local_dir: "{{ shell.local_dir }}"
         clone_submodules: true
         update_submodules: true
+        secure_checkout_modes: true
+      tags: [user.repo.zpresto]
+
+    # The servers' deploy checkout runs under umask 007, which leaves every directory in the
+    # tree at 0770 -- the exact state that made zsh's compinit block the login on an [y/n]
+    # prompt. Reproduce it, then run the checkout include again the way a tag-only
+    # `--tags user.repo.zpresto` deploy does: that is the run that put the prompt back on
+    # servy and codey minutes after the first fix, so it is the case worth testing.
+    - name: Simulate the deploy umask on the zprezto checkout
+      ansible.builtin.command:
+        cmd: "chmod -R g+w /home/testuser/.zprezto"
+      changed_when: false
+
+    - name: Import repository tasks for zprezto (tag-only deploy, umask 007 checkout)
+      import_tasks: ../../tasks/includes/repository.yml
+      vars:
+        repository_uri: "{{ shell.repo }}"
+        remote_dir: "{{ shell.remote_dir }}"
+        local_dir: "{{ shell.local_dir }}"
+        clone_submodules: true
+        update_submodules: true
+        secure_checkout_modes: true
       tags: [user.repo.zpresto]
 
     - name: Import zprezto tasks

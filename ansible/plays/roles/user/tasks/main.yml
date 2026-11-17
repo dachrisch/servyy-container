@@ -6,6 +6,7 @@
     check_git_servyy_reachable: false    # zpresto is from GitHub, not git.lehel.xyz
     clone_submodules: true                # Clone submodules during initial clone
     update_submodules: true               # Update submodules on every deployment
+    secure_checkout_modes: true           # compinit blocks login on a group-writable fpath
   tags:
     - user.repo.zpresto
 

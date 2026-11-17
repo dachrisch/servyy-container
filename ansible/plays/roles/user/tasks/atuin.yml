@@ -104,6 +104,38 @@
         path: "{{ atuin_installer.path }}"
         state: absent
 
+# The cargo-dist installer used to write ~/.atuin/bin/env (the PATH shim) as a side effect.
+# It no longer does: codey was installed with 18.24.8 and has only the binary, while servy's
+# copy dates from 18.24.3 in June. Since the install block is skipped once the binary is
+# current, a host can never regain the file -- and any unguarded `. ~/.atuin/bin/env` in a
+# shell rc then errors on every login. Own the file instead of trusting the installer.
+- name: Ensure the atuin bin directory exists
+  ansible.builtin.file:
+    path: "{{ (atuin_home, '.atuin/bin') | path_join }}"
+    state: directory
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0750'
+
+- name: Ensure the atuin PATH shim exists
+  ansible.builtin.copy:
+    dest: "{{ (atuin_home, '.atuin/bin/env') | path_join }}"
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0644'
+    content: |
+      #!/bin/sh
+      # add binaries to PATH if they aren't added yet
+      # affix colons on either side of $PATH to simplify matching
+      case ":${PATH}:" in
+          *:"$HOME/.atuin/bin":*)
+              ;;
+          *)
+              # Prepending path in case a system-installed binary needs to be overridden
+              export PATH="$HOME/.atuin/bin:$PATH"
+              ;;
+      esac
+
 # The cargo-dist install lands in ~/.atuin/bin without linking it into PATH for non-login
 # shells, so /usr/bin/atuin stays a symlink to the user's copy. Idempotent: a correct link is
 # a no-op.

@@ -27,6 +27,25 @@
           - zpreztorc_link.stat.exists
         fail_msg: "zpreztorc symlink not created"
 
+    # compinit lists any $fpath directory writable by group or others as "insecure" and then
+    # blocks the login on an [y/n] prompt. converge.yml re-creates the deploy umask (0770) and
+    # then re-runs the checkout include, so this only passes if that include narrowed the modes
+    # again. Directories only: compinit inspects fpath entries, and symlinks are always 0777.
+    - name: Look for directories compinit would call insecure
+      ansible.builtin.command:
+        cmd: "find /home/testuser/.zprezto -type d -perm /022 -print"
+      register: zprezto_insecure
+      changed_when: false
+
+    - name: Verify no directory in the zprezto tree is group or world writable
+      assert:
+        that:
+          - zprezto_insecure.stdout_lines | length == 0
+        fail_msg: >-
+          compinit would block every login over these paths:
+          {{ zprezto_insecure.stdout_lines | join(', ') }}
+        success_msg: "zprezto tree is secure for compinit"
+
     # The proxy network cannot be created in this scenario (no Docker daemon), so guard
     # the task definition instead: dropping enable_ipv6 turns published v6 ports back
     # into docker-proxy traffic, which hides every v6 client behind the bridge address
