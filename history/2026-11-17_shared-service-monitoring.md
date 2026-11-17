@@ -129,27 +129,50 @@ Local, before the deploy:
   line-length warnings, all by design (each rule carries one long description;
   CI does not lint `monitor/`).
 
-PENDING — filled in after the 2026-11-17 deploy:
+Deployed 2026-11-17 on servy, merged as `9b01e57` (PR #303).
 
-- PENDING — probe deployed at commit `<sha>` via
-  `./servyy.sh --tags "user.docker.repo,system.probe" --limit servy.lehel.xyz`;
-  changed tasks and anything unexpected.
-- PENDING — `~/.system-probes/system-container-health.sh` run by hand:
-  `all_running=1 probe_success=1 pushed=1`.
-- PENDING — `curl -s http://localhost:9091/metrics | grep
-  '^system_container_running'` shows the 3 `shared.*` series (`shared.mongo`,
-  `shared.redis`, `shared.db`) with `tier="backend"` and `running=1` plus
-  `system_container_healthy 1`, and no series left without a `tier` (the PUT
-  replaced the group). A GET of a job path (`/metrics/job/...`) answers 405;
-  read the aggregate page.
-- PENDING — 7 rules loaded in `container-health-alerts` via
-  `/api/v1/provisioning/alert-rules` (must not be empty; if it is, Grafana
-  rejected the file — check `docker logs monitor.grafana --since 5m`).
-- PENDING — `shared.redis` stop/start drill: `running 0` and no healthy series
-  while stopped, back to `1` after the restart.
-- PENDING — Grafana afterwards: `backend_container_not_running` Normal, no
-  leftover `system_container_healthy 0`, `container_not_running` instances
-  re-keyed and Normal.
+- `./servyy.sh --tags "user.docker.repo,system.probe" --limit servy.lehel.xyz`
+  finished `ok=61 changed=3 failed=0`. The probe script itself reported `ok` on
+  that run because a previous attempt had already written it (see the two
+  incidents below).
+- `~/.system-probes/system-container-health.sh` run by hand:
+  `container-health all_running=1 probe_success=1 pushed=1`.
+- `curl -s http://localhost:9091/metrics | grep '^system_container_running'`:
+  32 `tier="app"` series and 6 `tier="backend"` (3 `running` + 3 `healthy` for
+  `shared.mongo`, `shared.redis`, `shared.db`), every one at `1`, **zero**
+  series left without a `tier` (the PUT replaced the group). A GET of a job path
+  (`/metrics/job/...`) answers 405 — read the aggregate metrics page.
+- 7 rules in `container-health-alerts` via `/api/v1/provisioning/alert-rules`
+  (46 rules file-wide), correct `for` values and severities; 0 firing/pending
+  instances afterwards, i.e. all Normal.
+- The `shared.redis` stop/start drill was **deliberately skipped** on user
+  decision: the state matrix above is the argument, and valkey is a live
+  dependency of leagues-finance/queen.
+
+### Two incidents during the deploy (read before the next one)
+
+1. **A worktree has no gitignored seed files → the deploy key gets replaced.**
+   The first attempt died at the repo clone with
+   `git@github.com: Permission denied (publickey)`. Cause: the run happened from
+   `.worktrees/shared-service-monitoring`, which does not carry
+   `ansible/plays/vars/.servyy_container_deploy_key` (gitignored, so never in a
+   fresh worktree). `github_deploy_key.yml` therefore *generated* a new key and
+   wrote it to servy, invalidating the registered one. Fix: copy the seed from
+   the main checkout (`cp .../ansible/plays/vars/.servyy_container_deploy_key`),
+   re-run; nothing had to change on GitHub. Copying that file (and any other
+   `plays/vars/.*` seed) into a worktree before deploying from it is mandatory.
+2. **`--tags user.docker.repo` alone leaves the monitor provisioning files
+   unrendered.** `monitor/promtail.yml`,
+   `monitor/provisioning/datasources/datasources.yml` and
+   `provisioning/alerting/contact-points.yml` are Jinja **in git** and are
+   rendered over the checkout by the task tagged `user.docker.monitor` /
+   `user.docker.env.monitor`. A sync without that task leaves literal
+   `{{ monitor.loki_tenant }}` in place, which YAML reads as a nested mapping:
+   Grafana crash-looped on `Datasource provisioning error: yaml: unmarshal
+   errors: line 23: cannot unmarshal !!map into string`. Fix:
+   `./servyy.sh --tags "user.docker.env.monitor"` (+ `docker restart
+   monitor.grafana`). Any deploy that includes `user.docker.repo` must include
+   that render task — the two tags are not independent.
 
 ## Rollback
 
