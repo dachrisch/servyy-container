@@ -162,13 +162,24 @@ prod:
         has_extension_drive: false
         create_swap: true
         swap_space_override: 5G  # 29GB root disk — 10G default swap was too large
+        # NOTHING here is deployable. The containers were torn down on
+        # 2026-11-17 after the codey role moved to the Oracle box, and the host
+        # entry is kept only as a cleanup/decommission handle. Every service is
+        # pinned false rather than deleting the host, because a stray
+        # `./servyy.sh` would otherwise `docker compose up` the retired stack and
+        # bring back a SECOND Traefik claiming code.lehel.xyz — reintroducing the
+        # DNS-01 contention on the same _acme-challenge TXT records that removing
+        # this box's Traefik just eliminated.
+        #
+        # opencode keeps its dict shape (enabled: false) so the service can be
+        # restored by flipping one value, not by rebuilding the block.
         services_enabled:
-          traefik: true
+          traefik: false
           opencode:
-            enabled: true
+            enabled: false
             dns_short_name: "code"
             dns_expose: true
-          opencode-authgate: true
-          portainer-agent: true
+          opencode-authgate: false
+          portainer-agent: false
           devhub: false
           claude-hub: false
