@@ -124,7 +124,7 @@ snapshot, not by a shared one.
 |---|---|---|---|---|---|---|
 | `leaguesphere` (high) | physical hourly + **binlog every 5 min** | :40 | :55 | physical 24 h + 14 d + 8 w + 6 m; binlog `--keep-within 2d` (matches `expire_logs_days=2`) | **15 min** | ≤ 2 h (manual copy-back + replay) |
 | `moodle` (business) | hourly | :40 | :50 | 24 h + 14 d + 8 w + 6 m (~52 snapshots) | 1 h | ≤ 30 min (13m36s measured + smoke) |
-| `bnb_office` (business) | daily | 01:05 | 01:10 | **35 dailies** (contract) + 8 w + 6 m, and the last **7 files** kept on disk for the operator | 24 h | ≤ 5 min |
+| `bnb_office` (business) | daily | 01:05 | 01:10 | 30 dailies + 8 w + 6 m (same as the private tenants) | 24 h | ≤ 5 min |
 | `leagues_finance` (business) | daily | 01:15 | 01:20 | 30 dailies + 8 w + 6 m | 24 h | minutes |
 | `queen` (business) | daily | 01:25 | 01:30 | 30 dailies + 8 w + 6 m | 24 h | minutes |
 | `photoprism` (private) | daily | 00:45 | 00:55 | 30 dailies + 8 w + 6 m | 24 h | ≤ 30 min (103 MB gz) |
@@ -137,9 +137,9 @@ Notes on the decisions themselves:
 - **Moodle stays hourly.** 2.97 GiB/day is the honest price of a 1 h RPO; 529 GB is free, and a
   lost hour is a lost hour of grades and forum posts. Cadence is now a row, so revisiting it is
   one edit.
-- **bnb's contract is satisfied by 35 restic dailies plus 7 on-disk files** — the repo is the
-  stronger artefact (deduplicated, checksummed, read-verified weekly); if the contract turns out
-  to be literal about files, `keep_dumps: 35` is a one-row change.
+- **bnb keeps the same retention as the private tenants** (30 dailies + 8 weekly + 6 monthly),
+  owner's decision on 2026-11-18: its own repo is the artefact, and `keep_dumps` stays a row if
+  the contract wording ever needs more.
 - **Binlog shipping is in**, otherwise "high tier = PITR" remains a documented promise with no
   mechanism behind it.
 - **Drills:** weekly (Sun 06:30) for `leaguesphere` and `moodle` — the two with a real RTO;
