@@ -78,12 +78,40 @@
 - name: Restart Prometheus because prometheus.yml or rules/ changed
   ansible.builtin.command:
     argv: [docker, restart, "{{ monitor_reload_prometheus_container }}"]
+  register: monitor_prometheus_restart
   when:
     - not ansible_check_mode
     - monitor_prometheus_prev_fp | default('') | length > 0
     - monitor_prometheus_prev_fp != (monitor_prometheus_fp.stdout | trim)
     - monitor_prometheus_prev_started == (monitor_prometheus_started.stdout | trim)
+  # `docker restart` fails on a non-zero exit, which aborts this host's play
+  # BEFORE the state is recorded - so a failed restart can never leave the state
+  # claiming content that is not loaded. The next run sees the same difference
+  # and retries.
   changed_when: true
+
+# The StartedAt read above was taken BEFORE our own restart. Recording that one
+# would be wrong in a way that hides the next change: the state would say
+# "fingerprint X loaded at T0" while the live container started at T1, and the
+# next content change would read "StartedAt changed too" - the branch that means
+# "compose already recreated it, do not restart" - and skip the restart. That is
+# exactly the silent no-op this role exists to prevent (found live 2026-11-18:
+# change -> restart -> revert -> nothing happened).
+- name: Read when Prometheus started AFTER our own restart
+  ansible.builtin.command:
+    argv: [docker, inspect, --format, "{{ '{{.State.StartedAt}}' }}", "{{ monitor_reload_prometheus_container }}"]
+  register: monitor_prometheus_started_after
+  when: monitor_prometheus_restart.changed | default(false)
+  changed_when: false
+  check_mode: false
+
+- name: Decide which StartedAt to record for Prometheus
+  ansible.builtin.set_fact:
+    monitor_prometheus_record_started: >-
+      {{ (monitor_prometheus_started_after.stdout
+          if (monitor_prometheus_restart.changed | default(false))
+          else monitor_prometheus_started.stdout) | trim }}
+  no_log: true
 
 - name: Report the pending Prometheus restart (check mode)
   ansible.builtin.debug:
@@ -99,7 +127,7 @@
 
 - name: Record the applied Prometheus state
   ansible.builtin.copy:
-    content: "{{ monitor_prometheus_fp.stdout | trim }} {{ monitor_prometheus_started.stdout | trim }}\n"
+    content: "{{ monitor_prometheus_fp.stdout | trim }} {{ monitor_prometheus_record_started }}\n"
     dest: "{{ (monitor_reload_state_dir, 'prometheus.state') | path_join }}"
     mode: '0600'
   no_log: true
@@ -141,12 +169,31 @@
 - name: Restart Grafana because provisioning/alerting/ changed
   ansible.builtin.command:
     argv: [docker, restart, "{{ monitor_reload_grafana_container }}"]
+  register: monitor_grafana_restart
   when:
     - not ansible_check_mode
     - monitor_grafana_prev_fp | default('') | length > 0
     - monitor_grafana_prev_fp != (monitor_grafana_fp.stdout | trim)
     - monitor_grafana_prev_started == (monitor_grafana_started.stdout | trim)
+  # Non-zero exit aborts the play before the state is recorded (see the
+  # Prometheus note above): a failed restart never marks content as loaded.
   changed_when: true
+
+- name: Read when Grafana started AFTER our own restart
+  ansible.builtin.command:
+    argv: [docker, inspect, --format, "{{ '{{.State.StartedAt}}' }}", "{{ monitor_reload_grafana_container }}"]
+  register: monitor_grafana_started_after
+  when: monitor_grafana_restart.changed | default(false)
+  changed_when: false
+  check_mode: false
+
+- name: Decide which StartedAt to record for Grafana
+  ansible.builtin.set_fact:
+    monitor_grafana_record_started: >-
+      {{ (monitor_grafana_started_after.stdout
+          if (monitor_grafana_restart.changed | default(false))
+          else monitor_grafana_started.stdout) | trim }}
+  no_log: true
 
 - name: Report the pending Grafana restart (check mode)
   ansible.builtin.debug:
@@ -162,7 +209,7 @@
 
 - name: Record the applied Grafana state
   ansible.builtin.copy:
-    content: "{{ monitor_grafana_fp.stdout | trim }} {{ monitor_grafana_started.stdout | trim }}\n"
+    content: "{{ monitor_grafana_fp.stdout | trim }} {{ monitor_grafana_record_started }}\n"
     dest: "{{ (monitor_reload_state_dir, 'grafana.state') | path_join }}"
     mode: '0600'
   no_log: true
