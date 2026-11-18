@@ -77,6 +77,15 @@ restic:
       # `moodle-db` (hourly logical dump), both under `moodle_enabled`.
       - 'servyy-container/moodle/data'
 
+      # DB tier datadirs (D13: bind mounts on `/` under db-<tier>/data). Same two
+      # reasons as moodle's: the files are owned by the container's mysql user
+      # (mode 660, a group the backup user is not in), so an unprivileged home
+      # snapshot aborts the WHOLE run with restic exit 3 — measured on
+      # 2026-11-18, the first hourly run after db-nonprod was created — and a
+      # copy of a live InnoDB datadir is worthless anyway. Tiers get their own
+      # dump + restic wiring (Phase 7), never the home repo.
+      - 'servyy-container/db-*/data'
+
       # OpenCode's bind-mounted SSH dir. The container runs as root and writes
       # id_github/id_servy/known_hosts as root, so the backup user cannot read
       # them and restic aborts the whole home snapshot with exit 3 (measured
