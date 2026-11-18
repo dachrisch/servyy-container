@@ -58,10 +58,13 @@ db_tenants:
     compose_service: ''
 
   # --- nonprod: LeagueSphere stage + demo (disposable) ---------------------
+  # WP-4b: moved to the nonprod tier (data copied and verified in WP-4b1:
+  # 208 tables / 950,028 rows, zero mismatches). This row is the switch the
+  # version guard sees — from here on leaguesphere_stage.mysql is the rollback.
   - tenant: leaguesphere_stage
     tier: nonprod
     engine: mariadb
-    server: leaguesphere_stage.mysql
+    server: db-nonprod.mariadb
     db: leaguesphere_stage
     user: leaguesphere_stage
     # A restore target, not a backup source: nothing dumps it today.
@@ -74,10 +77,11 @@ db_tenants:
     compose_dir: ''
     compose_service: ''
 
+  # WP-4b: moved to the nonprod tier (75 tables / 2,996 rows verified).
   - tenant: leaguesphere_demo
     tier: nonprod
     engine: mariadb
-    server: leaguesphere-demo.mysql
+    server: db-nonprod.mariadb
     db: demo_db
     user: demo_user
     # Dropped and recreated nightly by the demo entrypoint; never dumped.
