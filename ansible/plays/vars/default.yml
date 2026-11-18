@@ -100,6 +100,10 @@ world_readable_paths_by_service:
     - provisioning                # grafana (uid 472): dashboards, alerting
     - prometheus.yml              # prometheus (uid 65534)
     - loki.yml                    # loki (uid 10001)
+    # promtail.yml is mounted directly now that it is plaintext (no render sets
+    # its mode). The promtail image runs as root, but the checkout leaves it 0660
+    # and every other container-consumed file here is opened the same way.
+    - promtail.yml
   moodle:
     - php-fpm-limits.conf         # php-fpm runs as `nobody` in this image
     # Bind-mounted at /opt/moodle-plugins and read by the image's boot-time
@@ -265,5 +269,10 @@ moodle_plugin_enrol_waitlist_sha256: 2266fa07d360414efc1af74e592f988a09e14af4af6
 # NOTE: the admin email lives in vars/secrets.yml as `monitor_admin_email` —
 # this file is public (not git-crypt encrypted), so no email addresses here.
 # The Loki tenant ID is already public (docs, promtail/datasource configs).
+# Since 2026-11-18 the same literal is committed in monitor/promtail.yml and
+# monitor/provisioning/datasources/datasources.yml (so those files never need an
+# Ansible render and a repo sync cannot revert them to invalid Jinja); this var
+# still feeds roles/system's fail2ban Loki helper. Rotating the tenant means
+# changing all three places, or the log pipeline silently splits per tenant.
 monitor:
   loki_tenant: "servyy-logs-k8x9m2p4q7"

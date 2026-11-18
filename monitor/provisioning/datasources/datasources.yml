@@ -19,5 +19,8 @@ datasources:
       maxLines: 1000
       httpHeaderName1: X-Scope-OrgID
     secureJsonData:
-      # ansible-rendered (plays/user.yml pre_tasks) from centralized monitor.loki_tenant
-      httpHeaderValue1: {{ monitor.loki_tenant }}
+      # Plaintext on purpose: the Loki tenant id is not a secret (see the note in
+      # monitor/promtail.yml). Committing it keeps this file out of the Ansible
+      # render, so a checkout of the deploy dir cannot revert it to invalid Jinja
+      # YAML — which would make Grafana 13 exit 1 on a provisioning error.
+      httpHeaderValue1: servyy-logs-k8x9m2p4q7

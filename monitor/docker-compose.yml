@@ -27,6 +27,14 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
       - ./provisioning:/etc/grafana/provisioning
+      # Contact points are the ONE monitor config that still carries a secret
+      # (the admin mail address), so it is rendered by Ansible — but into
+      # ./rendered/, never over the tracked file. This mount shadows the raw
+      # Jinja copy that git keeps in ./provisioning: history/
+      # 2026-11-18_monitor-render-out-of-checkout.md explains why rendering over
+      # a tracked path broke idempotency and left Grafana one restart away from
+      # a provisioning crash-loop.
+      - ./rendered/contact-points.yml:/etc/grafana/provisioning/alerting/contact-points.yml:ro
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       # Identity + mail secrets come from grafana.env (vault-rendered). Kept here

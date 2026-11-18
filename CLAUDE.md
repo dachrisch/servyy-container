@@ -359,26 +359,31 @@ ssh lehel.xyz "docker restart monitor.grafana"
 
 ### Never `git pull` the deploy checkout on the server
 
-`/home/cda/servyy-container` is the Ansible **remote dir**, not a workspace:
-`plays/user.yml` renders three monitor files into it from the controller
-(`template: src={{ docker.local_dir }}/monitor/... dest={{ docker.remote_dir }}/monitor/...`):
+`/home/cda/servyy-container` is the Ansible **remote dir**, not a workspace: a
+repo sync runs `git reset --hard` there, and any manual `git pull` bypasses the
+tasks that keep the stack startable.
 
-- `monitor/provisioning/datasources/datasources.yml` (`{{ monitor.loki_tenant }}`)
-- `monitor/provisioning/alerting/contact-points.yml` (`{{ monitor_admin_email }}`)
-- `monitor/promtail.yml` (`{{ monitor.loki_tenant }}`)
+The monitor stack no longer depends on the checkout's content for its secrets:
+Grafana contact points (the one monitor config with a secret, the admin address)
+are rendered by Ansible into `monitor/rendered/`, an **untracked** directory that
+`monitor/docker-compose.yml` bind-mounts over the provisioning dir, and
+`monitor/promtail.yml` + `monitor/provisioning/datasources/datasources.yml` now
+carry the (non-secret) Loki tenant inline. So a repo sync can no longer revert a
+config the containers read — that was the 2026-10-30 trap, fixed on 2026-11-18.
 
-Those tracked files therefore hold *rendered* content on the server and raw Jinja
-in git. A `git pull` there silently reverts them to `{{ ... }}`, which is invalid
-YAML, and **Grafana 13 exits code 1** on a provisioning error — the container
-crash-loops and every dashboard/alert is gone until the files are rendered again.
-Same for `promtail` (it only reads its config at startup, so it survives until the
-next restart).
+What a hand-run `git pull` still breaks: it updates files the *deploy* has not
+rendered/recreated yet (compose files, `grafana.env` consumers) without applying
+them — deploy with `./servyy.sh --tags user.docker.repo,user.docker.monitor`
+instead, or `--tags user.repo.clone` if you only need the checkout.
 
-If it happens: recover the values from live state (`servyy-logs-k8x9m2p4q7` from
-`monitor_loki_data/_data/chunks/`, the mail address from `alert_configuration` in
-`grafana.db` or `grafana.env`), write the three files, `chmod 644`, restart
-Grafana. Full write-up: `history/2026-10-30_monitor-provisioning-render-trap.md`.
-A normal Ansible deploy re-renders all three and is the sanctioned repair.
+If a monitor file ever does hold raw `{{ ... }}` on the server (invalid YAML —
+Grafana 13 exits 1 on a provisioning error and crash-loops; promtail fails to
+parse its config at the next restart), the sanctioned repair is a redeploy:
+`./servyy.sh --limit servy.lehel.xyz --tags user.docker.repo,user.docker.monitor`.
+That path also re-asserts the resolved address, so the deploy fails loudly rather
+than provisioning a broken contact point. Full write-up:
+`history/2026-10-30_monitor-provisioning-render-trap.md` and
+`history/2026-11-18_monitor-render-out-of-checkout.md`.
 
 ## Removing a Service Permanently
 

@@ -7,8 +7,12 @@ positions:
 
 clients:
   - url: http://loki:3100/loki/api/v1/push
-    # ansible-rendered (plays/user.yml pre_tasks) from centralized monitor.loki_tenant
-    tenant_id: {{ monitor.loki_tenant }}
+    # Plaintext on purpose: the Loki tenant id is not a secret (it is documented
+    # in plays/vars/default.yml and recoverable from Loki's chunk directory
+    # names). Committing it here keeps this file out of the Ansible render, so a
+    # checkout of the deploy dir can never revert it to invalid Jinja YAML.
+    # Keep in sync with monitor.loki_tenant and the Grafana Loki datasource.
+    tenant_id: servyy-logs-k8x9m2p4q7
 
 scrape_configs:
   # Docker container logs via Docker API

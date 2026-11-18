@@ -120,22 +120,73 @@
       tags:
         - user.docker.searxng
 
-    # Monitor provisioning configs are Jinja in git (tenant/email centralized in
-    # vars) and rendered over the checked-out service dir before compose starts
-    # (source: controller checkout, like the service sync itself).
-    - name: Render monitor provisioning configs from centralized vars
-      ansible.builtin.template:
-        src: "{{ docker.local_dir }}/monitor/{{ item.src }}"
-        dest: "{{ docker.remote_dir }}/monitor/{{ item.src }}"
-        mode: "{{ item.mode }}"
-      loop:
-        - {src: 'promtail.yml', mode: '0644'}
-        - {src: 'provisioning/datasources/datasources.yml', mode: '0644'}
-        # Grafana (uid 472, gid root) reads this provisioning file from inside
-        # the container; it must be world-readable (group is `docker`, not
-        # root), else Grafana crash-loops on "permission denied".
-        - {src: 'provisioning/alerting/contact-points.yml', mode: '0644'}
+    # Monitor contact points are the one monitor config that still carries a
+    # secret (the admin mail address), so Ansible still renders them — but into
+    # monitor/rendered/, an UNTRACKED path that monitor/docker-compose.yml
+    # bind-mounts over the provisioning dir. Never render over the tracked file
+    # again: `roles/user/tasks/includes/repository.yml` resets tracked files to
+    # raw Jinja (`git reset --hard`), so an in-tree render is non-idempotent
+    # forever — every run rewrote them, and a repo-sync-only run left Grafana
+    # and promtail reading `{{ ... }}`, which is invalid YAML. Grafana 13 exits 1
+    # on a provisioning error (crash-loop, monitoring blind).
+    # Full analysis: history/2026-11-18_monitor-render-out-of-checkout.md
+    - name: Ensure the untracked monitor render target exists
+      ansible.builtin.file:
+        path: "{{ docker.remote_dir }}/monitor/rendered"
+        state: directory
+        mode: "0755"
       when: "'monitor' in (services | default([]))"
+      tags:
+        - user.docker.monitor
+        - user.docker.env
+        - user.docker.env.monitor
+
+    - name: Render the monitor contact points from the centralized admin address
+      ansible.builtin.template:
+        src: "{{ docker.local_dir }}/monitor/provisioning/alerting/contact-points.yml"
+        dest: "{{ docker.remote_dir }}/monitor/rendered/contact-points.yml"
+        # Grafana (uid 472, gid root) reads this from inside the container and
+        # the group is `docker`, not root: it must be world-readable.
+        mode: "0644"
+      when: "'monitor' in (services | default([]))"
+      tags:
+        - user.docker.monitor
+        - user.docker.env
+        - user.docker.env.monitor
+
+    - name: Read back the rendered contact points
+      ansible.builtin.slurp:
+        src: "{{ docker.remote_dir }}/monitor/rendered/contact-points.yml"
+      register: monitor_contact_points
+      # Skipped in check mode: `template` writes nothing there, so the file may
+      # not exist yet on a first run.
+      when:
+        - "'monitor' in (services | default([]))"
+        - not ansible_check_mode
+      tags:
+        - user.docker.monitor
+        - user.docker.env
+        - user.docker.env.monitor
+
+    # A placeholder that silently stopped resolving (renamed var, unset secret)
+    # is a fatal Grafana provisioning error at boot, not a warning. Fail the
+    # deploy here instead of at the next restart. The negative check is escaped
+    # because the file legitimately keeps Grafana's own `{{ .Status | toUpper }}`
+    # subject templating; an unresolved Ansible value looks like
+    # `{{ monitor_admin_email }}`.
+    - name: Verify the rendered contact points resolved to a real address
+      ansible.builtin.assert:
+        that:
+          - "monitor_contact_points.content | b64decode is search('addresses: [^@\\s]+@[^@\\s]+')"
+          - "monitor_contact_points.content | b64decode is not search('\\{\\{\\s*[a-z_]+')"
+        fail_msg: >-
+          monitor/rendered/contact-points.yml has no resolved mail address, or
+          still holds an unresolved Jinja placeholder. Grafana 13 exits 1 on a
+          provisioning error, so the deploy stops here instead of being found at
+          the next restart.
+      when:
+        - "'monitor' in (services | default([]))"
+        - not ansible_check_mode
       tags:
         - user.docker.monitor
         - user.docker.env
@@ -748,9 +799,10 @@
         # leaves tracked files at 0660 group `docker`, which none of them can
         # read — the container then exits on "permission denied" (Grafana) or
         # "Error loading config" (Prometheus) and silently drops out of the
-        # compose project. Declared centrally (vars/default.yml); the per-file
-        # render task above only covers promtail.yml, datasources.yml and
-        # contact-points.yml.
+        # compose project. Declared centrally (vars/default.yml). The render task
+        # above sets 0644 on its own output (monitor/rendered/contact-points.yml);
+        # everything else the containers read is a tracked checkout file, so it
+        # depends on this list.
         world_readable_paths: "{{ world_readable_paths_by_service[service_dir] | default([]) }}"
       when: "'monitor' in (services | default([]))"
       tags: [user.docker, user.docker.monitor]
