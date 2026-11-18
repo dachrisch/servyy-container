@@ -1,6 +1,19 @@
 ---
+# The three includes below use `apply.tags`: with a dynamic `include_tasks`, tags
+# on the include statement apply only to the include itself, so the untagged
+# tasks inside _restic_check_single.yml were SKIPPED under exactly the run that
+# asks for them (`--tags testing.restic.check_recent` ran three includes and made
+# no snapshot assertion — a silent no-op). `apply` puts the tags on the included
+# tasks, and keeping `never` in the list preserves the opt-in semantics: nothing
+# here runs unless the tag is requested. Same idiom as
+# restic/tasks/main.yml -> seed_guard.yml.
 - name: Check recent restic snapshots (< 24h)
-  include_tasks: _restic_check_single.yml
+  ansible.builtin.include_tasks:
+    file: _restic_check_single.yml
+    apply:
+      tags:
+        - testing.restic.check_recent
+        - never
   loop:
     - home
     - root
@@ -22,7 +35,12 @@
     - never
 
 - name: Check recent db snapshots (< 24h)
-  include_tasks: _restic_check_single.yml
+  ansible.builtin.include_tasks:
+    file: _restic_check_single.yml
+    apply:
+      tags:
+        - testing.restic.check_recent
+        - never
   vars:
     item: db
   when: restic_env_db.stat.exists
@@ -48,7 +66,12 @@
     - never
 
 - name: Check recent moodle snapshots (< 24h)
-  include_tasks: _restic_check_single.yml
+  ansible.builtin.include_tasks:
+    file: _restic_check_single.yml
+    apply:
+      tags:
+        - testing.restic.check_recent
+        - never
   vars:
     item: "{{ moodle_repo.item }}"
   loop: "{{ restic_env_moodle.results }}"

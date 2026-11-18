@@ -25,6 +25,17 @@
 # Requires db_version_guard_checked from tasks/db_version_guard.yml (pre_tasks of
 # the same play); it is a no-op if that list is empty.
 
+- name: Reset the drift metric's accumulators
+  # Same defect class as tasks/db_version_guard.yml (see the reset there): the
+  # fact store persists across plays, so these accumulators must start empty on
+  # every invocation. Included by one play today, which is exactly why the start
+  # value was never noticed — a second inclusion would double the series.
+  ansible.builtin.set_fact:
+    db_version_drift_ids: {}
+    db_version_drift_lines: []
+  tags:
+    - always
+
 - name: Read the database image IDs after the deploy
   ansible.builtin.command:
     argv:

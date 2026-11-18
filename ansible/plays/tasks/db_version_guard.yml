@@ -43,6 +43,23 @@
 # downgrades the minor-line check to a warning for that engine. It never
 # downgrades the `retiring` check.
 
+- name: Reset the database version guard's accumulators
+  # This file is IMPORTED by TWO plays (plays/user.yml and
+  # plays/leaguesphere.yml) and `set_fact` facts persist across plays within one
+  # ansible-playbook run, so the accumulating tasks below would append to the
+  # previous play's lists. Measured on the WP-0 deploy (2026-11-18): servyy-test
+  # 3 -> 9 servers, servy 6 -> 18, and the "cannot verify" warning fired once per
+  # accumulated entry instead of once. Every accumulator this file builds is
+  # cleared here - list -> [], dict -> {} - and nothing else in the file assigns
+  # them outright, so keep this task FIRST and keep the list complete when a new
+  # accumulator is added.
+  ansible.builtin.set_fact:
+    db_version_guard_intended: {}
+    db_version_guard_resolved: []
+    db_version_guard_checked: []
+  tags:
+    - always
+
 - name: Define the Phase-0 database server list (static until db_tenants.yml, WP-3)
   ansible.builtin.set_fact:
     db_version_guard_servers:
