@@ -47,11 +47,22 @@ services:
     # with `retries: 5` a dead mongo is now marked unhealthy after 2.5min
     # instead of 50s, which no consumer of this check (probe, watchtower) needs.
     # See history/2026-10-30_load-alert-tuning.md.
+    #
+    # start_interval/start_period: `interval: 30s` alone means a container that
+    # was just recreated sits in `starting` for up to ~30 s before its first
+    # check runs, and plays/user.yml waits only 30 s (15 x 2 s) for `healthy`
+    # after a deploy. That mismatch used to fail the wait on a perfectly healthy
+    # mongo. The play now fails loudly instead of deleting the volume
+    # (history/2026-11-18_db-tier-wp1-mongo-wipe.md), but a spurious failure
+    # is still wrong: probe every 2 s while starting and give mongod 30 s of grace
+    # before failures count. Docker Engine >= 25 for start_interval (servy: 29.1.3).
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 30s
       timeout: 5s
       retries: 5
+      start_interval: 2s
+      start_period: 30s
 
   redis:
     # Floats patches inside 9-alpine (the digest pin froze even patch fixes).

@@ -756,47 +756,41 @@
         - user.docker.shared
         - user.docker
 
-    # Never wipe the volume during an upgrade: mongo 8 may need longer to
-    # come up on existing data, and an unhealthy container here means the upgrade
-    # failed, not that the volume is corrupt. The dedicated wait below fails loudly.
-    # Same for the mongo 9 migration run (shared_mongo9_migrating): the freshly
-    # restored volume must never be the one this deletes.
-    - name: Remove corrupted mongo volume and restart if unhealthy
+    # An unhealthy shared.mongo is a fault to investigate, NEVER a corrupt volume:
+    # the previous version of this task removed the whole `shared` project and the
+    # `shared_mongo_data` volume — all three tenants (leagues_finance, queen,
+    # dontforget) — whenever the wait above expired, and it expired routinely
+    # because a recreated container sat in `starting` for up to ~30 s. The volume
+    # is now never deleted by a play; this fails and names the container instead.
+    # See history/2026-11-18_db-tier-wp1-mongo-wipe.md.
+    #
+    # The two guards are kept from the wipe era for their intent only: an upgrade
+    # run (lf_mongo_upgrading) and the mongo 9 migration run
+    # (shared_mongo9_migrating) bring mongo up themselves, with their own waits
+    # further down this file, so this check does not second-guess them.
+    - name: Fail the deploy if shared mongo is not healthy
+      vars:
+        lf_mongo_health_status: >-
+          {{ ((lf_mongo_info.container.State.Health | default({})).Status
+              | default('present, no health status'))
+             if (lf_mongo_info.container | default(none, true)) else 'container absent' }}
+      ansible.builtin.fail:
+        msg: >-
+          shared.mongo is not healthy after waiting 30 s (retries: 15, delay: 2):
+          State.Health.Status={{ lf_mongo_health_status }}.
+          NOTHING WAS DELETED: the shared_mongo_data volume holds leagues_finance,
+          queen and dontforget and was left untouched. Inspect it with
+          `docker logs shared.mongo` and `docker inspect shared.mongo` before
+          deciding what to do; a manual recovery from
+          shared/.backup/mongo-all-*.archive.gz is the last resort, not a deploy
+          step.
       when: >
         'shared' in (services | default([])) and
         not (lf_mongo_upgrading | default(false)) and
         not (shared_mongo9_migrating | default(false)) and (
         lf_mongo_info.container is none or
-        lf_mongo_info.container.State.Health.Status != 'healthy')
-      block:
-        - name: Remove shared containers
-          community.docker.docker_compose_v2:
-            project_src: "{{ (docker.remote_dir, 'shared') | path_join }}"
-            project_name: shared
-            state: absent
-
-        # The volume shared.mongo mounts (mongo 9). NOT the legacy
-        # leagues-finance_mongo_data: that is the pre-9 rollback copy.
-        - name: Remove shared mongo_data volume
-          community.docker.docker_volume:
-            name: shared_mongo_data
-            state: absent
-
-        - name: Restart shared containers
-          community.docker.docker_compose_v2:
-            project_src: "{{ (docker.remote_dir, 'shared') | path_join }}"
-            project_name: shared
-            state: present
-
-        - name: Wait for mongo after volume reset
-          community.docker.docker_container_info:
-            name: "shared.mongo"
-          register: lf_mongo_retry
-          until: >
-            lf_mongo_retry.container is not none and
-            lf_mongo_retry.container.State.Health.Status == 'healthy'
-          retries: 15
-          delay: 2
+        ((lf_mongo_info.container.State.Health | default({})).Status
+         | default('no health status')) != 'healthy')
       tags:
         - user.docker.leagues-finance
         - user.docker.shared
