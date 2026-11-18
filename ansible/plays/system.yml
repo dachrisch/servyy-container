@@ -7,7 +7,19 @@
   vars_files:
     - vars/default.yml
     - vars/restic.yml
+    # Tenant inventory: the restic wiring (repo lists, retention, probes) is
+    # generated from `backup_targets` there (WP-8R R1).
+    - vars/db_tenants.yml
     - vars/secrets.yml
+  pre_tasks:
+    # Validate the restic inventory and build the two system_probe lists from
+    # `backup_targets` (WP-8R R1). Fails the play on an unknown retention
+    # profile, an unknown repo name or a log key that does not exist.
+    - name: Wire restic from the tenant inventory
+      ansible.builtin.import_tasks: tasks/restic_wiring.yml
+      tags:
+        - always
+
   roles:
     - system
     - role: system_probe

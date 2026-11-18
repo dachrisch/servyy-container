@@ -296,3 +296,35 @@ restic:
 
   # Global settings
   exclude_caches: true  # Use --exclude-caches to skip folders with CACHEDIR.TAG
+
+# --- Generated restic wiring (WP-8R R1) ---------------------------------------
+# Everything below is derived from `backup_targets` in plays/vars/db_tenants.yml.
+# Do not add repo names here: add a row to `backup_targets` (and the repo's own
+# transport details in the `restic:` map above). The `or` fallbacks exist ONLY so
+# the molecule scenarios, which do not load the tenant inventory, keep working;
+# production always takes the derived branch.
+restic_targets_enabled: >-
+  {{ (backup_targets | selectattr('enabled_by', 'equalto', 'always') | list)
+     + ((backup_targets | selectattr('enabled_by', 'equalto', 'leaguesphere') | list)
+        if (leaguesphere_enabled | default(false) | bool) else [])
+     + ((backup_targets | selectattr('enabled_by', 'equalto', 'moodle') | list)
+        if (moodle_enabled | default(false) | bool) else []) }}
+
+# Repo key lists. Order is the inventory order and it is load-bearing for the
+# forget/check scripts' output (they are diffed against the deployed files).
+restic_repo_names_enabled: "{{ (restic_targets_enabled | map(attribute='name') | list) or (['home', 'root']
+     + (['db'] if (leaguesphere_enabled | default(false) | bool) else [])
+     + (['moodle-files', 'moodle-db'] if (moodle_enabled | default(false) | bool) else [])) }}"
+restic_repos_enabled: "{{ restic_repo_names_enabled | map('extract', restic) | list }}"
+restic_moodle_repo_names: "{{ restic_targets_enabled | selectattr('tenant', 'equalto', 'moodle') | map(attribute='name') | list }}"
+restic_moodle_repos: "{{ restic_moodle_repo_names | map('extract', restic) | list }}"
+
+# Log files to create: host-level repos, then forget/check, then the tenant
+# repos, then the dump logs (a dump log proves the timer fires; the snapshot
+# probe proves the data landed).
+restic_log_paths_enabled: >-
+  {{ ((restic_targets_enabled | selectattr('tenant', 'equalto', None) | map(attribute='log_key') | list)
+      + ['forget', 'check']
+      + (restic_targets_enabled | rejectattr('tenant', 'equalto', None) | map(attribute='log_key') | list)
+      + (restic_targets_enabled | rejectattr('dump_log_key', 'none') | map(attribute='dump_log_key') | list))
+     | map('extract', restic.logs) | list }}
