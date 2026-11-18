@@ -40,6 +40,10 @@
     - vars/default.yml
     - vars/restic.yml
     - vars/secrets.yml
+    # Tenant inventory: the single source of truth the database guard reads
+    # (WP-3). Loaded here so plays/tasks/db_version_guard.yml can assume
+    # `db_tenants` is defined rather than silently checking nothing.
+    - vars/db_tenants.yml
   tags:
     - user
     - user.docker

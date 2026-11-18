@@ -1,8 +1,15 @@
 ---
 # Database version guard — a `pre_task` of plays/user.yml AND
 # plays/leaguesphere.yml, tagged `always`.
-# Plan: docs/plans/2026-11-17_db-tier-topology.md (D1, D8, D14, D15, Phase 0.6)
-#       docs/plans/2026-11-18_db-tier-work-packages.md (WP-0)
+# Plan: docs/plans/2026-11-17_db-tier-topology.md (D1, D8, D14, D15, Phase 0.6/2)
+#       docs/plans/2026-11-18_db-tier-work-packages.md (WP-0, WP-3)
+#
+# SERVER LIST: derived from `vars/db_tenants.yml`, the single source of truth for
+# every database tenant from WP-3 on. Both plays load that file in `vars_files`,
+# so this task file can assume `db_tenants` exists (an undefined var is a loud
+# failure — better than a guard that silently checks nothing). Rows are grouped
+# per `server`, because the guard compares servers while the inventory lists
+# tenants; a server counts as `retiring` only when every tenant on it is.
 #
 # WHY a pre_task: the failure it prevents is applying a MIXED VERSION LINE among
 # the database servers, and no restart can undo that. It must therefore fail
@@ -14,9 +21,12 @@
 # WHAT is compared:
 #   * the TAG each server is about to run — read from the compose file that will
 #     be applied — across the ACTIVE servers of one engine: differing minors fail
-#     (D8);
+#     (D8). Each engine is checked separately, so the mongo and postgres rows
+#     never enter the MariaDB equality set;
 #   * a `retiring` server (D14: moodle.db, bnb-office.db, photoprism.mariadb)
-#     that has left its pinned `mariadb:12.3` line: fails;
+#     that has left its pinned line (`db_version_guard_retiring_pins`, mariadb
+#     12.3): fails. The pin is guard-local — the inventory carries placement, not
+#     the fence value;
 #   * digest/patch drift is NOT this file's job: it only warns and pushes
 #     `db_version_drift` (tasks/db_version_drift_push.yml, post-deploy).
 #
@@ -26,18 +36,22 @@
 # merge-before-deploy, so the controller is at origin/master = the commit the
 # clone fetches.
 #
-# EXCEPTION — leaguesphere.db lives in the OTHER repo (leaguesphere), whose
-# compose file this play only pulls later (`ls_app` -> git pull). The file that
+# EXCEPTION — servers whose compose lives in the OTHER repo (leaguesphere.db,
+# leaguesphere_stage.mysql, leaguesphere-demo.mysql: `compose_dir: ''` in the
+# inventory) are pulled by this run itself (`ls_app` -> git pull). The file that
 # will be applied therefore does not exist yet here, and reading the host copy
 # would read the previous commit — which could FAIL A GOOD DEPLOY (going from
-# `mariadb:latest` to `mariadb:13.0`, the stale copy still says `latest`). So its
-# intended tag is `unknown` and the guard compares its RUNNING tag instead; an
+# `mariadb:latest` to `mariadb:13.0`, the stale copy still says `latest`). For
+# those the intended tag is `unknown` and the guard compares the RUNNING tag; an
 # unparsable tag is excluded from the equality check and warned about, never
 # failed on. Documented in history/2026-11-18_db-tier-wp0-version-fence.md.
 #
-# ONLY listed servers are read: db-access / db-tunnel / sync containers are
-# clients, not database servers. Stage and demo (`leaguesphere_stage.mysql`,
-# `leaguesphere-demo.mysql`) join in WP-3 with the db_tenants.yml inventory.
+# ONLY database servers are read: db-access / db-tunnel / sync containers are
+# clients, not servers, and are not tenants.
+#
+# --check: the inspect task is `check_mode: false` (it only reads). Without it a
+# `--check` run resolves empty tags, skips every comparison and looks green while
+# proving nothing (found in the WP-0e drills).
 #
 # Override (D8, Phase 10 hop runs only): -e db_version_guard_allow_drift=mariadb
 # downgrades the minor-line check to a warning for that engine. It never
@@ -57,50 +71,55 @@
     db_version_guard_intended: {}
     db_version_guard_resolved: []
     db_version_guard_checked: []
+    # D14 fence values, guard-local on purpose: db_tenants.yml describes WHERE a
+    # tenant runs, this map is what the guard REFUSES to let it leave.
+    db_version_guard_retiring_pins:
+      mariadb: '12.3'
   tags:
     - always
 
-- name: Define the Phase-0 database server list (static until db_tenants.yml, WP-3)
+- name: Validate the tenant inventory before trusting it
+  # A typo in db_tenants.yml would otherwise silently weaken every check below
+  # (an unknown tier or engine simply matches nothing). Fail loudly instead.
+  ansible.builtin.assert:
+    that:
+      - db_tenants | default([]) | length > 0
+      - (db_tenants | map(attribute='tier') | unique
+         | difference(['high', 'nonprod', 'business', 'private']) | length) == 0
+      - (db_tenants | map(attribute='engine') | unique
+         | difference(['mariadb', 'mongo', 'postgres']) | length) == 0
+      - db_tenants | rejectattr('server', 'equalto', '') | list | length == db_tenants | length
+    fail_msg: >-
+      vars/db_tenants.yml is invalid: every row needs a non-empty `server`, a
+      tier in high|nonprod|business|private, and an engine in
+      mariadb|mongo|postgres. It is the single source of truth for the database
+      guard (Phase 2 of docs/plans/2026-11-17_db-tier-topology.md).
+    quiet: true
+  tags:
+    - always
+
+- name: Derive the per-server list from the tenant inventory (WP-3)
+  # db_tenants.yml is the single source of truth: one row per TENANT. The guard
+  # works per SERVER, so rows are grouped by `server` (shared.mongo holds three
+  # tenants, shared.db one) and a server is `retiring` only when every tenant on
+  # it is. `pinned_tag` (D14) stays guard-local: db_tenants.yml carries the
+  # placement, not the fence value.
   ansible.builtin.set_fact:
-    db_version_guard_servers:
-      # High tier: LeagueSphere prod. Other repo — intended tag unknown, see above.
-      - container: leaguesphere.db
-        engine: mariadb
-        compose_dir: ''
-        service: db
-        retiring: false
-        pinned_tag: ''
-      - container: shared.mongo
-        engine: mongo
-        compose_dir: shared
-        service: mongo
-        retiring: false
-        pinned_tag: ''
-      # Delete in Phase 9 (Firefly moves to db-private.mariadb).
-      - container: shared.db
-        engine: postgres
-        compose_dir: shared
-        service: db
-        retiring: false
-        pinned_tag: ''
-      - container: photoprism.mariadb
-        engine: mariadb
-        compose_dir: photoprism
-        service: mariadb
-        retiring: true
-        pinned_tag: '12.3'
-      - container: moodle.db
-        engine: mariadb
-        compose_dir: moodle
-        service: db
-        retiring: true
-        pinned_tag: '12.3'
-      - container: bnb-office.db
-        engine: mariadb
-        compose_dir: bnb-office
-        service: db
-        retiring: true
-        pinned_tag: '12.3'
+    db_version_guard_servers: >-
+      {{ db_version_guard_servers | default([]) + [
+           { 'container': item,
+             'engine': (db_version_guard_rows | map(attribute='engine') | first),
+             'compose_dir': (db_version_guard_rows | map(attribute='compose_dir') | first),
+             'service': (db_version_guard_rows | map(attribute='compose_service') | first),
+             'retiring': (db_version_guard_rows | rejectattr('retiring', 'equalto', true) | list | length == 0),
+             'pinned_tag': (db_version_guard_retiring_pins | default({})).get(
+                              db_version_guard_rows | map(attribute='engine') | first, '') }
+         ] }}
+  vars:
+    db_version_guard_rows: "{{ db_tenants | selectattr('server', 'equalto', item) | list }}"
+  loop: "{{ db_tenants | map(attribute='server') | unique | list }}"
+  loop_control:
+    label: "{{ item }}"
   tags:
     - always
 
@@ -133,7 +152,13 @@
   # `docker inspect --format` (not docker_container_info): a container that does
   # not exist must be a skip, not a failed task, and both fields are needed —
   # .Image (the digest this run will compare) and .Config.Image (the tag it was
-  # created with, the fallback for leaguesphere.db).
+  # created with, the fallback for servers whose compose lives in another repo).
+  #
+  # check_mode: false is REQUIRED. `command` has no check-mode support, so a
+  # `--check` run skipped this task and every server resolved with an empty tag —
+  # D8 then had nothing to compare and a green `--check` proved nothing (found in
+  # the WP-0e drills, 2026-11-19). The task only reads, so it is safe to run
+  # under --check.
   ansible.builtin.command:
     argv:
       - docker
@@ -147,6 +172,7 @@
   register: db_version_guard_inspect
   changed_when: false
   failed_when: false
+  check_mode: false
   tags:
     - always
 

@@ -9,6 +9,8 @@
     - vars/ssh_jail.yaml
     - vars/secrets.yml
     - vars/default.yml
+    # Tenant inventory (WP-3): the database guard reads it, same as plays/user.yml.
+    - vars/db_tenants.yml
   pre_tasks:
     # Skip this play on hosts that do not run LeagueSphere. Without this
     # guard the ssh-chroot-jail role (and all other ls_* roles) would run on

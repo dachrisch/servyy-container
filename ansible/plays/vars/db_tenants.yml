@@ -1,0 +1,200 @@
+---
+# Tenant inventory — THE single source of truth for every database tenant from
+# WP-3 on. Plan: docs/plans/2026-11-17_db-tier-topology.md (Phase 2, D2/D8/D14).
+#
+# Seeded (2026-11-19) with the CURRENT placement, so nothing moves: an entry here
+# describes where a tenant runs today, not where it will end up. Later phases
+# only edit rows (WP-4..WP-9 move `server`, WP-9 retires `shared.mongo`, WP-10
+# removes `firefly`).
+#
+# Schema — one row per TENANT, not per server (several tenants share a server):
+#   tenant                stable id, never renamed (history and dumps key off it)
+#   tier                  one of: high | nonprod | business | private   (D3)
+#   engine                mariadb | mongo | postgres
+#   server                container name of the server that holds it
+#   db                    database name ON that server (kept when a tenant moves)
+#   user                  the tenant's own scoped user (never root — D4)
+#   dump_schedule         what runs TODAY: 'hourly', 'daily HH:MM', or 'none'
+#   dump_dir              directory the dump lands in ('' = none today)
+#   restic_repo           restic repo that carries dump_dir ('' = none today)
+#   max_user_connections  D12 limit; 0 = no limit set yet (WP-3b applies them)
+#   max_statement_time    D12 limit in seconds; 0 = no limit set yet
+#   retiring              D14: true = stays on its current line, excluded from the
+#                         engine equality check, and must NOT leave it
+#   compose_dir           GUARD-ONLY: service dir in THIS repo whose
+#                         docker-compose.yml is the intended tag source
+#                         ('' = another repo: the guard falls back to the tag the
+#                         container is actually running)
+#   compose_service       GUARD-ONLY: the compose service inside that file
+#
+# `dump_schedule` / `dump_dir` / `restic_repo` mirror the timers and scripts that
+# exist today (mariadb-backup-ls, moodle-dump + restic-backup-moodle-db, the bnb
+# one-liner). WP-3b's `dbops` takes ownership of them; until then this file only
+# *describes* them, it does not drive them.
+#
+# The guard groups rows by `server`, so several tenants on one server produce one
+# entry in its per-server check (shared.mongo holds three, shared.db one).
+# A server counts as `retiring` only when every tenant on it is.
+
+db_tenants:
+  # --- high: LeagueSphere core production ---------------------------------
+  - tenant: leaguesphere
+    tier: high
+    engine: mariadb
+    server: leaguesphere.db
+    # Read from the jail's rendered ls.env (MYSQL_DB_NAME) and the container env,
+    # not guessed: prod's database is web35_db8 owned by web35_8.
+    db: web35_db8
+    user: web35_8
+    # Physical mariadb-backup (hourly) + binlog PITR — not a logical dump (D10).
+    dump_schedule: hourly
+    dump_dir: /var/jail/home/leaguesphere/container/deployed/mysql-backup/current
+    restic_repo: db
+    max_user_connections: 0
+    max_statement_time: 0
+    retiring: false
+    # Other repo: the guard compares the RUNNING tag (documented exception).
+    compose_dir: ''
+    compose_service: ''
+
+  # --- nonprod: LeagueSphere stage + demo (disposable) ---------------------
+  - tenant: leaguesphere_stage
+    tier: nonprod
+    engine: mariadb
+    server: leaguesphere_stage.mysql
+    db: leaguesphere_stage
+    user: leaguesphere_stage
+    # A restore target, not a backup source: nothing dumps it today.
+    dump_schedule: none
+    dump_dir: ''
+    restic_repo: ''
+    max_user_connections: 0
+    max_statement_time: 0
+    retiring: false
+    compose_dir: ''
+    compose_service: ''
+
+  - tenant: leaguesphere_demo
+    tier: nonprod
+    engine: mariadb
+    server: leaguesphere-demo.mysql
+    db: demo_db
+    user: demo_user
+    # Dropped and recreated nightly by the demo entrypoint; never dumped.
+    dump_schedule: none
+    dump_dir: ''
+    restic_repo: ''
+    max_user_connections: 0
+    max_statement_time: 0
+    retiring: false
+    compose_dir: ''
+    compose_service: ''
+
+  # --- business: other organisations' data + our business apps -------------
+  - tenant: moodle
+    tier: business
+    engine: mariadb
+    server: moodle.db
+    db: moodle
+    user: moodle
+    dump_schedule: hourly
+    dump_dir: /home/cda/servyy-container/moodle/data/db-backup/current
+    restic_repo: moodle-db
+    max_user_connections: 0
+    max_statement_time: 0
+    retiring: true
+    compose_dir: moodle
+    compose_service: db
+
+  - tenant: bnb_office
+    tier: business
+    engine: mariadb
+    server: bnb-office.db
+    db: ibs
+    user: ibs_app
+    dump_schedule: 'daily 02:30'
+    dump_dir: /home/cda/servyy-container/bnb-office/.backup
+    # No repo of its own: the dumps ride the hourly `home` snapshot.
+    restic_repo: home
+    max_user_connections: 0
+    max_statement_time: 0
+    retiring: true
+    compose_dir: bnb-office
+    compose_service: db
+
+  - tenant: leagues_finance
+    tier: business
+    engine: mongo
+    server: shared.mongo
+    db: leagues_finance
+    user: leagues_finance
+    dump_schedule: none
+    dump_dir: ''
+    restic_repo: ''
+    max_user_connections: 0
+    max_statement_time: 0
+    retiring: false
+    compose_dir: shared
+    compose_service: mongo
+
+  - tenant: queen
+    tier: business
+    engine: mongo
+    server: shared.mongo
+    db: queen
+    user: queen
+    dump_schedule: none
+    dump_dir: ''
+    restic_repo: ''
+    max_user_connections: 0
+    max_statement_time: 0
+    retiring: false
+    compose_dir: shared
+    compose_service: mongo
+
+  # --- private: the operator's own data -----------------------------------
+  - tenant: photoprism
+    tier: private
+    engine: mariadb
+    server: photoprism.mariadb
+    db: photoprism
+    user: photoprism
+    dump_schedule: none
+    dump_dir: ''
+    restic_repo: ''
+    max_user_connections: 0
+    max_statement_time: 0
+    retiring: true
+    compose_dir: photoprism
+    compose_service: mariadb
+
+  - tenant: dontforget
+    tier: private
+    engine: mongo
+    server: shared.mongo
+    db: dontforget
+    user: dontforget
+    dump_schedule: none
+    dump_dir: ''
+    restic_repo: ''
+    max_user_connections: 0
+    max_statement_time: 0
+    retiring: false
+    compose_dir: shared
+    compose_service: mongo
+
+  - tenant: firefly
+    tier: private
+    engine: postgres
+    server: shared.db
+    db: firefly
+    user: firefly
+    # Nothing dumps it today; it becomes a MariaDB tenant in Phase 9 (D7).
+    dump_schedule: none
+    dump_dir: ''
+    restic_repo: ''
+    max_user_connections: 0
+    max_statement_time: 0
+    retiring: false
+    compose_dir: shared
+    compose_service: db
