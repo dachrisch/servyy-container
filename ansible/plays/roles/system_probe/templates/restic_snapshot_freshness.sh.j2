@@ -2,6 +2,17 @@
 # Restic snapshot-age probe: reports the age of the NEWEST snapshot per repo,
 # together with the threshold and the severity it should alert at.
 #
+# WHY `max(.time)` OVER EVERY SNAPSHOT, NOT `--latest 1` AND `[0]`: `restic
+# snapshots --latest 1` returns the newest snapshot per (hostname, paths) GROUP,
+# so `[0]` is the first GROUP, not the newest snapshot. Measured on the R2 deploy
+# verification (2026-11-18): one snapshot whose hostname was "localhost" (left by
+# a branch-rendered test, not by the probe) formed its own group, sorted first,
+# and its age grew forever — `repo="home"` reported 10 440 s while the real
+# newest snapshot was 1 612 s old, i.e. a permanent false positive that would
+# have paged medium forever. A hostname or paths variation can never dominate a
+# maximum over the whole repo; it can only dominate "whichever group is first".
+# The repo is small enough that listing every snapshot once per 30 min is cheap.
+#
 # Why snapshot age, not log mtime: a failing backup script still touches its log
 # every hour ("Starting restic backup" + error), so the log-freshness probe
 # stays green while zero backups succeed. In 2026-09/10 a stale exclusive lock
@@ -46,8 +57,18 @@ collect() {
     printf 'restic_snapshot_age_seconds{repo="%s"} %s\n' "$name" "-1"
     return 0
   fi
-  if json=$( ( source "$env_file" && restic snapshots --latest 1 --json --no-lock ) 2>/dev/null ); then
-    snap_time=$(echo "$json" | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["time"])' 2>/dev/null) || snap_time=""
+  # ALL snapshots (no --latest): the age must be the repo's newest snapshot, not
+  # "the newest of the first (host, paths) group" — see the header. Times are
+  # compared as instants, not strings: restic prints each one with the offset of
+  # the host that made it (+01:00 here, +00:00 on a machine in UTC) and with
+  # nanosecond fractions, so a lexicographic max can pick an older snapshot.
+  if json=$( ( source "$env_file" && restic snapshots --json --no-lock ) 2>/dev/null ); then
+    snap_time=$(printf '%s' "$json" | python3 -c '
+import datetime, json, sys
+snaps = json.load(sys.stdin)
+times = [datetime.datetime.fromisoformat(s["time"].replace("Z", "+00:00")) for s in snaps]
+print(max(times).isoformat() if times else "")
+' 2>/dev/null) || snap_time=""
     if [ -n "$snap_time" ]; then
       snap_epoch=$(date -d "$snap_time" +%s 2>/dev/null) || snap_epoch=""
       if [ -n "$snap_epoch" ]; then
