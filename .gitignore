@@ -61,3 +61,9 @@ db-*/mariadb.env
 # service directory, untracked and committable.
 */dba.env
 db-*/dba.env
+# Rendered secrets that live in a SERVICE directory of the checkout (rendered by
+# roles/docker_service from templates, 0600, hold DB passwords). They are
+# untracked but were NOT ignored - one `git add -A` from being committed. The
+# templates (*.env.j2) are tracked; these exact paths are the rendered output.
+photoprism/photoprism.env
+moodle/db.env

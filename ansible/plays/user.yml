@@ -851,6 +851,11 @@
     # existing server storage. The optional volume path is still supported:
     # set moodle_volume_device/moodle_volume_path and roles/user/tasks/
     # moodle_volume.yml takes over the mount.
+    # WP-7b: the app's database is the business tier (`db-business.mariadb`,
+    # host var moodle_db_host) and the `db:` sidecar left the compose — so there
+    # is no db.env template any more (it only ever held that sidecar's root and
+    # app credentials). The tier's server is NOT deployed by this role:
+    # `db_tier`/`docker_service` for db-business above own it.
     - role: docker_service
       vars:
         service_dir: moodle
@@ -859,8 +864,6 @@
         env_templates:
           - src: moodle.env.j2
             dest: .env
-          - src: moodle.db.env.j2
-            dest: db.env
           # The image writes config.php itself from these variables, so nothing
           # is rendered into the Moodle tree.
           - src: moodle.app.env.j2
