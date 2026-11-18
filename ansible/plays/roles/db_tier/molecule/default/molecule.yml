@@ -1,0 +1,65 @@
+---
+# Molecule scenario for roles/db_tier.
+#
+# What it proves (Phase 2 step 7 of docs/plans/2026-11-17_db-tier-topology.md):
+#   * two MariaDB tenants on one tier, each with its own account,
+#   * each tenant user reaches ONLY its own database (a cross-tenant SELECT is
+#     refused — D4: privileges scoped to `<db>.*` at most),
+#   * the per-tier backup user can read both (it is the dump identity) but cannot
+#     write,
+#   * a tier whose inventory rows have no mongo tenant renders no mongo service:
+#     covered structurally, because the role never renders compose files at all
+#     (D6) — the tier's service set comes from db-<tier>/docker-compose.yml, which
+#     WP-4..6 own. The scenario therefore asserts the role creates no container.
+#
+# Networking note: the real cross-TIER isolation (a tenant of one tier cannot
+# reach another tier's network) needs two tier projects with their own
+# `db_<tier>_backend` networks, i.e. the compose files of WP-4..6. Until those
+# exist, isolation between DIFFERENT tiers cannot be expressed; what this
+# scenario proves is isolation between TENANTS ON ONE TIER, which is the
+# role-level guarantee (per-tenant users, per-tenant grants).
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../../../../requirements.yml
+
+driver:
+  name: docker
+
+platforms:
+  - name: instance-db-tier
+    image: geerlingguy/docker-ubuntu2204-ansible:latest
+    command: ""
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - /var/run/docker.sock:/var/run/docker.sock
+    cgroupns_mode: host
+    privileged: true
+    pre_build_image: true
+
+provisioner:
+  name: ansible
+  playbooks:
+    converge: converge.yml
+    verify: verify.yml
+  config_options:
+    defaults:
+      action_warnings: true
+      allow_world_readable_tmpfiles: true
+      roles_path: ../../../
+  env:
+    ANSIBLE_FORCE_COLOR: "1"
+    ANSIBLE_ROLES_PATH: "${MOLECULE_PROJECT_DIRECTORY}/.."
+
+verifier:
+  name: ansible
+
+scenario:
+  test_sequence:
+    - dependency
+    - destroy
+    - create
+    - prepare
+    - converge
+    - verify
+    - destroy

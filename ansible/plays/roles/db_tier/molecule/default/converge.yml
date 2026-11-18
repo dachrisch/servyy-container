@@ -1,0 +1,53 @@
+---
+# Run the role for a two-tenant MariaDB tier whose server is the container the
+# prepare step started. `db_tenants` is passed inline: the real inventory lives in
+# plays/vars/db_tenants.yml, which the role expects the play to load.
+- name: Converge — roles/db_tier on a two-tenant tier
+  hosts: all
+  gather_facts: true
+  vars:
+    # The role's own defaults need these two from the play.
+    remote_user_home: "/home/{{ ansible_user | default('root') }}"
+    docker:
+      local_dir: "/tmp"           # no compose file for this tier: the role must say so, not fail
+    db_tier_name: business
+    db_tier_user_passwords: {}
+    dbops_password_business: "molecule-backup-pw"
+    db_tenants:
+      - tenant: tenant_a
+        tier: business
+        engine: mariadb
+        server: db-tier-test.mariadb
+        db: tenant_a
+        user: tenant_a
+        dump_schedule: none
+        dump_dir: "/tmp/dbops-dumps"
+        restic_repo: ''
+        max_user_connections: 5
+        max_statement_time: 30
+        retiring: false
+        compose_dir: ''
+        compose_service: ''
+      - tenant: tenant_b
+        tier: business
+        engine: mariadb
+        server: db-tier-test.mariadb
+        db: tenant_b
+        user: tenant_b
+        dump_schedule: none
+        dump_dir: "/tmp/dbops-dumps"
+        restic_repo: ''
+        max_user_connections: 5
+        max_statement_time: 30
+        retiring: false
+        compose_dir: ''
+        compose_service: ''
+  # No mongo tenant on this tier: nothing in the role may reach for mongo.
+  #
+  # include_role (not a play-level `roles:` entry) so the role is resolved at
+  # run time from ANSIBLE_ROLES_PATH, like the docker_service scenario — and so
+  # `ansible-lint` can check this playbook without molecule's roles path.
+  tasks:
+    - name: Apply the tier
+      ansible.builtin.include_role:
+        name: db_tier

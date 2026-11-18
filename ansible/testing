@@ -31,6 +31,12 @@ test:
       moodle_traefik_tls: "false"
       moodle_traefik_certresolver: ""
       shared_services: [mongo, redis]
+      # DB tiers this host rehearses (roles/db_tier). Same shape as
+      # shared_services/finance_services: a list of tier names, each with its
+      # own `--tags user.docker.db-<tier>` invocation. Empty until WP-4..6
+      # commit the tier compose files; enabling a tier whose compose is
+      # missing only sets up its users + dbops (and says so loudly).
+      db_tiers: []
       finance_services: [queen]
       queen_service_host: queen.servyy-test.lxd
       queen_traefik_entrypoint: web

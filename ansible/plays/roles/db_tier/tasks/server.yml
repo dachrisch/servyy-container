@@ -1,0 +1,70 @@
+---
+# Per-server setup for one tier. `db_tier_server` is the container that holds
+# this tier's databases on THIS host (today the tenant's own server; after
+# WP-4..6 the tier's db-<tier>.mariadb).
+
+- name: Inspect {{ db_tier_server }}
+  ansible.builtin.command:
+    argv: [docker, inspect, --format, "{{ '{{.State.Running}}' }}", "{{ db_tier_server }}"]
+  register: db_tier_server_state
+  changed_when: false
+  failed_when: false
+  check_mode: false   # read-only; must also resolve under --check
+
+- name: Skip a server that is not on this host
+  ansible.builtin.debug:
+    msg: >-
+      {{ db_tier_server }} is not running on {{ inventory_hostname }}; the tenant
+      that lives there is handled on its own host.
+  when: db_tier_server_state.stdout | default('') != 'true'
+
+- name: Configure {{ db_tier_server }} for tier {{ db_tier_name }}
+  when: db_tier_server_state.stdout | default('') == 'true'
+  block:
+    # The only place this role uses the server's root credential, and it never
+    # leaves the container: it is read from the container's own env, exactly like
+    # shared_mongo_users does for mongo. Backup and tenant users never see it.
+    - name: Read the tier's tenant accounts on {{ db_tier_server }}
+      community.docker.docker_container_exec:
+        container: "{{ db_tier_server }}"
+        command: >-
+          sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" --skip-ssl --batch --skip-column-names -e "SELECT User FROM mysql.user"'
+      register: db_tier_accounts
+      changed_when: false
+
+    - name: Fail when a tenant user is missing and no password was supplied
+      ansible.builtin.assert:
+        that:
+          - item.user in (db_tier_accounts.stdout_lines | default([]))
+        fail_msg: >-
+          Tenant '{{ item.tenant }}': user '{{ item.user }}' does not exist on
+          {{ db_tier_server }}. Either the tenant is not created yet (supply
+          db_tier_user_passwords.{{ item.tenant }} to let this role create it) or
+          the inventory's `user` for that tenant is wrong.
+        quiet: true
+      loop: "{{ db_tier_tenants | selectattr('server', 'equalto', db_tier_server)
+                | rejectattr('tenant', 'in', db_tier_user_passwords.keys() | list) | list }}"
+      loop_control:
+        label: "{{ item.tenant }}"
+
+    - name: Create or refresh the tier's backup user on {{ db_tier_server }}
+      community.docker.docker_container_exec:
+        container: "{{ db_tier_server }}"
+        command: >-
+          sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" --skip-ssl -e "{{ lookup('ansible.builtin.template', 'backup_user.sql.j2') }}"'
+      register: db_tier_backup_result
+      # The statement text contains the backup password.
+      no_log: true
+      changed_when: false
+
+    - name: Enforce the D12 limits on the tier's tenant users
+      community.docker.docker_container_exec:
+        container: "{{ db_tier_server }}"
+        command: >-
+          sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" --skip-ssl -e "{{ lookup('ansible.builtin.template', 'tenant_limits.sql.j2') }}"'
+      register: db_tier_limits_result
+      changed_when: false
+
+- name: Render dbops and its credential file ({{ db_tier_name }})
+  when: db_tier_server_state.stdout | default('') == 'true'
+  ansible.builtin.import_tasks: render.yml
