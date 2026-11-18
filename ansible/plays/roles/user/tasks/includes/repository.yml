@@ -145,10 +145,15 @@
 # That is intentional for the git-crypt'd secret files, but content that a
 # container reads as a non-root uid needs world-read -- services declare such
 # paths in `world_readable_paths_by_service` (plays/vars/default.yml).
+#
+# Only entries that are actually wrong are chowned. A bare `-exec chown {} +`
+# over the whole tree bumps every file's ctime on every run even when the
+# ownership already matches, which is what made the next checkout rewrite the
+# tree (see the refresh task at the end of the file).
 - name: "Set correct ownership for {{ remote_dir }}"
   shell: |
-    find "{{ remote_dir }}" -type f -exec chown "{{ create_user }}:docker" {} + 2>/dev/null || true
-    find "{{ remote_dir }}" -type d -exec chown "{{ create_user }}:docker" {} + 2>/dev/null || true
+    find "{{ remote_dir }}" \( ! -user "{{ create_user }}" -o ! -group docker \) \
+      -exec chown "{{ create_user }}:docker" {} + 2>/dev/null || true
   changed_when: false
   tags:
     - user.repo.clone
@@ -217,6 +222,34 @@
   ansible.builtin.command: "chmod -R go-w {{ remote_dir | quote }}"
   changed_when: false
   when: secure_checkout_modes | default(false)
+  tags:
+    - user.repo.clone
+    - user.repo.secure.modes
+
+# Close the loop between the ctime-bumping tasks above and git's stat cache.
+#
+# POSIX updates ctime on *every* chmod/chown call, not only on an effective
+# change, and git's index stores the ctime it saw when it wrote the file. So the
+# chown and the two chmods above always leave the index stat-dirty, the next
+# `git reset --hard` reads that as "possibly changed" and REWRITES THE WHOLE
+# TREE at umask 007 (0660) -- which gives the chmods real work again. Measured
+# 2026-11-18 on servy: index ctime 12:01:27 vs file ctime 12:16:27 after one
+# deploy, every tracked file rewritten on every deploy, and a container
+# restarted inside that window read half-written 0660 dashboards.
+#
+# Re-recording the stat info here breaks the cycle: the tree reads clean to the
+# next checkout, the checkout writes nothing, modes stay as the chmods left
+# them, and a repo-sync-only deploy converges to changed=0. It cannot hide a
+# real modification -- entries whose content differs are reported ("needs
+# update") and left dirty for the next `reset --hard` to discard.
+- name: "Re-record checkout stat info so the next deploy does not rewrite the tree"
+  ansible.builtin.command: "git update-index --refresh"
+  args:
+    chdir: "{{ remote_dir }}"
+  # Exit 1 only means "some entry genuinely needs update" (that is what the next
+  # checkout is for), not a failure of this task.
+  failed_when: false
+  changed_when: false
   tags:
     - user.repo.clone
     - user.repo.secure.modes
