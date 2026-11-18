@@ -1,0 +1,39 @@
+---
+# Reconcile Grafana's ADMIN PASSWORD IN THE DB with the one the deploy renders.
+#
+# WHY THIS EXISTS (WP-8R R2b, 2026-11-18): `GF_SECURITY_ADMIN_PASSWORD` is
+# applied by Grafana ONLY when it creates the admin user (first boot of a fresh
+# `grafana_data` volume). Afterwards the credential lives in `grafana.db`, and
+# nothing in a deploy touched it — so the two drift apart, silently:
+#
+#   * the monitor/AGENTS.md verification recipe authenticates with the CONTAINER
+#     ENV value and gets 401, which reads like "the password is wrong" instead of
+#     "the env is not the credential";
+#   * the only way left to read the provisioning API was to open `grafana.db`,
+#     which is how the stale `stale_restic_db_snapshot` rule was found on
+#     2026-11-18 — verification had already degraded to guesswork.
+#
+# Measured drift of 2026-11-18: container env == the rendered `grafana.env` ==
+# the controller seed, but the admin row was rewritten at 22:12:49 by the
+# password-reset link (grafana.log: `/user/password/reset?code=…`) after the
+# browser login with the env value failed at 22:08. Grafana logged neither the
+# change nor the mismatch; the row's `updated` column is the only evidence.
+#
+# WHAT IT DOES: authenticates as admin with the CONTAINER'S OWN env value
+# (never a controller-side secret, never argv — the password is read from
+# `$GF_SECURITY_ADMIN_PASSWORD` inside the container) and, only when that fails,
+# re-asserts it into the DB with `grafana cli admin reset-admin-password
+# --password-from-stdin`. Then it proves the API answers 200 and fails the
+# deploy with the trap spelled out if it still does not.
+#
+# On a healthy host this is one `curl` and no change.
+#
+# SIDE EFFECT when it repairs: any open admin browser session is logged out
+# (Grafana rotates auth tokens on a password change). The rendered value is the
+# documented credential and the Vaultwarden copy of it (`grafana - admin
+# (lehel.xyz)`) stays correct; the recovery rule is in CLAUDE.md.
+
+monitor_grafana_auth_container: monitor.grafana
+# The endpoint that needs an authenticated admin. `/api/v1/provisioning/
+# alert-rules` is the one the verification recipe reads, and it is what 401'd.
+monitor_grafana_auth_check_path: /api/v1/provisioning/alert-rules

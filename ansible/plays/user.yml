@@ -966,6 +966,16 @@
       when: "'monitor' in (services | default([]))"
       tags: [user.docker, user.docker.monitor]
 
+    # The rendered admin password is applied by Grafana only when it CREATES the
+    # admin user, so the env and grafana.db drift apart silently (2026-11-18: the
+    # DB was rewritten by a browser password reset, the env kept the seed, and the
+    # documented verification recipe 401'd). This proves the env still
+    # authenticates and re-asserts it into the DB when it does not. Runs after
+    # monitor_reload so a restarted Grafana has settled.
+    - role: monitor_grafana_auth
+      when: "'monitor' in (services | default([]))"
+      tags: [user.docker, user.docker.monitor]
+
   post_tasks:
     - name: Wait for shared mongo to become healthy
       community.docker.docker_container_info:
