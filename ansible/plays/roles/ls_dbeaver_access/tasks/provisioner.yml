@@ -39,7 +39,10 @@
           # A private-range pin: the account is only useful from inside the
           # compose network, and a public or /8-wide pattern is a grant nobody
           # needs.
-          - dbeaver_stack.grant_host_pattern is match('^172\.(1[6-9]|2[0-9]|3[01])\.%$')
+          # RFC1918 only, and never wider than a /24 of it: app-owned stacks
+          # land in docker's 172.16/12 pool, the DB tier in its 192.168/16 pool
+          # (db_nonprod_backend is 192.168.16.0/20, measured 2026-11-18).
+          - dbeaver_stack.grant_host_pattern is match('^(172\.(1[6-9]|2[0-9]|3[01])|192\.168)\.[0-9]+\.%$')
           - dbeaver_stack.backend_network in dbeaver_stack.networks
           # Prod keeps the exact pattern the sidecar and the runbook name. If
           # this fires, the network was renumbered and every grant needs a
@@ -52,6 +55,13 @@
           {{ dbeaver_stack.networks | join(', ') }}. Re-verify which containers
           share that network before granting anything.
         quiet: true
+
+    - name: Generate the {{ dbeaver_stack.name }} reaper-admin password once, on the controller
+      set_fact:
+        dbeaver_admin_password: >-
+          {{ lookup('password', (dbeaver_provisioner_local_file_prefix ~ '_' ~ dbeaver_stack.name ~ '_admin') ~ ' length=32 chars=ascii_letters,digits') }}
+      no_log: true
+      when: dbeaver_stack.admin_user | length > 0
 
     - name: Generate the {{ dbeaver_stack.name }} provisioner password once, on the controller
       set_fact:
@@ -96,6 +106,55 @@
     - name: Print the effective {{ dbeaver_stack.name }} provisioner grants
       debug:
         var: dbeaver_provisioner_grants.stdout_lines
+
+    # --- tier stacks only: the SCOPED admin the reaper sweeps with ------------
+    # The reaper used to read the DB container's root from its env. After the
+    # cutover the stage database lives on db-nonprod.mariadb, whose root would
+    # give the safety net far more than it needs, so it gets its own account:
+    #   * CREATE USER        - global; MariaDB has no schema-scoped variant (the
+    #                          same accepted cost as the sidecar's own account),
+    #   * SELECT ON mysql.user - it must read created_at / the host pattern,
+    #   * ALL ON <stage db>.* WITH GRANT OPTION - it re-grants and drops the
+    #                          temporary dbeaver accounts inside that schema.
+    # ACCEPTED RESIDUAL (plan Phase 3 step 6): CREATE USER is global, so this
+    # credential can DROP USER any account on the nonprod tier. It is a
+    # non-prod, disposable tier; the alternative on MariaDB is root.
+    - name: Create the {{ dbeaver_stack.admin_user }} account the reaper uses
+      community.docker.docker_container_exec:
+        container: "{{ dbeaver_stack.db_container }}"
+        command: mariadb -h 127.0.0.1 -u root --batch
+        stdin: |
+          CREATE USER IF NOT EXISTS '{{ dbeaver_stack.admin_user }}'@'%'
+            IDENTIFIED BY '{{ dbeaver_admin_password }}';
+          ALTER USER '{{ dbeaver_stack.admin_user }}'@'%'
+            IDENTIFIED BY '{{ dbeaver_admin_password }}';
+          GRANT CREATE USER ON *.* TO '{{ dbeaver_stack.admin_user }}'@'%';
+          GRANT SELECT ON mysql.user TO '{{ dbeaver_stack.admin_user }}'@'%';
+          GRANT ALL PRIVILEGES ON `{{ dbeaver_stack.db_name }}`.*
+            TO '{{ dbeaver_stack.admin_user }}'@'%' WITH GRANT OPTION;
+        env:
+          MYSQL_PWD: "{{ dbeaver_stack.db_root_password }}"
+      no_log: true
+      when: dbeaver_stack.admin_user | length > 0
+
+    - name: Ensure the reaper's credential directory exists
+      file:
+        path: "{{ (dbeaver_stack.admin_env_path | dirname) }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      when: dbeaver_stack.admin_user | length > 0
+
+    - name: Render the reaper's credential file for {{ dbeaver_stack.name }}
+      template:
+        src: reaper_admin.env.j2
+        dest: "{{ dbeaver_stack.admin_env_path }}"
+        owner: root
+        group: root
+        mode: '0600'
+      no_log: true
+      when: dbeaver_stack.admin_user | length > 0
 
     - name: Write {{ dbeaver_stack.name }}'s sidecar environment file next to its compose file
       template:

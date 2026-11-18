@@ -31,11 +31,23 @@
         dbeaver_candidate: "{{ dbeaver_candidate_doc.app }}"
       no_log: true
 
+    # A tier pin (defaults: dbeaver_stack_pins) means this stack's database no
+    # longer lives in an app-owned `<name>.mysql` container.
+    - name: Look up a tier pin for {{ dbeaver_candidate.name }}
+      set_fact:
+        dbeaver_pin: "{{ (dbeaver_stack_pins | default([]) | selectattr('name', 'equalto', dbeaver_candidate.name) | list | first) | default({}, true) }}"
+      no_log: true
+
     - name: Compute the {{ dbeaver_candidate.name }} database container name
       set_fact:
         dbeaver_candidate_db_container: >-
-          {{ (dbeaver_candidate.name ~ '.db') if dbeaver_candidate.name == 'leaguesphere'
-             else (dbeaver_candidate.name ~ '.mysql') }}
+          {{ dbeaver_pin.db_container if dbeaver_pin.db_container is defined
+             else ((dbeaver_candidate.name ~ '.db') if dbeaver_candidate.name == 'leaguesphere'
+                   else (dbeaver_candidate.name ~ '.mysql')) }}
+        dbeaver_candidate_db_name: >-
+          {{ dbeaver_pin.db_name | default(dbeaver_candidate.db_name) }}
+        dbeaver_candidate_backend_network: >-
+          {{ dbeaver_pin.backend_network | default(dbeaver_candidate.name ~ '_backend') }}
       no_log: true
 
     - name: Read the {{ dbeaver_candidate_db_container }} container, if this stack runs here
@@ -43,9 +55,9 @@
         name: "{{ dbeaver_candidate_db_container }}"
       register: dbeaver_candidate_db
 
-    - name: Read the {{ dbeaver_candidate.name }}_backend network
+    - name: Read the {{ dbeaver_candidate_backend_network }} network
       community.docker.docker_network_info:
-        name: "{{ dbeaver_candidate.name }}_backend"
+        name: "{{ dbeaver_candidate_backend_network }}"
       register: dbeaver_candidate_net
 
     - name: Record {{ dbeaver_candidate.name }} when it is really running on this host
@@ -57,19 +69,23 @@
           compose_dir: >-
             {{ dbeaver_candidate_db.container.Config.Labels['com.docker.compose.project.working_dir'] }}
           db_container: "{{ dbeaver_candidate_db_container }}"
-          db_name: "{{ dbeaver_candidate.db_name }}"
+          db_name: "{{ dbeaver_candidate_db_name }}"
+          # Empty for an app-owned stack (the reaper then uses the container's
+          # own root env); set for a tier stack (a rendered credential file).
+          admin_user: "{{ dbeaver_pin.admin_user | default('') }}"
+          admin_env_path: "{{ dbeaver_pin.admin_env_path | default('') }}"
           # The name the sidecar dials on the backend network. Read from the
           # container's own network aliases (service name) rather than assumed
           # from the stack name: aliases are [container, service, <id>], so
           # dropping the container name and the id leaves the service name.
           db_host_alias: >-
-            {{ (dbeaver_candidate_db.container.NetworkSettings.Networks[dbeaver_candidate.name ~ '_backend'].Aliases
+            {{ (dbeaver_candidate_db.container.NetworkSettings.Networks[dbeaver_candidate_backend_network].Aliases
                 | default([dbeaver_candidate_db_container]))
                | reject('equalto', dbeaver_candidate_db_container)
                | reject('match', '^[0-9a-f]{12}$')
                | list | first | default(dbeaver_candidate_db_container) }}
-          db_root_password: "{{ dbeaver_candidate.db_root_password }}"
-          backend_network: "{{ dbeaver_candidate.name }}_backend"
+          db_root_password: "{{ dbeaver_pin.db_root_password | default(dbeaver_candidate.db_root_password) }}"
+          backend_network: "{{ dbeaver_candidate_backend_network }}"
           networks: "{{ dbeaver_candidate_db.container.NetworkSettings.Networks | list }}"
           grant_host_pattern: >-
             {{ (dbeaver_candidate_net.network.IPAM.Config[0].Subnet.split('/')[0].split('.')[0:2]

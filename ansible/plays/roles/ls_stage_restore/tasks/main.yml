@@ -4,6 +4,15 @@
 # Source: a prepared backup directory (e.g. /home/cda/ls-recovery-prewipe-*)
 # Target: the leaguesphere_stage.mysql container's database
 #
+# !! UNUSABLE AFTER THE WP-4 CUTOVER !!  Left deliberately un-converted in
+# WP-4b2a rather than half-ported: the container it copies into no longer exists
+# once stage moves to db-nonprod.mariadb, and the replacement path is
+# `dbops restore <stage tenant> --from-physical <prepared mariadb-backup dir>`,
+# which dbops refuses today ("the copy-back needs the target container
+# stopped"). Phase 4's rehearsal implements that path; until then a physical
+# restore into stage is a manual, documented procedure. Running this role after
+# the cutover fails at its first docker exec rather than corrupting anything.
+#
 # Strategy:
 #   1. Validate the source backup
 #   2. Copy-back into a temp data dir via a throwaway MariaDB container

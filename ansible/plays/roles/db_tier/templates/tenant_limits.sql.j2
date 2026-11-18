@@ -11,9 +11,17 @@
 {%   set ms = t.max_statement_time | default(0) | int -%}
 -- {{ t.tenant }}: user {{ t.user }} on `{{ t.db }}` (limits {{ mc }} / {{ ms }})
 {%   if t.tenant in db_tier_user_passwords %}
-CREATE USER IF NOT EXISTS '{{ t.user }}'@'localhost' IDENTIFIED BY '{{ db_tier_user_passwords[t.tenant] }}';
-ALTER USER '{{ t.user }}'@'localhost' IDENTIFIED BY '{{ db_tier_user_passwords[t.tenant] }}' WITH MAX_USER_CONNECTIONS {{ mc }} MAX_STATEMENT_TIME {{ ms }};
-GRANT ALL PRIVILEGES ON `{{ t.db }}`.* TO '{{ t.user }}'@'localhost';
+-- The tenant's APP user connects from OTHER containers over the tier's backend
+-- network, so it must be %: 'localhost' only ever matches a socket connection and
+-- the app would get access-denied. The old app-owned servers granted '%' too
+-- (deployed/mysql-init in the leaguesphere repo).
+CREATE USER IF NOT EXISTS '{{ t.user }}'@'%' IDENTIFIED BY '{{ db_tier_user_passwords[t.tenant] }}';
+ALTER USER '{{ t.user }}'@'%' IDENTIFIED BY '{{ db_tier_user_passwords[t.tenant] }}' WITH MAX_USER_CONNECTIONS {{ mc }} MAX_STATEMENT_TIME {{ ms }};
+GRANT ALL PRIVILEGES ON `{{ t.db }}`.* TO '{{ t.user }}'@'%';
+-- Drop the redundant socket-only account left by the first WP-4a run: one
+-- account per tenant, so a later password change cannot leave two in place with
+-- different credentials. Safe here: the '%' account above already exists.
+DROP USER IF EXISTS '{{ t.user }}'@'localhost';
 {%   endif -%}
 SELECT IFNULL(GROUP_CONCAT(CONCAT('ALTER USER ''', User, '''@''', Host, ''' WITH MAX_USER_CONNECTIONS {{ mc }} MAX_STATEMENT_TIME {{ ms }};') SEPARATOR ''),
               'DO 0') INTO @limits_{{ t.tenant }}

@@ -67,6 +67,32 @@ dbeaver_app_filter_list: >-
   {{ [] if (dbeaver_app_filter | length) == 0
      else ([dbeaver_app_filter] if dbeaver_app_filter is string else dbeaver_app_filter) }}
 
+# --- DB-tier stacks (WP-4) ---------------------------------------------------
+# A stack whose database moved onto a DB-tier server: discovery keys off the
+# app-owned `<stack>.mysql` container, which no longer exists after the cutover,
+# and the reaper must not use the tier's root. Each pin supplies the real
+# container, the backend network it is on, and the SCOPED admin account the
+# reaper uses (see tasks/provisioner.yml for the privileges and the accepted
+# residual).
+#
+# The pattern for `dbeaver_prod_<person>` grants is derived from the pinned
+# network's subnet, exactly as for an app-owned stack — never hardcoded.
+dbeaver_stack_pins:
+  - name: leaguesphere_stage
+    db_container: db-nonprod.mariadb
+    db_name: leaguesphere_stage
+    backend_network: db_nonprod_backend
+    # The subnets to grant from / to sanity-check against. db_nonprod_backend
+    # is 192.168.16.0/20 (measured 2026-11-18), so minted accounts arrive from
+    # 192.168.16.x, not from the old stage network's 172.26.x.
+    expect_subnet: "192.168.16.0/20"
+    # The tier's root password (secrets.yml: db_tier_root_password_<tier>), not
+    # the stage app's old db_root_password.
+    db_root_password: "{{ db_tier_root_password_nonprod }}"
+    admin_user: ls_stage_access_admin
+    admin_password_file_seed: "vars/.dbeaver_stage_admin_password"
+    admin_env_path: /etc/ls-db-access/leaguesphere_stage.env
+
 dbeaver_ls_vars_files:
   - secret_main.yaml
   - secret_stage.yaml

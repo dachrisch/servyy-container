@@ -15,6 +15,24 @@
     file: "{{ playbook_dir }}/roles/ls_app/vars/secret_stage.yaml"
     name: stage_app
 
+- name: Fail if the retired stage mysql container exists again
+  # Plan Phase 3 step 8: after the WP-4 cutover the staging database is on the
+  # nonprod tier. A resurrected app-owned container would silently receive the
+  # sync into a database nobody reads.
+  community.docker.docker_container_info:
+    name: "{{ ls_db_sync_retired_container }}"
+  register: ls_db_sync_retired
+  changed_when: false
+  failed_when: false
+
+- name: Refuse to sync while {{ ls_db_sync_retired_container }} exists
+  ansible.builtin.fail:
+    msg: >-
+      {{ ls_db_sync_retired_container }} exists again. The stage database moved to
+      {{ ls_db_sync_target_container }} (WP-4); remove the old container (its
+      mysql-data bind mount stays as the rollback) before syncing.
+  when: ls_db_sync_retired.container | default(none) is not none
+
 - name: Set dump file variable
   command: date +%s
   register: dump_timestamp
@@ -48,9 +66,9 @@
       $IGNORE {{ prod_app.app.db_name }} > "{{ sql_dump_file }}"
   changed_when: true
 
-- name: Wait for MySQL container health
+- name: Wait for the staging database container health
   shell: >
-    docker inspect {{ stage_app.app.name + '.mysql' }}
+    docker inspect {{ ls_db_sync_target_container }}
     --format='{{ "{{.State.Health.Status}}" }}'
   register: mysql_health
   until: mysql_health.stdout == 'healthy'
@@ -58,30 +76,23 @@
   delay: 2
   changed_when: false
 
+# WP-4b: the tier's stage app user has ALL on its own database, so it can
+# drop/recreate and import it - no root on the tier. MYSQL_PWD goes to the
+# container through the docker CLI's environment, never a host argv.
 - name: Drop and recreate staging database
   shell: |
-    docker exec {{ stage_app.app.name }}.mysql \
-      mariadb -u root -p'{{ stage_app.app.db_root_password }}' \
+    MYSQL_PWD='{{ stage_app.app.db_password }}' docker exec -e MYSQL_PWD {{ ls_db_sync_target_container }} \
+      mariadb -h 127.0.0.1 -u {{ stage_app.app.db_user }} \
       -e "DROP DATABASE IF EXISTS {{ stage_app.app.db_name }}; CREATE DATABASE {{ stage_app.app.db_name }} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
   changed_when: true
-
-- name: Copy dump file into MySQL container
-  shell: |
-    docker cp "{{ sql_dump_file }}" {{ stage_app.app.name }}.mysql:/tmp/dump.sql
-  changed_when: true
+  no_log: true
 
 - name: Import dump into staging database
   shell: |
-    cat "{{ sql_dump_file }}" | docker exec -i {{ stage_app.app.name }}.mysql \
-      mariadb -u root -p'{{ stage_app.app.db_root_password }}' \
-      {{ stage_app.app.db_name }}
+    MYSQL_PWD='{{ stage_app.app.db_password }}' docker exec -i -e MYSQL_PWD {{ ls_db_sync_target_container }} \
+      mariadb -h 127.0.0.1 -u {{ stage_app.app.db_user }} {{ stage_app.app.db_name }} < "{{ sql_dump_file }}"
   changed_when: true
-
-- name: Cleanup dump from MySQL container
-  shell: |
-    docker exec {{ stage_app.app.name }}.mysql rm /tmp/dump.sql
-  changed_when: true
-  ignore_errors: true
+  no_log: true
 
 - name: Restart staging app
   shell: docker restart {{ (stage_app.app.name ~ '.staging-app') if stage_app.app.name == 'leaguesphere_stage' else (stage_app.app.name ~ '.app') }}
