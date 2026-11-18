@@ -1,8 +1,8 @@
-{# The tier's backup account, on THIS server ($db_tier_server).
+{# The tier's backup account, on THIS server ($db_tier_target.server).
    Runs as the container's root (read from its own env, never from the host).
    One account per tenant database the tier owns on this server: SELECT + SHOW VIEW
    + TRIGGER + EVENT + LOCK TABLES, nothing else (D4). #}
-{% set dbs = db_tier_tenants | selectattr('server', 'equalto', db_tier_server) | map(attribute='db') | unique | list -%}
+{% set dbs = db_tier_target.tenants | map(attribute='db') | unique | list -%}
 {% for db in dbs -%}
 CREATE USER IF NOT EXISTS '{{ db_tier_backup_user }}'@'localhost' IDENTIFIED BY '{{ db_tier_backup_password }}';
 ALTER USER '{{ db_tier_backup_user }}'@'localhost' IDENTIFIED BY '{{ db_tier_backup_password }}';

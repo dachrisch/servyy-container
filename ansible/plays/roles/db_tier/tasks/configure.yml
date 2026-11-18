@@ -1,0 +1,44 @@
+---
+# Pass 2: users, limits and the backup account on the tier's server.
+#
+# Which server? The tier's OWN server when its container runs (db-<tier>.mariadb
+# — the case after WP-4a created it), otherwise the servers the tenants still
+# run on (the pre-move state of WP-3b). The tier server wins as soon as it
+# exists: from then on the old servers are frozen for rollback and must not be
+# reconfigured.
+
+- name: Inspect the tier's own server
+  ansible.builtin.command:
+    argv: [docker, inspect, --format, "{{ '{{.State.Running}}' }}", "{{ db_tier_server_name }}"]
+  register: db_tier_own_server
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Load the tenants' existing app credentials (they move in unchanged)
+  ansible.builtin.include_tasks: tenant_passwords.yml
+
+- name: Start with an empty target list
+  ansible.builtin.set_fact:
+    db_tier_targets: []
+
+# One entry per server: {server, tenants}. On the tier's own server the tenants
+# are the inventory's rows for the tier (their `server` still names the old one
+# until the cutover); on any other server it is the rows that live there.
+- name: Build the list of servers to configure
+  ansible.builtin.set_fact:
+    db_tier_targets: >-
+      {{ db_tier_targets + [{'server': item,
+                             'tenants': (db_tier_tenants if item == db_tier_server_name
+                                         else db_tier_tenants | selectattr('server', 'equalto', item) | list)}] }}
+  loop: "{{ [db_tier_server_name] if (db_tier_own_server.stdout | default('')) == 'true'
+            else (db_tier_tenants | map(attribute='server') | unique | list) }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Configure each server
+  ansible.builtin.include_tasks: server.yml
+  loop: "{{ db_tier_targets }}"
+  loop_control:
+    loop_var: db_tier_target
+    label: "{{ db_tier_target.server }} ({{ db_tier_target.tenants | length }} tenants)"

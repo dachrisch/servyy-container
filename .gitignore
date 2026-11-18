@@ -51,3 +51,5 @@ __pycache__/
 # graphify skill output (generated, never commit)
 graphify-out/
 db-*/data/
+# Rendered by roles/db_tier (0600, holds the tier root password)
+db-*/mariadb.env

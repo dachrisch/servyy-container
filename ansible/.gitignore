@@ -62,3 +62,8 @@ plays/vars/.dbops_password_business
 vars/.dbops_password_business
 plays/vars/.dbops_password_private
 vars/.dbops_password_private
+
+# Tier server root password seeds (roles/db_tier). Regenerable like the dbops
+# backup-user passwords: the role re-sets them in the database.
+plays/vars/.db_tier_root_password_nonprod
+vars/.db_tier_root_password_nonprod

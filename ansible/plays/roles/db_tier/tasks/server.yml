@@ -1,11 +1,11 @@
 ---
-# Per-server setup for one tier. `db_tier_server` is the container that holds
-# this tier's databases on THIS host (today the tenant's own server; after
-# WP-4..6 the tier's db-<tier>.mariadb).
+# Per-server setup for one tier. `db_tier_target` is {server, tenants} from
+# tasks/configure.yml — the tier's own server once it exists, otherwise the
+# servers the tenants still run on.
 
-- name: Inspect {{ db_tier_server }}
+- name: Inspect {{ db_tier_target.server }}
   ansible.builtin.command:
-    argv: [docker, inspect, --format, "{{ '{{.State.Running}}' }}", "{{ db_tier_server }}"]
+    argv: [docker, inspect, --format, "{{ '{{.State.Running}}' }}", "{{ db_tier_target.server }}"]
   register: db_tier_server_state
   changed_when: false
   failed_when: false
@@ -14,19 +14,16 @@
 - name: Skip a server that is not on this host
   ansible.builtin.debug:
     msg: >-
-      {{ db_tier_server }} is not running on {{ inventory_hostname }}; the tenant
-      that lives there is handled on its own host.
+      {{ db_tier_target.server }} is not running on {{ inventory_hostname }};
+      the tenant that lives there is handled on its own host.
   when: db_tier_server_state.stdout | default('') != 'true'
 
-- name: Configure {{ db_tier_server }} for tier {{ db_tier_name }}
+- name: Configure {{ db_tier_target.server }} for tier {{ db_tier_name }}
   when: db_tier_server_state.stdout | default('') == 'true'
   block:
-    # The only place this role uses the server's root credential, and it never
-    # leaves the container: it is read from the container's own env, exactly like
-    # shared_mongo_users does for mongo. Backup and tenant users never see it.
-    - name: Read the tier's tenant accounts on {{ db_tier_server }}
+    - name: Read the tier's tenant accounts on {{ db_tier_target.server }}
       community.docker.docker_container_exec:
-        container: "{{ db_tier_server }}"
+        container: "{{ db_tier_target.server }}"
         command: >-
           sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" --skip-ssl --batch --skip-column-names -e "SELECT User FROM mysql.user"'
       register: db_tier_accounts
@@ -38,18 +35,18 @@
           - item.user in (db_tier_accounts.stdout_lines | default([]))
         fail_msg: >-
           Tenant '{{ item.tenant }}': user '{{ item.user }}' does not exist on
-          {{ db_tier_server }}. Either the tenant is not created yet (supply
-          db_tier_user_passwords.{{ item.tenant }} to let this role create it) or
-          the inventory's `user` for that tenant is wrong.
+          {{ db_tier_target.server }}. Either the tenant is not created yet
+          (supply db_tier_user_passwords.{{ item.tenant }} to let this role create
+          it) or the inventory's `user` for that tenant is wrong.
         quiet: true
-      loop: "{{ db_tier_tenants | selectattr('server', 'equalto', db_tier_server)
+      loop: "{{ db_tier_target.tenants
                 | rejectattr('tenant', 'in', db_tier_user_passwords.keys() | list) | list }}"
       loop_control:
         label: "{{ item.tenant }}"
 
-    - name: Create or refresh the tier's backup user on {{ db_tier_server }}
+    - name: Create or refresh the tier's backup user on {{ db_tier_target.server }}
       community.docker.docker_container_exec:
-        container: "{{ db_tier_server }}"
+        container: "{{ db_tier_target.server }}"
         command: >-
           sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" --skip-ssl -e "{{ lookup('ansible.builtin.template', 'backup_user.sql.j2') }}"'
       register: db_tier_backup_result
@@ -57,14 +54,12 @@
       no_log: true
       changed_when: false
 
-    - name: Enforce the D12 limits on the tier's tenant users
+    - name: Create the tenants and enforce their D12 limits on {{ db_tier_target.server }}
       community.docker.docker_container_exec:
-        container: "{{ db_tier_server }}"
+        container: "{{ db_tier_target.server }}"
         command: >-
           sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" --skip-ssl -e "{{ lookup('ansible.builtin.template', 'tenant_limits.sql.j2') }}"'
       register: db_tier_limits_result
+      # The statement text contains any newly created tenant's password.
+      no_log: true
       changed_when: false
-
-- name: Render dbops and its credential file ({{ db_tier_name }})
-  when: db_tier_server_state.stdout | default('') == 'true'
-  ansible.builtin.import_tasks: render.yml

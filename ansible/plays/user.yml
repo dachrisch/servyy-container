@@ -572,13 +572,34 @@
 
     # DB tiers (WP-3b): one invocation per tier so a single tier can be deployed
     # alone (`--tags user.docker.db-business`) — Phase 10's version hop needs that.
-    # No host has `db_tiers` set yet: the tier servers themselves arrive with
-    # WP-4..6, and until then these invocations only prepare what already exists.
+    #
+    # The nonprod tier gets THREE tasks, in this order (WP-4a): pass 1 renders
+    # db-nonprod/mariadb.env + dbops, `docker_service` brings the server up, pass 2
+    # creates the tenants on the server that now runs. The other tiers are a
+    # single invocation until their compose files exist (WP-5/WP-6).
     - role: db_tier
       vars:
         db_tier_name: high
       when: "'high' in (db_tiers | default([]))"
       tags: [user.docker, user.docker.db-high]
+
+    - role: db_tier
+      vars:
+        db_tier_name: nonprod
+        db_tier_render_only: true
+      when: "'nonprod' in (db_tiers | default([]))"
+      tags: [user.docker, user.docker.db-nonprod]
+
+    # The tier's own compose project. Committed (D6), backend-only, no Traefik
+    # router; `db_nonprod_backend` is internal. Consumers attach externally.
+    - role: docker_service
+      vars:
+        service_dir: db-nonprod
+        env_templates:
+          - src: docker.env.j2
+            dest: .env
+      when: "'nonprod' in (db_tiers | default([]))"
+      tags: [user.docker, user.docker.db-nonprod]
 
     - role: db_tier
       vars:

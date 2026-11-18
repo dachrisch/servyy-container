@@ -1,0 +1,75 @@
+# nonprod database tier — LeagueSphere stage + demo (D3/D6).
+# Backend-only project (like `shared`): owns NO app traffic, publishes no port.
+# Consumers attach with:
+#   networks:
+#     backend:
+#       name: db_nonprod_backend
+#       external: true
+# and reach mariadb:3306 on `db-nonprod.mariadb`.
+#
+# Plan: docs/plans/2026-11-17_db-tier-topology.md, Phase 3.
+# The tenants (LS stage, LS demo) keep their existing database names and app
+# users; they move here in WP-4b, not in this file.
+name: ${SERVICE_NAME}
+
+services:
+  mariadb:
+    # Pinned to the MINOR, patch floats (D1): watchtower's `db` scope (labels
+    # below) delivers 13.0.x in the fixed 06:00 window with health-gated
+    # rollback; a 13.x -> 14.x step is a reviewed PR.
+    image: mariadb:13.0
+    container_name: ${COMPOSE_PROJECT_NAME}.mariadb
+    restart: unless-stopped
+    # 512m: the tier holds two disposable datasets (a restored prod copy and the
+    # demo) and must not compete with the app stacks for RAM under host pressure.
+    mem_limit: 512m
+    # D5: charset/collation are set explicitly (13.0 changed the default
+    # collation, and a mixed one breaks joins with the existing tables).
+    command:
+      - --innodb-buffer-pool-size=128M
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    # Rendered by roles/db_tier (0600): MARIADB_ROOT_PASSWORD +
+    # MARIADB_AUTO_UPGRADE. DB-ONLY env on purpose — no MYSQL_HOST may ever
+    # appear here: the entrypoint's `mariadb-upgrade` step shells out to the
+    # `mysql` client, which honours MYSQL_HOST, dials TCP to that name while the
+    # temporary upgrade server is socket-only, and puts the container in a
+    # restart loop (history/2026-11-18_ls-db-upgrade-flag-outage.md).
+    env_file:
+      - mariadb.env
+    environment:
+      # Same value as in mariadb.env; kept here so a missing line is visible in
+      # the compose diff. A tier server upgrades its own system tables on start.
+      MARIADB_AUTO_UPGRADE: "1"
+    volumes:
+      # D13: the datadir is a bind mount on `/` (≈30 GB free), never a named
+      # volume — the write-heaviest tenants must not land on the network block
+      # storage by accident. No `user:` override: the entrypoint takes ownership.
+      - ./data/mariadb:/var/lib/mysql
+    networks:
+      - backend
+    labels:
+      - traefik.enable=false
+      # Database server: the `db` watchtower scope (D15), daily 06:00 window,
+      # health-check gated with rollback. Not `prod` — that poller runs every 2 h.
+      - com.centurylinklabs.watchtower.scope=db
+    # 30s, not 10s, like every check in this repo: each check is a `docker exec`
+    # and this host is queue-bound rather than CPU-bound
+    # (history/2026-10-30_load-alert-tuning.md). start_interval/start_period are
+    # sized for a MariaDB FIRST boot, which initialises a fresh datadir (~10-30 s
+    # on this disk) before it can answer: without them the first check fails,
+    # `retries: 5` at 30 s intervals would still cover it, but the container
+    # would flap through "unhealthy" during every fresh-volume start.
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -uroot -p$$MARIADB_ROOT_PASSWORD --silent"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_interval: 2s
+      start_period: 60s
+
+networks:
+  backend:
+    # Explicit name: consumers attach with `external: true`.
+    name: db_nonprod_backend
+    internal: true

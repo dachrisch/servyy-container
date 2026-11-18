@@ -5,7 +5,7 @@
    created (or its password re-set) with the limits plus ALL on its own database —
    never more (D4). Missing accounts for tenants NOT listed there are caught by an
    explicit check in tasks/server.yml before this runs. #}
-{% set tenants = db_tier_tenants | selectattr('server', 'equalto', db_tier_server) | list -%}
+{% set tenants = db_tier_target.tenants -%}
 {% for t in tenants -%}
 {%   set mc = t.max_user_connections | default(0) | int -%}
 {%   set ms = t.max_statement_time | default(0) | int -%}
