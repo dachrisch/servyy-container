@@ -35,6 +35,16 @@
       loop_control:
         label: "{{ item.item }}"
 
+    - name: Read the home backup script
+      slurp:
+        src: "{{ script_dir }}/restic-backup-home.sh"
+      register: home_script
+
+    - name: Assert the home script stages its temp pack off /tmp
+      assert:
+        that:
+          - "'export TMPDIR=\"/home/testuser/.cache/restic-tmp\"' in (home_script.content | b64decode)"
+
     - name: Check home/root timers still deployed
       stat:
         path: "{{ unit_dir }}/{{ item }}.timer"
