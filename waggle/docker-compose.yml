@@ -52,9 +52,9 @@ services:
       - traefik.http.routers.${SERVICE_NAME}.rule=Host(`${SERVICE_HOST}`)
       - traefik.http.routers.${SERVICE_NAME}.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
       - traefik.http.routers.${SERVICE_NAME}.tls=${TRAEFIK_TLS:-true}
-      # HTTP-01 rather than the DNS-01 default. bumbleflies.de moved to Porkbun
-      # on 2026-11-18, so DNS-01 can issue for it now; this router is left on
-      # HTTP-01 until the switch is made deliberately.
+      # HTTP-01 rather than the DNS-01 default. DNS-01 was tried and reverted on
+      # 2026-11-18 — lego stalled on "waiting for record propagation" — so this
+      # stays on HTTP-01 by decision (history/2026-11-18_bumbleflies-de-transfer.md).
       - traefik.http.routers.${SERVICE_NAME}.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypthttpresolver}
       - traefik.http.services.${SERVICE_NAME}.loadbalancer.server.port=8080
       # Unattended updates by portainer.watchtower-prod (2h poll, cleanup on,

@@ -59,9 +59,10 @@ services:
       # refuses to subscribe to feeds on dontforget.lehel.xyz without ever
       # fetching them; bumbleflies.de is a long-lived domain on the *same* IP
       # (wildcard A record), so this isolates domain reputation from the IP.
-      # On letsencrypthttpresolver rather than DNS-01. bumbleflies.de moved to
-      # Porkbun on 2026-11-18, so DNS-01 is no longer blocked for it — but this
-      # router has not been switched, and HTTP-01 still issues fine.
+      # On letsencrypthttpresolver rather than DNS-01. The domain moved to
+      # Porkbun on 2026-11-18, but the DNS-01 switch was tried and reverted the
+      # same day (lego stalled on "waiting for record propagation"), so HTTP-01
+      # is kept by decision: history/2026-11-18_bumbleflies-de-transfer.md.
       # BUMBLEFLIES_HOST is empty when TLS is off (servyy-test), so both
       # routers then match nothing rather than colliding.
       # The two fallback hosts differ on purpose: when BUMBLEFLIES_HOST is

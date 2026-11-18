@@ -18,13 +18,12 @@ services:
       # prod resolver
       - traefik.http.routers.${SERVICE_NAME}_prod.tls=true
       - traefik.http.routers.${SERVICE_NAME}_prod.rule=Host(`bumbleflies.de`) || Host(`www.bumbleflies.de`)
-      # HTTP-01, deliberately, even though the domain moved to Porkbun on
-      # 2026-11-18 and the Traefik key can write this zone (proven with a TXT
-      # create/delete). DNS-01 was switched on and reverted the same day: lego
-      # never cleared "waiting for record propagation" for bumbleflies.de even
-      # with all four Porkbun NS and public resolvers serving the challenge TXT,
-      # so the forced re-issue left the host on a self-signed cert. See
-      # history/2026-11-18_bumbleflies-de-transfer.md before retrying.
+      # HTTP-01, deliberately. DNS-01 was switched on and reverted on
+      # 2026-11-18: lego never cleared "waiting for record propagation" for
+      # bumbleflies.de even with every nameserver serving the challenge TXT, and
+      # forcing the re-issue left the host on a self-signed cert. HTTP-01 has
+      # renewed all five of these certificates in the last six weeks, so it
+      # stays. Rationale: history/2026-11-18_bumbleflies-de-transfer.md
       - traefik.http.routers.${SERVICE_NAME}_prod.tls.certresolver=letsencrypthttpresolver
       - traefik.http.routers.${SERVICE_NAME}_local_qualified.rule=Host(`${SERVICE_NAME}.${LOCAL_HOSTNAME}`)
       - traefik.http.routers.${SERVICE_NAME}_local_qualified.entrypoints=web

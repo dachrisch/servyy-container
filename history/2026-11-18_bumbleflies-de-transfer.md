@@ -172,10 +172,11 @@ the failure mode is invisible until it is too late to plan for:
    leaving the old certificates in place would have meant renewals quietly
    continuing over HTTP-01 regardless of the new label — a cosmetic switch.
 3. **Forcing the issue means deleting the HTTP-01 entries** from `acme.json`
-   (backup: `acme.json.bak-20261118` in the traefik certificates volume;
-   delete once this is settled) and restarting Traefik. That immediately serves
-   Traefik's default self-signed certificate for those names until issuance
-   completes — a live user-visible window, not a background operation.
+   (a backup was taken as `acme.json.bak-20261118`, used for the rollback, and
+   deleted once the decision below was settled) and restarting Traefik. That
+   immediately serves Traefik's default self-signed certificate for those names
+   until issuance completes — a live user-visible window, not a background
+   operation.
 4. **lego then never completed the challenge.** It sat on
    `dns01: waiting for record propagation` for the full window. Everything
    checkable from outside was correct: the four Porkbun nameservers, `8.8.8.8`
@@ -190,10 +191,26 @@ the failure mode is invisible until it is too late to plan for:
    returns for NODATA/CNAME probes during propagation checking, and no other
    zone in the estate has a wildcard.
 
-**Do not retry this on live traffic.** It costs ~3–5 minutes of self-signed
-certificates on three hostnames per attempt. Diagnose the propagation check
-first (lego's own view from inside the container, with the wildcard removed or
-a test zone), then redo it in a maintenance window.
+**Decision (2026-11-18): stay on HTTP-01 and stop chasing DNS-01.** HTTP-01 is
+not a fallback here, it is the working path and it is well exercised — five
+`bumbleflies.de` certificates were issued by it between 2026-10-06 and
+2026-11-11, the newest only seven days before this entry, and port 80 serves
+`/.well-known/acme-challenge/` from Traefik rather than redirecting it away.
+DNS-01 buys nothing this estate needs: no wildcard certificate is wanted
+(Traefik issues per host and the `*` record already routes new subdomains),
+nothing fronts these hosts with a proxy that would block port 80, and port 80
+must stay open anyway for the HTTP→HTTPS redirects. Meanwhile the wildcard is
+load-bearing — it is what makes every subdomain resolve — so the most likely
+fix for the lego stall would be to remove the one record that cannot be
+removed.
+
+If it is ever revisited, do not touch live certificates: stand up a throwaway
+host under the wildcard (e.g. `dns01-check.bumbleflies.de`) on the DNS-01
+resolver, let it succeed or fail, then remove it. That answers the question
+with no user-visible window. Revisit only if port 80 is closed or fronted, or
+a wildcard certificate is actually wanted — and note `bricksnbytes.de` stays on
+HTTP-01 permanently anyway (it is at Strato), so the estate is never uniformly
+DNS-01.
 
 ## Rollback Procedure
 
@@ -206,15 +223,15 @@ but GoDaddy no longer holds a zone for the domain, so that would blackhole it.
 
 ## Next Steps
 
-- [ ] **Diagnose the DNS-01 propagation check before retrying** (see the section
-      above). Until then the apex/edu/live routers stay on HTTP-01, which works.
-- [ ] **Correct the `pending` comments** left in `waggle/docker-compose.yml`,
-      `dontforget/docker-compose.yml`, `bnb-office/docker-compose.yml`
-      and `ansible/production` — those were already updated on 2026-11-18 to say
-      DNS-01 is now possible but not switched, which is accurate as it stands.
-- [ ] Delete `acme.json.bak-20261118` from the traefik certificates volume once
-      the DNS-01 question is settled (it holds a rollback copy of the private
-      keys).
+- ~~Diagnose the DNS-01 propagation check~~ — **closed 2026-11-18: staying on
+  HTTP-01**, see the decision in the section above. The routers are on
+  `letsencrypthttpresolver` deliberately and the comment in
+  `bumbleflies/docker-compose.yml` says so.
+- [x] Comments in `waggle/docker-compose.yml`, `dontforget/docker-compose.yml`,
+      `bnb-office/docker-compose.yml` and `ansible/production` no longer claim
+      DNS-01 is impossible because the domain is at Strato/GoDaddy.
+- [x] `acme.json.bak-20261118` deleted from the traefik certificates volume, with
+      the live `acme.json` intact (46 certificates across both resolvers).
 - [ ] **The IPv4 path to `49.13.6.173:443` from the workstation and
       `servyy-test`** fails while IPv6 succeeds and `codey` reaches it fine on
       both. Looks like a fail2ban ban or a firewall rule on that source range,
