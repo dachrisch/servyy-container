@@ -157,6 +157,8 @@
             path: /var/log/kernel-cleanup.log
             threshold_seconds: 2764800
         restic_wiring_snapshot_checks: []
+        restic_wiring_dump_checks: []
+        restic_wiring_dump_severities: []
 
     - name: Add the host-repo log checks
       ansible.builtin.set_fact:
@@ -203,13 +205,103 @@
         restic_wiring_snapshot_checks: >-
           {{ restic_wiring_snapshot_checks
              + [{'name': t.name, 'env_file': '/etc/restic/env.' ~ t.name,
-                 'threshold_seconds': (t.probe_minutes | int) * 60}] }}
+                 'threshold_seconds': (t.probe_minutes | int) * 60,
+                 'severity': t.severity}] }}
       loop: "{{ restic_targets_enabled | selectattr('probe_minutes', 'gt', 0) | list }}"
       loop_control:
         loop_var: t
         label: "{{ t.name }}"
 
+    # --- the dump-age probe (WP-8R R2) -------------------------------------
+    # One entry per TENANT that declares a probe policy (`probe_minutes > 0`).
+    # This is the second half of "protected": the snapshot probe proves the dump
+    # reached its repo, this one proves the dump itself was refreshed. Before R2
+    # neither existed for the five R3/R4/R6 tenants, so a silent failure paged
+    # nobody.
+    #
+    # A tenant row with `probe_minutes: 0` (or no `probe_minutes`) emits NOTHING —
+    # that is how the nonprod tier stays quiet (`noDataState: OK` handles an
+    # absent series). Emitting `-1` there instead would page forever, because
+    # those tenants are never dumped by design (stage is re-synced nightly, the
+    # demo reseeds itself).
+    - name: Select the tenants that declare a dump probe policy
+      ansible.builtin.set_fact:
+        restic_wiring_probe_tenants: >-
+          {{ db_tenants | selectattr('probe_minutes', 'defined')
+             | selectattr('probe_minutes', 'gt', 0) | list }}
+
+    - name: Fail when a tenant declares a dump probe but has no dump directory
+      ansible.builtin.assert:
+        that:
+          - item.dump_dir | default('') | length > 0
+        fail_msg: >-
+          db_tenants '{{ item.tenant }}': probe_minutes is {{ item.probe_minutes }} but
+          dump_dir is empty. A dump probe with nothing to measure would report -1
+          forever (a permanent page) or silently vanish. Either give the tenant a
+          dump_dir or set probe_minutes: 0.
+        quiet: true
+      loop: "{{ restic_wiring_probe_tenants }}"
+      loop_control:
+        label: "{{ item.tenant }}"
+
+    - name: Fail when a tenant with a dump probe has no usable severity
+      ansible.builtin.assert:
+        that:
+          - item.severity | default('') in ['high', 'medium']
+        fail_msg: >-
+          db_tenants '{{ item.tenant }}': severity '{{ item.severity | default('-') }}'
+          must be high or medium. The probes push it as `db_dump_severity{tier}` /
+          `restic_snapshot_severity{repo}` and the alert rules split on it, so an
+          unknown value puts the tenant in NEITHER rule — a silent, unprotected gap.
+        quiet: true
+      loop: "{{ restic_wiring_probe_tenants }}"
+      loop_control:
+        label: "{{ item.tenant }}"
+
+    # `db_dump_severity` is one series per TIER and the rule joins it on `tier`,
+    # so two tenants on one tier that disagree would silently mean "whichever row
+    # the template saw first". Fail instead: a tier is an alerting class, not a
+    # per-tenant choice.
+    - name: Fail when two tenants on one tier declare different severities
+      ansible.builtin.assert:
+        that:
+          - restic_wiring_probe_tenants | selectattr('tier', 'equalto', item)
+            | map(attribute='severity') | unique | list | length == 1
+        fail_msg: >-
+          db_tenants: the '{{ item }}' tier declares more than one severity
+          ({{ restic_wiring_probe_tenants | selectattr('tier', 'equalto', item)
+              | map(attribute='severity') | unique | join(', ') }}).
+          `db_dump_severity` is pushed once per tier because the alert rules carry
+          one static severity, so a tier must have one alerting class.
+        quiet: true
+      loop: "{{ restic_wiring_probe_tenants | map(attribute='tier') | unique | sort | list }}"
+
+    - name: Build the dump-age probe list (only tenants that declare a policy)
+      ansible.builtin.set_fact:
+        restic_wiring_dump_checks: >-
+          {{ restic_wiring_dump_checks
+             + [{'tenant': t.tenant, 'tier': t.tier, 'path': t.dump_dir,
+                 'threshold_seconds': (t.probe_minutes | int) * 60}] }}
+      loop: "{{ restic_wiring_probe_tenants }}"
+      loop_control:
+        loop_var: t
+        label: "{{ t.tenant }}"
+
+    - name: Build the per-tier severity list (one entry per tier, never per tenant)
+      ansible.builtin.set_fact:
+        restic_wiring_dump_severities: >-
+          {{ restic_wiring_dump_severities
+             + [{'tier': tier,
+                 'severity': (restic_wiring_probe_tenants
+                              | selectattr('tier', 'equalto', tier) | first).severity}] }}
+      loop: "{{ restic_wiring_probe_tenants | map(attribute='tier') | unique | sort | list }}"
+      loop_control:
+        loop_var: tier
+        label: "{{ tier }}"
+
     - name: Publish the generated probe lists
       ansible.builtin.set_fact:
         system_probe_log_checks: "{{ restic_wiring_log_checks }}"
         system_probe_restic_repos: "{{ restic_wiring_snapshot_checks }}"
+        system_probe_dump_checks: "{{ restic_wiring_dump_checks }}"
+        system_probe_dump_severities: "{{ restic_wiring_dump_severities }}"

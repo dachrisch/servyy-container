@@ -87,6 +87,38 @@
     - system.probe
     - system.probe.storagebox
 
+- name: Deploy dump-age probe script
+  template:
+    src: db_dump_freshness.sh.j2
+    dest: "{{ (system_probe_scripts_dir, 'system-db-dump-age.sh') | path_join }}"
+    mode: '0750'
+  become_user: "{{ create_user }}"
+  # Also gated on a non-empty list: a host with no dump-backed tenants pushes
+  # nothing but probe_success, which would leave the rule comparing an absent
+  # series (noDataState: OK) while looking deployed.
+  when:
+    - system_probe_dump_checks | default([]) | length > 0
+    - system_probe_push_enabled | default(false) | bool
+  tags:
+    - system.probe
+    - system.probe.dump
+
+- name: Deploy dump-age timer
+  import_tasks: oneshot_include.yml
+  become_user: "{{ create_user }}"
+  vars:
+    service:
+      name: system-db-dump-age
+      description: 'Check age of the newest database dump per tenant'
+      schedule: '*-*-* *:0/30:00'
+      command: "{{ (system_probe_scripts_dir, 'system-db-dump-age.sh') | path_join }}"
+  when:
+    - system_probe_dump_checks | default([]) | length > 0
+    - system_probe_push_enabled | default(false) | bool
+  tags:
+    - system.probe
+    - system.probe.dump
+
 - name: Deploy /tmp usage probe script
   template:
     src: system_tmp.sh.j2
@@ -216,6 +248,8 @@
         - system-restic-snapshots
         - system-storagebox
         - system-container-health
+        - system-tmp
+        - system-db-dump-age
       tags:
         - system.probe
     - name: Remove probe units and scripts without sink
@@ -236,5 +270,44 @@
         - "{{ (remote_user_systemd, 'system-container-health.service') | path_join }}"
         - "{{ (remote_user_systemd, 'system-container-health.timer') | path_join }}"
         - "{{ (system_probe_scripts_dir, 'system-container-health.sh') | path_join }}"
+        # system-tmp was missing here from R12 until R2: such a host kept a timer
+        # pushing into a void it no longer had a sink for.
+        - "{{ (remote_user_systemd, 'system-tmp.service') | path_join }}"
+        - "{{ (remote_user_systemd, 'system-tmp.timer') | path_join }}"
+        - "{{ (system_probe_scripts_dir, 'system-tmp.sh') | path_join }}"
+        - "{{ (remote_user_systemd, 'system-db-dump-age.service') | path_join }}"
+        - "{{ (remote_user_systemd, 'system-db-dump-age.timer') | path_join }}"
+        - "{{ (system_probe_scripts_dir, 'system-db-dump-age.sh') | path_join }}"
       tags:
         - system.probe
+
+# Clean up the dump-age probe when the inventory declares no dump-backed tenant
+# (same shape as the storagebox block above): a timer left behind would keep
+# pushing ages for tenants that no longer declare a probe policy, and a stale
+# series is exactly what `noDataState: OK` is supposed to prevent.
+- name: Clean up the dump-age probe when no tenant declares a probe policy
+  when: system_probe_dump_checks | default([]) | length == 0
+  block:
+    - name: Stop the dump-age timer
+      systemd:
+        scope: user
+        name: system-db-dump-age.timer
+        state: stopped
+        enabled: no
+      become_user: "{{ create_user }}"
+      ignore_errors: true
+      tags:
+        - system.probe
+        - system.probe.dump
+    - name: Remove the dump-age units and script
+      file:
+        path: "{{ item }}"
+        state: absent
+      become_user: "{{ create_user }}"
+      loop:
+        - "{{ (remote_user_systemd, 'system-db-dump-age.service') | path_join }}"
+        - "{{ (remote_user_systemd, 'system-db-dump-age.timer') | path_join }}"
+        - "{{ (system_probe_scripts_dir, 'system-db-dump-age.sh') | path_join }}"
+      tags:
+        - system.probe
+        - system.probe.dump

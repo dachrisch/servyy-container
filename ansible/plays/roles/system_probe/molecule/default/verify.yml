@@ -14,6 +14,7 @@
         - system-restic-snapshots.sh
         - system-storagebox.sh
         - system-container-health.sh
+        - system-db-dump-age.sh
       register: probe_scripts
 
     - name: Assert probe scripts deployed executable
@@ -33,6 +34,7 @@
         - system-restic-snapshots
         - system-storagebox
         - system-container-health
+        - system-db-dump-age
       register: probe_timers
 
     - name: Assert timer units deployed
@@ -119,3 +121,57 @@
           # a stopped container emit no series at all, which the not-running rule
           # resolves to Normal (noDataState: OK) instead of firing.
           - "'tier=\"%s\"} 0' in (container_script.content | b64decode)"
+
+    # --- WP-8R R2: every probe publishes the threshold it is judged by --------
+    # Without these series the alert rules (name-free comparisons) match nothing,
+    # which reads exactly like a healthy fleet. Deleting an emission line here is
+    # therefore a silent outage, not a cosmetic change.
+    - name: Read the dump-age script
+      slurp:
+        src: "{{ probe_dir }}/system-db-dump-age.sh"
+      register: dump_script
+
+    - name: Assert the dump-age probe emits age, threshold and severity for the row
+      assert:
+        that:
+          - >-
+            'db_dump_age_seconds{tenant="%s",tier="%s"}'
+            in (dump_script.content | b64decode)
+          - >-
+            'db_dump_threshold_seconds{tenant="%s",tier="%s"}'
+            in (dump_script.content | b64decode)
+          # the row's own values reach the printf (label + threshold), so a
+          # template that emits a format string with no arguments still fails
+          - >-
+            '"moleculetest" "business" "93600"'
+            in (dump_script.content | b64decode)
+          - >-
+            'db_dump_severity{tier="%s"}'
+            in (dump_script.content | b64decode)
+
+    - name: Assert the dump-age probe only measures tenants with a path
+      assert:
+        that:
+          - "'moleculetest' in (dump_script.content | b64decode)"
+          - "'/tmp/moleculetest-dumps' in (dump_script.content | b64decode)"
+
+    - name: Assert the snapshot probe publishes its threshold and severity
+      assert:
+        that:
+          - >-
+            'restic_snapshot_threshold_seconds{repo="home"} 7200'
+            in (snapshot_script.content | b64decode)
+          - >-
+            'restic_snapshot_severity{repo="%s"} %s'
+            in (snapshot_script.content | b64decode)
+          - "'severity_code()' in (snapshot_script.content | b64decode)"
+
+    - name: Assert the log probe publishes its per-log thresholds
+      assert:
+        that:
+          - >-
+            'system_log_threshold_seconds{log="docker-cleanup"} 691200'
+            in (log_freshness_script.content | b64decode)
+          - >-
+            'system_log_threshold_seconds{log="restic-backup-ls-db"} 7200'
+            in (log_freshness_script.content | b64decode)

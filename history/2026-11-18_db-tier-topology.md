@@ -301,3 +301,131 @@ meantime — which stay on disk.
   separate timers; today each tenant has its own, which is what the schedules table decided.
 * **R9**: Moodle still runs `moodle_dump.sh.j2` (its own rollback window) and R11's
   unattended drill runner does not exist yet — these drills were run by hand.
+
+---
+
+## WP-8R R2 — the alerting covers the new backups, by comparison instead of by name (2026-11-18)
+
+Branch `db-tier/wp8r-r2-alerts`. R1 made the *wiring* inventory-driven; R2 closes the
+other half. After R3/R4/R6 the ten timers, ten repos and five dumps were real and
+verified, and `monitor/provisioning/alerting/alert-rules.yml` — static, bind-mounted,
+read only at Grafana start-up — still enumerated the five repos that existed when it was
+written (`restic_snapshot_age_seconds{repo="db|moodle-db|home|root|moodle-files"}` plus a
+log-freshness `or` chain). **Zero matches** for `dump-<tenant>` or for
+`db-private|db-lf|db-queen|db-private-mongo|db-private-firefly`. A silent failure on any
+of the five new backups paged nobody, and the missing-dump case (`current/` never
+refreshed, restic re-uploading yesterday's file) was invisible on *every* tenant,
+including the ones that were "covered".
+
+### What was measured first (so the design was not a guess)
+
+* Grafana's threshold expression **turns −1 into 0**, measured with
+  `POST /api/v1/eval` against the live instance on 2026-11-18 (reduce=last → threshold
+  `gt 0.5`): value `-1` → `0` (not met), `0` → `0`, `8486` → `1`. The old
+  `restic_snapshot_age_seconds{repo="db"} < 0` clause therefore produced −1, which that
+  same rule's `> 0.5` threshold cannot pass: **the "unverifiable repo alerts instead of
+  going quiet" promise never worked.** The new expressions normalise it
+  (`(age < bool 0) > 0`), and `promtool test rules` pins both branches.
+* Today's values, read from the live Prometheus: ages `db 3374/7200`, `home 8822/7200`
+  (**the live failing case: `home` was genuinely firing**), `root 82499/90000`,
+  `moodle-db 578/7200`, `moodle-files 77819/90000`, `db-lf 371/93600`,
+  `db-private 702/93600`, `db-private-mongo 367/93600`, `db-private-firefly 364/93600`,
+  `db-queen 781/93600` (age/threshold, seconds).
+* Dump ages from `stat` on the prepared directories: `photoprism 1047`, `queen 1126`,
+  `leagues_finance 719`, `dontforget 718`, `firefly 717` seconds against 93 600.
+
+### The design: the probe pushes its own policy
+
+Three probes now publish the numbers they are judged by, read from
+`ansible/plays/vars/db_tenants.yml`:
+
+| series | labels | source |
+|---|---|---|
+| `restic_snapshot_age_seconds` + `_threshold_seconds` + `_severity` | `repo` | `backup_targets.probe_minutes` / `.severity` |
+| `db_dump_age_seconds` + `db_dump_threshold_seconds` + `db_dump_severity` | `tenant,tier` / `tier` | `db_tenants.probe_minutes` / `.severity` |
+| `system_log_freshness_seconds` + `system_log_threshold_seconds` | `log` | the generated `system_probe_log_checks` |
+
+and `alert-rules.yml` compares instead of enumerating:
+
+```promql
+# snapshots — two rules, partitioned by the pushed severity
+((restic_snapshot_age_seconds > on(repo) group_left() restic_snapshot_threshold_seconds)
+ or ((restic_snapshot_age_seconds < bool 0) > 0))
+and on(repo) (restic_snapshot_severity == 1)      # == 0 for the medium rule
+# dumps — same shape, joined on tenant, severity on tier
+((db_dump_age_seconds > on(tenant) group_left() db_dump_threshold_seconds)
+ or ((db_dump_age_seconds < bool 0) > 0))
+and on(tier) (db_dump_severity == 1)              # == 0 for the medium rule
+# logs
+system_log_freshness_seconds > on(log) group_left() system_log_threshold_seconds
+```
+
+Severity had to travel as a **series**: a Grafana rule carries one static
+`labels.severity`, so a single rule cannot page high for a business repo and medium for a
+private one. Two mutually exclusive rules (`== 1` / `== 0`) partition every series, so no
+target is paged twice. The inventory supplies the class (`leagues_finance`, `queen`,
+`db`, `moodle-db` high; the rest medium) — identical to the pre-R2 split; `moodle-db`'s
+`severity` was the one word that had to change from `medium` to `high` to keep its
+existing HIGH alert.
+
+`restic_wiring.yml` gained the dump-probe list plus three hard failures: a tenant that
+declares a probe but has no `dump_dir` (would report −1 forever), a severity that is
+neither high nor medium (belongs to neither rule = silently unprotected), and two tenants
+on one tier disagreeing about severity (the tier-keyed series would mean "whichever row
+came first"). New role work: `system-db-dump-age` timer (every 30 min,
+`/home/cda/.system-probes/system-db-dump-age.sh`), cleanup blocks for the empty-list and
+no-sink cases (also added the missing `system-tmp` entries to the no-sink list).
+
+**nonprod stays silent because it emits nothing** — `leaguesphere_stage` / `_demo` have
+no `probe_minutes`, so they produce no series and `noDataState: OK` covers the absence.
+Emitting −1 for them would have paged forever; a rendered variant with
+`photoprism.probe_minutes: 0` proved the series disappears entirely.
+
+### Verification (no deploy)
+
+* `promtool check rules` on the 50 prometheus-backed expressions extracted from the
+  Grafana file: **SUCCESS: 50 rules found** (3 of the 53 are Loki LogQL and are not
+  PromQL).
+* `promtool test rules` (4 scenarios, real values + deliberate breakage): `home` fires the
+  **medium** rule, `db-lf` at 27 h fires the **high** rule *and not* medium, a −1 repo
+  fires medium, a −1 dump fires medium, a 27 h business dump fires high, the healthy
+  cases and the absent-nonprod cases fire nothing, and a stale `dump-photoprism` log
+  fires `stale_maintenance_log` (the log rule was blind to it before). **SUCCESS.**
+* Live-Prometheus join evaluation with the inventory's thresholds: 10 repos resolved,
+  `home` the only alerting one (as today); the five dump series resolved, all healthy.
+* Rendered scripts (real inventory): 10 threshold+severity series, 20 log thresholds
+  (five of them `dump-<tenant>`), 5 dump tenants.
+* Rule count 49 → 53, groups 9 → 10; no duplicate uids; **no expression contains
+  `repo="…"`, `tenant="…"` or `log="…"` any more**; `stale_restic_db_snapshot` is gone and
+  `stale_restic_snapshot` is now the medium half — nothing is paged twice.
+
+### What the deploy must verify
+
+1. **Order matters for one window:** deploy the probes first (`--tags system.probe`,
+   inside `plays/system.yml`), then the monitor service. Grafana reads
+   `provisioning/alerting/` at start only, and the new rules match nothing until
+   `restic_snapshot_threshold_seconds` / `db_dump_threshold_seconds` exist. The deploy
+   runs `plays/system.yml` before `plays/user.yml`, so the natural order is already
+   correct — do not "optimise" it into one pass.
+2. After the reload: 53 rules, group `db-dump-alerts` present, `stale_restic_db_snapshot`
+   absent; query the three threshold series and confirm 10 `repo` values and 5 `tenant`
+   values, plus `db_dump_severity{tier}` 1/0.
+3. `systemctl --user list-timers system-db-dump-age.timer` exists and its first run
+   prints five ages; `home`'s medium alert stays in whatever state it is today (it was
+   **firing** at merge time — that is a real overdue `home` snapshot, not a regression).
+
+### Rollback
+
+Revert the commit and re-run `--tags system.probe,user.docker.monitor`; the old rules come
+back on the Grafana restart and the new timer is removed by the role's cleanup block. No
+backup, timer, cadence or repo was changed by this package.
+
+### Do not simplify
+
+* **No tenant, repo, log or threshold literal may come back into
+  `monitor/provisioning/alerting/alert-rules.yml`.** That file is static and read only at
+  start-up; every name in it is an omission waiting for the next tenant.
+* **`(age < bool 0) > 0`, not `age < 0`** — a raw −1 is silent (measured above).
+* **One severity rule pair, not one rule per tier list** — the split is the emitted series.
+* **Do not give nonprod a `-1`**: no series is the design; `noDataState: OK` is the
+  silence.
