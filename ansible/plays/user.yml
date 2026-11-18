@@ -570,6 +570,34 @@
       when: "'shared' in (services | default([]))"
       tags: [user.docker, user.docker.shared]
 
+    # DB tiers (WP-3b): one invocation per tier so a single tier can be deployed
+    # alone (`--tags user.docker.db-business`) — Phase 10's version hop needs that.
+    # No host has `db_tiers` set yet: the tier servers themselves arrive with
+    # WP-4..6, and until then these invocations only prepare what already exists.
+    - role: db_tier
+      vars:
+        db_tier_name: high
+      when: "'high' in (db_tiers | default([]))"
+      tags: [user.docker, user.docker.db-high]
+
+    - role: db_tier
+      vars:
+        db_tier_name: nonprod
+      when: "'nonprod' in (db_tiers | default([]))"
+      tags: [user.docker, user.docker.db-nonprod]
+
+    - role: db_tier
+      vars:
+        db_tier_name: business
+      when: "'business' in (db_tiers | default([]))"
+      tags: [user.docker, user.docker.db-business]
+
+    - role: db_tier
+      vars:
+        db_tier_name: private
+      when: "'private' in (db_tiers | default([]))"
+      tags: [user.docker, user.docker.db-private]
+
     # Dedicated, db-scoped users in shared.mongo. Runs directly after the shared
     # role (so shared.mongo is up) and before every consumer role, so a consumer
     # never starts against a user that does not exist yet.

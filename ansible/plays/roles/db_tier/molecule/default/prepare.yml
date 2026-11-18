@@ -1,0 +1,60 @@
+---
+# Bring up one MariaDB server with two tenant databases, then run the role
+# against it as if it were this tier's server. The scenario stands in for the
+# `db-<tier>/docker-compose.yml` that WP-4..6 own (bootstrap: no compose file
+# exists yet), so the role's server-side work can be exercised on its own.
+- name: Prepare a MariaDB server with two tenant databases
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Install docker CLI
+      ansible.builtin.apt:
+        name: [docker.io, python3-pip]
+        state: present
+        update_cache: true
+        install_recommends: false
+      retries: 3
+      delay: 5
+
+    - name: Install the docker SDK for Ansible's docker modules
+      ansible.builtin.pip:
+        name: docker
+        state: present
+
+    - name: Start the tier's server (stands in for db-<tier>.mariadb)
+      community.docker.docker_container:
+        name: db-tier-test.mariadb
+        image: mariadb:13.0
+        state: started
+        env:
+          MARIADB_ROOT_PASSWORD: molecule-root-pw
+          MARIADB_DATABASE: tenant_a
+          MARIADB_USER: tenant_a
+          MARIADB_PASSWORD: molecule-tenant-a
+        healthcheck:
+          test: ["CMD-SHELL", "mariadb-admin ping -uroot -p$$MARIADB_ROOT_PASSWORD --silent"]
+          interval: 5s
+          timeout: 3s
+          retries: 20
+
+    - name: Wait for the server to accept connections
+      community.docker.docker_container_exec:
+        container: db-tier-test.mariadb
+        command: sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" --skip-ssl -e "SELECT 1"'
+      register: db_up
+      until: db_up.failed is not defined
+      retries: 30
+      delay: 3
+
+    - name: Create the second tenant and a table in each database
+      community.docker.docker_container_exec:
+        container: db-tier-test.mariadb
+        command: >-
+          sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" --skip-ssl -e "
+          CREATE DATABASE IF NOT EXISTS tenant_b CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          CREATE USER IF NOT EXISTS ''tenant_b''@''localhost'' IDENTIFIED BY ''molecule-tenant-b'';
+          GRANT ALL PRIVILEGES ON tenant_b.* TO ''tenant_b''@''localhost'';
+          CREATE TABLE IF NOT EXISTS tenant_a.widgets (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(32));
+          CREATE TABLE IF NOT EXISTS tenant_b.widgets (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(32));
+          INSERT INTO tenant_a.widgets (name) VALUES (''a1''), (''a2'');
+          INSERT INTO tenant_b.widgets (name) VALUES (''b1'');"'

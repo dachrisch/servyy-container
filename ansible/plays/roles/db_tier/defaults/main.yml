@@ -1,0 +1,92 @@
+---
+# db_tier — one database tier (high | nonprod | business | private).
+# Plan: docs/plans/2026-11-17_db-tier-topology.md (D2/D3/D4/D6/D12/D16, Phase 2.3)
+#
+# WHAT THIS ROLE DOES
+#   * resolves the tier's tenants from plays/vars/db_tenants.yml (the single
+#     source of truth),
+#   * creates/refreshes the tier's BACKUP user on each server that holds the
+#     tier's databases (SELECT, SHOW VIEW, TRIGGER, EVENT, LOCK TABLES — never a
+#     tenant user, never root from an app container),
+#   * enforces the D12 limits (MAX_USER_CONNECTIONS, MAX_STATEMENT_TIME) on the
+#     existing per-tenant users,
+#   * renders `dbops` (the dump/restore/verify tool) and the tier's credential
+#     file (0600).
+#
+# WHAT IT DOES NOT DO
+#   * It does NOT render compose files: `db-<tier>/docker-compose.yml` is
+#     committed like shared/docker-compose.yml so Renovate sees the image tag
+#     (D1). Those files arrive with WP-4..6.
+#   * It does NOT absorb `shared_mongo_users`. That happens in WP-9 (Phase 8),
+#     when the mongo tenants move into db-business/db-private.
+#
+# The profile below is the single place the tier's runtime shape is described;
+# WP-4..6 read the numbers from here when they write the compose files, so the
+# limits cannot drift between the role and the server.
+db_tier_name: ''
+
+db_tier_profiles:
+  high:
+    # LeagueSphere prod keeps its existing leaguesphere.db (D6) — these numbers
+    # document it; nothing here resizes a running container.
+    mem_limit: 512m
+    innodb_buffer_pool: 128M
+    server_flags: [--character-set-server=utf8mb4, --collation-server=utf8mb4_unicode_ci]
+    healthcheck_interval: 30s
+    network: leaguesphere_backend
+    dump: physical        # mariadb-backup + binlog PITR (D10)
+    restic_scope: db
+    probe_tier_label: high
+  nonprod:
+    mem_limit: 512m
+    innodb_buffer_pool: 128M
+    server_flags: [--character-set-server=utf8mb4, --collation-server=utf8mb4_unicode_ci]
+    healthcheck_interval: 30s
+    network: db_nonprod_backend
+    dump: logical
+    restic_scope: db
+    probe_tier_label: nonprod
+  business:
+    mem_limit: 1.25g      # sized for Moodle up front, so Phase 6 is not a resize
+    innodb_buffer_pool: 384M
+    server_flags: [--character-set-server=utf8mb4, --collation-server=utf8mb4_unicode_ci]
+    healthcheck_interval: 30s
+    network: db_business_backend
+    dump: logical
+    restic_scope: db
+    probe_tier_label: business
+  private:
+    mem_limit: 512m
+    innodb_buffer_pool: 128M
+    server_flags: [--character-set-server=utf8mb4, --collation-server=utf8mb4_unicode_ci]
+    healthcheck_interval: 30s
+    network: db_private_backend
+    dump: logical
+    restic_scope: db
+    probe_tier_label: private
+
+# Where the rendered, versioned tool + its credentials live (per tier).
+db_tier_env_dir: "{{ remote_user_home }}/.dbops"
+db_tier_dbops_path: "{{ db_tier_env_dir }}/dbops"
+db_tier_env_path: "{{ db_tier_env_dir }}/{{ db_tier_name }}.env"
+
+# The per-tier backup account. Its password comes from the controller seed
+# (secrets.yml: dbops_password_<tier>, regenerable — the role re-sets it).
+db_tier_backup_user: "dbops_backup_{{ db_tier_name }}"
+db_tier_backup_password: "{{ lookup('vars', 'dbops_password_' ~ db_tier_name) }}"
+
+# Privileges a dump needs, and nothing else (D4: least privilege).
+db_tier_backup_privileges:
+  - SELECT
+  - SHOW VIEW
+  - TRIGGER
+  - EVENT
+  - LOCK TABLES
+
+# Passwords for tenant users that must be CREATED. Existing users are never
+# touched beyond their D12 limits — resetting an app password would break the
+# running app. WP-4..6 supply entries here when they stand up a fresh tier.
+db_tier_user_passwords: {}
+
+# Loud but non-fatal: the tier exists in the inventory before its server does.
+db_tier_compose_hint: "{{ docker.local_dir }}/db-{{ db_tier_name }}/docker-compose.yml"

@@ -1,0 +1,22 @@
+---
+# Render the tier's tools: `dbops` (0755, inventory-driven) and its credential
+# file (0600, the per-tier backup user). Both live outside the repo checkout so a
+# deploy can never revert them, and the credential file is never world-readable.
+- name: Ensure the dbops directory exists
+  ansible.builtin.file:
+    path: "{{ db_tier_env_dir }}"
+    state: directory
+    mode: '0700'
+
+- name: Render dbops
+  ansible.builtin.template:
+    src: dbops.sh.j2
+    dest: "{{ db_tier_dbops_path }}"
+    mode: '0755'
+
+- name: Render the tier credential file (backup user only)
+  ansible.builtin.template:
+    src: tier_env.j2
+    dest: "{{ db_tier_env_path }}"
+    mode: '0600'
+  no_log: true

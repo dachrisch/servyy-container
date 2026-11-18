@@ -1,0 +1,42 @@
+---
+# db_tier task list. Runs per tier; invoked from plays/user.yml with
+# `tags: [user.docker, user.docker.db-<tier>]` so a single tier can be deployed
+# alone (Phase 10's version hop depends on that).
+
+- name: Resolve the tier's tenants from the inventory
+  ansible.builtin.set_fact:
+    db_tier_tenants: "{{ db_tenants | default([]) | selectattr('tier', 'equalto', db_tier_name) | list }}"
+
+- name: Fail when a tier is enabled but the inventory has no tenant for it
+  ansible.builtin.assert:
+    that:
+      - db_tier_name in db_tier_profiles
+      - db_tier_tenants | length > 0
+    fail_msg: >-
+      db_tier_name '{{ db_tier_name }}' is not a known tier, or
+      plays/vars/db_tenants.yml has no tenant with that tier. Known tiers:
+      {{ db_tier_profiles.keys() | list | join(', ') }}; tiers with tenants:
+      {{ db_tenants | default([]) | map(attribute='tier') | unique | list | join(', ') }}.
+    quiet: true
+
+- name: Say so loudly when the tier's server has no compose file yet
+  ansible.builtin.debug:
+    msg: >-
+      db_tier '{{ db_tier_name }}': {{ db_tier_compose_hint }} does not exist yet,
+      so this run only set up the backup user, the D12 limits and dbops. The tier
+      SERVER itself arrives with WP-4..6 (D6: db-<tier>/docker-compose.yml is
+      committed, never rendered). Tenants still run on their current servers:
+      {{ db_tier_tenants | map(attribute='server') | unique | join(', ') }}.
+  vars:
+    db_tier_compose_exists: "{{ lookup('ansible.builtin.fileglob', db_tier_compose_hint) }}"
+  when: db_tier_compose_exists | length == 0
+
+# One pass per SERVER that holds this tier's databases. Today that is the
+# tenant's current server (moodle.db, bnb-office.db, …); after WP-4..6 it is the
+# single db-<tier>.mariadb. The role never assumes the two are the same.
+- name: Set up each server holding this tier's databases
+  ansible.builtin.include_tasks: server.yml
+  loop: "{{ db_tier_tenants | map(attribute='server') | unique | list }}"
+  loop_control:
+    loop_var: db_tier_server
+    label: "{{ db_tier_server }}"

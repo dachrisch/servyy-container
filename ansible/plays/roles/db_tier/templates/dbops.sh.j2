@@ -5,61 +5,71 @@
 # it. Plan: docs/plans/2026-11-17_db-tier-topology.md, Phase 2 step 2.
 #
 # Usage:
-#   dbops dump <tenant>                     logical dump into the tenant's dump dir
-#   dbops restore <tenant> <file> [--force] import a logical dump (DEFINER-stripped)
+#   dbops dump <tenant>                       logical dump into the tenant's dump dir
+#   dbops restore <tenant> <file> [--force]   import a logical dump (DEFINER-stripped)
 #   dbops verify <tenant> [--against <server>]
-#                                           dump-vs-live, or live-vs-live with
-#                                           --against (the post-restore gate)
-#   dbops shell <tenant>                    interactive mariadb client in the db
+#                                             dump-vs-live, or live-vs-live with
+#                                             --against (the post-restore gate)
+#   dbops shell <tenant>                      interactive mariadb client in the db
 #   dbops restore <tenant> --from-physical <dir>
-#                                           physical mariadb-backup set (high -> nonprod)
-#   dbops tenants                           list the tenants this adapter knows
+#                                             physical mariadb-backup set (high -> nonprod)
+#   dbops tenants                             list the tenants this adapter knows
 #
 # Design rules:
-#   * The adapter is MariaDB-only for now; mongo/postgres tenants are recognised
-#     and refused with a clear message (the mongo adapter is Phase 8, D9).
+#   * MariaDB-only for now; mongo/postgres tenants are recognised and refused
+#     with a clear message (the mongo adapter is Phase 8).
 #   * Every statement runs INSIDE the tenant's server container via `docker exec`,
-#     so no database port is ever published or opened and no credential is
-#     interpolated by Ansible.
-#   * Credentials come from the per-tier backup user (<env dir>/<tier>.env,
-#     rendereded by the role, mode 0600) — never root, never the app user. They
-#     are passed to the container on STDIN, so they do not appear in a host
-#     process list.
-#   * Dumps are written to "<file>.partial" and renamed only on success: a
-#     concurrent restic run must never capture a half-written file.
+#     so no database port is published or opened and Ansible never interpolates a
+#     database credential.
+#   * Credentials are the per-tier backup user (<env dir>/<tier>.env, rendered by
+#     the role, mode 0600) — never root, never the app user — and they reach the
+#     container on STDIN, so they do not appear in a host process list.
+#   * Dumps are written to "<file>.partial" and renamed only on success, so a
+#     concurrent restic run can never capture a half-written file.
 #   * exit codes: 0 ok, 1 usage, 2 unknown tenant / unsupported engine,
 #     3 credentials or server missing, 4 dump/restore failure, 5 verify mismatch.
 
-set -uo pipefail   # no -e: every failure is reported explicitly (see die/rc)
+set -uo pipefail   # no -e: every failure is reported explicitly via die/exit
 
-DBOPS_VERSION="1.0"
 ENV_DIR="{{ db_tier_env_dir }}"
-DBOPS_DUMP_DIR_OVERRIDE="${DBOPS_DUMP_DIR:-}"
+DUMP_DIR_OVERRIDE="${DBOPS_DUMP_DIR:-}"
 
-die() { printf 'dbops: %s\n' "$*" >&2; exit "${2:-1}"; }
+die() { printf 'dbops: %s\n' "$1" >&2; exit "${2:-1}"; }
 info() { printf '%s\n' "$*"; }
 
 usage() {
-  sed -n '6,24p' "$0" | sed 's/^# \{0,1\}//'
+  cat <<'USAGE'
+dbops <command> [args]
+
+  dump <tenant>                       logical dump into the tenant's dump dir
+                                      (DBOPS_DUMP_DIR overrides the directory)
+  restore <tenant> <file> [--force]   import a logical dump, DEFINER-stripped
+  verify <tenant> [--against <srv>]   dump-vs-live, or live-vs-live with --against
+  shell <tenant>                      interactive mariadb client in that database
+  restore <tenant> --from-physical <dir>
+                                      physical mariadb-backup set (high -> nonprod)
+  tenants                             list the MariaDB tenants this tool knows
+
+Credentials: the per-tier backup user from <env dir>/<tier>.env; DBOPS_USER /
+DBOPS_PASSWORD in the environment override it (drills only).
+USAGE
   exit 1
 }
 
 # --- tenant table (rendered from plays/vars/db_tenants.yml) -------------------
-# shellcheck disable=SC2034
 tenant_lookup() {
   T_SERVER=""; T_DB=""; T_USER=""; T_TIER=""; T_ENGINE=""; T_DUMP_DIR=""; T_RESTIC=""
   case "$1" in
 {% for t in db_tenants | sort(attribute='tenant') %}
 {%   if t.engine == 'mariadb' %}
     {{ t.tenant }})
-      T_SERVER={{ t.server | quote }}; T_DB={{ t.db | quote }}; T_USER={{ t.user | quote }}
-      T_TIER={{ t.tier | quote }}; T_ENGINE={{ t.engine | quote }}
-      T_DUMP_DIR={{ t.dump_dir | quote }}; T_RESTIC={{ t.restic_repo | quote }} ;;
-{%   endif %}
-{% endfor %}
-{% for t in db_tenants | selectattr('engine', 'ne', 'mariadb') | sort(attribute='tenant') %}
+      T_SERVER={{ t.server | tojson }}; T_DB={{ t.db | tojson }}; T_USER={{ t.user | tojson }}
+      T_TIER={{ t.tier | tojson }}; T_ENGINE={{ t.engine | tojson }}
+      T_DUMP_DIR={{ t.dump_dir | tojson }}; T_RESTIC={{ t.restic_repo | tojson }} ;;
+{%   else %}
     {{ t.tenant }})
-      T_ENGINE={{ t.engine | quote }}; T_TIER={{ t.tier | quote }}; T_SERVER={{ t.server | quote }} ;;
+      T_ENGINE={{ t.engine | tojson }}; T_TIER={{ t.tier | tojson }}; T_SERVER={{ t.server | tojson }} ;;
+{%   endif %}
 {% endfor %}
     *) return 1 ;;
   esac
@@ -70,12 +80,10 @@ KNOWN_TENANTS="{{ db_tenants | selectattr('engine', 'equalto', 'mariadb') | map(
 
 resolve_tenant() {
   tenant_lookup "$1" || die "unknown tenant '$1'. MariaDB tenants: $KNOWN_TENANTS" 2
-  [ "$T_ENGINE" = "mariadb" ] || die "tenant '$1' is on engine '$T_ENGINE': the MariaDB adapter cannot handle it (mongo: Phase 8)" 2
+  [ "$T_ENGINE" = "mariadb" ] || die "tenant '$1' runs on '$T_ENGINE': the MariaDB adapter cannot handle it (mongo arrives in Phase 8)" 2
 }
 
-# --- credentials --------------------------------------------------------------
-# Per-tier backup user from the rendered env file; DBOPS_USER/DBOPS_PASSWORD in
-# the environment wins (drills and one-offs).
+# --- credentials and container ------------------------------------------------
 load_creds() {
   local envf="$ENV_DIR/$T_TIER.env"
   if [ -n "${DBOPS_USER:-}" ]; then
@@ -90,19 +98,14 @@ load_creds() {
 }
 
 container_alive() {
-  docker inspect --format '{{ "{{" }}.State.Running{{ "}}" }}' "$T_SERVER" 2>/dev/null | grep -q true \
+  [ "$(docker inspect --format '{{ "{{" }}.State.Running{{ "}}" }}' "$T_SERVER" 2>/dev/null)" = "true" ] \
     || die "container '$T_SERVER' is not running on this host (tenant '$1' lives elsewhere)" 3
 }
 
-# Run a command inside the tenant's server, feeding the credentials on stdin.
-in_container() {
+sql() {   # sql "<query>" [database]
+  local q="$1" db="${2:-$T_DB}"
   printf '%s\n%s\n' "$DBOPS_USER" "${DBOPS_PASSWORD:-}" \
-    | docker exec -i "$T_SERVER" sh -c 'read -r DBOPS_U; read -r DBOPS_P; exec "$@"' dbops "$@"
-}
-
-# One SQL statement, TSV out, no headers.
-sql() {
-  in_container mariadb --skip-ssl --batch --skip-column-names -u"$DBOPS_USER" -p"$DBOPS_PASSWORD" -e "$1" "${2:-$T_DB}"
+    | docker exec -i "$T_SERVER" sh -c 'read -r U; read -r P; exec mariadb --skip-ssl --batch --skip-column-names -u"$U" -p"$P" -e "$1" "$2"' dbops "$q" "$db"
 }
 
 # --- dump ---------------------------------------------------------------------
@@ -110,21 +113,21 @@ cmd_dump() {
   [ $# -eq 1 ] || usage
   resolve_tenant "$1"; load_creds; container_alive "$1"
 
-  local dir="${DBOPS_DUMP_DIR_OVERRIDE:-$T_DUMP_DIR}"
+  local dir="${DUMP_DIR_OVERRIDE:-$T_DUMP_DIR}"
   [ -n "$dir" ] || die "tenant '$1' has no dump_dir in the inventory and DBOPS_DUMP_DIR is unset" 1
   mkdir -p "$dir" || die "cannot create dump dir '$dir'" 4
 
   local out="$dir/$1-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
   local partial="$out.partial"
-
   info "dbops: dumping $1 ($T_SERVER/$T_DB) as $DBOPS_USER -> $out"
+
   if printf '%s\n%s\n' "$DBOPS_USER" "${DBOPS_PASSWORD:-}" | docker exec -i "$T_SERVER" sh -c '
-        read -r DBOPS_U; read -r DBOPS_P
+        read -r U; read -r P
         exec mariadb-dump --single-transaction --quick --routines --triggers --events \
-          --default-character-set=utf8mb4 --hex-blob --databases "$1" \
-          -u"$DBOPS_U" -p"$DBOPS_P"' dbops "$T_DB" | gzip -n > "$partial"; then
-    # `set -o pipefail` is on: a failing dump leaves gzip with a short stream and
-    # a non-zero status here, so the rename below only happens on success.
+          --default-character-set=utf8mb4 --hex-blob --databases "$1" -u"$U" -p"$P"' dbops "$T_DB" \
+     | gzip -n > "$partial"; then
+    # pipefail: a failing dump also fails this pipeline, so the rename only runs
+    # on a complete, gzip-valid stream.
     mv -f "$partial" "$out" || die "cannot rename '$partial'" 4
   else
     rm -f "$partial"
@@ -134,37 +137,32 @@ cmd_dump() {
 }
 
 # --- verify -------------------------------------------------------------------
-# Live-vs-live (or dump-vs-live) comparison. Returns 5 on any mismatch.
 DUMP_FILE=""
 
 latest_dump() {
-  local dir="${DBOPS_DUMP_DIR_OVERRIDE:-$T_DUMP_DIR}" f
+  local dir="${DUMP_DIR_OVERRIDE:-$T_DUMP_DIR}" f
   [ -n "$dir" ] || return 1
-  f=$(ls -1t "$dir"/"$1"-*.sql.gz 2>/dev/null | head -1) || return 1
+  f=$(ls -1t "$dir"/"$1"-*.sql.gz 2>/dev/null | head -1)
   [ -n "$f" ] || return 1
   DUMP_FILE="$f"
 }
 
-dump_tables() {   # table/view names from the dump text
-  gzip -dc "$DUMP_FILE" | sed -nE 's/^CREATE (TABLE|VIEW) `([^`]+)`.*/\2/p' | sort -u
-}
-dump_definers() {
-  gzip -dc "$DUMP_FILE" | grep -oE 'DEFINER=`[^`]+`@`[^`]+`' | sort -u
-}
+dump_objects() { gzip -dc "$DUMP_FILE" | sed -nE 's/^CREATE (TABLE|VIEW) `([^`]+)`.*/\2/p' | sort -u; }
+dump_definers() { gzip -dc "$DUMP_FILE" | grep -oE 'DEFINER=`[^`]+`@`[^`]+`' | sort -u; }
 
-live_snapshot() {   # canonical text of one database's shape + counts, on $1 server
-  local srv="$1" db="$2" q
-  T_SERVER="$srv"
+live_snapshot() {   # $1 server, $2 database -> canonical text on stdout
+  local srv="$1" db="$2" t
   info "  -- $srv / $db"
   sql "SELECT CONCAT('table ', TABLE_NAME) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$db' AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME"
   sql "SELECT CONCAT('view ', TABLE_NAME) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$db' AND TABLE_TYPE='VIEW' ORDER BY TABLE_NAME"
-  # exact per-table counts, generated then executed (TABLE_ROWS is an estimate)
-  q=$(sql "SELECT IFNULL(GROUP_CONCAT(CONCAT('SELECT ''@count@ ', TABLE_NAME, '' ', COUNT(*) FROM \`', TABLE_NAME, '\`') SEPARATOR ' UNION ALL '), 'SELECT 1') FROM information_schema.TABLES WHERE TABLE_SCHEMA='$db' AND TABLE_TYPE='BASE TABLE'")
-  if [ "$q" != "SELECT 1" ]; then
-    sql "$q" | sed 's/^@count@ /count /'
-  fi
-  # ORDER BY the comma list needs the columns named, so run it as a derived table
-  q=$(sql "SELECT IFNULL(GROUP_CONCAT(CONCAT('SELECT ''@crc@ ', TABLE_NAME, '' ', CHECKSUM FROM (CHECKSUM TABLE \`', TABLE_NAME, '\`) x') SEPARATOR ' UNION ALL '), 'SELECT 1') FROM information_schema.TABLES WHERE TABLE_SCHEMA='$db' AND TABLE_TYPE='BASE TABLE' ORDER BY DATA_LENGTH DESC LIMIT 3")
+  # exact per-table counts: TABLE_ROWS is an estimate, so count each table
+  for t in $(sql "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='$db' AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME"); do
+    info "count $t $(sql "SELECT COUNT(*) FROM \`$t\`")"
+  done
+  # checksum of the three biggest tables (row counts can match while data differs)
+  for t in $(sql "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='$db' AND TABLE_TYPE='BASE TABLE' ORDER BY DATA_LENGTH DESC LIMIT 3"); do
+    info "checksum $t $(sql "CHECKSUM TABLE \`$t\`" | cut -f2)"
+  done
   sql "SELECT CONCAT('routine ', ROUTINE_NAME) FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA='$db' ORDER BY ROUTINE_NAME"
   sql "SELECT CONCAT('trigger ', TRIGGER_NAME) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA='$db' ORDER BY TRIGGER_NAME"
   sql "SELECT CONCAT('event ', EVENT_NAME) FROM information_schema.EVENTS WHERE EVENT_SCHEMA='$db' ORDER BY EVENT_NAME"
@@ -182,57 +180,56 @@ cmd_verify() {
   done
   resolve_tenant "$tenant"; load_creds
 
-  local rc=0 tmp
-  tmp=$(mktemp -d) || die "mktemp failed" 4
+  local tmp; tmp=$(mktemp -d) || die "mktemp failed" 4
 
   if [ -n "$against" ]; then
-    # live vs live: the post-restore gate (source server vs target server)
     info "dbops: verify $tenant  live($T_SERVER) vs live($against)"
-    local save="$T_SERVER"
-    live_snapshot "$save" "$T_DB" > "$tmp/src.txt" 2>&1
+    local here="$T_SERVER"
+    live_snapshot "$here" "$T_DB" > "$tmp/src.txt" 2>&1
     live_snapshot "$against" "$T_DB" > "$tmp/dst.txt" 2>&1
-    T_SERVER="$save"
+    T_SERVER="$here"
     if ! diff -u "$tmp/src.txt" "$tmp/dst.txt" > "$tmp/diff.txt"; then
-      cat "$tmp/diff.txt"; die "verify $tenant: source and target differ" 5
+      cat "$tmp/diff.txt"; rm -rf "$tmp"
+      die "verify $tenant: source and target differ" 5
     fi
-    info "dbops: ok  shape + per-table counts + largest-table checksums identical"
-  else
-    # dump vs live: what a dump CAN prove without writing anything
-    latest_dump "$tenant" || die "verify $tenant: no dump found in ${DBOPS_DUMP_DIR_OVERRIDE:-$T_DUMP_DIR}" 5
-    info "dbops: verify $tenant  dump($DUMP_FILE) vs live($T_SERVER/$T_DB)"
-    dump_tables > "$tmp/dump_tables.txt"
-    live_snapshot "$T_SERVER" "$T_DB" > "$tmp/live.txt" 2>&1
-    sed -nE 's/^(table|view) //p' "$tmp/live.txt" | sort -u > "$tmp/live_tables.txt"
-    if ! diff -u "$tmp/dump_tables.txt" "$tmp/live_tables.txt" > "$tmp/diff.txt"; then
-      cat "$tmp/diff.txt"; die "verify $tenant: the dump's table/view set does not match the live database" 5
-    fi
-    info "  tables/views: dump and live agree ($(wc -l < "$tmp/dump_tables.txt") objects)"
-    # definers in the dump must name accounts that exist here (a restore as a
-    # non-root user fails on any foreign DEFINER)
-    local missing
-    missing=$(dump_definers | sed -E 's/^DEFINER=`([^`]+)`@.*/\1/' | sort -u | while read -r u; do
-      [ -z "$u" ] && continue
-      n=$(sql "SELECT COUNT(*) FROM mysql.user WHERE User='$u'")
-      [ "$n" = "0" ] && echo "$u"
-    done)
-    if [ -n "$missing" ]; then
-      info "  WARNING: dump definers not present on this server: $(echo "$missing" | tr '\n' ' ')"
-    else
-      info "  definers: every DEFINER in the dump exists on this server"
-    fi
-    info "  live per-table counts:"
-    sed -nE 's/^count /    /p' "$tmp/live.txt" | head -50
-    info "  NOTE: a logical dump carries no row counts, so exact count comparison"
-    info "        needs a restore + 'dbops verify <tenant> --against <server>'."
+    rm -rf "$tmp"
+    info "dbops: ok  object set + per-table counts + largest-table checksums identical"
+    exit 0
   fi
 
+  latest_dump "$tenant" || die "verify $tenant: no dump found in ${DUMP_DIR_OVERRIDE:-$T_DUMP_DIR}" 5
+  info "dbops: verify $tenant  dump($DUMP_FILE) vs live($T_SERVER/$T_DB)"
+  dump_objects > "$tmp/dump.txt"
+  live_snapshot "$T_SERVER" "$T_DB" > "$tmp/live.txt" 2>&1
+  sed -nE 's/^(table|view) //p' "$tmp/live.txt" | sort -u > "$tmp/live.txt.obj"
+  if ! diff -u "$tmp/dump.txt" "$tmp/live.txt.obj" > "$tmp/diff.txt"; then
+    cat "$tmp/diff.txt"; rm -rf "$tmp"
+    die "verify $tenant: the dump's table/view set does not match the live database" 5
+  fi
+  info "  objects: dump and live agree ($(wc -l < "$tmp/dump.txt") tables/views)"
+
+  local missing=""
+  local u n
+  for u in $(dump_definers | sed -E 's/^DEFINER=`([^`]+)`@.*/\1/' | sort -u); do
+    [ -n "$u" ] || continue
+    n=$(sql "SELECT COUNT(*) FROM mysql.user WHERE User='$u'" mysql)
+    [ "$n" = "0" ] && missing="$missing $u"
+  done
+  if [ -n "$missing" ]; then
+    info "  WARNING: definers not present on this server:$missing (restore strips them)"
+  else
+    info "  definers: every DEFINER in the dump exists on this server"
+  fi
+  info "  live counts (the dump itself carries no row counts):"
+  sed -nE 's/^count /    /p' "$tmp/live.txt" | head -60
+  info "  for an exact count comparison restore into a target and run"
+  info "  'dbops verify $tenant --against <server>'."
   rm -rf "$tmp"
-  exit $rc
+  exit 0
 }
 
 # --- restore ------------------------------------------------------------------
 strip_definers() { sed -E 's/DEFINER=`[^`]*`@`[^`]*`//g'; }
-
 has_tables() { [ "$(sql "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$T_DB'")" != "0" ]; }
 
 cmd_restore() {
@@ -249,36 +246,31 @@ cmd_restore() {
   resolve_tenant "$tenant"; load_creds; container_alive "$tenant"
 
   if [ -n "$from_physical" ]; then
-    # Physical set: only ever high -> nonprod (D10: PITR is high-tier-only, and a
-    # prepared set is bound to a server version). Refused anywhere else.
-    local src_tier
-    src_tier=$(printf '%s\n' "{{ db_tenants | selectattr('tier', 'equalto', 'high') | map(attribute='tenant') | join(' ') }}" | tr ' ' '\n' | grep -qx "$tenant" && echo high || echo "$T_TIER")
-    [ "$src_tier" = "nonprod" ] || die "restore --from-physical is only for a nonprod target (tenant '$tenant' is '$T_TIER'); dump/restore logically instead" 1
-    [ -d "$from_physical" ] || die "physical directory '$from_physical' not found" 4
-    die "restore --from-physical: not implemented yet — the prepared-set copy-back needs the target container stopped, which is the Phase-4 rehearsal's job. Set up by hand for now." 4
+    # D10: physical (prepared mariadb-backup) sets are high-tier-only and are
+    # bound to a server version; copying one back needs the target server
+    # stopped, which only the Phase-4 rehearsal may do.
+    [ "$T_TIER" = "nonprod" ] || die "restore --from-physical targets a nonprod tenant only (tenant '$tenant' is '$T_TIER')" 1
+    [ -d "$from_physical" ] || die "physical set '$from_physical' not found" 4
+    die "restore --from-physical is not implemented yet: the copy-back needs the target container stopped. Phase 4's rehearsal does that by hand and then verifies with 'dbops verify <tenant>'." 4
   fi
 
   [ -n "$file" ] && [ -f "$file" ] || die "restore <tenant> <file>: '$file' is not a file" 1
   if has_tables; then
     [ "$force" = "1" ] || die "database '$T_DB' already has tables; refusing to import over it (--force to override)" 4
   else
-    info "dbops: creating '$T_DB' (utf8mb4/utf8mb4_unicode_ci, D5)"
+    info "dbops: creating database '$T_DB' (utf8mb4 / utf8mb4_unicode_ci, D5)"
     sql "CREATE DATABASE IF NOT EXISTS \`$T_DB\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci" mysql \
       || die "cannot create database '$T_DB'" 4
   fi
 
   info "dbops: restoring $file -> $T_SERVER/$T_DB (DEFINER clauses stripped)"
-  if gzip -dc "$file" | strip_definers \
-     | printf '%s\n%s\n' "$DBOPS_USER" "${DBOPS_PASSWORD:-}" | cat - - > /dev/null; then :; fi
-  # credentials first, then the SQL stream: use a small temp file for the creds
-  local cred; cred=$(mktemp); chmod 600 "$cred"
+  local cred; cred=$(mktemp) || die "mktemp failed" 4; chmod 600 "$cred"
   printf '%s\n%s\n' "$DBOPS_USER" "${DBOPS_PASSWORD:-}" > "$cred"
   if { cat "$cred"; gzip -dc "$file" | strip_definers; } \
      | docker exec -i "$T_SERVER" sh -c '
-         read -r DBOPS_U; read -r DBOPS_P
-         exec mariadb --skip-ssl -u"$DBOPS_U" -p"$DBOPS_P"' dbops; then
-    rm -f "$cred"
-    info "dbops: ok  restored into $T_DB"
+         read -r U; read -r P
+         exec mariadb --skip-ssl -u"$U" -p"$P"' dbops; then
+    rm -f "$cred"; info "dbops: ok  restored into $T_DB"
   else
     rm -f "$cred"; die "restore failed for '$tenant'" 4
   fi
@@ -288,18 +280,17 @@ cmd_restore() {
 cmd_shell() {
   [ $# -eq 1 ] || usage
   resolve_tenant "$1"; load_creds; container_alive "$1"
-  info "dbops: shell into $T_SERVER, database $T_DB as $DBOPS_USER"
+  info "dbops: shell in $T_SERVER, database $T_DB, as $DBOPS_USER"
   printf '%s\n%s\n' "$DBOPS_USER" "${DBOPS_PASSWORD:-}" \
-    | docker exec -i -t "$T_SERVER" sh -c 'read -r DBOPS_U; read -r DBOPS_P; exec mariadb --skip-ssl -u"$DBOPS_U" -p"$DBOPS_P" "$1"' dbops "$T_DB"
+    | docker exec -i -t "$T_SERVER" sh -c 'read -r U; read -r P; exec mariadb --skip-ssl -u"$U" -p"$P" "$1"' dbops "$T_DB"
 }
 
 # --- main ---------------------------------------------------------------------
 case "${1:-}" in
-  dump)              shift; cmd_dump "$@" ;;
-  restore)           shift; cmd_restore "$@" ;;
-  verify)            shift; cmd_verify "$@" ;;
-  shell)             shift; cmd_shell "$@" ;;
-  tenants)           tr ' ' '\n' <<<"$KNOWN_TENANTS" | sed '/^$/d' ;;
-  -h|--help|help|'') usage ;;
-  *) die "unknown command '$1' (dump|restore|verify|shell|tenants)" 1 ;;
+  dump)    shift; cmd_dump "$@" ;;
+  restore) shift; cmd_restore "$@" ;;
+  verify)  shift; cmd_verify "$@" ;;
+  shell)   shift; cmd_shell "$@" ;;
+  tenants) tr ' ' '\n' <<<"$KNOWN_TENANTS" | sed '/^$/d' ;;
+  *) usage ;;
 esac

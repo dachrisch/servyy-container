@@ -1,0 +1,24 @@
+{# D12 limits for the tier's tenant users on THIS server.
+   Existing accounts keep their password (resetting an app's password would break
+   the running app); only MAX_USER_CONNECTIONS / MAX_STATEMENT_TIME are enforced,
+   on every host the account has. A tenant listed in db_tier_user_passwords is
+   created (or its password re-set) with the limits plus ALL on its own database —
+   never more (D4). Missing accounts for tenants NOT listed there are caught by an
+   explicit check in tasks/server.yml before this runs. #}
+{% set tenants = db_tier_tenants | selectattr('server', 'equalto', db_tier_server) | list -%}
+{% for t in tenants -%}
+{%   set mc = t.max_user_connections | default(0) | int -%}
+{%   set ms = t.max_statement_time | default(0) | int -%}
+-- {{ t.tenant }}: user {{ t.user }} on `{{ t.db }}` (limits {{ mc }} / {{ ms }})
+{%   if t.tenant in db_tier_user_passwords %}
+CREATE USER IF NOT EXISTS '{{ t.user }}'@'localhost' IDENTIFIED BY '{{ db_tier_user_passwords[t.tenant] }}';
+ALTER USER '{{ t.user }}'@'localhost' IDENTIFIED BY '{{ db_tier_user_passwords[t.tenant] }}' WITH MAX_USER_CONNECTIONS {{ mc }} MAX_STATEMENT_TIME {{ ms }};
+GRANT ALL PRIVILEGES ON `{{ t.db }}`.* TO '{{ t.user }}'@'localhost';
+{%   endif -%}
+SELECT IFNULL(GROUP_CONCAT(CONCAT('ALTER USER ''', User, '''@''', Host, ''' WITH MAX_USER_CONNECTIONS {{ mc }} MAX_STATEMENT_TIME {{ ms }};') SEPARATOR ''),
+              'DO 0') INTO @limits_{{ t.tenant }}
+  FROM mysql.user WHERE User = '{{ t.user }}';
+PREPARE st_{{ t.tenant }} FROM @limits_{{ t.tenant }};
+EXECUTE st_{{ t.tenant }};
+DEALLOCATE PREPARE st_{{ t.tenant }};
+{% endfor -%}

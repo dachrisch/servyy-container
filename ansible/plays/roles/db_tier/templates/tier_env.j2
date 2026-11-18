@@ -1,0 +1,6 @@
+# dbops credentials for tier {{ db_tier_name }} — the tier's BACKUP user only
+# (SELECT, SHOW VIEW, TRIGGER, EVENT, LOCK TABLES on this tier's databases).
+# Rendered by roles/db_tier, mode 0600, read by `dbops` on this host.
+# Never the tenant user, never the server's root.
+DBOPS_USER='{{ db_tier_backup_user }}'
+DBOPS_PASSWORD='{{ db_tier_backup_password }}'

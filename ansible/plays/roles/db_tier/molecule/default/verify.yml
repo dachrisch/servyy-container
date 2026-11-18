@@ -1,0 +1,124 @@
+---
+# Isolation assertions for roles/db_tier.
+- name: Verify — per-tenant isolation, backup user, D12 limits, no containers
+  hosts: all
+  gather_facts: false
+  vars:
+    dbtest: db-tier-test.mariadb
+  tasks:
+    - name: Each tenant user reads its OWN database
+      community.docker.docker_container_exec:
+        container: "{{dbtest}}"
+        command: >-
+          sh -c 'mariadb --skip-ssl --batch --skip-column-names -u{{item.user}} -p{{item.pw}} -e "SELECT COUNT(*) FROM widgets"'
+        # `widgets` resolves in the user's default database via the SELECT below
+      loop:
+        - {user: tenant_a, pw: molecule-tenant-a, db: tenant_a}
+        - {user: tenant_b, pw: molecule-tenant-b, db: tenant_b}
+      loop_control:
+        label: "{{item.user}}"
+      changed_when: false
+
+    - name: A tenant user CANNOT read the other tenant's database
+      community.docker.docker_container_exec:
+        container: "{{dbtest}}"
+        command: >-
+          sh -c 'mariadb --skip-ssl --batch -u{{item.user}} -p{{item.pw}} -e "SELECT COUNT(*) FROM {{item.other}}.widgets"'
+      loop:
+        - {user: tenant_a, pw: molecule-tenant-a, other: tenant_b}
+        - {user: tenant_b, pw: molecule-tenant-b, other: tenant_a}
+      loop_control:
+        label: "{{item.user}} -> {{item.other}}"
+      register: cross_read
+      failed_when: false
+      changed_when: false
+
+    - name: Assert every cross-tenant read was refused
+      ansible.builtin.assert:
+        that:
+          - item.rc | default(0) != 0
+          - "'denied' in (item.stderr | default('') | lower)"
+        fail_msg: >-
+          tenant {{item.item.user}} could read {{item.item.other}} — the
+          grants are not scoped to one database.
+        quiet: true
+      loop: "{{cross_read.results}}"
+      loop_control:
+        label: "{{item.item.user}}"
+
+    - name: The tier backup user exists and can read both databases
+      community.docker.docker_container_exec:
+        container: "{{dbtest}}"
+        command: >-
+          sh -c 'mariadb --skip-ssl --batch --skip-column-names -udbops_backup_business -pmolecule-backup-pw
+          -e "SELECT (SELECT COUNT(*) FROM tenant_a.widgets), (SELECT COUNT(*) FROM tenant_b.widgets)"'
+      register: backup_read
+      changed_when: false
+
+    - name: Assert the backup user saw both tenants' rows
+      ansible.builtin.assert:
+        that:
+          - backup_read.stdout.split() == ['2', '1']
+        fail_msg: "backup user read '{{backup_read.stdout}}', expected '2 1'"
+        quiet: true
+
+    - name: The backup user CANNOT write (dump identity, not an app identity)
+      community.docker.docker_container_exec:
+        container: "{{dbtest}}"
+        command: >-
+          sh -c 'mariadb --skip-ssl -udbops_backup_business -pmolecule-backup-pw -e "INSERT INTO tenant_a.widgets (name) VALUES (''nope'')"'
+      register: backup_write
+      failed_when: false
+      changed_when: false
+
+    - name: Assert the write was refused
+      ansible.builtin.assert:
+        that:
+          - backup_write.rc | default(0) != 0
+        fail_msg: "the tier backup user could write to tenant_a — it must be read-only"
+        quiet: true
+
+    - name: The D12 limits are in force for the tenant users
+      community.docker.docker_container_exec:
+        container: "{{dbtest}}"
+        command: >-
+          sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" --skip-ssl --batch --skip-column-names
+          -e "SELECT User, Max_user_connections, Max_statement_time FROM mysql.user
+          WHERE User IN (''tenant_a'',''tenant_b'') ORDER BY User"'
+      register: limits
+      changed_when: false
+
+    - name: Assert both tenant users carry MAX_USER_CONNECTIONS 5 and MAX_STATEMENT_TIME 30
+      ansible.builtin.assert:
+        that:
+          - limits.stdout_lines | length == 2
+          - limits.stdout_lines
+            | select('match', '^tenant_[ab]\t5\t30\.000000$') | list | length == 2
+        fail_msg: "limits read back as {{limits.stdout_lines}}"
+        quiet: true
+
+    - name: dbops was rendered and is executable
+      ansible.builtin.stat:
+        path: "{{remote_user_home}}/.dbops/dbops"
+      register: dbops_stat
+
+    - name: Assert dbops + its credential file exist with the right modes
+      ansible.builtin.assert:
+        that:
+          - dbops_stat.stat.exists
+          - dbops_stat.stat.mode == '0755'
+          - (lookup('ansible.builtin.fileglob',
+                    remote_user_home ~ '/.dbops/business.env') | length) == 1
+        quiet: true
+
+    - name: The role created NO container of its own (it never renders compose — D6)
+      community.docker.docker_container_info:
+        name: db-business.mariadb
+      register: tier_container
+      failed_when: false
+
+    - name: Assert no db-business.mariadb exists
+      ansible.builtin.assert:
+        that:
+          - tier_container.container is none or tier_container.failed | default(false)
+        quiet: true
