@@ -586,6 +586,42 @@
         - "'dontforget' in (services | default([]))"
       tags: [user.docker, user.docker.shared, user.docker.dontforget]
 
+    # leagues-finance and queen, same pattern: db-scoped users in shared.mongo,
+    # created before their service roles below so a deploy never starts an app
+    # against a user that does not exist yet. Their MONGO_URI uses these pairs
+    # with authSource=<own db>; neither app holds shared's root credential any
+    # more (Phase 1 step 2 of docs/plans/2026-11-17_db-tier-topology.md).
+    #
+    # Separate invocations rather than one list: each consumer's tag-scoped
+    # deploy must be able to provision its own user, and the `when` of the
+    # dontforget block does not cover these apps.
+    - role: shared_mongo_users
+      vars:
+        shared_mongo_users:
+          - name: "{{ vault_leagues_finance_mongo_username }}"
+            password: "{{ vault_leagues_finance_mongo_password }}"
+            database: leagues_finance
+            # readWrite: the app owns its collections and indexes.
+            # dbAdmin: collMod / index management for its schema migrations.
+            roles: [readWrite, dbAdmin]
+      when:
+        - "'shared' in (services | default([]))"
+        - "'leagues-finance' in (services | default([]))"
+      tags: [user.docker, user.docker.shared, user.docker.leagues-finance]
+
+    - role: shared_mongo_users
+      vars:
+        shared_mongo_users:
+          - name: "{{ vault_queen_mongo_username }}"
+            password: "{{ vault_queen_mongo_password }}"
+            database: queen
+            roles: [readWrite, dbAdmin]
+      when:
+        - "'shared' in (services | default([]))"
+        - "'finance' in (services | default([]))"
+        - "'queen' in (finance_services | default([]))"
+      tags: [user.docker, user.docker.shared, user.docker.finance]
+
     - role: docker_service
       vars:
         service_dir: leagues-finance
