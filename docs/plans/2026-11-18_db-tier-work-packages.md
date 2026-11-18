@@ -113,6 +113,9 @@ probe-staleness rule: a dead probe must not look like a healthy fleet.
 | R10 | Delete the old surface (moodle-dump, bnb one-liner, superseded restic units, dead `ls_stage_restore`) | no unit outside the inventory; `grep` clean |
 | R11 | **Restore drills**: `plays/restore_drill.yml` on servyy-test, evidence in `history/`, `db_restore_drill_*` metrics | a drill runs unattended; a broken repo trips the *drill* alert |
 
+| R12 | **Backups must not depend on `/tmp`.** restic writes its temp pack to `TMPDIR`, which is a 3.8 GB tmpfs here; two stray 1.6 GB dumps filled it and every `home` snapshot failed with `disk quota exceeded` while the unit's failure looked unrelated to backups. Set `TMPDIR` to a disk-backed path in the backup scripts and alert on `/tmp` usage. | `TMPDIR` visible in the rendered script; a deliberately constrained `/tmp` no longer fails a snapshot |
+| R13 | **Wire the memory alert the plan keeps citing.** `container_memory_near_limit` does **not** exist on this host (0 series) — every "watch memory for a week" step in WP-4…WP-7 pointed at an alert that was never provisioned. Provision it from the containers' `mem_limit`, or drop the claim. | A container held at its limit produces the series and fires |
+
 Datadir deletion stays in WP-8's old last step — it is irreversible and unrelated to wiring.
 
 ### Schedules (decided 2026-11-18)
