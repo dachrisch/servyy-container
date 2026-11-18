@@ -39,10 +39,25 @@
       tags:
         - ls.dbeaver
   vars:
+    # Rename-aware, exactly like the tunnel keys (defaults/main.yml): the prod
+    # host was inventoried as `lehel` in 2026-08 and its deploy key was created
+    # and authorised under that name, while `inventory_hostname_short` is
+    # `servy` today. `ls.ssh_key_filename` (encrypted vars) still derives from
+    # the short name, so it asks for `ls_ssh_key_servy`, which exists nowhere -
+    # and a file lookup that misses aborts the whole run. Derive it here instead
+    # of editing the encrypted vars file, and never create a symlink/copy on the
+    # controller: the next operator's machine must behave the same.
+    # The one other consumer is ls_access/tasks/jail_ssh.yaml, which CREATES the
+    # keypair from `ls.ssh_key_filename` (short name). It has not run here since
+    # the rename, so the old name is still the authorised one; if it ever runs,
+    # it would mint a NEW `ls_ssh_key_servy` pair and install its pubkey. That
+    # mismatch stays until the encrypted vars file is next edited.
+    ls_deploy_key_filename: "{{ 'ls_ssh_key_lehel' if inventory_hostname_short == 'servy' else 'ls_ssh_key_' ~ inventory_hostname_short }}"
+    ls_deploy_key_label: "{{ 'lehel' if inventory_hostname_short == 'servy' else inventory_hostname_short }}"
     vaultwarden_item_username: ansible
     vaultwarden_items:
-      - name: "leaguesphere deploy key ({{ inventory_hostname_short }})"
-        secret: "{{ lookup('file', '~/.ssh/' + ls.ssh_key_filename) }}"
+      - name: "leaguesphere deploy key ({{ ls_deploy_key_label }})"
+        secret: "{{ lookup('file', '~/.ssh/' + ls_deploy_key_filename) }}"
         notes: >-
           Private key for the jailed leaguesphere deploy account on {{ inventory_hostname }}.
           Used by ls_access/jail_ssh.yaml for app deployment (SSH chroot jail;
