@@ -21,6 +21,11 @@
         db_backup_user: test_backup_user
         db_backup_password: test_backup_password
     restic:
+      # restic_backup.sh.j2 exports this as $TMPDIR. It MUST be set here: the
+      # scenarios define their own `restic` dict, so a key added to the play
+      # var file (vars/restic.yml) is invisible to them, and the template dies
+      # with "object of type 'dict' has no attribute 'tmpdir'".
+      tmpdir: /home/testuser/.cache/restic-tmp
       home:
         source_path: /home/testuser
       root:
