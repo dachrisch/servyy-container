@@ -212,6 +212,27 @@ a wildcard certificate is actually wanted — and note `bricksnbytes.de` stays o
 HTTP-01 permanently anyway (it is at Strato), so the estate is never uniformly
 DNS-01.
 
+## Domain later moved to a separate Porkbun subaccount (same day)
+
+`bumbleflies.de` was subsequently moved out of the `dachrisch` Porkbun account
+into a dedicated subaccount. That has consequences worth writing down, because
+nothing about DNS serving changed and the site stayed up throughout:
+
+- **Both API keys in this repo can no longer see or edit the domain.**
+  `pb GET /domain/get/bumbleflies.de` → `DOMAIN_NOT_FOUND (Account: dachrisch)`,
+  and every `/dns/*` call → `INVALID_DOMAIN`. `domain/listAll` now returns only
+  `lehel.xyz` and `xn--hfer-architekten-mwb.de`.
+- **DNS-01 for this domain is impossible again**, for the original reason
+  (`INVALID_DOMAIN`) — this time by account scoping rather than by registration.
+  That enforces the HTTP-01 decision rather than contradicting it, but it means
+  the "revisit DNS-01 later" escape hatch now requires a key from the subaccount
+  in `vars/secrets.yml` first.
+- **Hosted DNS is unaffected**: delegation, apex A/AAAA, MX, TXT and the wildcard
+  all still serve, because the zone stays on the same Porkbun nameservers.
+- Any future record change for this zone (a new MX, a verification TXT, moving
+  the zone) needs a subaccount API key. `scripts/dns-layout.sh bumbleflies.de`
+  will fail until one is configured.
+
 ## Rollback Procedure
 
 Not practically reversible: an outbound `.de` transfer needs a fresh `AUTHINFO`

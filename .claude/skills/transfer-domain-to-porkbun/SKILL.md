@@ -351,6 +351,14 @@ available** and is the right resolver for a domain whose HTTP-01 path might be
 blocked by a proxy or a redirect. It failed with `INVALID_DOMAIN` before the
 move — that is expected, not a bug.
 
+**Account scoping is the whole precondition, and it can be undone later.** The
+keys in `vars/secrets.yml` only see one Porkbun account. If the domain is moved
+to another account or subaccount afterwards (done for `bumbleflies.de` the same
+day), every `/dns/*` call returns `INVALID_DOMAIN` again and DNS-01 stops
+working for it — while the site keeps serving, because the zone stays on the
+same nameservers. Check with `GET /domain/get/$D` before promising anyone that
+DNS-01 will work, and expect a fresh API key from that account if it must.
+
 ```yaml
 # <service>/docker-compose.yml
 - traefik.http.routers.${SERVICE_NAME}_prod.tls.certresolver=letsencryptdnsresolver
