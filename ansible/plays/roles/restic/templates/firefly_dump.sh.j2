@@ -1,0 +1,136 @@
+#!/bin/zsh
+# INTERIM daily `pg_dump -Fc` of the `firefly` tenant (postgres on
+# {{ tenant_row.server }}, database {{ tenant_row.db }}) into
+# {{ dump_root }}/current — the ONE directory its restic repo snapshots.
+#
+# ⚠️ THIS JOB AND ITS REPO ARE TEMPORARY. WP-10 retires postgres: `shared.db`,
+# the `db-private-firefly` backup_targets row, the `restic-db-private-firefly`
+# repository, the `db-dump-firefly` / `restic-backup-db-private-firefly` timers
+# and {{ dump_root }} are all deleted together in that package, and must not be
+# deleted before it. Until then this dump is the ONLY protection firefly has
+# ever had: `PGDATA` is a bind mount on /mnt/servy-docker-data, which the `root`
+# repo excludes (vars/restic.yml), so a lost host was 68 MB of financial history
+# gone. It is a daily logical dump, NOT point-in-time recovery.
+#
+# WHY A SEPARATE SCRIPT INSTEAD OF `dbops dump firefly`: dbops has no postgres
+# adapter yet, and it must not grow one for a tenant whose engine disappears in
+# the same programme — WP-10's move to MariaDB brings the tenant under the
+# ordinary `dbops dump` path instead. When that happens this file is deleted,
+# not ported.
+#
+# CREDENTIALS: none. `shared.db` carries POSTGRES_USER/POSTGRES_PASSWORD and its
+# local unix socket trusts that user, so `docker exec … pg_dump -U firefly` needs
+# no password from the host — nothing secret is templated here and nothing can
+# leak into a process list.
+#
+# WHY `new/` -> `current/` AND A SIZE FLOOR: the same discipline as every other
+# dump in this repo (see `dbops_dump.sh.j2` for the full argument). restic
+# snapshots {{ dump_root }}/current only, so a running or failed dump can never be
+# captured and can never replace the last good file; a dump below
+# `size_floor_bytes` is treated as broken rather than as a new backup.
+#
+# Validating the archive inside the container (`pg_restore --list`) is
+# deliberate: it proves the file is a *parseable custom-format archive* of the
+# same major version and still carries the tenant's tables. A size floor alone
+# cannot tell a dump from a truncated stream.
+#
+# RESTORE RECIPE (until WP-10; there is no `dbops restore firefly`). Restore
+# into a scratch postgres of the same major version, never over the live one:
+#
+#   docker run -d --name scratch-pg -e POSTGRES_PASSWORD=x postgres:15
+#   docker cp {{ dump_root }}/current/<file>.dump scratch-pg:/tmp/f.dump
+#   docker exec scratch-pg createdb -U firefly drill
+#   docker exec scratch-pg pg_restore -U firefly --no-owner --no-privileges \
+#       -d drill /tmp/f.dump
+#   # then compare per-table counts with the live database (the drill in
+#   # history/2026-11-18_db-tier-backup-coverage.md has the exact query)
+#
+# -U IS NOT OPTIONAL. A scratch server's only superuser is its POSTGRES_USER;
+# without -U, pg_restore connects as the HOST's OS user (root) and dies with
+# `role "root" does not exist`, and `-U postgres` dies with `role "postgres"
+# does not exist` — both exit 1 with zero tables restored. On 2026-11-18 exactly
+# that was mistaken for "the dump is unrestorable"; the archive was fine.
+#
+# --no-owner/--no-privileges: the objects belong to `firefly` on a server where
+# that role may not exist. Neither flag changes the data, and with them a
+# restore into a bare postgres:15 is silent and exit 0 (measured).
+set -euo pipefail
+
+if [ -f "/home/{{ create_user }}/.zshenv" ]; then
+    source "/home/{{ create_user }}/.zshenv"
+fi
+source "/home/{{ create_user }}/.zprezto/custom/functions/logdy"
+
+PG="{{ tenant_row.server }}"
+PGDB="{{ tenant_row.db }}"
+PGUSER="{{ tenant_row.user }}"
+ROOT="{{ dump_root }}"
+NEW="$ROOT/new"
+CUR="$ROOT/current"
+FLOOR={{ dump_size_floor_bytes }}
+
+export LOGDY_ALSO_TO_FILE="{{ dump_log }}"
+LOG_FILE="{{ dump_log }}"
+
+logdy info "Starting {{ tenant_row.tenant }} dump" tenant="{{ tenant_row.tenant }}" container="$PG" database="$PGDB" target="$CUR"
+
+mkdir -p -m 0770 "$ROOT"
+rm -rf "$NEW"
+mkdir -m 0770 "$NEW"
+
+FILE="{{ tenant_row.tenant }}-$(date -u +%Y%m%dT%H%M%SZ).dump"
+
+# -Fc: custom format, restored with pg_restore (per-table, parallel-safe) rather
+# than a plain SQL script, and it carries the table list the validation below
+# reads. stdout -> `new/` by the host shell, so a container that dies mid-stream
+# leaves a truncated file in `new/` and nothing else.
+if docker exec "$PG" sh -c 'exec pg_dump -U "$1" -d "$2" -Fc --no-owner --no-privileges' dbops "$PGUSER" "$PGDB" > "$NEW/$FILE"; then
+    :
+else
+    EXIT_CODE=$?
+    rm -rf "$NEW"
+    logdy error "{{ tenant_row.tenant }} dump failed" container="$PG" exit_code=$EXIT_CODE
+    exit $EXIT_CODE
+fi
+
+BYTES=$(stat -c %s "$NEW/$FILE")
+if [ "$BYTES" -lt "$FLOOR" ]; then
+    rm -rf "$NEW"
+    logdy error "Dump suspiciously small" file="$FILE" bytes=$BYTES floor=$FLOOR
+    exit 1
+fi
+
+# The archive must be parseable by the server's own pg_restore, and must carry
+# tables: a dump of a database that no longer holds the tenant's schema would
+# otherwise pass the size floor on comment/migration entries alone.
+# `awk $4 == "TABLE"`, not a `grep TABLE`: the TOC also has one `TABLE DATA` entry
+# per table, so a grep counts every table twice (162 instead of 81 on 2026-11-18).
+TOC=$(docker exec -i "$PG" sh -c 'exec pg_restore --list' < "$NEW/$FILE") || {
+    rm -rf "$NEW"
+    logdy error "Dump is not a readable custom-format archive" file="$FILE"
+    exit 1
+}
+TABLES=$(printf '%s\n' "$TOC" | awk '$4 == "TABLE" && $5 == "public"' | wc -l)
+if [ "$TABLES" -lt 1 ]; then
+    rm -rf "$NEW"
+    logdy error "Dump contains no tables" file="$FILE" bytes=$BYTES
+    exit 1
+fi
+
+# Atomic-ish swap; the previous dump survives until the new one is in place.
+rm -rf "$CUR.old"
+if [ -d "$CUR" ]; then
+    mv "$CUR" "$CUR.old"
+fi
+mv "$NEW" "$CUR"
+rm -rf "$CUR.old"
+
+# Prove the swap took effect (`mv new current` onto an existing directory nests
+# instead of replacing — the 2026-11-06 Moodle failure).
+SWAPPED_BYTES=$(stat -c %s "$CUR/$FILE" 2>/dev/null || echo 0)
+if [ "$SWAPPED_BYTES" -ne "$BYTES" ]; then
+    logdy error "Swap did not take effect" expected_bytes=$BYTES actual_bytes=$SWAPPED_BYTES target="$CUR/$FILE"
+    exit 1
+fi
+
+logdy info "{{ tenant_row.tenant }} dump refreshed" tenant="{{ tenant_row.tenant }}" target="$CUR/$FILE" bytes=$BYTES tables=$TABLES

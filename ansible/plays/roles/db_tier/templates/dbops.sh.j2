@@ -16,8 +16,11 @@
 #   dbops tenants                             list the tenants this adapter knows
 #
 # Design rules:
-#   * MariaDB-only for now; mongo/postgres tenants are recognised and refused
-#     with a clear message (the mongo adapter is Phase 8).
+#   * Engines: mariadb (mariadb-dump/mariadb) and mongo (mongodump/mongorestore).
+#     postgres is recognised and refused with a clear message: it is a
+#     short-lived tenant (firefly) whose interim `pg_dump` lives in
+#     roles/restic/templates/firefly_dump.sh.j2 and is deleted with `shared.db`
+#     in WP-10 — an adapter here would be thrown away with it.
 #   * Every statement runs INSIDE the tenant's server container via `docker exec`,
 #     so no database port is published or opened and Ansible never interpolates a
 #     database credential.
@@ -43,15 +46,20 @@ dbops <command> [args]
 
   dump <tenant>                       logical dump into the tenant's dump dir
                                       (DBOPS_DUMP_DIR overrides the directory)
+                                      mariadb: <tenant>-<ts>.sql.gz
+                                      mongo:   <tenant>-<ts>.archive.gz
   restore <tenant> <file> [--force]   import a logical dump, DEFINER-stripped
   verify <tenant> [--against <srv>]   dump-vs-live, or live-vs-live with --against
+                                      (mongo: per-collection document counts)
   shell <tenant>                      interactive mariadb client in that database
   restore <tenant> --from-physical <dir>
                                       physical mariadb-backup set (high -> nonprod)
-  tenants                             list the MariaDB tenants this tool knows
+  tenants                             list the tenants this tool can dump
 
 Credentials: the per-tier backup user from <env dir>/<tier>.env; DBOPS_USER /
 DBOPS_PASSWORD in the environment override it (drills and one-off operator work).
+Mongo tenants use the server container's own MONGO_INITDB_ROOT_* account
+(DBOPS_MONGO_USER / DBOPS_MONGO_PASSWORD override it) and never a tier env file.
 
 DBOPS_SERVER=<container> overrides which container the command talks to, because
 a MOVE targets the new server before the inventory row moves there (WP-4..7).
@@ -60,30 +68,36 @@ USAGE
 }
 
 # --- tenant table (rendered from plays/vars/db_tenants.yml) -------------------
+# ONE arm per tenant, carrying every field for every engine. Do not re-introduce
+# an `if engine != mariadb` short arm: that is exactly what left T_DB empty for
+# the mongo tenants, and an empty `--db` makes mongodump dump EVERY database on
+# the server (measured 2026-11-18: leagues_finance's archive grew from 11 585 B
+# to 65 925 B and contained queen's and dontforget's collections), while an empty
+# database path sends mongosh to the default `test` database and makes
+# `verify --against` compare nothing.
 tenant_lookup() {
   T_SERVER=""; T_DB=""; T_USER=""; T_TIER=""; T_ENGINE=""; T_DUMP_DIR=""; T_RESTIC=""
   case "$1" in
 {% for t in db_tenants | sort(attribute='tenant') %}
-{%   if t.engine == 'mariadb' %}
     {{ t.tenant }})
       T_SERVER={{ t.server | tojson }}; T_DB={{ t.db | tojson }}; T_USER={{ t.user | tojson }}
       T_TIER={{ t.tier | tojson }}; T_ENGINE={{ t.engine | tojson }}
       T_DUMP_DIR={{ t.dump_dir | tojson }}; T_RESTIC={{ t.restic_repo | tojson }} ;;
-{%   else %}
-    {{ t.tenant }})
-      T_ENGINE={{ t.engine | tojson }}; T_TIER={{ t.tier | tojson }}; T_SERVER={{ t.server | tojson }} ;;
-{%   endif %}
 {% endfor %}
     *) return 1 ;;
   esac
   return 0
 }
 
-KNOWN_TENANTS="{{ db_tenants | selectattr('engine', 'equalto', 'mariadb') | map(attribute='tenant') | sort | join(' ') }}"
+KNOWN_TENANTS="{{ db_tenants | rejectattr('engine', 'equalto', 'postgres') | map(attribute='tenant') | sort | join(' ') }}"
 
 resolve_tenant() {
-  tenant_lookup "$1" || die "unknown tenant '$1'. MariaDB tenants: $KNOWN_TENANTS" 2
-  [ "$T_ENGINE" = "mariadb" ] || die "tenant '$1' runs on '$T_ENGINE': the MariaDB adapter cannot handle it (mongo arrives in Phase 8)" 2
+  tenant_lookup "$1" || die "unknown tenant '$1'. Dump-capable tenants: $KNOWN_TENANTS" 2
+  case "$T_ENGINE" in
+    mariadb) ;;
+    mongo) [ "$DBOPS_MONGO_ADAPTER" = "1" ] || die "tenant '$1' runs on 'mongo': this build has the MariaDB adapter only" 2 ;;
+    *) die "tenant '$1' runs on '$T_ENGINE': only mariadb and mongo are implemented (postgres arrives with WP-10)" 2 ;;
+  esac
   # A move writes to the NEW server while the inventory still names the old one.
   # Every path (dump/restore/verify/shell) goes through here, so the override
   # cannot be forgotten in one command and honoured in another.
@@ -117,10 +131,42 @@ sql() {   # sql "<query>" [database]
     | docker exec -i "$T_SERVER" sh -c 'read -r U; read -r P; exec mariadb --skip-ssl --batch --skip-column-names -u"$U" -p"$P" -e "$1" "$2"' dbops "$q" "$db"
 }
 
+# --- mongo adapter (WP-8R R6) -------------------------------------------------
+# mongodump/mongorestore speak an archive stream, so a mongo dump is
+# `mongodump --archive --gzip` into a .partial file, renamed on success - the
+# same discipline as the MariaDB path. Credentials come from the SERVER
+# container's own MONGO_INITDB_ROOT_* env (the shared.mongo root account), never
+# from argv, and never from a tier env file (those hold MariaDB backup users).
+DBOPS_MONGO_ADAPTER=1
+
+mongo_env() {   # [$1 = server] sets MU/MP from that container, or from DBOPS_MONGO_*
+  local srv="${1:-$T_SERVER}"
+  if [ -n "${DBOPS_MONGO_USER:-}" ]; then
+    MU="$DBOPS_MONGO_USER"; MP="${DBOPS_MONGO_PASSWORD:-}"
+  else
+    MU=$(docker exec "$srv" sh -c 'printenv MONGO_INITDB_ROOT_USERNAME' 2>/dev/null)
+    MP=$(docker exec "$srv" sh -c 'printenv MONGO_INITDB_ROOT_PASSWORD' 2>/dev/null)
+  fi
+  [ -n "${MU:-}" ] && [ -n "${MP:-}" ] \
+    || die "no mongo credentials for '$srv': set DBOPS_MONGO_USER/DBOPS_MONGO_PASSWORD or run where the container carries MONGO_INITDB_ROOT_*" 3
+}
+
+mongo_uri() {   # $1 = database path; '' = none (what mongodump --db requires)
+  # mongosh uses the path to select a database; mongodump/mongorestore reject it
+  # when the database is also given as a flag (--db / --nsInclude), so callers
+  # that scope explicitly pass ''.
+  printf 'mongodb://%s:%s@127.0.0.1:27017/%s?authSource=admin' "$MU" "$MP" "$1"
+}
+
 # --- dump ---------------------------------------------------------------------
 cmd_dump() {
   [ $# -eq 1 ] || usage
-  resolve_tenant "$1"; load_creds; container_alive "$1"
+  resolve_tenant "$1"; container_alive "$1"
+  if [ "$T_ENGINE" = "mongo" ]; then
+    cmd_dump_mongo "$1"
+    return $?
+  fi
+  load_creds
 
   local dir="${DUMP_DIR_OVERRIDE:-$T_DUMP_DIR}"
   [ -n "$dir" ] || die "tenant '$1' has no dump_dir in the inventory and DBOPS_DUMP_DIR is unset" 1
@@ -130,10 +176,15 @@ cmd_dump() {
   local partial="$out.partial"
   info "dbops: dumping $1 ($T_SERVER/$T_DB) as $DBOPS_USER -> $out"
 
+  # --skip-dump-date plus `gzip -n` make an unchanged database produce a
+  # BYTE-IDENTICAL file (no dump timestamp in the SQL, no name/mtime in the gzip
+  # header). That is what lets restic deduplicate a 30-daily retention to almost
+  # nothing when the tenant did not change - the same reason `dbops` was
+  # specified with it. It does not weaken a restore: the dump date is metadata.
   if printf '%s\n%s\n' "$DBOPS_USER" "${DBOPS_PASSWORD:-}" | docker exec -i "$T_SERVER" sh -c '
         read -r U; read -r P
         exec mariadb-dump --single-transaction --quick --routines --triggers --events \
-          --default-character-set=utf8mb4 --hex-blob --databases "$1" -u"$U" -p"$P"' dbops "$T_DB" \
+          --skip-dump-date --default-character-set=utf8mb4 --hex-blob --databases "$1" -u"$U" -p"$P"' dbops "$T_DB" \
      | gzip -n > "$partial"; then
     # pipefail: a failing dump also fails this pipeline, so the rename only runs
     # on a complete, gzip-valid stream.
@@ -143,6 +194,53 @@ cmd_dump() {
     die "dump failed for '$1' (container $T_SERVER); nothing was renamed into place" 4
   fi
   info "dbops: ok  $(du -h "$out" | cut -f1)  $out"
+}
+
+cmd_dump_mongo() {
+  local dir="${DUMP_DIR_OVERRIDE:-$T_DUMP_DIR}"
+  [ -n "$dir" ] || die "tenant '$1' has no dump_dir in the inventory and DBOPS_DUMP_DIR is unset" 1
+  mkdir -p "$dir" || die "cannot create dump dir '$dir'" 4
+  mongo_env
+  local out="$dir/$1-$(date -u +%Y%m%dT%H%M%SZ).archive.gz"
+  local partial="$out.partial"
+  info "dbops: dumping $1 ($T_SERVER/$T_DB) as mongo user $MU -> $out"
+  # --db, and an EMPTY database path in the URI. A database path in the URI does
+  # NOT scope mongodump: it dumped every database on shared.mongo, so
+  # leagues_finance's archive also carried queen's and dontforget's collections
+  # (measured 2026-11-18: 65 925 B unscoped vs 11 585 B with --db — one tenant's
+  # repo must never hold another tenant's data). mongodump refuses `--db` together
+  # with a URI path ("Invalid Options"), hence `mongo_uri ''`.
+  if docker exec "$T_SERVER" sh -c 'exec mongodump --uri="$1" --db="$2" --archive --gzip' dbops "$(mongo_uri '')" "$T_DB" > "$partial"; then
+    gzip -t "$partial" || { rm -f "$partial"; die "dump failed gzip integrity for '$1'" 4; }
+    mv -f "$partial" "$out" || die "cannot rename '$partial'" 4
+  else
+    rm -f "$partial"
+    die "mongo dump failed for '$1' (container $T_SERVER); nothing renamed" 4
+  fi
+  # keep the newest two only: the repo snapshots this directory, and a
+  # timestamped name means every file is new data for restic
+  ls -1t "$dir"/"$1"-*.archive.gz 2>/dev/null | tail -n +3 | xargs -r rm -f
+  info "dbops: ok  $(du -h "$out" | cut -f1)  $out"
+}
+
+mongo_counts() {   # $1 = server, $2 = database -> sorted "collection:count" lines
+  local srv="$1" db="$2"
+  mongo_env "$srv"
+  # Collection names cannot contain ':', so it is a safe separator for the
+  # "collection:count" lines this prints (and `sort` + `diff` work on it).
+  docker exec "$srv" sh -c 'exec mongosh --quiet "$1" --eval "db.getCollectionNames().sort().forEach(function(c){print(c+\":\"+db.getCollection(c).countDocuments({}))})"' \
+    dbops "$(mongo_uri "$db")" 2>/dev/null | sort
+}
+
+mongo_collection_count() {   # $1 = server, $2 = database -> count; 1 when unreadable
+  local srv="$1" db="$2" n
+  mongo_env "$srv"
+  n=$(docker exec "$srv" sh -c 'exec mongosh --quiet "$1" --eval "db.getCollectionNames().length"' \
+        dbops "$(mongo_uri "$db")" 2>/dev/null)
+  # Fail SAFE: an unreadable answer counts as "has collections", so a broken
+  # connection can never turn a destructive --drop restore into the "empty
+  # target" case. (Same principle as the MariaDB `has_tables` guard.)
+  case "$n" in '' | *[!0-9]*) echo 1 ;; *) echo "$n" ;; esac
 }
 
 # --- verify -------------------------------------------------------------------
@@ -187,7 +285,34 @@ cmd_verify() {
       *) usage ;;
     esac
   done
-  resolve_tenant "$tenant"; load_creds
+  resolve_tenant "$tenant"
+  if [ "$T_ENGINE" = "mongo" ]; then
+    if [ -n "$against" ]; then
+      info "dbops: verify $tenant  live($T_SERVER) vs live($against)"
+      # mktemp, not a fixed /tmp path: /tmp here is a 3.8 GB tmpfs shared with
+      # restic's staging (the R12 lesson), and two concurrent drills must not
+      # overwrite each other's count files.
+      local mt; mt=$(mktemp -d) || die "mktemp failed" 4
+      mongo_counts "$T_SERVER" "$T_DB" > "$mt/src.txt"
+      mongo_counts "$against" "$T_DB" > "$mt/dst.txt"
+      # An empty side is a broken read, not a match: mongosh returns nothing when
+      # it cannot authenticate, and "both sides empty" would then read as success.
+      [ -s "$mt/src.txt" ] || { rm -rf "$mt"; die "cannot read collection counts from $T_SERVER (empty output)" 5; }
+      [ -s "$mt/dst.txt" ] || { rm -rf "$mt"; die "cannot read collection counts from $against (empty output)" 5; }
+      if ! diff -u "$mt/src.txt" "$mt/dst.txt"; then
+        rm -rf "$mt"
+        die "verify $tenant: per-collection document counts differ" 5
+      fi
+      rm -rf "$mt"
+      info "dbops: ok  per-collection document counts identical"
+      exit 0
+    fi
+    info "dbops: verify $tenant  live($T_SERVER/$T_DB) per-collection counts:"
+    mongo_counts "$T_SERVER" "$T_DB" | sed -e 's/^/  /'
+    info "  for an exact comparison restore into a target and run 'dbops verify $tenant --against <server>'."
+    exit 0
+  fi
+  load_creds
 
   local tmp; tmp=$(mktemp -d) || die "mktemp failed" 4
 
@@ -262,7 +387,28 @@ cmd_restore() {
       *) file="$1"; shift ;;
     esac
   done
-  resolve_tenant "$tenant"; load_creds; container_alive "$tenant"
+  resolve_tenant "$tenant"; container_alive "$tenant"
+  if [ "$T_ENGINE" = "mongo" ]; then
+    # The generic parser above already consumed the file and --force: this
+    # branch must USE them. (The WIP version re-parsed "$@" — which is empty by
+    # now — and then refused every file as "not a file", so no mongo restore
+    # could ever run.)
+    [ -n "$file" ] && [ -f "$file" ] || die "restore <tenant> <file>: '$file' is not a file" 1
+    mongo_env
+    # --drop makes every restore destructive, so it carries the same refusal as
+    # the MariaDB path: an existing database is not silently replaced (and a
+    # drill against a scratch server is an explicit --force, which is what keeps
+    # the drill honest about which server it wrote to).
+    if [ "$force" != "1" ] && [ "$(mongo_collection_count "$T_SERVER" "$T_DB")" != "0" ]; then
+      die "database '$T_DB' on '$T_SERVER' already holds collections; refusing to restore over it (--force to override)" 4
+    fi
+    info "dbops: restoring $file -> $T_SERVER/$T_DB (--drop, nsInclude $T_DB.*)"
+    docker exec -i "$T_SERVER" sh -c 'exec mongorestore --uri="$1" --archive --gzip --drop --nsInclude="$2.*"' \
+      dbops "$(mongo_uri '')" "$T_DB" < "$file" || die "mongo restore failed for '$tenant'" 4
+    info "dbops: ok  restored into $T_DB"
+    exit 0
+  fi
+  load_creds
 
   if [ -n "$from_physical" ]; then
     # D10: physical (prepared mariadb-backup) sets are high-tier-only and are

@@ -36,10 +36,10 @@
     - name: Fail when a backup target is not gated by a known flag
       ansible.builtin.assert:
         that:
-          - item.enabled_by in ['always', 'leaguesphere', 'moodle']
+          - item.enabled_by in ['always', 'leaguesphere', 'moodle', 'servy']
         fail_msg: >-
           backup_targets '{{ item.name }}': enabled_by '{{ item.enabled_by }}' is not one of
-          always | leaguesphere | moodle.
+          always | leaguesphere | moodle | servy.
         quiet: true
       loop: "{{ backup_targets }}"
       loop_control:
@@ -95,6 +95,56 @@
       loop: "{{ db_tenants }}"
       loop_control:
         label: "{{ item.tenant }}"
+
+    # --- the WP-8R R3/R4/R6 jobs: four facts live on two rows --------------
+    # size_floor_bytes / probe_minutes / severity exist on BOTH the tenant row
+    # (what the dump script and the inventory read) and the backup_targets row
+    # (what the probe generator and the retention read). That duplication is
+    # deliberate — a dump's floor is a property of the tenant, a repo's cadence
+    # of the target — but it is only safe with this guard: lowering a floor in
+    # one place would otherwise leave the script and the probe at different
+    # thresholds, and the failure mode is a green dashboard over a broken dump.
+    # The two URLs below are checked for the same reason: a source_path that
+    # does not end in `<dump_dir>/current` snapshots an empty or wrong directory.
+    # Scoped to `servy`, i.e. the five jobs this package wires; moodle (R9) and
+    # the host repos have no dump_at/floor of this shape.
+    - name: Fail when a backup target names a tenant the inventory does not have
+      ansible.builtin.assert:
+        that:
+          - db_tenants | selectattr('tenant', 'equalto', item.tenant) | list | length == 1
+        fail_msg: >-
+          backup_targets '{{ item.name }}': tenant '{{ item.tenant }}' is not a row in
+          db_tenants. A repo without a tenant row has no server, no database and no
+          dump script — it would snapshot a directory nobody fills.
+        quiet: true
+      loop: "{{ backup_targets | selectattr('enabled_by', 'equalto', 'servy') | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Fail when a tenant row and its backup target disagree
+      ansible.builtin.assert:
+        that:
+          - trow.size_floor_bytes | int == item.size_floor_bytes | int
+          - trow.probe_minutes | int == item.probe_minutes | int
+          - trow.severity == item.severity
+          - trow.dump_at in restic.schedules['dump_' ~ item.tenant]
+          - restic[item.name].source_path == (trow.dump_dir ~ '/current')
+        fail_msg: >-
+          backup_targets '{{ item.name }}' and db_tenants '{{ item.tenant }}' must agree.
+          Values: size_floor_bytes (target {{ item.size_floor_bytes }} /
+          tenant {{ trow.size_floor_bytes }}), probe_minutes ({{ item.probe_minutes }} /
+          {{ trow.probe_minutes }}), severity ({{ item.severity }} / {{ trow.severity }});
+          restic.schedules.dump_{{ item.tenant }} ('{{ restic.schedules['dump_' ~ item.tenant] }}')
+          must contain dump_at '{{ item.dump_at }}'; and restic.{{ item.name }}.source_path
+          ('{{ restic[item.name].source_path }}') must be '<tenant dump_dir>/current'
+          ('{{ trow.dump_dir }}/current'). The first expression that failed is shown above.
+        # NOT quiet: with five conditions in one assert, the failing one must be
+        # visible — otherwise the message reads like all five disagree.
+      vars:
+        trow: "{{ db_tenants | selectattr('tenant', 'equalto', item.tenant) | first }}"
+      loop: "{{ backup_targets | selectattr('enabled_by', 'equalto', 'servy') | list }}"
+      loop_control:
+        label: "{{ item.name }}"
 
     # --- the two system_probe lists, in the order the deployed scripts have ---
     - name: Start the log-check list with the host-level entries
