@@ -90,15 +90,83 @@ The observability stack for servy. One compose project (`name: ${SERVICE_NAME}` 
    (`data[0].model.expr` → `expr:`) and run `promtool check rules`; the running
    `monitor.prometheus` container ships `promtool`.
 
+   **The snapshot age is the maximum over the WHOLE repo.** `restic snapshots --latest 1`
+   returns the newest snapshot per `(hostname, paths)` **group**, so reading `[0]` reports
+   whichever group sorts first, not the newest snapshot. Measured 2026-11-18: a stray
+   `hostname="localhost"` snapshot (left by a branch-rendered test, since forgotten) formed its
+   own group and `repo="home"` reported 10 440 s while the real newest was 1 612 s old — a
+   medium alert that could never clear. The probe now takes `max(.time)` across
+   `restic snapshots --json`; `ansible/tests/system_probe/test_restic_snapshot_probe.py` runs
+   the rendered script against a two-group fixture and fails if `[0]`-style behaviour returns.
+
+   **Dump-age coverage per tenant (2026-11-18):** seven tenants emit `db_dump_age_seconds` —
+   photoprism, leagues_finance, queen, dontforget, firefly, plus `bnb_office` (rides the `home`
+   snapshot, where a failed dump is otherwise invisible) and `leaguesphere` (the mariadb-backup
+   prepared set, whose directory mtime is the hourly atomic swap). `moodle` deliberately has no
+   row: its dump directory sits under a `0750 root:root` parent and the probe runs as the
+   unprivileged user, so `stat()` is refused and a row would page `-1` forever; that condition
+   is covered instead by the `moodle-db` stale-source guard, which fails the snapshot job
+   (`stale_restic_snapshot_high`). The nonprod tier emits nothing by design.
+
 ## Verifying a change took effect
 
 ```bash
 # Prometheus rules loaded (must list container-memory, health=ok)
 ssh servy.lehel.xyz "docker exec monitor.prometheus wget -qO- 'http://localhost:9090/api/v1/rules?type=record'"
 
-# Grafana rule count and the rules you edited (admin password from the container env)
-ssh servy.lehel.xyz 'PW=$(docker inspect monitor.grafana -f "{{range .Config.Env}}{{println .}}{{end}}" | sed -n "s/^GF_SECURITY_ADMIN_PASSWORD=//p" | head -1); docker exec -e PW="$PW" monitor.grafana sh -c "curl -s -u admin:\$PW http://localhost:3000/api/v1/provisioning/alert-rules" | grep -c uid'
+# Grafana rule count (2026-11-18: must be 53 after a full render)
+ssh servy.lehel.xyz 'docker exec monitor.grafana sh -c "\
+  curl -s -u admin:\$GF_SECURITY_ADMIN_PASSWORD \
+  http://localhost:3000/api/v1/provisioning/alert-rules" | grep -c uid'
+
+# …and that the rules are still EVALUATING (every health must be "ok",
+# every rule must carry a lastEvaluation timestamp)
+ssh servy.lehel.xyz 'docker exec monitor.grafana sh -c "\
+  curl -s -u admin:\$GF_SECURITY_ADMIN_PASSWORD \
+  http://localhost:3000/api/prometheus/grafana/api/v1/rules"'
 ```
+
+**401 is a trap, not a wrong password.** Grafana applies
+`GF_SECURITY_ADMIN_PASSWORD` **only when it creates the admin user** (first boot of a fresh
+`grafana_data` volume); after that the credential lives in `grafana.db` and can move without
+the env (UI change, the `/user/password/reset` flow, `grafana cli admin reset-admin-password`).
+Measured 2026-11-18: env == rendered `grafana.env` == controller seed, but the admin row was
+rewritten at 22:12:49 by a browser password reset, so every recipe that authenticated with the
+env value answered 401 — and verification fell back to reading `grafana.db` by hand.
+`roles/monitor_grafana_auth` now closes that: on a monitor deploy it authenticates with the
+container's own env value and, **only** on a 401, re-asserts it into the DB
+(`grafana cli admin reset-admin-password --password-from-stdin`, the secret piped inside the
+container — never on a command line, never in a log), then fails the deploy unless the API
+answers 200. Consequences: a repair logs every open admin browser session out, and a
+deliberate UI password change is reverted by the next `--tags user.docker.monitor` deploy —
+the rendered value is the credential; the Vaultwarden copy (`grafana - admin (lehel.xyz)`) is
+the recovery path. The row's `updated` column in `grafana.db` (`user` table) is the only
+evidence of when the credential last moved.
+
+## A rule that leaves `alert-rules.yml` is NOT deleted by Grafana
+
+Classic file provisioning adds and updates rules; it never prunes one that disappears from the
+file. Measured on 2026-11-18: `stale_restic_db_snapshot` was removed from `alert-rules.yml` in
+WP-8R R2, survived the deploy's Grafana restart (container started 22:24, file edited 20:41),
+and kept evaluating — an orphan whose expression still named `repo="db"`/`repo="moodle-db"`, so
+a stale `db` repo would have paged **twice** (orphan + `stale_restic_snapshot_high`).
+
+The provisioning API refuses to remove it, in both directions, because the stored provenance
+is `classic-file-provisioning`:
+
+```
+DELETE /api/v1/provisioning/alert-rules/{uid}
+  -> 409 alerting.provenanceMismatch "needs 'classic-file-provisioning'"
+PUT    …/{uid}  with X-Disable-Provenance: true
+  -> 409 alerting.provenanceMismatch "provided provenance '', needs 'file'"
+```
+
+So removal is a DB operation: stop `monitor.grafana`, delete the rule's rows from
+`grafana.db` (`alert_rule` where `uid=…`, plus `alert_rule_version`, `alert_rule_state` and
+`provenance_type` where `record_key=…`), start it, and verify (53 rules, the uid `404`, no
+duplicate uid, all rules `health=ok`). Do this from a copy of the DB outside the container and
+restore it with uid/gid `472:0`, mode `0640` — Grafana runs as 472 and will not start on a
+root-owned DB. Before that, the honest alternative is to leave the rule in the file.
 
 ## Layout notes
 

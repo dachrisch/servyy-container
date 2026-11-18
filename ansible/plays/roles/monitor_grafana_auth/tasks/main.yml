@@ -1,0 +1,111 @@
+---
+# See defaults/main.yml for WHY. Two steps: prove the rendered env authenticates,
+# repair the DB from that same value when it does not, prove it again.
+
+- name: Read the monitor.grafana container state
+  ansible.builtin.command:
+    argv: [docker, inspect, --format, "{{ '{{.State.Status}}' }}", "{{ monitor_grafana_auth_container }}"]
+  register: monitor_grafana_auth_state
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Fail when Grafana is not running (its admin credential cannot be verified)
+  ansible.builtin.assert:
+    that:
+      - monitor_grafana_auth_state.stdout | default('') | trim == 'running'
+    fail_msg: >-
+      {{ monitor_grafana_auth_container }} is '{{ monitor_grafana_auth_state.stdout | default('-') | trim }}',
+      not 'running'. The rendered admin password can only be reconciled against a
+      running Grafana; check `docker logs {{ monitor_grafana_auth_container }}` first.
+      (A stopped container is a real fault, not something to skip past — Grafana
+      hosts every dashboard and alert rule on this host.)
+
+# Authenticate the way the verification recipe does: with the container's own
+# GF_SECURITY_ADMIN_PASSWORD. The secret never appears in argv or in this task's
+# output — only the variable NAME is on the command line, and the value is
+# expanded inside the container's shell.
+- name: Check that the rendered admin password authenticates
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ monitor_grafana_auth_container }}"
+      - sh
+      - -c
+      - >-
+        curl -s -o /dev/null -w '%{http_code}'
+        -u "${GF_SECURITY_ADMIN_USER:-admin}:$GF_SECURITY_ADMIN_PASSWORD"
+        http://localhost:3000{{ monitor_grafana_auth_check_path }}
+  register: monitor_grafana_auth_probe
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Report a drifted admin password (check mode)
+  ansible.builtin.debug:
+    msg: >-
+      would reset the Grafana admin password: the rendered env value answers
+      {{ monitor_grafana_auth_probe.stdout | default('-') | trim }} on
+      {{ monitor_grafana_auth_check_path }} (401 = env and grafana.db disagree).
+  when:
+    - ansible_check_mode
+    - monitor_grafana_auth_probe.stdout | default('') | trim != '200'
+
+# Re-assert the rendered value INTO THE DB. `--password-from-stdin` and a pipe
+# inside the container: no secret on a command line, and `no_log` keeps the
+# CLI's settings dump (which echoes every GF_ var name but not its value) out of
+# the deploy log. Only runs on a 401, so a healthy host never touches the row.
+- name: Re-assert the rendered admin password into grafana.db
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ monitor_grafana_auth_container }}"
+      - sh
+      - -c
+      - >-
+        printf %s "$GF_SECURITY_ADMIN_PASSWORD" |
+        grafana cli admin reset-admin-password --password-from-stdin
+  when:
+    - not ansible_check_mode
+    - monitor_grafana_auth_probe.stdout | default('') | trim != '200'
+  no_log: true
+  changed_when: true
+
+- name: Check that the rendered admin password authenticates now
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ monitor_grafana_auth_container }}"
+      - sh
+      - -c
+      - >-
+        curl -s -o /dev/null -w '%{http_code}'
+        -u "${GF_SECURITY_ADMIN_USER:-admin}:$GF_SECURITY_ADMIN_PASSWORD"
+        http://localhost:3000{{ monitor_grafana_auth_check_path }}
+  register: monitor_grafana_auth_after
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
+# The trap, named: a 401 here is NOT "the password is wrong". Either the env
+# never reached the DB (this task's reset is the repair) or the env itself is a
+# different value than the DB was seeded from — which is a controller-seed
+# problem (CLAUDE.md, "controller-local seeds"), not something to fix by hand.
+- name: Fail when the rendered admin password still does not authenticate
+  ansible.builtin.assert:
+    that:
+      - monitor_grafana_auth_after.stdout | default('') | trim == '200'
+    fail_msg: >-
+      Grafana still answers '{{ monitor_grafana_auth_after.stdout | default('-') | trim }}' to
+      admin:<GF_SECURITY_ADMIN_PASSWORD> on {{ monitor_grafana_auth_check_path }} after
+      resetting the password from that same env value. That is not a Grafana bug:
+      check that monitor/grafana.env on the host carries a GF_SECURITY_ADMIN_PASSWORD
+      line at all and that the container was recreated since it changed. Do NOT
+      "fix" it by editing grafana.db or by walking the browser through a password
+      reset — that is exactly how the credential drifted from the rendered env on
+      2026-11-18 (see history/2026-11-18_db-tier-r2b-alert-truth.md).
+  when: not ansible_check_mode

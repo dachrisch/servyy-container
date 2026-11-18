@@ -1202,6 +1202,14 @@ ssh lehel.xyz "docker exec leaguesphere-demo.demo-app /bin/bash -c 'rm -f /app/.
      so an env/DB mismatch does not change the working password — but recreating the
      `grafana_data` volume would adopt the drifted value. Check with
      `curl -u admin:<env pw> http://localhost:3000/api/user` (200 = env and DB agree).
+     Since 2026-11-18 a monitor deploy **reconciles this itself**
+     (`roles/monitor_grafana_auth`): it authenticates with the container's own env value and, only
+     on a 401, re-asserts that value into `grafana.db` with `grafana cli admin reset-admin-password
+     --password-from-stdin`, then fails the deploy unless the API answers 200. So a 401 on a
+     verification recipe means "run `--tags user.docker.monitor`", not "the password is wrong" —
+     and a password changed in the UI is reverted by the next monitor deploy, because the rendered
+     env is the credential (this is deliberate; see
+     [`history/2026-11-18_db-tier-r2b-alert-truth.md`](history/2026-11-18_db-tier-r2b-alert-truth.md)).
    - Recovery copy in Vaultwarden: `bw get password "grafana - admin (lehel.xyz)"`.
      Re-push after a rotation with
      `cd ansible && ./servyy.sh --limit servy.lehel.xyz --tags monitor.vaultwarden`.
