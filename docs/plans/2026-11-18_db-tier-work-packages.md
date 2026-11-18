@@ -4,6 +4,18 @@
 > runbooks). This file turns the plan into **stoppable units**: after any package is merged,
 > the host is in a working, documented state, and nothing is half-migrated.
 
+## Package status
+
+| WP | Status | Evidence |
+|---|---|---|
+| WP-1 | **done** | `9552f2a` + `9ed1aac`; backup `mongo-all-pre-wp1-20261118T081534Z.archive.gz` (65 609 B, restore-drilled); failure path proven with `SIGSTOP`; volume survived every recreate |
+| WP-0 (infra) | **done** | `97729693`; `portainer.watchtower-db` (scope `db`, daily 06:00, health-gated); tags pinned (photoprism 12.3, mongo 9.0); Renovate patch fence; drift guard live, `db_version_drift` 0/0/0 |
+| WP-0c | **done** | `5a2fb75b`; guard accumulators reset (6→6), `testing.restic.check_recent` no longer a silent no-op (4 child tasks run) |
+| WP-0b (leaguesphere) | **done** | PR #2436 → `b013e3f08`; prod/stage/demo all on `mariadb:13.0` (`54f493ea…`, same digest as before), prod `db` scope `db`; guard now resolves the high tier as `mariadb:13.0` with no "cannot verify" warning |
+| WP-0d | **done** | `ebfefb36` + `cc4671d5`; `MARIADB_AUTO_UPGRADE` removed from `ls.env` after the 2026-11-18 outage (`history/2026-11-18_ls-db-upgrade-flag-outage.md`, ~6.5 min public downtime) |
+| WP-0 drills | **open** | forced minor mismatch, simulated digest drift, watchtower health-gate rollback — offline only so far |
+| WP-2 … WP-11 | not started | — |
+
 ## The stopping rule
 
 1. **One package = one branch + one PR, merged before anything is deployed.** The order is:
