@@ -44,11 +44,16 @@
       loop_control:
         label: "{{ item.tenant }}"
 
+    # The SQL goes in on STDIN, never inside the shell command: the grants use
+    # backticks (`db`.*), and inside a double-quoted -e "..." the shell treats
+    # them as command substitution — it ran `mysql` and `user` as commands and
+    # handed mariadb the mangled "SELECT 1 FROM . LIMIT 0". Found on the first
+    # WP-4a deploy (2026-11-18), where it failed the backup-user task.
     - name: Create or refresh the tier's backup user on {{ db_tier_target.server }}
       community.docker.docker_container_exec:
         container: "{{ db_tier_target.server }}"
-        command: >-
-          sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" --skip-ssl -e "{{ lookup('ansible.builtin.template', 'backup_user.sql.j2') }}"'
+        command: sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" --skip-ssl'
+        stdin: "{{ lookup('ansible.builtin.template', 'backup_user.sql.j2') }}"
       register: db_tier_backup_result
       # The statement text contains the backup password.
       no_log: true
@@ -57,8 +62,8 @@
     - name: Create the tenants and enforce their D12 limits on {{ db_tier_target.server }}
       community.docker.docker_container_exec:
         container: "{{ db_tier_target.server }}"
-        command: >-
-          sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" --skip-ssl -e "{{ lookup('ansible.builtin.template', 'tenant_limits.sql.j2') }}"'
+        command: sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" --skip-ssl'
+        stdin: "{{ lookup('ansible.builtin.template', 'tenant_limits.sql.j2') }}"
       register: db_tier_limits_result
       # The statement text contains any newly created tenant's password.
       no_log: true
