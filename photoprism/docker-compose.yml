@@ -47,8 +47,10 @@ services:
       - traefik.http.routers.${SERVICE_NAME}_local_qualified.rule=Host(`${SERVICE_NAME}.${LOCAL_HOSTNAME}`)
       - traefik.http.routers.${SERVICE_NAME}_local_qualified.entrypoints=web
       - com.centurylinklabs.watchtower.scope=prod
-    depends_on:
-      - mariadb
+    ## The database is the PRIVATE DB TIER (`db-private.mariadb`) on the external
+    ## `db_private_backend` network (WP-6b, 2026-11-18). No depends_on: compose
+    ## cannot order a service in another project, and plays/user.yml starts the
+    ## tier (db_tier + docker_service for db-private) before this app anyway.
     ## Don't enable automatic restarts until PhotoPrism has been properly configured and tested!
     ## If the service gets stuck in a restart loop, this points to a memory, filesystem, network, or database issue:
     ## https://docs.photoprism.app/getting-started/troubleshooting/#fatal-server-errors
@@ -84,7 +86,11 @@ services:
       PHOTOPRISM_UPLOAD_NSFW: "true"                 # allows uploads that MAY be offensive (no effect without TensorFlow)
       # PHOTOPRISM_DATABASE_DRIVER: "sqlite"         # SQLite is an embedded database that doesn't require a server
       PHOTOPRISM_DATABASE_DRIVER: "mysql"            # use MariaDB 10.5+ or MySQL 8+ instead of SQLite for improved performance
-      PHOTOPRISM_DATABASE_SERVER: "mariadb:3306"     # MariaDB or MySQL database server (hostname:port)
+      ## WP-6b: the private tier, by its container name on db_private_backend.
+      ## The old `mariadb:3306` named this project's own service, which is gone;
+      ## the tier also publishes the `mariadb` alias, but the explicit name makes
+      ## the dependency readable here.
+      PHOTOPRISM_DATABASE_SERVER: "db-private.mariadb:3306"  # MariaDB or MySQL database server (hostname:port)
       PHOTOPRISM_DATABASE_NAME: "photoprism"         # MariaDB or MySQL database schema name
       PHOTOPRISM_DATABASE_USER: "photoprism"         # MariaDB or MySQL database user name
       # PHOTOPRISM_DATABASE_PASSWORD: in photoprism.env (MariaDB/MySQL user password)
@@ -131,7 +137,8 @@ services:
       - /mnt/storagebox/photo:/photoprism/originals
       - /mnt/storagebox/storage/:/photoprism/storage
     networks:
-      - backend
+      # db_private_backend is the external network of the DB tier (WP-6b).
+      - db_private_backend
       - proxy
     # default port 2342 https://docs.photoprism.app/getting-started/config-options/
     healthcheck:
@@ -144,57 +151,22 @@ services:
           memory: 512M
     restart: unless-stopped
 
-  ## Database Server (recommended)
-  ## see https://docs.photoprism.app/getting-started/faq/#should-i-use-sqlite-mariadb-or-mysql
-  mariadb:
-    ## If MariaDB gets stuck in a restart loop, this points to a memory or filesystem issue:
-    ## https://docs.photoprism.app/getting-started/troubleshooting/#fatal-server-errors
-    restart: unless-stopped
-    # mariadb:12.3, not `lts`: the tag names the MINOR and lets the patch float
-    # (D1). `lts` re-points across minors without warning, and PhotoPrism's data
-    # cannot be opened by a newer major. Patches arrive through the `db`
-    # watchtower scope (D15); a 12.3 -> 13.x step is a reviewed PR (Phase 10),
-    # never an unattended pull. This server is `retiring: true` (D14): it stays
-    # on 12.3 until PhotoPrism moves to the private tier.
-    # Plan: docs/plans/2026-11-17_db-tier-topology.md
-    image: mariadb:12.3
-    container_name: ${COMPOSE_PROJECT_NAME}.mariadb
-    security_opt: # see https://github.com/MariaDB/mariadb-docker/issues/434#issuecomment-1136151239
-      - seccomp:unconfined
-      - apparmor:unconfined
-    command: --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
-    ## Never store database files on an unreliable device such as a USB flash drive, an SD card, or a shared network folder:
-    labels:
-      - traefik.enable=false
-      # Database server: the `db` watchtower scope (D15) delivers 12.3 patches in
-      # the single daily 06:00 window, health-check gated with rollback. Scope
-      # `db`, not `prod`: the prod poller runs every 2 h and would restart this
-      # server mid-dump.
-      - com.centurylinklabs.watchtower.scope=db
-      # portainer team
-      - io.portainer.accesscontrol.teams=${SERVICE_NAME}
-    volumes:
-      #- "/mnt/storagebox/database:/var/lib/mysql" # DO NOT REMOVE
-      - "./database:/var/lib/mysql"
-    user: ${UID}:${GID}
-    # MARIADB_PASSWORD / MARIADB_ROOT_PASSWORD live in photoprism.env (encrypted).
-    # The values are unchanged, so the existing users in ./database keep working;
-    # the container is recreated once to pick the file up.
-    env_file:
-      - photoprism.env
-    environment:
-      MARIADB_AUTO_UPGRADE: "1"
-      MARIADB_INITDB_SKIP_TZINFO: "1"
-      MARIADB_DATABASE: "photoprism"
-      MARIADB_USER: "photoprism"
-    networks:
-      - backend
-    healthcheck:
-      test: healthcheck.sh --connect --innodb_initialized
+  ## The database server LEFT THIS PROJECT in WP-6b (2026-11-18).
+  ##
+  ## It is `db-private.mariadb`, the private tier, in db-private/docker-compose.yml
+  ## (so Renovate sees its tag and the version guard sees its line). The old
+  ## app-owned server is STOPPED, not deleted, and its datadir
+  ## ./database is kept for the one-week rollback (D11):
+  ##   docker start photoprism.mariadb          # roll the DB back
+  ##   + revert this file / PHOTOPRISM_DATABASE_SERVER and redeploy
+  ## Do not `docker rm` or delete ./database before that window closes; WP-7
+  ## removes both.
 
 networks:
-  backend:
-    internal: true
+  # Created by db-private/docker-compose.yml (internal there). Consumers attach
+  # as external so the tier owns its own lifecycle.
+  db_private_backend:
+    external: true
   proxy:
     external: true
 
