@@ -12,6 +12,9 @@
     leaguesphere_enabled: false
     moodle_enabled: false
     restic:
+      # See default/converge.yml: the scenarios carry their own `restic` dict,
+      # so play-level vars/restic.yml keys must be mirrored here.
+      tmpdir: /home/testuser/.cache/restic-tmp
       home:
         source_path: /home/testuser
       root:

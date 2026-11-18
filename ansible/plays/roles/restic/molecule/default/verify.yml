@@ -60,6 +60,33 @@
           - "'backup_type=\"db\"' in (ls_db_script.content | b64decode)"
           - "'/etc/restic/env.db' in (ls_db_script.content | b64decode)"
 
+    - name: Read the home and root backup scripts
+      slurp:
+        src: "{{ script_dir }}/restic-backup-{{ item }}.sh"
+      loop:
+        - home
+        - root
+      register: plain_scripts
+
+    - name: Assert every rendered script stages its temp pack off /tmp
+      assert:
+        that:
+          # The unit that failed on 2026-11-18 died with "disk quota exceeded"
+          # because restic staged a 1.6 GB pack in the /tmp tmpfs. The variable
+          # is mirrored in the scenario vars precisely so this line exists.
+          - "'export TMPDIR=\"/home/testuser/.cache/restic-tmp\"' in (item.content | b64decode)"
+      loop: "{{ plain_scripts.results }}"
+      loop_control:
+        label: "restic-backup-{{ item.item }}"
+
+    - name: Assert the sudo branch re-exports TMPDIR
+      vars:
+        tmpdir: /home/testuser/.cache/restic-tmp
+      assert:
+        that:
+          # sudo resets the environment, so the export above is not inherited.
+          - "('export TMPDIR=' ~ tmpdir ~ '; mkdir -p -m 0700 ' ~ tmpdir) in (plain_scripts.results[1].content | b64decode)"
+
     - name: Read moodle backup scripts
       slurp:
         src: "{{ script_dir }}/restic-backup-{{ item }}.sh"
