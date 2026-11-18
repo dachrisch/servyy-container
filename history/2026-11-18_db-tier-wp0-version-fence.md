@@ -315,3 +315,55 @@ Incidental observation: after WP-0 the three servyy-test database containers car
 `scope=db` while no db-scope watcher exists there. Harmless today (nothing looks at that
 scope on that host) and it disappears by itself when the test host gets its own tier watcher,
 but it means "labelled" ≠ "patched" on test.
+
+---
+
+## WP-4b — cutover incident and the two fixes (2026-11-18)
+
+The WP-4 cutover (stage + demo onto `db-nonprod.mariadb`) got the **apps** across — both
+stacks recreated against the tier, `MYSQL_HOST=db-nonprod.mariadb`, DB-backed pages 200 —
+and then stopped on two repo bugs, before the supporting plumbing was deployed.
+
+### Deviation: stage's old server was REMOVED, not stopped
+
+`ls_app`'s compose task ran with `remove_orphans: true`, and stage's `mysql:` service had
+just been dropped from `deployed/docker-compose.staging.yaml`. Compose therefore **deleted**
+`leaguesphere_stage.mysql` during the deploy — the plan requires a cutover to *stop* the old
+server and keep it as the one-week rollback. Demo was spared because the `ls_demo` role has
+no orphan removal.
+
+The data is intact: `…/container-stage/deployed/mysql-data` (the compose `./mysql-data` bind
+mount) is untouched, as is `…/container-demo/deployed/mysql-data`. So the rollbacks differ:
+
+- **stage** — `docker start` is not available (no container). Rollback = revert the two
+  merges (this repo + `e58942ccc`), restore `MYSQL_HOST`, and redeploy stage, which
+  recreates the `mysql:` service on that datadir.
+- **demo** — `leaguesphere-demo.mysql` is still **running**; the rollback is `docker start`
+  (if stopped) plus reverting the compose, or simply reverting the compose and redeploying.
+
+**Fix so the next cutover cannot repeat it:** `ls_app`'s compose task now takes
+`app_compose_remove_orphans` (default `true`), and the stage invocation in
+`plays/leaguesphere.yml` sets it to **`false`** with a comment naming the rollback container.
+`ls_runs_own_db` was also corrected: only `leaguesphere` (high tier) still runs its own
+database, so the seven DB-only tasks skip for stage instead of failing at
+`Wait for MySQL to be ready` (`container: null`).
+
+### Second fix: the grant-host assert
+
+The widened private-range check `^(172\.(1[6-9]|2[0-9]|3[01])|192\.168)\.[0-9]+\.%$` demanded
+four octets after `172.16/12`, so prod's three-octet `172.25.%` no longer matched and the
+leaguesphere play aborted with the role's own "re-verify which containers share that network"
+message. Correct form, verified against an 11-case matrix:
+`^(172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.[0-9]+\.)%$`. The derivation in `discover.yml` was
+also prefix-corrected — it took two octets unconditionally, which turned the tier's
+`192.168.16.0/20` into the /16-wide `192.168.%`; it now takes `ceil(prefix/8)` octets
+(`172.25.%` for a /16, `192.168.16.%` for the /20).
+
+### Still open after these fixes
+
+Deploy the plumbing (`dba.env` re-pointed at the tier, `ls_stage_access_admin`, the reaper,
+the nightly script), stop `leaguesphere-demo.mysql`, run the nightly sync once by hand to
+prove the retarget, then the guard/drift checks. Until then stage's `db-access` sidecar is
+running with the old `dba.env` (`DBACCESS_HOST=mysql`) and logs
+`ERROR 2005 (HY000): Unknown server host 'mysql'` — off the app's request path, so the site
+is unaffected.

@@ -39,10 +39,12 @@
           # A private-range pin: the account is only useful from inside the
           # compose network, and a public or /8-wide pattern is a grant nobody
           # needs.
-          # RFC1918 only, and never wider than a /24 of it: app-owned stacks
-          # land in docker's 172.16/12 pool, the DB tier in its 192.168/16 pool
-          # (db_nonprod_backend is 192.168.16.0/20, measured 2026-11-18).
-          - dbeaver_stack.grant_host_pattern is match('^(172\.(1[6-9]|2[0-9]|3[01])|192\.168)\.[0-9]+\.%$')
+          # RFC1918 only, and never wider than the stack's own network:
+          # 172.<16-31>.% (a docker /16 in the 172.16/12 pool, the three-octet
+          # form prod uses: 172.25.%) or 192.168.<n>.% (the tier's /20 pool, the
+          # four-octet form: 192.168.16.%). Anything else, including 10/8, a
+          # public range, or a wider 192.168.%, is refused.
+          - dbeaver_stack.grant_host_pattern is match('^(172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.[0-9]+\.)%$')
           - dbeaver_stack.backend_network in dbeaver_stack.networks
           # Prod keeps the exact pattern the sidecar and the runbook name. If
           # this fires, the network was renumbered and every grant needs a

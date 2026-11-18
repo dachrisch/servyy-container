@@ -86,11 +86,18 @@
         - ls.app.current
 
     # Staging deployment (jail) - ALWAYS RUNS WITH PROD
+    #
+    # app_compose_remove_orphans: false — the WP-4 cutover removed stage's own
+    # `mysql:` service from its compose, and orphan removal DELETED that
+    # container instead of leaving it stopped. The retired container (or, once it
+    # is gone, its `deployed/mysql-data` bind mount) is the one-week rollback, so
+    # this stack must never have its orphans swept by a routine deploy.
     - role: ls_app
       vars:
         container_dir: "{{ (ssh_chroot_jail_path, 'home', ls.user, 'container-stage') | path_join }}"
         ls_vars_file: "secret_stage.yaml"
         deploy_containers: true
+        app_compose_remove_orphans: false
       become_user: "{{ ls.user }}"
       tags:
         - ls.app
