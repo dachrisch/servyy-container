@@ -53,3 +53,11 @@ graphify-out/
 db-*/data/
 # Rendered by roles/db_tier (0600, holds the tier root password)
 db-*/mariadb.env
+# Rendered by roles/ls_dbeaver_access (0600, the stack's DB provisioner
+# password). Its only correct home is next to the APP stack's compose file
+# INSIDE the jail, never in the repo. Added after WP-4b3, where a tier pin made
+# the role write it into db-nonprod/ (the database container's project dir)
+# along with the sidecar pointing at the real one, so a stray copy existed in a
+# service directory, untracked and committable.
+*/dba.env
+db-*/dba.env

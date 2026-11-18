@@ -367,3 +367,32 @@ prove the retarget, then the guard/drift checks. Until then stage's `db-access` 
 running with the old `dba.env` (`DBACCESS_HOST=mysql`) and logs
 `ERROR 2005 (HY000): Unknown server host 'mysql'` — off the app's request path, so the site
 is unaffected.
+
+## WP-4b3 — the sidecar's env file was written into the wrong stack (2026-11-18)
+
+WP-4b finished the cutover (stage + demo on `db-nonprod.mariadb`, sync proven as the
+non-root `leaguesphere_stage` user, guard comparing two 13.0 servers) except for one loose
+end: the stage `db-access` sidecar kept ticking
+`ERROR 2005 (HY000): Unknown server host 'mysql'`.
+
+**Cause.** `ls_dbeaver_access` derived the sidecar's compose directory from the *database*
+container's `com.docker.compose.project.working_dir` label. That was right while stage's DB
+was an app-owned `leaguesphere_stage.mysql` (same compose project as the app). The WP-4 pin
+names `db-nonprod.mariadb`, whose label is the **tier's** project dir, so the role rendered
+`/home/cda/servyy-container/db-nonprod/dba.env` while the sidecar's `env_file: dba.env`
+kept resolving next to the app compose file at
+`…/container-stage/deployed/dba.env` (dated Oct 26, `DBACCESS_HOST=mysql`). No task failed;
+the write reported `changed` and the file was simply in the wrong place.
+
+**Fix.** The pin carries an explicit `compose_dir` built from the same variables
+`plays/leaguesphere.yml` uses for that stack's `container_dir`
+(`ssh_chroot_jail_path` / `ls.user` / `container-stage` / `deployed`), and `discover.yml`
+now uses `dbeaver_pin.compose_dir | default(<the compose label>)` — so prod still derives
+its dir from its own label and prefers nothing. `compose_dir` has exactly one consumer, the
+`dba.env` write in `provisioner.yml`. `*/dba.env` / `db-*/dba.env` were added to
+`.gitignore`: the misplaced file held the stage provisioner password and sat untracked in
+the host's checkout, one `git add .` from being committed. The stray copy was deleted.
+
+The defect was latent in WP-4b2a's pin and activated by the cutover — the general lesson is
+in the code comment: on a DB-tier stack the database container belongs to another compose
+project, so nothing about the app stack may be derived from it.
