@@ -6,9 +6,11 @@
 
 ## The stopping rule
 
-1. **One package = one branch + one PR.** Merge to master only when the package's exit gate
-   passes. The packages are ordered; a package that lists a dependency cannot start before
-   it is merged.
+1. **One package = one branch + one PR, merged before anything is deployed.** The order is:
+   implement on the branch → static checks → review → **merge to master** → deploy from
+   master (test host first, then production) → exit gate. Deploying a branch is never allowed;
+   if a merged package misbehaves, revert that one commit or forward-fix. A package that lists
+   a dependency cannot start before that dependency is merged.
 2. **Never stop inside a package.** The only unsafe moments are inside a single run: after a
    dump but before the app points at the new server, after pointing but before the smoke
    test, and inside the version hop. Each is minutes, not days — finish the run.
@@ -20,12 +22,15 @@
 
 ## Exit gate (applies to every package)
 
+- The package is **merged to master**, and the deploy that follows ran from master — the
+  working tree is clean and `git log -1` is the package's commit.
 - `docker ps` shows every container `healthy` (or `running` where it has no healthcheck).
 - `systemctl --user list-timers` has no failed unit; `restic snapshots` shows the newest
   snapshot inside its normal window.
 - `db_version_drift` is `0` for every engine — or `1` only because a watchtower patch pull is
   still in flight, or inside a documented hop window.
-- The package's own verification list from the plan passes.
+- The package's own verification list from the plan passes on the **test host first**, then
+  on production.
 - Rollback for the package is still possible, or its window is explicitly recorded as closed.
 
 ## Package map
@@ -63,14 +68,16 @@ checked condition instead of a convention.
 `mariadb:12.3`, `photoprism` `mariadb:lts` → `mariadb:12.3`, `shared.db` stays
 `postgres:15`, `shared.mongo` → `mongo:9.0`; a `watchtower-db` instance (`db` scope, daily
 06:00 window, health-gated rollback) and the `db` scope label on every database server —
-**each label change recreates that server, so stagger them one at a time**; `shared.mongo`'s
-label moves only after WP-1 (see the ordering note above). Plus `MARIADB_AUTO_UPGRADE=1` on
-the high tier; Renovate patches disabled for database packages and minors/majors behind
+**including `leaguesphere.db`**, whose label ships in the leaguesphere repo's PR; **each label
+change recreates that server, so stagger them one at a time**; `shared.mongo`'s label moves
+only after WP-1 (see the ordering note above). Plus `MARIADB_AUTO_UPGRADE=1` on the high tier; Renovate patches disabled for database packages and minors/majors behind
 dashboard approval; the three LeagueSphere server tags (`mariadb:latest` → `mariadb:13.0`)
 in that repo's PR; the drift guard as a shared `pre_task` included from **both**
 `plays/user.yml` and `plays/leaguesphere.yml`.
 
-**Exit gate.** Every database server has a minor-pinned tag and the `db` scope; no
+**Exit gate.** Every database server has a minor-pinned tag and the `db` scope — **including
+`leaguesphere.db`** (its label ships in the leaguesphere repo's PR; the accepted consequence is
+a 06:00 restart of the high tier when a patch lands, health-gated with rollback); no
 `:latest`/`:lts` left on a database; Renovate shows no database patch updates and gates
 minors; deliberately setting one compose to `mariadb:13.1` fails a run before anything
 restarts; a simulated patch (same tag, new digest) gives `db_version_drift=1` without

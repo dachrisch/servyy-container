@@ -1,6 +1,15 @@
 # Database tier topology — Implementation Plan
 
-> **For agentic workers:** implement phase by phase, in order, in a dedicated worktree/branch.
+> **For agentic workers:** implement phase by phase, in order, on a **branch of this
+> checkout** — not a git worktree (`docker.local_dir` in `ansible/plays/vars/secrets.yml:65`
+> points at `/home/cda/dev/infrastructure/container`, so a worktree would still deploy this
+> checkout's templates).
+>
+> **Merge before deploy.** A package is implemented and reviewed on its branch, merged to
+> master, and only then deployed — test host first, then production. Never run a play against
+> servyy-test or servy from a feature branch. If a merged package misbehaves in a deploy,
+> revert that commit (one commit per package) or forward-fix; do not deploy a branch.
+>
 > Do NOT edit `ansible/plays/vars/secrets.yml` or `ansible/plays/roles/ls_app/vars/secret_*.yaml`
 > unless no other session is active — they are git-crypt encrypted (binary diff → an
 > unresolvable merge conflict). Everything else in this plan is a plain-text change.
@@ -135,7 +144,7 @@ it to SQLite is an app change in the dontforget repo. Neither is in this plan.
 | D12 | **Per-user resource limits are the load guardrail** | `MAX_USER_CONNECTIONS` + `MAX_STATEMENT_TIME` per tenant user. No pooler. |
 | D13 | **Datadirs are bind mounts on `/`** (`/home/cda/servyy-container/db-<tier>/data/<engine>`, gitignored) | Avoids landing the write-heaviest tenants on network block storage by accident. Entrypoint takes ownership — no `user:` override. |
 | D14 | **Servers awaiting retirement float their own line and are excluded from the equality check** | `moodle.db`, `bnb-office.db`, `photoprism.mariadb` sit on `mariadb:12.3` (already the tag on the first two): they keep receiving 12.3 patches but **cannot cross to 13.x**, because the tag names the minor — the tag is the fence, no Renovate rule needed. `retiring: true` in `db_tenants.yml` keeps them out of the active-server equality check and makes the guard fail if one leaves the 12.3 line. |
-| D15 | **Patches come from watchtower; minors and majors come from a reviewed PR** | A database patch is a same-line image refresh: the datadir format is unchanged, and the `openserbia/watchtower` fork is health-check gated — a new image that never reports healthy is rolled back automatically. So patches land unattended, but only in the **`db` scope**, whose schedule is a single daily window at 06:00, clear of the hourly dumps (:30/:40/:50), the 02:00–04:00 restic run and the 05:00 Firefly import. Minor/major is *not* watchtower's job: Renovate proposes it, `dependencyDashboardApproval` gates it, and it is applied one tier per run (Phase 10). Renovate's patch updates are disabled for these packages, so it cannot replace a floating `13.0` with a concrete `13.0.3`. |
+| D15 | **Patches come from watchtower; minors and majors come from a reviewed PR** | A database patch is a same-line image refresh: the datadir format is unchanged, and the `openserbia/watchtower` fork is health-check gated — a new image that never reports healthy is rolled back automatically. So patches land unattended, but only in the **`db` scope**, whose schedule is a single daily window at 06:00, clear of the hourly dumps (:30/:40/:50), the 02:00–04:00 restic run and the 05:00 Firefly import. **Every server is in scope, including the high tier** (owner, 2026-11-18): patching would otherwise leave exactly the most critical database as the one with an unpatched window. Minor/major is *not* watchtower's job: Renovate proposes it, `dependencyDashboardApproval` gates it, and it is applied one tier per run (Phase 10). Renovate's patch updates are disabled for these packages, so it cannot replace a floating `13.0` with a concrete `13.0.3`. |
 | D16 | **New DB restic repos share one seed** (`vars/.restic_password_db`) | Avoids five new controller-local seeds. Registered in `seed_guard.yml` and the Vaultwarden push like the others. Existing `ls_db` and `moodle` repos keep their seeds — no restic password change is needed. Hand-over of a business tenant is a restored dump, never the repo itself. |
 
 ## Non-goals
@@ -166,6 +175,11 @@ it to SQLite is an app change in the dontforget repo. Neither is in this plan.
    `com.centurylinklabs.watchtower.scope=prod` to `=db` (`shared.mongo`, `shared.db`,
    `photoprism.mariadb`; `moodle.db` and `bnb-office.db` have no label today and get `=db`),
    and give every `db-<tier>` service the same label as it is created.
+   **`leaguesphere.db` is in scope too** — its label lives in the leaguesphere repo's
+   `deployed/docker-compose.yaml`, so it rides that repo's PR together with its tag.
+   Accepted consequence: the high tier restarts at 06:00 when a 13.0 patch appears, ~1–2 min,
+   health-gated with automatic rollback. That keeps patching universal; a manual high tier
+   would be the one server with an unpatched window.
    **A label change recreates the container**, so stagger these one server at a time, and move
    `shared.mongo`'s label **only after Phase 1 step 0 is merged** — recreating it before the
    volume-wipe block is removed is exactly the hazard that step exists to close.
@@ -182,9 +196,10 @@ it to SQLite is an app change in the dontforget repo. Neither is in this plan.
      `dependencyDashboardApproval: true`, `groupName` per engine.
 5. **LeagueSphere repo** (separate PR; deployed by `ls_app` via git pull): the three server
    tags `deployed/docker-compose.yaml:112`, `docker-compose.staging.yaml:4`,
-   `docker-compose.demo.yaml:4` → `mariadb:13.0`; the db-access client sidecars
-   (`docker-compose.yaml:177`, `docker-compose.staging.yaml:61`) to the same tag. Add the
-   same "patches disabled, minors need approval" rule to that repo's `renovate.json`.
+   `docker-compose.demo.yaml:4` → `mariadb:13.0`, **and the `db` watchtower label on the prod
+   server block** (owner decision 2026-11-18: high tier is in scope); the db-access client
+   sidecars (`docker-compose.yaml:177`, `docker-compose.staging.yaml:61`) to the same tag. Add
+   the same "patches disabled, minors need approval" rule to that repo's `renovate.json`.
 6. **Drift guard** `ansible/plays/tasks/db_version_guard.yml`, a `pre_task` of
    `plays/user.yml` tagged `always` (D8). Server list: static in Phase 0, `db_tenants.yml`
    from Phase 2. For each listed server it reads the `image:` **tag** from the compose file
