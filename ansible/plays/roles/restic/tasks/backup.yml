@@ -155,9 +155,14 @@
     dest: "{{ remote_user_home }}/.backup-scripts/moodle-dump.sh"
     mode: '0750'
   vars:
-    # `name: moodle` in moodle/docker-compose.yml, so the MariaDB container is
-    # always `moodle.db` regardless of which directory the checkout lives in.
-    moodle_db_container: "moodle.db"
+    # WP-7b (2026-11-18): the dump follows the database. Until the cutover the
+    # container is this project's own `moodle.db`; from the moment
+    # `moodle_db_host` is set (db-business.mariadb on servy) it is the business
+    # tier's container, which carries MARIADB_ROOT_PASSWORD in its own env - the
+    # only thing this script reads. Derived from the same variable the app's
+    # DB_HOST comes from, so a rollback moves the dump back with it and no host
+    # can keep dumping a server nobody reads.
+    moodle_db_container: "{{ moodle_db_host | default('moodle.db') }}"
     moodle_dump_root: "{{ moodle_data_root_path }}/db-backup"
     log_file: "{{ restic.logs.moodle_dump }}"
   when: moodle_enabled | default(false) | bool

@@ -12,8 +12,20 @@
 # database so a physical set would buy no point-in-time recovery either.
 #
 # The password is read from the CONTAINER's own MARIADB_ROOT_PASSWORD (which the
-# mariadb image gets from db.env): no secret is interpolated by Ansible and none
-# ever appears in a host process list or in this file.
+# mariadb image gets from its `mariadb.env`): no secret is interpolated by
+# Ansible and none ever appears in a host process list or in this file.
+#
+# WP-7b (2026-11-18): the container moved from this project's `moodle.db` to the
+# business tier (`db-business.mariadb`). CONTAINER is rendered from
+# `moodle_db_host`, the same variable the app's DB_HOST uses, so the dump and the
+# app never point at different servers - including during a rollback.
+#
+# DO NOT "simplify" this into a plain `mariadb-dump > file`, and do not drop
+# `--skip-dump-date` or `gzip -n`: together they make an unchanged database
+# produce a byte-identical file, which is what lets restic DEDUPLICATE an hourly
+# 130 MB dump instead of storing a fresh blob every hour. The prepared `new/` ->
+# `current/` swap and the integrity/size guards exist for the same reason as the
+# rest of this file: a truncated dump must never replace a good one.
 set -euo pipefail
 
 if [ -f "/home/{{ create_user }}/.zshenv" ]; then

@@ -252,7 +252,7 @@ the rehearsal copy is present and may be overwritten with `--force`.
 | 7 | Smoke: `https://offd.de/login/` 200, one real course page loads, then `docker exec moodle.moodle php /var/www/html/admin/cli/cron.php` exits 0 and the log has no new `cron` errors | | 5 min |
 | 8 | Maintenance mode **off**; one login as a real user | | 1 min |
 | 9 | Retire the old server: `docker stop moodle.db` (keep `${MOODLE_DATA_ROOT}/mariadb`, 1.7 GB, one week) | `docker inspect -f '{{.Created}} {{.State.Status}}' moodle.db` | 10 s |
-| 10 | Disable the old dump timer **at the same moment** (it execs into `moodle.db` and would fail hourly), and remove the now-unused sidecar credentials file (`moodle/db.env`; the compose no longer reads it, the role no longer renders it, and it holds the old root password) | `systemctl --user stop moodle-dump.timer; rm -f /home/cda/servyy-container/moodle/db.env` | — |
+| 10 | **Repoint the dump — do NOT stop the timer.** The script renders `CONTAINER` from `moodle_db_host`, so deploying it makes it dump the tier; the hourly cadence and the `moodle-db` restic scope stay exactly as they are. Then run it once by hand to prove the target, and delete the now-unused sidecar credentials file (`moodle/db.env`: the compose no longer reads it, the role no longer renders it, it holds the old root password) and any stale `moodle/docker-compose.yml.new` | `./servyy.sh --limit servy.lehel.xyz --tags user.repo.clone,restic.backup` (renders scripts + units, runs **no** backup) → `grep ^CONTAINER ~/.backup-scripts/moodle-dump.sh` = `db-business.mariadb` → `~/.backup-scripts/moodle-dump.sh` → `sudo ls -l …/db-backup/current/` and `sudo gzip -t …/current/moodle.sql.gz` → `rm -f /home/cda/servyy-container/moodle/db.env /home/cda/servyy-container/moodle/docker-compose.yml.new` | 2 min |
 | 11 | Post-checks: guard shows `db-business.mariadb` (already, since the row moved) and no `moodle.db`; `db_version_drift` 0; memory watch on `db-business.mariadb` for a week | | — |
 
 **Ordering that must not be broken:** 2 before 3 (a live dump carries the drift), 4 before
@@ -274,16 +274,18 @@ evicting pages.
 
 **The two timer questions**
 
-* `moodle-dump` (host script `/home/cda/.backup-scripts/moodle-dump.sh`, hourly at :40, restic
-  scope `moodle-db`, target `…/data/db-backup/current/moodle.sql.gz`): after the cutover it must
-  read the tier. The **minimal correct change is one line** — `CONTAINER="moodle.db"` →
-  `CONTAINER="db-business.mariadb"` — because the script's determinism
-  (`--skip-dump-date` + `gzip -n`, atomic `new/`→`current/` swap, gzip and size-floor guards) is
-  what lets restic deduplicate a 130 MB hourly dump; a naive `dbops dump moodle` would produce a
-  fresh blob every hour (dbops has neither flag) and bloat the repo. WP-8 should therefore either
-  keep this script with the container changed, or first teach `dbops dump` `--skip-dump-date` and
-  `gzip -n` (plus pruning) and only then converge on it. Either way the timer keeps its hourly
-  cadence and the `moodle-db` repo.
+* `moodle-dump` (script `/home/cda/.backup-scripts/moodle-dump.sh`, hourly at :40, restic scope
+  `moodle-db`, target `…/data/db-backup/current/moodle.sql.gz`): **closed inside this package**, so
+  the cutover leaves no dump gap. The script now renders `CONTAINER` from `moodle_db_host`
+  (`roles/restic/tasks/backup.yml`, `roles/restic/templates/moodle_dump.sh.j2`), which is the same
+  variable the app's `DB_HOST` comes from — the dump and the app can never point at different
+  servers, including through a rollback, and servyy-test keeps dumping its own `moodle.db`. The
+  timer is **not** stopped: step 10 redeploys the script and proves it with one manual run.
+  What must not change: `--skip-dump-date` + `gzip -n` (an unchanged database must produce a
+  byte-identical file so restic deduplicates the hourly 130 MB dump), the prepared `new/`→`current/`
+  swap, and the gzip + 10 MB size floor. A naive `dbops dump moodle` has neither flag and no
+  pruning, so it would store a fresh blob every hour; WP-8's remaining choice is whether to keep
+  this script (fine) or teach `dbops` the same determinism and pruning first.
 * No `docker-photo-index`-style pause exists for Moodle: its cron runs **inside** the app
   container, so `docker stop moodle.moodle` (step 2) is the pause. Re-enabling is implicit in
   step 6/8 — the container starts cron with it. Nothing else schedules work against the DB.
