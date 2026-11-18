@@ -89,6 +89,11 @@ path. A normal Ansible deploy re-renders all three and is the sanctioned repair.
 - The real fix — rendering into a directory *outside* the checkout — is a
   structural change to the monitor role and the compose bind mounts, and was not
   attempted under incident conditions.
+  **Superseded 2026-11-18:** [`2026-11-18_monitor-render-out-of-checkout.md`](2026-11-18_monitor-render-out-of-checkout.md)
+  did exactly that. Two of the three files now carry the (public) tenant inline
+  and the admin address is rendered into `monitor/rendered/`, mounted over the
+  provisioning path — so no tracked file the containers read holds Jinja any more.
+  The trap described above can no longer be triggered.
 
 ### Known issues
 - `notification-policies.yml` and all other monitor files are copied verbatim by
