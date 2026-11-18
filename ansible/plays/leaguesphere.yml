@@ -21,6 +21,17 @@
     - name: End play if leaguesphere is not enabled on the host
       ansible.builtin.meta: end_host
       when: not (services_enabled | default({})).leaguesphere | default(false) | bool
+
+    # D8: this play applies the high tier's tag (leaguesphere.db) on its own, so
+    # a `--tags ls.app` run would otherwise restart it with no version check at
+    # all — which is exactly the ordering Phase 10 depends on. Same shared task
+    # as plays/user.yml, not a copy. After the enablement guard above, because
+    # this play targets a mixed host set (servy runs LeagueSphere, codey does
+    # not); the task itself also skips absent containers.
+    - name: Guard the database versions before any service task
+      ansible.builtin.include_tasks: tasks/db_version_guard.yml
+      tags:
+        - always
   roles:
     # Setup (shared, run once)
     - role: ls_setup

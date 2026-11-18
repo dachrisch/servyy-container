@@ -1,0 +1,273 @@
+---
+# Database version guard — a `pre_task` of plays/user.yml AND
+# plays/leaguesphere.yml, tagged `always`.
+# Plan: docs/plans/2026-11-17_db-tier-topology.md (D1, D8, D14, D15, Phase 0.6)
+#       docs/plans/2026-11-18_db-tier-work-packages.md (WP-0)
+#
+# WHY a pre_task: the failure it prevents is applying a MIXED VERSION LINE among
+# the database servers, and no restart can undo that. It must therefore fail
+# before any service task touches a container — and on every tag scope
+# (`--tags docker`, `--tags ls.app`, ...), hence `always`. It is included from
+# leaguesphere.yml as well, because that play applies the high tier's tag
+# (`leaguesphere.db`) on its own and would otherwise restart it unchecked.
+#
+# WHAT is compared:
+#   * the TAG each server is about to run — read from the compose file that will
+#     be applied — across the ACTIVE servers of one engine: differing minors fail
+#     (D8);
+#   * a `retiring` server (D14: moodle.db, bnb-office.db, photoprism.mariadb)
+#     that has left its pinned `mariadb:12.3` line: fails;
+#   * digest/patch drift is NOT this file's job: it only warns and pushes
+#     `db_version_drift` (tasks/db_version_drift_push.yml, post-deploy).
+#
+# WHERE the tag is read from: the CONTROLLER checkout (`docker.local_dir`), not
+# the host's. pre_tasks run before the repo clone role, so the host copy is the
+# PREVIOUS commit and would check a tag nobody is deploying. Deploys are
+# merge-before-deploy, so the controller is at origin/master = the commit the
+# clone fetches.
+#
+# EXCEPTION — leaguesphere.db lives in the OTHER repo (leaguesphere), whose
+# compose file this play only pulls later (`ls_app` -> git pull). The file that
+# will be applied therefore does not exist yet here, and reading the host copy
+# would read the previous commit — which could FAIL A GOOD DEPLOY (going from
+# `mariadb:latest` to `mariadb:13.0`, the stale copy still says `latest`). So its
+# intended tag is `unknown` and the guard compares its RUNNING tag instead; an
+# unparsable tag is excluded from the equality check and warned about, never
+# failed on. Documented in history/2026-11-18_db-tier-wp0-version-fence.md.
+#
+# ONLY listed servers are read: db-access / db-tunnel / sync containers are
+# clients, not database servers. Stage and demo (`leaguesphere_stage.mysql`,
+# `leaguesphere-demo.mysql`) join in WP-3 with the db_tenants.yml inventory.
+#
+# Override (D8, Phase 10 hop runs only): -e db_version_guard_allow_drift=mariadb
+# downgrades the minor-line check to a warning for that engine. It never
+# downgrades the `retiring` check.
+
+- name: Define the Phase-0 database server list (static until db_tenants.yml, WP-3)
+  ansible.builtin.set_fact:
+    db_version_guard_servers:
+      # High tier: LeagueSphere prod. Other repo — intended tag unknown, see above.
+      - container: leaguesphere.db
+        engine: mariadb
+        compose_dir: ''
+        service: db
+        retiring: false
+        pinned_tag: ''
+      - container: shared.mongo
+        engine: mongo
+        compose_dir: shared
+        service: mongo
+        retiring: false
+        pinned_tag: ''
+      # Delete in Phase 9 (Firefly moves to db-private.mariadb).
+      - container: shared.db
+        engine: postgres
+        compose_dir: shared
+        service: db
+        retiring: false
+        pinned_tag: ''
+      - container: photoprism.mariadb
+        engine: mariadb
+        compose_dir: photoprism
+        service: mariadb
+        retiring: true
+        pinned_tag: '12.3'
+      - container: moodle.db
+        engine: mariadb
+        compose_dir: moodle
+        service: db
+        retiring: true
+        pinned_tag: '12.3'
+      - container: bnb-office.db
+        engine: mariadb
+        compose_dir: bnb-office
+        service: db
+        retiring: true
+        pinned_tag: '12.3'
+  tags:
+    - always
+
+- name: Read the database compose files from the controller checkout
+  ansible.builtin.slurp:
+    src: "{{ (docker.local_dir, item.compose_dir, 'docker-compose.yml') | path_join }}"
+  loop: "{{ db_version_guard_servers | rejectattr('compose_dir', 'equalto', '') | list }}"
+  loop_control:
+    label: "{{ item.compose_dir }}"
+  register: db_version_guard_compose
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  tags:
+    - always
+
+- name: Derive each server's intended image from its compose file
+  ansible.builtin.set_fact:
+    db_version_guard_intended: >-
+      {{ db_version_guard_intended | default({})
+         | combine({ item.item.container:
+                      (item.content | b64decode | from_yaml).services[item.item.service].image | default('') }) }}
+  loop: "{{ db_version_guard_compose.results }}"
+  loop_control:
+    label: "{{ item.item.container }}"
+  tags:
+    - always
+
+- name: Inspect each listed database container on this host
+  # `docker inspect --format` (not docker_container_info): a container that does
+  # not exist must be a skip, not a failed task, and both fields are needed —
+  # .Image (the digest this run will compare) and .Config.Image (the tag it was
+  # created with, the fallback for leaguesphere.db).
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{.Image}} {{.Config.Image}}' }}"
+      - "{{ item.container }}"
+  loop: "{{ db_version_guard_servers }}"
+  loop_control:
+    label: "{{ item.container }}"
+  register: db_version_guard_inspect
+  changed_when: false
+  failed_when: false
+  tags:
+    - always
+
+- name: Resolve presence, image ID and running tag per server
+  ansible.builtin.set_fact:
+    db_version_guard_resolved: >-
+      {{ db_version_guard_resolved | default([]) + [
+           item.item | combine({
+             'present': (item.rc | default(1) | int == 0),
+             'image_id': ((item.stdout | default('')).split(' ')[0] | default('', true)) if (item.rc | default(1) | int == 0) else '',
+             'running_image': ((item.stdout | default('')).split(' ')[1] | default('', true)) if (item.rc | default(1) | int == 0) else '',
+             'intended_image': (db_version_guard_intended | default({})).get(item.item.container, '')
+           })
+         ] }}
+  loop: "{{ db_version_guard_inspect.results }}"
+  loop_control:
+    label: "{{ item.item.container }}"
+  tags:
+    - always
+
+- name: Derive the tag and minor line each server is on
+  ansible.builtin.set_fact:
+    db_version_guard_checked: >-
+      {{ db_version_guard_checked | default([]) + [
+           item | combine({
+             'effective_image': db_version_guard_effective_image,
+             'tag': db_version_guard_tag,
+             'minor': db_version_guard_minor,
+             'label': item.container ~ ' (' ~ db_version_guard_effective_image ~ ')'
+           })
+         ] }}
+  vars:
+    # The tag the deploy is about to apply; for leaguesphere.db the running one.
+    db_version_guard_effective_image: "{{ item.intended_image | default('', true) or item.running_image | default('', true) }}"
+    # Drop a registry/repo prefix: docker.io/library/mariadb:12.3 -> mariadb:12.3.
+    db_version_guard_ref: "{{ db_version_guard_effective_image | regex_replace('^.*/', '') }}"
+    db_version_guard_tag: "{{ db_version_guard_ref.split(':')[1] if ':' in db_version_guard_ref else 'latest' }}"
+    db_version_guard_nums: "{{ db_version_guard_tag | regex_findall('[0-9]+') }}"
+    db_version_guard_minor: >-
+      {{ (db_version_guard_nums[0] ~ '.' ~ db_version_guard_nums[1])
+         if (db_version_guard_nums | length > 1)
+         else (db_version_guard_nums[0] if (db_version_guard_nums | length == 1) else '') }}
+  loop: "{{ db_version_guard_resolved }}"
+  loop_control:
+    label: "{{ item.container }}"
+  tags:
+    - always
+
+- name: Resolve the Phase-10 hop override (-e db_version_guard_allow_drift=<engine>)
+  ansible.builtin.set_fact:
+    db_version_guard_allowed_engines: >-
+      {{ ([db_version_guard_allow_drift] | flatten)
+         if (db_version_guard_allow_drift | default('', true) | length > 0) else [] }}
+  tags:
+    - always
+
+- name: Warn that the minor-line check is overridden for an engine
+  ansible.builtin.debug:
+    msg: >-
+      db_version_guard_allow_drift is set for {{ db_version_guard_allowed_engines | join(', ') }}:
+      the minor-line equality check is DOWNGRADED to a warning for that engine.
+      This is correct only for a Phase 10 hop run (one tier per run, then the
+      leaguesphere high tier last). Every other deploy must run without it.
+  when: db_version_guard_allowed_engines | length > 0
+  tags:
+    - always
+
+- name: List the database servers present on this host and the line each is on
+  ansible.builtin.debug:
+    msg: >-
+      db-version guard: {{ db_version_guard_checked | selectattr('present', 'equalto', true) | map(attribute='label') | join(', ')
+      if (db_version_guard_checked | selectattr('present', 'equalto', true) | list | length > 0)
+      else 'no listed database container runs on this host' }}.
+      {%- if db_version_guard_checked | rejectattr('present', 'equalto', true) | list | length > 0 %} Absent here:
+      {{ db_version_guard_checked | rejectattr('present', 'equalto', true) | map(attribute='container') | join(', ') }}.{% endif %}
+  tags:
+    - always
+
+- name: Warn about database servers whose tag carries no minor version
+  # A tag like `mariadb:latest` cannot be placed on a line, so it is excluded
+  # from the equality check instead of failing the deploy on a guess: the high
+  # tier runs such a tag until the leaguesphere PR pins it to 13.0.
+  ansible.builtin.debug:
+    msg: >-
+      Cannot verify {{ item.label }}: its tag names no minor version
+      ({{ 'from the running container' if not item.intended_image else 'from the compose file' }}).
+      It is EXCLUDED from the minor-line equality check. D1: the tag must name the
+      minor (mariadb:13.0, mariadb:12.3, mongo:9.0, postgres:15); `latest`/`lts`
+      re-point across minors.
+  loop: "{{ db_version_guard_checked | selectattr('present', 'equalto', true) | selectattr('minor', 'equalto', '') | list }}"
+  loop_control:
+    label: "{{ item.container }}"
+  tags:
+    - always
+
+- name: Fail when a retiring database server has left its pinned line (D14)
+  ansible.builtin.fail:
+    msg: >-
+      {{ item.label }} is `retiring: true` (D14) and must stay on
+      {{ item.engine }}:{{ item.pinned_tag }}{{ ' — read from the running container, its compose file is in another repo'
+      if not item.intended_image else '' }}. A retiring server gets same-line
+      patches only: a version hop is a reviewed PR for the tier servers (Phase 10)
+      and never includes it. Fix the image tag in
+      {{ (item.compose_dir, 'docker-compose.yml') | path_join if item.intended_image else 'the owning repo' }}.
+  loop: "{{ db_version_guard_checked | selectattr('present', 'equalto', true) | selectattr('retiring', 'equalto', true) | list }}"
+  loop_control:
+    label: "{{ item.container }}"
+  when:
+    - item.pinned_tag | default('') | length > 0
+    - item.tag != item.pinned_tag
+  tags:
+    - always
+
+- name: Fail when active database servers of one engine are on different minor lines (D8)
+  ansible.builtin.fail:
+    msg: >-
+      Refusing to deploy: {{ item }} servers are on different minor lines —
+      {{ db_guard_engine_active | map(attribute='label') | join(', ') }}.
+      The tag names the minor (D1), so a server can only change line through a
+      reviewed PR, one tier per run (Phase 10, then the leaguesphere high tier
+      last): patch the odd one out's compose tag before deploying, or pass
+      -e db_version_guard_allow_drift={{ item }} for a hop run.
+      {{ 'leaguesphere.db is one of them: its tag lives in leaguesphere/deployed/docker-compose.yaml (other repo).'
+      if (db_guard_engine_active | map(attribute='container') | select('equalto', 'leaguesphere.db') | list | length > 0) else '' }}
+  vars:
+    db_guard_engine_active: >-
+      {{ db_version_guard_checked | selectattr('present', 'equalto', true)
+         | selectattr('engine', 'equalto', item)
+         | rejectattr('retiring', 'equalto', true)
+         | rejectattr('minor', 'equalto', '') | list }}
+  loop: >-
+    {{ db_version_guard_checked | selectattr('present', 'equalto', true)
+       | rejectattr('retiring', 'equalto', true)
+       | map(attribute='engine') | unique | list }}
+  loop_control:
+    label: "{{ item }}"
+  when:
+    - item not in db_version_guard_allowed_engines
+    - (db_guard_engine_active | map(attribute='minor') | unique | list | length) > 1
+  tags:
+    - always

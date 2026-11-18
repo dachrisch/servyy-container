@@ -15,13 +15,18 @@ name: moodle
 
 services:
   db:
-    # mariadb:12.3 — floats patches inside the 12.3 line (the pinned digest was
-    # 12.3.3, the same build photoprism.mariadb runs). Never cross a major:
-    # MariaDB cannot open a newer data dir, and this volume holds Moodle's data.
-    # No watchtower label, so a bump arrives with a deploy, not unattended.
+    # mariadb:12.3 — the tag names the minor and floats the patch (D1). Never
+    # cross a major: MariaDB cannot open a newer data dir, and this volume holds
+    # Moodle's data. Patches arrive through the `db` watchtower scope (D15):
+    # one daily 06:00 window, health-check gated with rollback. This server is
+    # `retiring: true` (D14) — it stays on 12.3 until Moodle moves to the
+    # business tier.
     image: mariadb:12.3
     container_name: ${COMPOSE_PROJECT_NAME}.db
     restart: unless-stopped
+    labels:
+      - traefik.enable=false
+      - com.centurylinklabs.watchtower.scope=db
     env_file:
       - db.env
     command:

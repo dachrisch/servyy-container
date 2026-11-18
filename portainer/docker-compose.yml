@@ -106,6 +106,52 @@ services:
     networks:
       - proxy
 
+  # Database servers only (scope `db`, D15 in
+  # docs/plans/2026-11-17_db-tier-topology.md). A database patch is a same-line
+  # image refresh, and this fork rolls back automatically when the replacement
+  # container never reports healthy — so patches may land unattended, but only
+  # here, and only once a day. Minors and majors are NOT watchtower's job: the
+  # compose tag names the minor, and Renovate proposes a change as a reviewed PR.
+  #
+  # 06:00 is chosen, not arbitrary (D15): the hourly dumps fire at :30/:40/:50,
+  # restic runs 02:00-04:00 and the Firefly import at 05:00 — a database restart
+  # must fit between them. WATCHTOWER_SCHEDULE (one fixed daily slot), not
+  # WATCHTOWER_POLL_INTERVAL: a poll interval would drift into a dump.
+  #
+  # It is a separate instance from -prod/-dev, not a third scope on an existing
+  # one: a scope is the unit of filtering, and the schedule is per instance.
+  # Scope selection is label-driven: it updates only containers labelled
+  # com.centurylinklabs.watchtower.scope=db (moodle.db, bnb-office.db,
+  # photoprism.mariadb, shared.mongo, shared.db; leaguesphere.db carries the same
+  # label from the leaguesphere repo).
+  watchtower-db:
+    restart: unless-stopped
+    image: openserbia/watchtower:latest
+    container_name: ${COMPOSE_PROJECT_NAME}.watchtower-db
+    labels:
+      - traefik.enable=false
+      - com.centurylinklabs.watchtower.scope=db
+    environment:
+      WATCHTOWER_SCOPE: "db"
+      WATCHTOWER_SCHEDULE: "0 0 6 * * *" # daily 06:00 (sec min hour dom mon dow)
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_INCLUDE_RESTARTING: "true"
+      # Wait for the replacement to report healthy; roll back to the previous
+      # image if it never does. No-op for containers without HEALTHCHECK.
+      WATCHTOWER_HEALTH_CHECK_GATED: "true"
+      # Global fallback when a container has no HEALTHCHECK-derived timeout.
+      # 2m covers a MariaDB/mongo boot on the 1.6 GB Moodle dataset.
+      WATCHTOWER_HEALTH_CHECK_TIMEOUT: "2m"
+      # Same as -prod/-dev: docker.io answers anonymous HEAD checks with 401.
+      WATCHTOWER_WARN_ON_HEAD_FAILURE: "never"
+      # Flag parity with -prod/-dev; a database service has no depends_on today.
+      WATCHTOWER_COMPOSE_DEPENDS_ON: "true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - proxy
+
   ofelia-scheduler:
     image: mcuadros/ofelia:latest
     container_name: ${COMPOSE_PROJECT_NAME}.ofelia

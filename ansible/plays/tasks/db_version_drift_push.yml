@@ -1,0 +1,141 @@
+---
+# Post-deploy database PATCH drift (D8, second half) — a `post_task` of
+# plays/user.yml, after every service role has run.
+# Plan: docs/plans/2026-11-17_db-tier-topology.md (D8, D15, Phase 0.6)
+#
+# WHY IT NEVER FAILS: a watchtower patch pull replaces one server at a time, so
+# the ACTIVE servers of an engine legitimately run different image IDs for a few
+# hours after the 06:00 `db` window (D15). Failing on that would block routine
+# deploys with no human in the loop; the patch mix shares the datadir format, so
+# it is a warning plus a metric, and Grafana fires only if it persists for 24 h
+# (`db_version_drift`, monitor/provisioning/alerting/alert-rules.yml).
+#
+# WHAT IT COMPARES: the running image ID (`docker inspect --format '{{.Image}}'`,
+# the image the container is actually executing) across the ACTIVE servers per
+# engine — the same set the pre-check compares tags on, minus `retiring` servers
+# (D14), which are expected to differ from the fleet line.
+#
+# The metric is pushed the way roles/system_probe pushes its probes: PUT to the
+# host-local Pushgateway (http://localhost:9091, job `system_db_version`), one
+# series per engine, and only on hosts that run the monitor stack
+# (system_probe_push_enabled has the same gate). PUT replaces the whole job
+# group, so every engine is re-emitted on every run and a retired engine cannot
+# linger as a stale series.
+#
+# Requires db_version_guard_checked from tasks/db_version_guard.yml (pre_tasks of
+# the same play); it is a no-op if that list is empty.
+
+- name: Read the database image IDs after the deploy
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{.Image}}' }}"
+      - "{{ item.container }}"
+  loop: "{{ db_version_guard_checked | default([]) }}"
+  loop_control:
+    label: "{{ item.container }}"
+  register: db_version_drift_inspect
+  changed_when: false
+  failed_when: false
+  tags:
+    - always
+
+- name: Collect the running image ID of every active server per engine
+  ansible.builtin.set_fact:
+    db_version_drift_ids: >-
+      {{ db_version_drift_ids | default({})
+         | combine({ item.item.engine:
+                      (db_version_drift_ids | default({})).get(item.item.engine, [])
+                      + ([item.stdout | default('', true) | trim] if (item.rc | default(1) | int == 0
+                         and not (item.item.retiring | default(false) | bool)) else []) }) }}
+  loop: "{{ db_version_drift_inspect.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.container }}"
+  tags:
+    - always
+
+- name: Compute the per-engine drift value and the Pushgateway payload
+  ansible.builtin.set_fact:
+    db_version_drift_engines: >-
+      {{ db_version_guard_checked | default([]) | selectattr('present', 'equalto', true)
+         | rejectattr('retiring', 'equalto', true) | map(attribute='engine') | unique | list }}
+  tags:
+    - always
+
+- name: Build the db_version_drift payload lines
+  ansible.builtin.set_fact:
+    db_version_drift_lines: >-
+      {{ db_version_drift_lines | default([]) + [
+           'db_version_drift{engine=' ~ '"' ~ item ~ '"' ~ '} ' ~ (db_version_drift_value | int)
+         ] }}
+  vars:
+    db_version_drift_value: >-
+      {{ 1 if (((db_version_drift_ids | default({})).get(item, []) | unique | list | length) > 1) else 0 }}
+  loop: "{{ db_version_drift_engines }}"
+  loop_control:
+    label: "{{ item }}"
+  tags:
+    - always
+
+- name: Warn when the active servers of an engine run different image IDs
+  ansible.builtin.debug:
+    msg: >-
+      {{ item }} servers run different image IDs —
+      {{ ((db_version_drift_ids | default({})).get(item, []) | unique | list) | join(', ') }}.
+      Expected for a few hours after a `db` watchtower patch pull (D15); no deploy
+      is blocked. db_version_drift{engine={{ item }}} is pushed as 1 and the
+      Grafana rule fires only if it is still 1 after 24 h.
+  loop: "{{ db_version_drift_engines }}"
+  loop_control:
+    label: "{{ item }}"
+  when: ((db_version_drift_ids | default({})).get(item, []) | unique | list | length) > 1
+  tags:
+    - always
+
+- name: Assemble the db_version_drift payload
+  ansible.builtin.set_fact:
+    # `nl` is a REAL newline (a YAML double-quoted "\n"); Jinja keeps "\n" in a
+    # string literal as two characters, so it cannot be written inline here.
+    db_version_drift_payload: >-
+      {{ '# TYPE db_version_drift gauge' ~ nl ~ (db_version_drift_lines | default([]) | join(nl)) ~ nl }}
+  vars:
+    nl: "\n"
+  tags:
+    - always
+
+- name: Push db_version_drift to the Pushgateway
+  ansible.builtin.uri:
+    url: "http://localhost:9091/metrics/job/system_db_version"
+    method: PUT
+    body_format: raw
+    body: "{{ db_version_drift_payload }}"
+    status_code: 200
+    timeout: 15
+  register: db_version_drift_push
+  changed_when: false
+  failed_when: false
+  when:
+    - db_version_drift_lines | default([]) | length > 0
+    # Same gate as roles/system_probe (`system_probe_push_enabled`): the
+    # Pushgateway only exists where the monitor stack runs (servy), so hosts
+    # without it must not push into the void. Handles both inventory shapes,
+    # bare `monitor: true` and `monitor: {enabled: true}`.
+    - (services_enabled.monitor | default(false) | bool)
+      or (services_enabled.monitor.enabled | default(false) | bool)
+  tags:
+    - always
+
+- name: Report the drift push
+  ansible.builtin.debug:
+    msg: >-
+      db_version_drift pushed to the Pushgateway:
+      {{ db_version_drift_lines | default([]) | join('; ') }}.
+  when:
+    - db_version_drift_lines | default([]) | length > 0
+    - db_version_drift_push is defined
+    - not (db_version_drift_push.skipped | default(false) | bool)
+    - not (db_version_drift_push.failed | default(true) | bool)
+  tags:
+    - always

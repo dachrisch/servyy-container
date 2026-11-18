@@ -150,7 +150,14 @@ services:
     ## If MariaDB gets stuck in a restart loop, this points to a memory or filesystem issue:
     ## https://docs.photoprism.app/getting-started/troubleshooting/#fatal-server-errors
     restart: unless-stopped
-    image: mariadb:lts
+    # mariadb:12.3, not `lts`: the tag names the MINOR and lets the patch float
+    # (D1). `lts` re-points across minors without warning, and PhotoPrism's data
+    # cannot be opened by a newer major. Patches arrive through the `db`
+    # watchtower scope (D15); a 12.3 -> 13.x step is a reviewed PR (Phase 10),
+    # never an unattended pull. This server is `retiring: true` (D14): it stays
+    # on 12.3 until PhotoPrism moves to the private tier.
+    # Plan: docs/plans/2026-11-17_db-tier-topology.md
+    image: mariadb:12.3
     container_name: ${COMPOSE_PROJECT_NAME}.mariadb
     security_opt: # see https://github.com/MariaDB/mariadb-docker/issues/434#issuecomment-1136151239
       - seccomp:unconfined
@@ -159,7 +166,11 @@ services:
     ## Never store database files on an unreliable device such as a USB flash drive, an SD card, or a shared network folder:
     labels:
       - traefik.enable=false
-      - com.centurylinklabs.watchtower.scope=prod
+      # Database server: the `db` watchtower scope (D15) delivers 12.3 patches in
+      # the single daily 06:00 window, health-check gated with rollback. Scope
+      # `db`, not `prod`: the prod poller runs every 2 h and would restart this
+      # server mid-dump.
+      - com.centurylinklabs.watchtower.scope=db
       # portainer team
       - io.portainer.accesscontrol.teams=${SERVICE_NAME}
     volumes:

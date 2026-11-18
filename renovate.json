@@ -15,6 +15,20 @@
         "patch"
       ],
       "automerge": true
+    },
+    {
+      "description": "Database patches are watchtower's job (D15), never Renovate's: a database tag names the minor and floats the patch (D1: mariadb:13.0, mariadb:12.3, mongo:9.0, postgres:15), so Renovate must not rewrite it to a concrete patch tag. Patches land through the `db` watchtower scope in the daily 06:00 window.",
+      "matchPackageNames": ["mariadb", "mongo", "postgres"],
+      "matchUpdateTypes": ["patch"],
+      "enabled": false
+    },
+    {
+      "description": "Database minor/major bumps are a reviewed step (D1/D15, Phase 10): never automerged, gated behind the dependency dashboard, grouped so one approval is one reviewed change.",
+      "matchPackageNames": ["mariadb", "mongo", "postgres"],
+      "matchUpdateTypes": ["minor", "major"],
+      "automerge": false,
+      "dependencyDashboardApproval": true,
+      "groupName": "database minor/major"
     }
   ]
 }

@@ -1169,6 +1169,63 @@ groups:
           severity: medium
         isPaused: false
 
+      # MEDIUM: database servers of one engine run different image IDs (patches).
+      # Pushed by ansible/plays/tasks/db_version_drift_push.yml (job
+      # system_db_version, post-deploy) — 1 = the active servers of that engine
+      # run more than one image ID, 0 = they agree.
+      #
+      # 24h, not minutes: a watchtower pull in the `db` scope (daily 06:00, D15)
+      # replaces one server at a time, so a divergence of a few hours is the
+      # NORMAL state of a healthy patch and must not page. A MAJOR/MINOR version
+      # mix is a different failure — the Ansible guard (D8) refuses to deploy one
+      # at all, so this rule stays a slow patch-delivery signal: it means the pull
+      # did not complete across the fleet (one server kept an old image, or a
+      # health-check-gated rollback reverted one).
+      - uid: db_version_drift
+        title: Database Patch Drift
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: db_version_drift > 0
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 24h
+        annotations:
+          summary: 'Database servers of one engine have been on mixed image IDs for 24h'
+          description: 'The active {{ $labels.engine }} servers have run different image IDs for 24 hours - a `db` watchtower patch pull (daily 06:00) did not reach all of them, or a health-check-gated update rolled one back. Check `docker inspect` (Config.Image and Image) for each server and `docker logs portainer.watchtower-db`. Do NOT hand-bump a tag to "fix" this: patch tags float by design (D1) and a minor/major change is a reviewed PR.'
+        labels:
+          severity: medium
+        missingSeriesEvalsToResolve: 3
+        isPaused: false
+
   # LeagueSphere maintenance/games monitoring
   - orgId: 1
     name: leaguesphere-alerts
