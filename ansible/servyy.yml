@@ -10,6 +10,9 @@
 # line) — no prompt on every run — and only falls back to an interactive prompt
 # when the file is missing. `-e vw_master_password=…` still wins over both.
 # Tagged with always so it runs even when --tags filters specific plays.
+# The last task reports the OUTCOME as a character count on every run, so a run
+# that silently resolved nothing is visible at the top of the log instead of
+# surfacing 300 tasks later as a Vaultwarden push failure.
 - name: Resolve Vaultwarden credentials
   hosts: all
   gather_facts: false
@@ -42,6 +45,23 @@
       when: vw_master_password | default('') | length == 0
       run_once: false  # Set on all hosts so fact is available everywhere
       no_log: true
+
+    # Visible on every run, including --tags runs: the LENGTH only, never the
+    # value. An empty result is not fatal here (plays that do not touch
+    # Vaultwarden must still be runnable), but it is stated up front - the roles
+    # that DO push then fail with their own explicit "no password" message.
+    - name: Report whether a Vaultwarden master password was resolved (length only)
+      ansible.builtin.debug:
+        msg: >-
+          Vaultwarden master password:
+          {{ ((vw_master_password | length) ~ ' characters resolved from ' ~ vw_key_path)
+             if (vw_master_password | default('') | length > 0)
+             else ('NOT resolved - every Vaultwarden push will be skipped this run '
+                   ~ '(create ' ~ vw_key_path ~ ' with mode 0600, one line, '
+                   ~ 'or pass -e vw_master_password=...)') }}
+      vars:
+        vw_key_path: "{{ lookup('env', 'HOME') }}/.ssh/vw.key"
+      run_once: true
   tags:
     - always  # Ensures the password resolution runs even with --tags filtering
 
