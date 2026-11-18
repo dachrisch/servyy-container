@@ -1,58 +1,50 @@
 # BricksnBytes office app (IBS — Imperiales Sicherheitsbüro), issue
 # bumbleflies/bricksnbytes#105. App image is built from the backoffice/
 # folder of bumbleflies/bricksnbytes (PHP 8.3 + Apache, published as
-# bumblecode/ibs). Storage is a project-internal MariaDB sidecar —
-# deliberately NOT the shared data layer: relational schema (FKs,
-# transactions), gapless invoice numbers, and it holds third-party
-# personal data that must stay isolated from our own service upgrades
-# (dontforget.mongo / job-search-mongodb precedent).
+# bumblecode/ibs).
+#
+# DATABASE: the BUSINESS TIER, `db-business.mariadb`, reached on the internal
+# `db_business_backend` network. The project-internal MariaDB sidecar this file
+# used to own is deliberately gone: the data was copied onto the tier in WP-5a
+# and the app points there since WP-5b (2026-11-18). The old `bnb-office.db`
+# container is STOPPED, not deleted, for a week of rollback — `docker start
+# bnb-office.db` plus reverting this file's DB_HOSTNAME is the whole rollback.
+# Do not `docker rm` it: its volume becomes unreferenced, and the daily
+# `docker system prune --volumes` would then delete the rollback data.
+#
+# Why a separate MariaDB server at all (rather than the shared data layer or an
+# app-owned sidecar): the schema is relational (FKs, transactions), invoice
+# numbers must stay gapless, and it holds another company's personal data that
+# must stay isolated from our own service upgrades. The tier keeps MariaDB's
+# DEFAULT transaction isolation for the same reason (see
+# db-business/docker-compose.yml).
+#
+# Plan: docs/plans/2026-11-17_db-tier-topology.md (Phase 4) and
+# docs/plans/2026-11-18_db-tier-work-packages.md (WP-5).
 name: bnb-office
 
 services:
-  db:
-    # mariadb:12.3 — the tag names the minor and floats the patch (D1). Never
-    # cross a major: MariaDB cannot open a newer data dir, and this volume holds
-    # bnb-office's real data. Patches arrive through the `db` watchtower scope
-    # (D15): one daily 06:00 window, health-check gated with rollback. This
-    # server is `retiring: true` (D14) — it stays on 12.3 until the office app
-    # moves to the business tier.
-    image: mariadb:12.3
-    container_name: ${COMPOSE_PROJECT_NAME}.db
-    restart: unless-stopped
-    labels:
-      - traefik.enable=false
-      - com.centurylinklabs.watchtower.scope=db
-    env_file:
-      - db.env
-    volumes:
-      - db_data:/var/lib/mysql
-    networks:
-      - internal
-    mem_limit: 512m
-    healthcheck:
-      test: ["CMD-SHELL", "mariadb-admin ping -uroot -p$$MARIADB_ROOT_PASSWORD --silent"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-
   web:
     image: bumblecode/ibs:latest
     container_name: ${COMPOSE_PROJECT_NAME}.web
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
     env_file:
       - .env
       - app.env
     environment:
-      DB_HOSTNAME: ${COMPOSE_PROJECT_NAME}.db
+      # Where the app reaches its database. Rendered into the project .env from
+      # `bnb_office_db_host` (prod: db-business.mariadb; default:
+      # ${COMPOSE_PROJECT_NAME}.db, i.e. the old sidecar name, so a host without
+      # the override still resolves to a real server). Not hardcoded here any
+      # more: the server now lives in another compose project, so the name is an
+      # inventory decision, not this file's.
+      DB_HOSTNAME: ${DB_HOSTNAME}
       DB_PORT: "3306"
     volumes:
       # Pre-migration safety dumps from the image entrypoint.
       - web_backups:/backups
     networks:
-      - internal
+      - backend
       - proxy
     mem_limit: 192m
     # The image ships a 10s healthcheck; override the interval only — Docker
@@ -87,11 +79,14 @@ services:
       - com.centurylinklabs.watchtower.scope=dev
 
 networks:
-  internal:
-    internal: true
+  # The business tier's own network, owned by db-business/docker-compose.yml
+  # (`internal: true` there: the database is reachable from attached containers
+  # only, never from the host or the internet).
+  backend:
+    name: db_business_backend
+    external: true
   proxy:
     external: true
 
 volumes:
-  db_data:
   web_backups:
