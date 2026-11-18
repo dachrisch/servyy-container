@@ -95,9 +95,18 @@ Agent: "✓ Service will be accessible at xyz.lehel.xyz"
 
 ### DNS Credentials
 
-Porkbun API keys stored in: `ansible/plays/vars/secrets.yml` (git-crypt encrypted)
-- Key `porkbun_api.pk` - Public API key
-- Key `porkbun_api.sk` - Secret API key
+Porkbun API keys stored in: `ansible/plays/vars/secrets.yml` (git-crypt encrypted),
+as one entry per Porkbun account under `porkbun:`, keyed by the account name the
+API reports on `/ping`:
+- `porkbun.dachrisch.pk` / `porkbun.dachrisch.sk` — main account: `lehel.xyz`,
+  `xn--hfer-architekten-mwb.de`. This is the account that pays for renewals and
+  transfers.
+- `porkbun.bumbledomain.pk` / `porkbun.bumbledomain.sk` — `bumbleflies.de` only
+  (moved into its own account 2026-11-18). Never used for purchases.
+
+A key only sees its own account's domains — the wrong one returns
+`DOMAIN_NOT_FOUND` / `INVALID_DOMAIN`, which is also how DNS-01 fails silently.
+`scripts/dns-layout.sh` takes `PORKBUN_ACCOUNT=<name>` (default `dachrisch`).
 
 Only the `dns-master` agent needs these credentials. Credentials are:
 - ✅ Encrypted with git-crypt (safe in git)

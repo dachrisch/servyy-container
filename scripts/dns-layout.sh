@@ -15,28 +15,55 @@ NC='\033[0m'
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DOMAIN="${1:-lehel.xyz}"
+# Which Porkbun account to read the domain from (the `porkbun:` block in
+# vars/secrets.yml, keyed by account name). Each account's API key only sees its
+# own domains — bumbleflies.de lives in `bumbledomain`, everything else in
+# `dachrisch`.
+ACCOUNT="${PORKBUN_ACCOUNT:-dachrisch}"
 
 # Load secrets
 PK="${PORKBUN_PK:-}"
 SK="${PORKBUN_SK:-}"
 
 if [[ -z "$PK" ]] || [[ -z "$SK" ]]; then
-  if [[ ! -f "$REPO_ROOT/ansible/plays/vars/secrets.yml" ]]; then
+  SECRETS="$REPO_ROOT/ansible/plays/vars/secrets.yml"
+  if [[ ! -f "$SECRETS" ]]; then
     echo -e "${RED}Error: secrets.yml not found${NC}" >&2
     exit 1
   fi
 
-  if file "$REPO_ROOT/ansible/plays/vars/secrets.yml" | grep -q "data"; then
+  if file "$SECRETS" | grep -q "data"; then
     echo -e "${RED}Error: secrets.yml is git-crypt encrypted${NC}" >&2
     exit 1
   fi
 
-  PK=$(grep -A2 "porkbun_api:" "$REPO_ROOT/ansible/plays/vars/secrets.yml" | grep "pk:" | sed 's/.*pk: "\(.*\)".*/\1/' || echo "")
-  SK=$(grep -A2 "porkbun_api:" "$REPO_ROOT/ansible/plays/vars/secrets.yml" | grep "sk:" | sed 's/.*sk: "\(.*\)".*/\1/' || echo "")
+  # Read porkbun.<account>.pk / .sk. Parsed as YAML rather than grepped so the
+  # nesting can change without silently reading the wrong key.
+  read -r PK SK < <(python3 - "$SECRETS" "$ACCOUNT" <<'PY'
+import sys
+try:
+    import yaml
+except ImportError:
+    sys.exit(0)
+doc = yaml.safe_load(open(sys.argv[1])) or {}
+accounts = doc.get("porkbun") or {}
+cred = accounts.get(sys.argv[2]) or {}
+if cred.get("pk") and cred.get("sk"):
+    print(cred["pk"], cred["sk"])
+PY
+  )
 fi
 
 if [[ -z "$PK" ]] || [[ -z "$SK" ]]; then
-  echo -e "${RED}Error: Porkbun API keys not found${NC}" >&2
+  echo -e "${RED}Error: no Porkbun credentials for account '$ACCOUNT'${NC}" >&2
+  echo -e "Accounts in secrets.yml: $(python3 -c "
+import sys, yaml
+try:
+    print(', '.join((yaml.safe_load(open(sys.argv[1])) or {}).get('porkbun', {}).keys()))
+except Exception:
+    print('unreadable')
+" "$REPO_ROOT/ansible/plays/vars/secrets.yml")" >&2
+  echo -e "Set ${BOLD}PORKBUN_ACCOUNT${NC} (default: dachrisch) or PORKBUN_PK/PORKBUN_SK." >&2
   exit 1
 fi
 
@@ -109,7 +136,13 @@ display_layout() {
   local status
   status=$(echo "$data" | jq -r '.status' 2>/dev/null)
   if [[ "$status" != "SUCCESS" ]]; then
-    echo -e "${RED}Error: API returned status: $status${NC}" >&2
+    local code
+    code=$(echo "$data" | jq -r '.code // empty' 2>/dev/null)
+    echo -e "${RED}Error: API returned status: $status${NC}${code:+ ($code)}" >&2
+    if [[ "$code" == "DOMAIN_NOT_FOUND" || "$code" == "INVALID_DOMAIN" ]]; then
+      echo -e "       $domain is not in Porkbun account '${BOLD}$ACCOUNT${NC}'." >&2
+      echo -e "       Try: ${BOLD}PORKBUN_ACCOUNT=bumbledomain $0 $domain${NC}" >&2
+    fi
     return 1
   fi
 
@@ -155,11 +188,19 @@ display_layout() {
         echo -e "  ${BLUE}$name${NC} ${BOLD}→${NC} $content $result"
         ;;
       A)
-        result=$(check_a_record "$name" 2>&1 || true)
+        if [[ "$name" == *\** ]]; then
+          result="${YELLOW}~${NC} wildcard"
+        else
+          result=$(check_a_record "$name" 2>&1 || true)
+        fi
         echo -e "  ${BLUE}$name${NC} ${BOLD}@${NC} $content (TTL: $ttl) $result"
         ;;
       AAAA)
-        result=$(check_aaaa_record "$name" "$name" 2>&1 || true)
+        if [[ "$name" == *\** ]]; then
+          result="${YELLOW}~${NC} wildcard"
+        else
+          result=$(check_aaaa_record "$name" "$name" 2>&1 || true)
+        fi
         echo -e "  ${BLUE}$name${NC} ${BOLD}@${NC} $content (TTL: $ttl) $result"
         ;;
       ALIAS)

@@ -112,9 +112,13 @@ curl 'https://api.porkbun.com/api/json/v3/dns/retrieve/{domain}' \
   -H 'X-Secret-API-Key: {sk}'
 ```
 
-Credentials stored in: `ansible/plays/vars/secrets.yml` (git-crypt encrypted)
-- Key: `porkbun_api.pk` (API key)
-- Key: `porkbun_api.sk` (secret API key)
+Credentials stored in: `ansible/plays/vars/secrets.yml` (git-crypt encrypted),
+under `porkbun:`, one block per Porkbun account keyed by account name:
+- `porkbun.dachrisch.pk` (API key) / `.sk` (secret) — main account, pays
+- `porkbun.bumbledomain.pk` / `.sk` — `bumbleflies.de` only, no purchases
+
+Each key sees only its own account's domains (`DOMAIN_NOT_FOUND` /
+`INVALID_DOMAIN` otherwise), so always know which account a domain is in.
 
 ## Ansible Integration
 

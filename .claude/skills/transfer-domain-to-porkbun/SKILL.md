@@ -63,11 +63,23 @@ Run from the repo root (`~/dev/infrastructure/container`). Keys come from
 the environment of the helper:
 
 ```bash
-load_porkbun() {
-  PB_PK=$(python3 -c 'import re;print(re.search(r"pk:\s*\"(pk1_[^\"]+)\"",open("ansible/plays/vars/secrets.yml").read()).group(1))')
-  PB_SK=$(python3 -c 'import re;print(re.search(r"sk:\s*\"(sk1_[^\"]+)\"",open("ansible/plays/vars/secrets.yml").read()).group(1))')
+load_porkbun() {   # load_porkbun [account]  — default: dachrisch (the paying one)
+  local account="${1:-dachrisch}"
+  read -r PB_PK PB_SK < <(python3 - "$account" <<'PY'
+import sys, yaml
+acc = ((yaml.safe_load(open("ansible/plays/vars/secrets.yml")).get("porkbun") or {})
+       .get(sys.argv[1]) or {})
+print(acc.get("pk", ""), acc.get("sk", ""))
+PY
+  )
   export PB_PK PB_SK
 }
+
+# Secrets live under `porkbun.<account>`, one block per Porkbun account keyed by
+# the name /ping reports. `dachrisch` owns lehel.xyz and the höfer domain and is
+# the account that pays; `bumbledomain` owns bumbleflies.de only and must never
+# be used for purchases. Pick the account whose domain you are working on — the
+# wrong one returns DOMAIN_NOT_FOUND / INVALID_DOMAIN.
 
 pb() {  # pb METHOD PATH [JSON_BODY]
   python3 - "$@" <<'PY'
