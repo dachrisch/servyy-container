@@ -24,9 +24,12 @@
 #   size_floor_bytes      below this a fresh dump is treated as broken by the
 #                         dump script (0 = no floor). Measured, not guessed: set
 #                         well under the healthy size but far above an empty one
-#   probe_minutes         snapshot-age probe threshold for this tenant's repo
-#                         (0 = no series)
-#   severity              alert severity of this tenant's dump/repo alerts
+#   probe_minutes         dump-age probe threshold for this tenant (0 or absent =
+#                         NO series at all — that is how nonprod stays quiet)
+#   severity              high | medium. The probes push it as
+#                         `db_dump_severity{tier}`, so the alert rule picks a
+#                         severity from THIS ROW: never hardcode one in
+#                         monitor/provisioning/alerting/alert-rules.yml
 #   max_user_connections  D12 limit; 0 = no limit set yet (WP-3b applies them)
 #   max_statement_time    D12 limit in seconds; 0 = no limit set yet
 #   retiring              D14: true = stays on its current line, excluded from the
@@ -65,6 +68,14 @@
 # excludes) and its backup task in roles/restic/tasks/backup.yml, which differ
 # per repo by nature.
 #
+# WP-8R R2 closed the last of the twelve: the alert file no longer names a repo,
+# a tenant or a threshold. The probes push `restic_snapshot_threshold_seconds`,
+# `restic_snapshot_severity`, `db_dump_age_seconds`, `db_dump_threshold_seconds`,
+# `db_dump_severity` and `system_log_threshold_seconds`, and the Grafana rules
+# are comparisons against them. Adding a row below therefore adds an ALERTING
+# backup; nothing in monitor/provisioning/alerting/ needs an edit — and it must
+# not start needing one again (see monitor/AGENTS.md).
+#
 # ONE ROW PER RESTIC REPO (not per tenant — `moodle` has two: files and db):
 #   name                     repo key, = `restic.<name>` and `<repo>` in restic.yml
 #   kind                     files | db-dump  (what the repo holds)
@@ -79,7 +90,9 @@
 #                            a typo fails the run instead of silently pruning at
 #                            the wrong rate)
 #   probe_minutes            snapshot-age probe threshold; 0 = no series
-#   severity                 alert severity R2 will use for this repo's alerts
+#   severity                 high | medium, pushed as `restic_snapshot_severity`
+#                            and compared by the alert rule (the rule holds no
+#                            name and no severity of its own)
 #   size_floor_bytes         below this a fresh snapshot is treated as broken;
 #                            0 = no floor (R2/R3 use it)
 #   log_key                  key in `restic.logs` of this repo's backup log
@@ -224,7 +237,11 @@ backup_targets:
     dump_format: logical
     retention: dump_hourly
     probe_minutes: 120
-    severity: medium
+    # high, not medium: this is the only copy of the Moodle DB rows and the alert
+    # it replaces (stale_restic_db_snapshot) was HIGH. Since R2 the severity is
+    # read from here instead of from the rule, so "unchanged behaviour" means this
+    # word stays high.
+    severity: high
     size_floor_bytes: 10485760    # moodle-dump.sh refuses a dump below 10 MiB
     log_key: backup_moodle_db
     log_label: restic-backup-moodle-db

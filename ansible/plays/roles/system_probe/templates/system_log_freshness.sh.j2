@@ -1,8 +1,16 @@
 #!/bin/bash
 # Log-freshness probe: reports staleness (age) of maintenance/backup log files.
 # Replaces the `check file ... if timestamp > N then alert` blocks from
-# monit.system.check.j2. Pushes to Pushgateway; Grafana alert rules evaluate the
-# age_seconds gauge against per-log thresholds.
+# monit.system.check.j2. Pushes to Pushgateway; Grafana compares the age_seconds
+# gauge against the threshold THIS SCRIPT PUSHES for the same label.
+#
+# WHY THE THRESHOLDS ARE PUSHED (WP-8R R2): they used to be repeated inside
+# monitor/provisioning/alerting/alert-rules.yml as an `or` chain of literal
+# labels and numbers. Every new dump job (`dump-<tenant>`) was therefore
+# invisible to the alert until someone remembered to extend that chain — and the
+# file is static and bind-mounted, so forgetting was silent. The list below is
+# now the only place a threshold lives; the rule is
+# `system_log_freshness_seconds > on(log) group_left() system_log_threshold_seconds`.
 set -uo pipefail
 # Deliberately no `set -e`: each step below handles its own failure explicitly so a
 # problem in one check can't abort the script before it pushes anything.
@@ -36,6 +44,14 @@ collect() {
   echo "# TYPE system_log_freshness_seconds gauge"
 {% for check in system_probe_log_checks %}
   collect "{{ check.name }}" "{{ check.path }}"
+{% endfor %}
+  # The per-log thresholds, in the SAME label space as the ages above: the alert
+  # rule joins them on `log`, so a log with no threshold here is a log nobody
+  # alerts on. One per list entry, no exceptions — that is what makes the rule
+  # name-free.
+  echo "# TYPE system_log_threshold_seconds gauge"
+{% for check in system_probe_log_checks %}
+  echo 'system_log_threshold_seconds{log="{{ check.name }}"} {{ check.threshold_seconds }}'
 {% endfor %}
   echo "# TYPE system_log_freshness_probe_success gauge"
   echo "system_log_freshness_probe_success ${probe_success}"

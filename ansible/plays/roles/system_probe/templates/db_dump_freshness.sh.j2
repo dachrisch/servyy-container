@@ -1,0 +1,103 @@
+#!/bin/bash
+# Dump-age probe (WP-8R R2): how long ago was each tenant's DUMP refreshed,
+# plus the threshold and severity it must alert at.
+#
+# WHY THIS EXISTS — the half of "protected" the snapshot probe cannot see:
+# `restic_snapshot_freshness` proves a repo is being uploaded to; it cannot see
+# that the file inside is yesterday's. A dump job that fails (bad credential,
+# renamed server, full disk, a size floor rejecting a truncated file) leaves
+# `current/` untouched while restic happily re-uploads the OLD file every hour —
+# the newest snapshot stays minutes old and every existing alert stays green.
+# Measured at 2026-11-18: five tenants (photoprism, leagues_finance, queen,
+# dontforget, firefly) had dumps, repos, timers and snapshots, and NOT ONE alert
+# named their dump. A silent failure paged nobody.
+#
+# WHAT IT MEASURES: the mtime of the tenant's prepared dump directory —
+# `<dump_dir>/current` when it exists (every `dbops`/`pg_dump` job writes into a
+# sibling `new/` and swaps it in, so the directory's mtime is when the dump
+# landed), otherwise `<dump_dir>` itself (the older flat layout, e.g. bnb's
+# `.backup/`). It never reads a file, so a 100 MB dump costs nothing, and it
+# never talks to a database.
+#
+# WHY THE THRESHOLD/SEVERITY ARE PUSHED: exactly the argument in
+# restic_snapshot_freshness.sh.j2 and system_log_freshness.sh.j2 — the alert
+# file is static and bind-mounted, and every literal name in it is a tenant
+# nobody remembers to add. The list below is generated from `db_tenants.yml`
+# (plays/tasks/restic_wiring.yml), so a new tenant row is covered by definition.
+# The Grafana rules are:
+#   ((db_dump_age_seconds > on(tenant) group_left() db_dump_threshold_seconds)
+#     or ((db_dump_age_seconds < bool 0) > 0))   <- unverifiable/missing dump
+#   ... and on(tier) db_dump_severity == <1 | 0>
+# The `< bool 0` is load-bearing, not decoration: Grafana's threshold expression
+# turns a raw -1 into 0 ("not met"), so a plain `age < 0` clause would be silent.
+# Measured on this Grafana 2026-11-18: value -1 -> 0, 8486 -> 1.
+#
+# `-1` (never a huge number, and never silence): the directory is missing or
+# unreadable, which is the "a dump nobody can see is not a backup" state. It is
+# reported per tenant rather than as a probe failure so one broken tenant does
+# not look like a broken fleet, but it DOES page — the tenant is configured and
+# should have a dump.
+#
+# set -uo pipefail WITHOUT -e: one unreadable directory must not abort the script
+# before the other tenants are pushed.
+set -uo pipefail
+
+PUSHGATEWAY_URL="{{ system_probe_pushgateway_url }}"
+JOB_NAME="db_dump_freshness"
+
+now=$(date +%s)
+probe_success=1
+
+# high -> 1, anything else -> 0; see restic_snapshot_freshness.sh.j2 (a Grafana
+# rule has ONE static severity label, so the split travels as a series).
+severity_code() {
+  case "$1" in
+    high | critical) echo 1 ;;
+    *) echo 0 ;;
+  esac
+}
+
+dump_age() {
+  local dir="$1" path mtime
+  path="$dir/current"
+  [ -d "$path" ] || path="$dir"
+  if [ -d "$path" ] && mtime=$(stat -c %Y "$path" 2>/dev/null); then
+    echo $(( now - mtime ))
+    return 0
+  fi
+  # Missing or unreadable: -1, which the rule normalises to a positive 1 so the
+  # alert's own threshold can see it.
+  echo -1
+  return 1
+}
+
+{
+  # The probe's OWN failure is only "this script cannot measure" (no stat): a
+  # per-tenant problem is the tenant's -1 above. Paging twice for one cause is how
+  # a fleet alert becomes noise, so the two are kept distinct.
+  if ! command -v stat >/dev/null 2>&1; then
+    probe_success=0
+  fi
+  echo "# TYPE db_dump_age_seconds gauge"
+{% for check in system_probe_dump_checks %}
+  printf 'db_dump_age_seconds{tenant="%s",tier="%s"} %s\n' "{{ check.tenant }}" "{{ check.tier }}" "$(dump_age "{{ check.path }}")"
+{% endfor %}
+  echo "# TYPE db_dump_threshold_seconds gauge"
+{% for check in system_probe_dump_checks %}
+  printf 'db_dump_threshold_seconds{tenant="%s",tier="%s"} %s\n' "{{ check.tenant }}" "{{ check.tier }}" "{{ check.threshold_seconds }}"
+{% endfor %}
+  # One series (and one severity) per TIER, not per tenant: the alert rules join
+  # it `on(tier)`. plays/tasks/restic_wiring.yml refuses a tier whose tenants
+  # disagree, so this cannot silently mean "whichever row came first".
+  echo "# TYPE db_dump_severity gauge"
+{% for sev in system_probe_dump_severities %}
+  printf 'db_dump_severity{tier="%s"} %s\n' "{{ sev.tier }}" "$(severity_code "{{ sev.severity }}")"
+{% endfor %}
+  echo "# TYPE db_dump_probe_success gauge"
+  echo "db_dump_probe_success ${probe_success}"
+# PUT (not POST): replaces the whole job group so a tenant whose probe policy was
+# removed (`probe_minutes: 0`) disappears on the next run instead of lingering as
+# a stale series that keeps alerting — the nonprod silence has to be real.
+} | curl -sf -X PUT --max-time 15 --connect-timeout 5 --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}"
+
+echo "db-dump-age probe_success=${probe_success}"

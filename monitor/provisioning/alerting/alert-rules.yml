@@ -1373,11 +1373,21 @@ groups:
     folder: Infrastructure
     interval: 1m
     rules:
-      # MEDIUM: a maintenance/backup log is stale. The staleness thresholds per log
-      # (8d docker-cleanup, 32d kernel-cleanup, 2h restic home, 2h restic ls-db,
-      # 25h restic root/forget, 8d restic check, 25h restic moodle-files,
-      # 2h restic moodle-db, 2h moodle dump) are evaluated here, matching
-      # system_probe/defaults/main.yml `system_probe_log_checks`.
+      # MEDIUM: a maintenance/backup log is stale.
+      #
+      # NAME-FREE ON PURPOSE (WP-8R R2). This used to be an `or` chain of literal
+      # labels and numbers (docker-cleanup 8d, kernel-cleanup 32d, restic home 2h,
+      # ls-db 2h, root/forget 25h, check 8d, moodle-files 25h, moodle-db 2h,
+      # moodle-dump 2h). Every log added after that list was written — in
+      # particular the five `dump-<tenant>` logs of WP-8R R3/R4/R6 — was therefore
+      # monitored by the probe and alerted on by NOBODY. The probe now pushes
+      # `system_log_threshold_seconds{log}` next to the age, and the rule is a
+      # comparison, so a new entry in `system_probe_log_checks` alerts without an
+      # edit here. Do not "simplify" it back into a list.
+      #
+      # `-1` (missing/unreadable log) is deliberately NOT caught here: the
+      # log-freshness probe reports it and `log_freshness_probe_failure` pages
+      # once, instead of every log's rule paging for the same probe problem.
       - uid: stale_maintenance_log
         title: Stale Maintenance/Backup Log
         condition: C
@@ -1390,16 +1400,7 @@ groups:
             datasourceUid: prometheus
             model:
               expr: >-
-                system_log_freshness_seconds{log="docker-cleanup"} > 691200 or
-                system_log_freshness_seconds{log="kernel-cleanup"} > 2764800 or
-                system_log_freshness_seconds{log="restic-backup-home"} > 7200 or
-                system_log_freshness_seconds{log="restic-backup-ls-db"} > 7200 or
-                system_log_freshness_seconds{log="restic-backup-root"} > 90000 or
-                system_log_freshness_seconds{log="restic-forget"} > 90000 or
-                system_log_freshness_seconds{log="restic-check"} > 691200 or
-                system_log_freshness_seconds{log="restic-backup-moodle-files"} > 90000 or
-                system_log_freshness_seconds{log="restic-backup-moodle-db"} > 7200 or
-                system_log_freshness_seconds{log="moodle-dump"} > 7200
+                system_log_freshness_seconds > on(log) group_left() system_log_threshold_seconds
               intervalMs: 1000
               maxDataPoints: 43200
               refId: A
@@ -1527,17 +1528,45 @@ groups:
   # exclusive lock on restic-ls-db blocked every backup for 4 weeks with a
   # freshly-written log. These rules evaluate the newest-SNAPSHOT age pushed by
   # system-restic-snapshots.sh, so they fire on actual backup staleness.
-  # Thresholds mirror system_probe/defaults/main.yml `system_probe_restic_repos`.
+  #
+  # NAME-FREE ON PURPOSE (WP-8R R2). Until R2 these were two `or` chains listing
+  # the five repos that existed when they were written (db, moodle-db, home, root,
+  # moodle-files). WP-8R R3/R4/R6 then added five more repos — db-private, db-lf,
+  # db-queen, db-private-mongo, db-private-firefly — with dumps, repos, timers and
+  # snapshots, and NOT ONE ALERT NAMED THEM: a silent failure would have paged
+  # nobody while every dashboard stayed green. The probe pushes the threshold and
+  # severity it reads from the inventory, and the rules compare against them, so
+  # `backup_targets` is the only place a repo, a number or a severity lives.
+  #
+  # Severity comes from `restic_snapshot_severity` (1 = high, 0 = elsewhere)
+  # because a Grafana rule carries ONE static `labels.severity`; a single rule
+  # cannot page "high" for a business repo and "medium" for a private one. The two
+  # halves are mutually exclusive (`== 1` / `== 0`), so no series is paged twice.
+  # A repo with a probe (`probe_minutes > 0`) but no threshold series matches
+  # neither half — deploy verification must confirm both series exist for every
+  # repo (see monitor/AGENTS.md).
+  #
+  # WHY `(age < bool 0) > 0` AND NOT `age < 0`: the probe reports -1 for an
+  # unverifiable repo (restic error, unreachable repo, missing env file), and the
+  # old literal `... < 0` clause fed that -1 straight into the rule's own
+  # `> 0.5` threshold — which a negative value cannot pass. MEASURED 2026-11-18
+  # on this Grafana (POST /api/v1/eval, reduce=last → threshold gt 0.5):
+  # value -1 → 0 (not met), value 0 → 0, value 8486 → 1. So the "an uncheckable
+  # backup alerts instead of going quiet" promise was inert, and an unverifiable
+  # repo was silent. `(x < bool 0)` turns -1 into a positive 1 before the
+  # threshold sees it. Never "simplify" it back to `age < 0`.
   - orgId: 1
     name: restic-snapshot-alerts
     folder: Infrastructure
     interval: 1m
     rules:
-      # HIGH: prod DBs have no successful backup in 2h. The `< 0` clause catches
-      # the unverifiable state (restic error, unreachable repo) — the probe
-      # reports -1 exactly so an uncheckable DB alerts instead of going quiet.
-      - uid: stale_restic_db_snapshot
-        title: Stale Restic DB Snapshot
+      # HIGH: a repo whose inventory row says high (the prod DBs and the business
+      # tenants) has no snapshot within its own threshold. `< 0` is the
+      # unverifiable state the probe reports when restic errors, the repo is
+      # unreachable or the env file is missing — an uncheckable backup must page,
+      # not go quiet.
+      - uid: stale_restic_snapshot_high
+        title: Stale Restic Snapshot (high)
         condition: C
         data:
           - refId: A
@@ -1548,10 +1577,9 @@ groups:
             datasourceUid: prometheus
             model:
               expr: >-
-                restic_snapshot_age_seconds{repo="db"} > 7200 or
-                restic_snapshot_age_seconds{repo="db"} < 0 or
-                restic_snapshot_age_seconds{repo="moodle-db"} > 7200 or
-                restic_snapshot_age_seconds{repo="moodle-db"} < 0
+                ((restic_snapshot_age_seconds > on(repo) group_left() restic_snapshot_threshold_seconds)
+                 or ((restic_snapshot_age_seconds < bool 0) > 0))
+                and on(repo) (restic_snapshot_severity == 1)
               intervalMs: 1000
               maxDataPoints: 43200
               refId: A
@@ -1578,14 +1606,17 @@ groups:
         execErrState: Error
         for: 10m
         annotations:
-          summary: 'No recent successful LeagueSphere/Moodle DB backup'
-          description: '{{ if $labels.repo }}The {{ $labels.repo }} restic repo has no successful snapshot within its threshold{{ else }}A restic repo has no successful snapshot within its threshold - backups may be failing (check for stale locks: restic list locks){{ end }}. Check system-restic-snapshots.sh on the host.'
+          summary: 'No recent successful backup of the {{ $labels.repo }} repo'
+          description: '{{ if $labels.repo }}The {{ $labels.repo }} restic repo has no snapshot within the threshold its own inventory row sets ({{ if $values.B }}{{ printf "%.0f" $values.B.Value }} s old{{ else }}stale{{ end }}){{ else }}A high-severity restic repo has no successful snapshot within its threshold{{ end }}. The repo, the threshold and this severity all come from db_tenants.yml backup_targets — a firing high rule means a business/high target is unprotected. Check `systemctl --user list-timers restic-backup-*` and `restic list locks` (a stale lock blocks every backup silently).'
         labels:
           severity: high
+        # A retired repo stops emitting its series; without this the instance
+        # would keep its last state forever (the container_not_running lesson).
+        missingSeriesEvalsToResolve: 3
         isPaused: false
 
-      # MEDIUM: home/root/moodle-files have no successful backup within their
-      # thresholds (2h home hourly, 25h root daily, 25h moodle files daily).
+      # MEDIUM: every other repo (the host repos, and the private tier). Same
+      # comparison, the other half of the severity split.
       - uid: stale_restic_snapshot
         title: Stale Restic Snapshot
         condition: C
@@ -1598,12 +1629,9 @@ groups:
             datasourceUid: prometheus
             model:
               expr: >-
-                restic_snapshot_age_seconds{repo="home"} > 7200 or
-                restic_snapshot_age_seconds{repo="home"} < 0 or
-                restic_snapshot_age_seconds{repo="root"} > 90000 or
-                restic_snapshot_age_seconds{repo="root"} < 0 or
-                restic_snapshot_age_seconds{repo="moodle-files"} > 90000 or
-                restic_snapshot_age_seconds{repo="moodle-files"} < 0
+                ((restic_snapshot_age_seconds > on(repo) group_left() restic_snapshot_threshold_seconds)
+                 or ((restic_snapshot_age_seconds < bool 0) > 0))
+                and on(repo) (restic_snapshot_severity == 0)
               intervalMs: 1000
               maxDataPoints: 43200
               refId: A
@@ -1630,10 +1658,11 @@ groups:
         execErrState: Error
         for: 10m
         annotations:
-          summary: 'No recent successful restic backup (home/root/moodle-files)'
-          description: '{{ if $labels.repo }}The {{ $labels.repo }} restic repo has no successful snapshot within its threshold{{ else }}A restic repo has no successful snapshot within its threshold - backups may be failing (check for stale locks: restic list locks){{ end }}. Check system-restic-snapshots.sh on the host.'
+          summary: 'No recent successful backup of the {{ $labels.repo }} repo'
+          description: '{{ if $labels.repo }}The {{ $labels.repo }} restic repo has no snapshot within the threshold its own inventory row sets ({{ if $values.B }}{{ printf "%.0f" $values.B.Value }} s old{{ else }}stale{{ end }}){{ else }}A restic repo has no successful snapshot within its threshold{{ end }}. Check system-restic-snapshots.sh on the host and `restic list locks` — a stale exclusive lock has blocked every backup for weeks before.'
         labels:
           severity: medium
+        missingSeriesEvalsToResolve: 3
         isPaused: false
 
       # MEDIUM: the snapshot-age probe itself is broken (restic/python3 missing)
@@ -1722,6 +1751,236 @@ groups:
         annotations:
           summary: 'Restic snapshot-age probe has not pushed metrics recently'
           description: 'No successful push from system-restic-snapshots.timer in over 90 minutes - the timer may have stopped running.'
+        labels:
+          severity: medium
+        isPaused: false
+
+  # Dump-age monitoring (WP-8R R2). NEW: the half of "protected" that nothing
+  # watched before.
+  #
+  # restic-snapshot-alerts proves a repo is being UPLOADED to. It cannot see that
+  # the file inside is yesterday's: a dump job that fails (bad credential, renamed
+  # server, full disk, a size floor rejecting a truncated dump) leaves `current/`
+  # untouched while restic re-uploads the OLD file on schedule — newest snapshot
+  # minutes old, every existing alert green. The five tenants added in WP-8R
+  # R3/R4/R6 (photoprism, leagues_finance, queen, dontforget, firefly) had dumps,
+  # repos, timers and snapshots, and no alert named a single dump.
+  #
+  # The probe (`system-db-dump-age.sh`, job `db_dump_freshness`) pushes, per
+  # tenant: db_dump_age_seconds{tenant,tier}, db_dump_threshold_seconds{tenant,tier},
+  # and per tier db_dump_severity{tier}. Both numbers come from the tenant's own
+  # row in playbook `db_tenants.yml` (probe_minutes, severity), so a new tenant is
+  # covered by adding a row: NO EDIT HERE. Never reintroduce a tenant name into
+  # this file — that is the omission this group exists to end.
+  #
+  # A tenant with `probe_minutes: 0` or no probe policy (the nonprod tier: stage is
+  # re-synced nightly, the demo reseeds itself) emits NOTHING, so `noDataState: OK`
+  # keeps it quiet. Emitting -1 for those would page forever — do not "fix" the
+  # silence.
+  #
+  # The `< bool 0` normalisation in both expressions below is load-bearing: a raw
+  # -1 cannot pass the rule's `> 0.5` threshold (measured on this Grafana: -1 → 0,
+  # i.e. silent). Read the note above `restic_snapshot_alerts` before editing it.
+  - orgId: 1
+    name: db-dump-alerts
+    folder: Infrastructure
+    interval: 1m
+    rules:
+      # HIGH: the tenant's dump is older than its own threshold, or the probe
+      # could not read the dump directory at all (-1: missing, unreadable, i.e.
+      # "a dump nobody can see is not a backup").
+      - uid: stale_db_dump_high
+        title: Stale Database Dump (high)
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: >-
+                ((db_dump_age_seconds > on(tenant) group_left() db_dump_threshold_seconds)
+                 or ((db_dump_age_seconds < bool 0) > 0))
+                and on(tier) (db_dump_severity == 1)
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: 'The {{ $labels.tenant }} database dump is stale'
+          description: '{{ if $labels.tenant }}The {{ $labels.tenant }} dump ({{ $labels.tier }} tier) is {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} s{{ else }}far{{ end }} old against its own db_tenants.yml threshold, or its dump directory is missing/unreadable (-1). The dump job may be failing while restic keeps uploading the previous file: check `systemctl --user list-timers db-dump-{{ $labels.tenant }}` and `journalctl --user -u db-dump-{{ $labels.tenant }}`{{ else }}A high-severity tenant dump is stale or unreadable{{ end }}.'
+        labels:
+          severity: high
+        # A tenant whose probe policy is removed (probe_minutes: 0) stops
+        # emitting; without this its instance would keep its last state forever.
+        missingSeriesEvalsToResolve: 3
+        isPaused: false
+
+      # MEDIUM: the same comparison for the private tier. A Grafana rule has ONE
+      # static severity label, so the split travels as a series (db_dump_severity)
+      # instead of as two hand-maintained tenant lists.
+      - uid: stale_db_dump
+        title: Stale Database Dump
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: >-
+                ((db_dump_age_seconds > on(tenant) group_left() db_dump_threshold_seconds)
+                 or ((db_dump_age_seconds < bool 0) > 0))
+                and on(tier) (db_dump_severity == 0)
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: 'The {{ $labels.tenant }} database dump is stale'
+          description: '{{ if $labels.tenant }}The {{ $labels.tenant }} dump ({{ $labels.tier }} tier) is {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} s{{ else }}far{{ end }} old against its own db_tenants.yml threshold, or its dump directory is missing/unreadable (-1). Check `systemctl --user list-timers db-dump-{{ $labels.tenant }}` and its journal; the previous good dump is still in current/ and still in the repo.{{ else }}A tenant dump is stale or unreadable{{ end }}.'
+        labels:
+          severity: medium
+        missingSeriesEvalsToResolve: 3
+        isPaused: false
+
+      # MEDIUM: the dump-age probe itself cannot measure (no stat on the host).
+      # Kept distinct from the per-tenant -1 above so one unreadable directory does
+      # not masquerade as a broken probe, and a broken probe does not page once per
+      # tenant.
+      - uid: db_dump_probe_failure
+        title: Dump-Age Probe Failing
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: db_dump_probe_success
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: lt
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: 'Dump-age probe is failing'
+          description: 'The dump-age probe could not measure the dump directories for 10+ minutes (missing coreutils on the host). Tenant dump ages are therefore unknown, not healthy.'
+        labels:
+          severity: medium
+        isPaused: false
+
+      # MEDIUM: the probe has stopped running entirely (dead timer). Without this
+      # a dead probe is indistinguishable from a healthy fleet: Pushgateway keeps
+      # serving the last values, and `noDataState: OK` covers an empty series.
+      - uid: db_dump_probe_stale
+        title: Dump-Age Probe Stale
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: time() - push_time_seconds{job="db_dump_freshness"}
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [5400]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: 'Dump-age probe has not pushed metrics recently'
+          description: 'No successful push from system-db-dump-age.timer in over 90 minutes - the timer may have stopped running, and every tenant dump is now unalerted.'
         labels:
           severity: medium
         isPaused: false

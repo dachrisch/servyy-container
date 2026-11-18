@@ -1,5 +1,6 @@
 #!/bin/bash
-# Restic snapshot-age probe: reports the age of the NEWEST snapshot per repo.
+# Restic snapshot-age probe: reports the age of the NEWEST snapshot per repo,
+# together with the threshold and the severity it should alert at.
 #
 # Why snapshot age, not log mtime: a failing backup script still touches its log
 # every hour ("Starting restic backup" + error), so the log-freshness probe
@@ -7,6 +8,19 @@
 # on restic-ls-db blocked every backup/forget/check for 4 weeks with a
 # freshly-written log the whole time. Only the newest-snapshot timestamp proves
 # a backup actually succeeded.
+#
+# WHY THE THRESHOLD AND SEVERITY ARE PUSHED (WP-8R R2): they used to be
+# repeated as literal repo names and numbers in the `or` chain of
+# monitor/provisioning/alerting/alert-rules.yml. Every repo added to the
+# inventory after that file was written (db-private, db-lf, db-queen,
+# db-private-mongo, db-private-firefly) was therefore backed up and completely
+# unalerted — the "green dashboard over a broken job" shape. The lists that
+# render this script (`system_probe_restic_repos`, generated from
+# `backup_targets`) are now the only place a threshold lives, and the Grafana
+# rules are comparisons:
+#   restic_snapshot_age_seconds > on(repo) group_left() restic_snapshot_threshold_seconds
+#   ... and on(repo) restic_snapshot_severity == <1 | 0>
+# Never "simplify" those rules back into a list of repo names.
 #
 # --no-lock is deliberate: the probe must keep reporting (a huge age that fires
 # the alert) even when the repo is exclusively locked, e.g. by the very stale
@@ -50,14 +64,31 @@ collect() {
   printf 'restic_snapshot_age_seconds{repo="%s"} %s\n' "$name" "-1"
 }
 
+# high -> 1, anything else -> 0. The alert rules split on this value because a
+# Grafana rule carries ONE static `labels.severity`; a single rule cannot page
+# "high" for a business repo and "medium" for a private one, so the severity
+# travels as a series and two rules (high / not-high) partition it. That keeps
+# the decision in db_tenants.yml instead of in the rule file.
+severity_code() {
+  case "$1" in
+    high | critical) echo 1 ;;
+    *) echo 0 ;;
+  esac
+}
+
 {
   echo "# TYPE restic_snapshot_age_seconds gauge"
 {% for repo in system_probe_restic_repos %}
   collect "{{ repo.name }}" "{{ repo.env_file }}"
 {% endfor %}
-  if ! command -v restic >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1; then
-    probe_success=0
-  fi
+  echo "# TYPE restic_snapshot_threshold_seconds gauge"
+{% for repo in system_probe_restic_repos %}
+  echo 'restic_snapshot_threshold_seconds{repo="{{ repo.name }}"} {{ repo.threshold_seconds }}'
+{% endfor %}
+  echo "# TYPE restic_snapshot_severity gauge"
+{% for repo in system_probe_restic_repos %}
+  printf 'restic_snapshot_severity{repo="%s"} %s\n' "{{ repo.name }}" "$(severity_code "{{ repo.severity | default('medium') }}")"
+{% endfor %}
   echo "# TYPE restic_snapshot_probe_success gauge"
   echo "restic_snapshot_probe_success ${probe_success}"
 # PUT (not POST): replaces the whole job group so retired repo names disappear

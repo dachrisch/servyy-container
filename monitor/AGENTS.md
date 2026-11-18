@@ -50,6 +50,46 @@ The observability stack for servy. One compose project (`name: ${SERVICE_NAME}` 
    Anything they read must be in `world_readable_paths_by_service`, or the container exits on
    permission denied and silently drops out of the project (2026-10-27, again 2026-11-18).
 
+5. **`alert-rules.yml` names no tenant, repo, log or threshold — and must not start.**
+   The probes publish the policy they are judged by
+   (`restic_snapshot_threshold_seconds{repo}`, `restic_snapshot_severity{repo}`,
+   `db_dump_threshold_seconds{tenant,tier}`, `db_dump_severity{tier}`,
+   `system_log_threshold_seconds{log}`), all generated from
+   `ansible/plays/vars/db_tenants.yml`, and the backup rules are comparisons:
+
+   ```promql
+   ((restic_snapshot_age_seconds > on(repo) group_left() restic_snapshot_threshold_seconds)
+    or ((restic_snapshot_age_seconds < bool 0) > 0))
+   and on(repo) (restic_snapshot_severity == 1)     #  == 0 for the medium rule
+   ```
+
+   Two rules per class (high / not-high), because a Grafana rule has **one static
+   `labels.severity`**; the split has to travel as a series. Until WP-8R R2 these were `or`
+   chains of literals, so five repos with dumps, timers and snapshots ran unalerted — a
+   new row here must never need an edit. `on(...) group_left()` is a *join*: a series with
+   no threshold series matches nothing, i.e. it is silently unmonitored, which is why the
+   deploy must confirm the threshold series exist for every repo/tenant.
+
+   **`< bool 0`, not `< 0`.** The probes push `-1` for "unverifiable" (no repo state, no
+   dump directory). Grafana's threshold expression maps `-1` to **0 = not met** (measured
+   with `POST /api/v1/eval`: `-1`→0, `0`→0, `8486`→1), so a literal `< 0` clause is
+   silent, which is exactly what the `-1` was supposed to prevent. `(x < bool 0)` turns it
+   into a positive 1 before the rule's own `> 0.5` threshold.
+
+   Verify after a deploy (read-only):
+
+   ```bash
+   ssh servy.lehel.xyz "docker exec monitor.prometheus wget -qO- \
+     'http://localhost:9090/api/v1/query?query=restic_snapshot_threshold_seconds' | grep -o 'repo=[^}]*' | wc -l"
+   ssh servy.lehel.xyz "docker exec monitor.prometheus wget -qO- \
+     'http://localhost:9090/api/v1/query?query=db_dump_threshold_seconds' | grep -o 'tenant=[^,}]*'"
+   ```
+
+   Both must list every repo / tenant that has a probe; a short list is a silent outage.
+   The expressions can be parsed without deploying — dump them into a Prometheus rule file
+   (`data[0].model.expr` → `expr:`) and run `promtool check rules`; the running
+   `monitor.prometheus` container ships `promtool`.
+
 ## Verifying a change took effect
 
 ```bash

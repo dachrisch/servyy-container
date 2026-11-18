@@ -29,6 +29,17 @@
     docker_backend_services:
       - dir: backendtest
     system_probe_docker_local_dir: "{{ playbook_dir }}/files"
+    # WP-8R R2: the dump-age probe is generated from the tenant inventory; the
+    # scenario supplies one row in the same shape restic_wiring.yml produces, so
+    # the script deploys here and the threshold/severity emission is verifiable.
+    system_probe_dump_checks:
+      - tenant: moleculetest
+        tier: business
+        path: /tmp/moleculetest-dumps
+        threshold_seconds: 93600
+    system_probe_dump_severities:
+      - tier: business
+        severity: high
   tasks:
     - name: Run system_probe role  # noqa: role-name[path]
       ansible.builtin.include_role:
