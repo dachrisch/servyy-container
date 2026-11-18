@@ -169,10 +169,18 @@ db_tenants:
     compose_service: mongo
 
   # --- private: the operator's own data -----------------------------------
+  # WP-6b (2026-11-18): on the private tier. The old app-owned
+  # `photoprism.mariadb` is stopped and kept (with its ./database datadir) for the
+  # one-week rollback, so it is no longer a `retiring` SERVER in the guard's sense
+  # - the row now names the tier, and the guard compares it with the other three
+  # 13.0 servers. dump_schedule is still none: it moves onto `dbops` in WP-7,
+  # together with the tier's restic repo (Phase 7). Until then this database - the
+  # one holding 1 014 albums, 46 690 photos and 169 album links, which no
+  # re-index can rebuild - has no dump of its own.
   - tenant: photoprism
     tier: private
     engine: mariadb
-    server: photoprism.mariadb
+    server: db-private.mariadb
     db: photoprism
     user: photoprism
     dump_schedule: none
@@ -180,8 +188,8 @@ db_tenants:
     restic_repo: ''
     max_user_connections: 0
     max_statement_time: 0
-    retiring: true
-    compose_dir: photoprism
+    retiring: false
+    compose_dir: db-private
     compose_service: mariadb
 
   - tenant: dontforget
