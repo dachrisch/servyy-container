@@ -185,9 +185,16 @@ it to SQLite is an app change in the dontforget repo. Neither is in this plan.
    volume-wipe block is removed is exactly the hazard that step exists to close.
    **06:00 is chosen, not arbitrary:** the hourly dumps fire at :30/:40/:50, restic runs
    02:00–04:00 and the Firefly import at 05:00 — a database restart must fit between them.
-3. **`MARIADB_AUTO_UPGRADE=1` on the high tier.** LS prod never had it. With patches landing
-   unattended the entrypoint must run `mariadb-upgrade` on restart; add it to `ls.env` in the
-   leaguesphere repo. The tier servers get it in their env files.
+3. **Do NOT put `MARIADB_AUTO_UPGRADE` in `ls.env`** (incident 2026-11-18, `history/2026-11-18_ls-db-upgrade-flag-outage.md`).
+   The prod `db` service shares `env_file: ls.env` with the app, so `MYSQL_HOST` is present in
+   the **database** container's own environment; with the flag set, the entrypoint's
+   `mariadb-upgrade` shells out to the `mysql` client, which dials `MYSQL_HOST` instead of the
+   temporary socket-only server and aborts the start (`ERROR 2002 (HY000): Can't connect to
+   server on 'leaguesphere.db'` → exit 1 → restart loop). It cost ~6.5 minutes of public
+   downtime the first time `ls_app` ran it. Patch-level upgrades do not need it. If it is ever
+   wanted again: give the `db` service its own env file, or override `MYSQL_HOST=localhost`
+   inside that service. The `db-<tier>` servers are unaffected — their env files carry no
+   `MYSQL_HOST`, so they keep `MARIADB_AUTO_UPGRADE=1`.
 4. **Renovate rules** (`renovate.json`, `packageRules` after the existing automerge rule):
    - `matchPackageNames: ["mariadb", "mongo", "postgres"]`,
      `matchUpdateTypes: ["patch"]` → **`enabled: false`**. Watchtower owns patches, and
@@ -523,7 +530,10 @@ supported in place, so a hop does not use D11's dump/import.
    of every tenant on that server and followed by its phase smoke test. Each of these runs
    passes `-e db_version_guard_allow_drift=mariadb` (D8). No untagged `./servyy.sh` runs
    during the hop — it would apply every bumped file at once. Then merge the leaguesphere
-   PR and deploy LS (high, last). `MARIADB_AUTO_UPGRADE=1` runs `mariadb-upgrade` on each.
+   PR and deploy LS (high, last). `MARIADB_AUTO_UPGRADE=1` runs `mariadb-upgrade` on each
+   **tier** server. The **high tier carries no such flag** (Phase 0 step 3: it would break the
+   entrypoint through `MYSQL_HOST`), so its hop needs a deliberate `mariadb-upgrade` inside a
+   maintenance window, with a fresh `mariadb-backup` full taken first.
 3. **High:** fresh `mariadb-backup` full right after the upgrade. Physical backups are bound
    to the server version — keep the previous image pullable until its backups age out.
 4. **Never start a hop in the middle of a Phase 3–6 move.** If EOL lands mid-move, finish

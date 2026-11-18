@@ -73,7 +73,10 @@ checked condition instead of a convention.
 06:00 window, health-gated rollback) and the `db` scope label on every database server —
 **including `leaguesphere.db`**, whose label ships in the leaguesphere repo's PR; **each label
 change recreates that server, so stagger them one at a time**; `shared.mongo`'s label moves
-only after WP-1 (see the ordering note above). Plus `MARIADB_AUTO_UPGRADE=1` on the high tier; Renovate patches disabled for database packages and minors/majors behind
+only after WP-1 (see the ordering note above). **Do not put `MARIADB_AUTO_UPGRADE` in
+`ls.env`** — it shares `MYSQL_HOST` with the db container and killed the platform on
+2026-11-18 (`history/2026-11-18_ls-db-upgrade-flag-outage.md`); the `db-<tier>` services get
+it in their own env files. Renovate patches disabled for database packages and minors/majors behind
 dashboard approval; the three LeagueSphere server tags (`mariadb:latest` → `mariadb:13.0`)
 in that repo's PR; the drift guard as a shared `pre_task` included from **both**
 `plays/user.yml` and `plays/leaguesphere.yml`.
