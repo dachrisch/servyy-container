@@ -66,6 +66,10 @@ prod:
         # history/2026-11-18_bumbleflies-de-transfer.md).
         finance_services: [firefly, importer, queen]
         queen_traefik_certresolver: letsencrypthttpresolver
+        # DB tiers this host runs (roles/db_tier). nonprod = LS stage + demo on
+        # db-nonprod.mariadb (WP-4); its tenants still point at the old servers
+        # until the WP-4b cutover, so this only creates the server + its users.
+        db_tiers: [nonprod]
         # bnb-office reachable at this second host too (owner-facing stopgap
         # until the Strato DNS for ibs.bricksnbytes.de is flipped). DNS for
         # ibs.bumbleflies.de already points at servy; own Traefik router/cert.
