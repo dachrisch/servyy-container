@@ -95,6 +95,17 @@ restic:
       # dump + restic wiring (Phase 7), never the home repo.
       - 'servyy-container/db-*/data'
 
+      # The canonical dump root (WP-8R R7). Every tenant's logical dump lands in
+      # /home/cda/db-dumps/<tenant>/current and is snapshotted by ITS OWN repo
+      # (db-private, db-lf, db-queen, db-private-mongo, db-private-firefly). Keeping
+      # it out of `home` matters for two independent reasons:
+      #   * deduplication: a 107 MB PhotoPrism dump re-uploaded into `home` every
+      #     hour would be the same bytes five times a day in a repo whose
+      #     retention is hourly;
+      #   * a dump in two repos with two retention policies is a restore that can
+      #     disagree with itself about how old the newest copy is.
+      - 'db-dumps'
+
       # OpenCode's bind-mounted SSH dir. The container runs as root and writes
       # id_github/id_servy/known_hosts as root, so the backup user cannot read
       # them and restic aborts the whole home snapshot with exit 3 (measured
@@ -211,6 +222,38 @@ restic:
     password: "{{ restic_password_moodle }}"
     source_path: "{{ moodle_data_root_path }}/db-backup/current"
 
+  # --- WP-8R R3/R4/R6: the three tiers' first real protection --------------
+  # Each repo snapshots ONE canonical `<dump_dir>/current` directory (R7's
+  # /home/cda/db-dumps/<tenant>). Why `current` and not the tenant's dump root:
+  # the dump scripts write into a sibling `new/` and only move it into `current/`
+  # after the size floor passed, so the directory restic sees is never
+  # mid-write and never holds a file that failed validation. The dump file
+  # itself keeps a timestamped name (its content is byte-identical for unchanged
+  # data thanks to --skip-dump-date / gzip -n, so restic still deduplicates).
+  # All five share the D16 db-tier password.
+  'db-private':
+    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ restic_repo_name | default(inventory_hostname) }}/restic-db-private"
+    password: "{{ restic_password_db }}"
+    source_path: "/home/cda/db-dumps/photoprism/current"
+  'db-private-mongo':
+    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ restic_repo_name | default(inventory_hostname) }}/restic-db-private-mongo"
+    password: "{{ restic_password_db }}"
+    source_path: "/home/cda/db-dumps/dontforget/current"
+  # TEMPORARY (WP-10 deletes it with shared.db): firefly's pg_dump has no other
+  # protection - PGDATA lives on /mnt, which the root repo excludes.
+  'db-private-firefly':
+    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ restic_repo_name | default(inventory_hostname) }}/restic-db-private-firefly"
+    password: "{{ restic_password_db }}"
+    source_path: "/home/cda/db-dumps/firefly/current"
+  'db-lf':
+    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ restic_repo_name | default(inventory_hostname) }}/restic-db-lf"
+    password: "{{ restic_password_db }}"
+    source_path: "/home/cda/db-dumps/leagues_finance/current"
+  'db-queen':
+    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ restic_repo_name | default(inventory_hostname) }}/restic-db-queen"
+    password: "{{ restic_password_db }}"
+    source_path: "/home/cda/db-dumps/queen/current"
+
   # Backup schedules
   schedules:
     backup_home: 'hourly'                      # Home: every hour at :00
@@ -225,6 +268,18 @@ restic:
     backup_moodle_dump: '*-*-* *:40:00'
     backup_moodle_db: '*-*-* *:50:00'
     backup_moodle_files: '*-*-* 01:20:00'
+    # WP-8R R3/R4/R6: dump at :45/:15/:25/:35/:45, snapshot five minutes later
+    # (never snapshot a half-written .partial; the rename makes that safe anyway).
+    dump_photoprism: '*-*-* 00:45:00'
+    backup_db_private: '*-*-* 00:55:00'
+    dump_leagues_finance: '*-*-* 01:15:00'
+    backup_db_lf: '*-*-* 01:20:00'
+    dump_queen: '*-*-* 01:25:00'
+    backup_db_queen: '*-*-* 01:30:00'
+    dump_dontforget: '*-*-* 01:35:00'
+    backup_db_private_mongo: '*-*-* 01:40:00'
+    dump_firefly: '*-*-* 01:45:00'
+    backup_db_private_firefly: '*-*-* 01:50:00'
     forget_daily: '*-*-* 05:00:00'            # Daily at 05:00 UTC
     check_weekly: 'Sun 06:00'                 # Weekly integrity check
 
@@ -291,6 +346,18 @@ restic:
     backup_moodle_files: '/var/log/restic/backup-moodle-files.log'
     backup_moodle_db: '/var/log/restic/backup-moodle-db.log'
     moodle_dump: '/var/log/restic/moodle-dump.log'
+    # WP-8R R3/R4/R6: one log per snapshot job and one per dump job (the probe
+    # reads the dump logs; the snapshot-age probe reads the repos).
+    backup_db_private: '/var/log/restic/backup-db-private.log'
+    backup_db_private_mongo: '/var/log/restic/backup-db-private-mongo.log'
+    backup_db_private_firefly: '/var/log/restic/backup-db-private-firefly.log'
+    backup_db_lf: '/var/log/restic/backup-db-lf.log'
+    backup_db_queen: '/var/log/restic/backup-db-queen.log'
+    db_dump_photoprism: '/var/log/restic/dump-photoprism.log'
+    db_dump_leagues_finance: '/var/log/restic/dump-leagues_finance.log'
+    db_dump_queen: '/var/log/restic/dump-queen.log'
+    db_dump_dontforget: '/var/log/restic/dump-dontforget.log'
+    db_dump_firefly: '/var/log/restic/dump-firefly.log'
     forget: '/var/log/restic/forget.log'
     check: '/var/log/restic/check.log'
 
@@ -308,7 +375,9 @@ restic_targets_enabled: >-
      + ((backup_targets | selectattr('enabled_by', 'equalto', 'leaguesphere') | list)
         if (leaguesphere_enabled | default(false) | bool) else [])
      + ((backup_targets | selectattr('enabled_by', 'equalto', 'moodle') | list)
-        if (moodle_enabled | default(false) | bool) else []) }}
+        if (moodle_enabled | default(false) | bool) else [])
+     + ((backup_targets | selectattr('enabled_by', 'equalto', 'servy') | list)
+        if (inventory_hostname == 'servy.lehel.xyz') else []) }}
 
 # Repo key lists. Order is the inventory order and it is load-bearing for the
 # forget/check scripts' output (they are diffed against the deployed files).

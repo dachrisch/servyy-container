@@ -15,8 +15,18 @@
 #   db                    database name ON that server (kept when a tenant moves)
 #   user                  the tenant's own scoped user (never root — D4)
 #   dump_schedule         what runs TODAY: 'hourly', 'daily HH:MM', or 'none'
-#   dump_dir              directory the dump lands in ('' = none today)
+#   dump_at               the HH:MM the dump timer fires (mirrors dump_schedule;
+#                         '' when dump_schedule is none)
+#   dump_dir              directory the dump lands in ('' = none today); the
+#                         CURRENT file lives in <dump_dir>/current, which is what
+#                         the restic repo snapshots
 #   restic_repo           restic repo that carries dump_dir ('' = none today)
+#   size_floor_bytes      below this a fresh dump is treated as broken by the
+#                         dump script (0 = no floor). Measured, not guessed: set
+#                         well under the healthy size but far above an empty one
+#   probe_minutes         snapshot-age probe threshold for this tenant's repo
+#                         (0 = no series)
+#   severity              alert severity of this tenant's dump/repo alerts
 #   max_user_connections  D12 limit; 0 = no limit set yet (WP-3b applies them)
 #   max_statement_time    D12 limit in seconds; 0 = no limit set yet
 #   retiring              D14: true = stays on its current line, excluded from the
@@ -29,9 +39,17 @@
 #
 # `dump_schedule` / `dump_dir` / `restic_repo` mirror the timers and scripts that
 # exist today (mariadb-backup-ls, moodle-dump + restic-backup-moodle-db, and since
-# WP-5b the bnb dump, which already runs through `dbops dump bnb_office`). WP-3b's
-# `dbops` takes ownership of the rest; until then this file only *describes* them,
-# it does not drive them.
+# WP-5b the bnb dump, which already runs through `dbops dump bnb_office`); since
+# WP-8R R3/R4/R6 the five nightly `dbops`/`pg_dump` jobs are described here too,
+# and their scripts + timers are RENDERED from this file
+# (roles/restic/tasks/backup.yml) rather than hand-wired.
+#
+# The `size_floor_bytes` / `probe_minutes` / `severity` facts appear here AND on
+# the tenant's `backup_targets` row. That duplication is deliberate and guarded:
+# `plays/tasks/restic_wiring.yml` fails the run when the two disagree, so a floor
+# can never be lowered in one place and leave the dump script and the probe
+# reading different thresholds. The tenant row is what the dump script reads; the
+# target row is what the probe generator and the retention read.
 #
 # The guard groups rows by `server`, so several tenants on one server produce one
 # entry in its per-server check (shared.mongo holds three, shared.db one).
@@ -51,7 +69,9 @@
 #   name                     repo key, = `restic.<name>` and `<repo>` in restic.yml
 #   kind                     files | db-dump  (what the repo holds)
 #   tenant                   tenant id from `db_tenants`, or null for a host repo
-#   enabled_by               always | leaguesphere | moodle  (the gating flag)
+#   enabled_by               always | leaguesphere | moodle | servy
+#                            (`servy` = the app exists on servy only: photoprism,
+#                            the two mongo business tenants and firefly)
 #   cadence                  hourly | daily HH:MM | none   (dump cadence TODAY)
 #   dump_at                  when the dump step runs ('40', '01:20'), null if none
 #   dump_format              physical | logical | none
@@ -109,6 +129,17 @@ retention_profiles:
     daily: 14
     weekly: 8
     monthly: 6
+  # WP-8R R3/R4/R6: daily dumps, 30 dailies + 8 weekly + 6 monthly.
+  db_daily:
+    last: 7
+    daily: 30
+    weekly: 8
+    monthly: 6
+  # Firefly is interim until WP-10 deletes it with shared.db: short on purpose.
+  db_daily_short:
+    last: 7
+    daily: 14
+    weekly: 4
 
 backup_targets:
   - name: home
@@ -201,6 +232,116 @@ backup_targets:
     dump_log_key: moodle_dump
     dump_log_label: moodle-dump
     dump_log_threshold_seconds: 7200
+
+  # --- WP-8R R4: PhotoPrism (private tier). A raw datadir is not a backup; the
+  # stopped pre-cutover datadir rides the home repo, which is not restorable as a
+  # database. This repo is the first real protection of its 1 014 albums.
+  - name: db-private
+    kind: db-dump
+    tenant: photoprism
+    enabled_by: servy
+    cadence: daily
+    dump_at: '00:45'
+    dump_format: logical
+    retention: db_daily
+    probe_minutes: 1560           # 26 h: a daily dump + slack
+    severity: medium
+    # 50 MiB: the healthy dump measured 107 336 589 B on 2026-11-18 (103 MB); an
+    # empty photoprism schema gzips to <1 KB, so anything under this is a defect,
+    # not a small backup. (The WIP used one blanket 1 MiB floor for all five
+    # tenants, which four of them could never reach: their dumps are 11-414 KB.)
+    size_floor_bytes: 52428800
+    log_key: backup_db_private
+    log_label: restic-backup-db-private
+    log_threshold_seconds: 93600
+    dump_log_key: db_dump_photoprism
+    dump_log_label: dump-photoprism
+    dump_log_threshold_seconds: 93600
+
+  # --- WP-8R R6: the two business mongo tenants. One repo each: a business
+  # tenant must be hand-over-able on its own (owner decision, WP-8R).
+  - name: db-lf
+    kind: db-dump
+    tenant: leagues_finance
+    enabled_by: servy
+    cadence: daily
+    dump_at: '01:15'
+    dump_format: logical
+    retention: db_daily
+    probe_minutes: 1560
+    severity: high
+    # 4 KiB: measured 11 644 B. An empty mongodump archive is 136 B, so this
+    # catches "dumped nothing" while leaving room for the tenant to shrink.
+    size_floor_bytes: 4096
+    log_key: backup_db_lf
+    log_label: restic-backup-db-lf
+    log_threshold_seconds: 93600
+    dump_log_key: db_dump_leagues_finance
+    dump_log_label: dump-leagues_finance
+    dump_log_threshold_seconds: 93600
+
+  - name: db-queen
+    kind: db-dump
+    tenant: queen
+    enabled_by: servy
+    cadence: daily
+    dump_at: '01:25'
+    dump_format: logical
+    retention: db_daily
+    probe_minutes: 1560
+    severity: high
+    size_floor_bytes: 8192        # measured 28 812 B; an empty archive is 136 B
+    log_key: backup_db_queen
+    log_label: restic-backup-db-queen
+    log_threshold_seconds: 93600
+    dump_log_key: db_dump_queen
+    dump_log_label: dump-queen
+    dump_log_threshold_seconds: 93600
+
+  # --- WP-8R R6: dontforget (private tier). Its own repo, like every other
+  # tenant: `db-private` belongs to PhotoPrism, and a repo per tenant is what
+  # makes one tenant's disaster not touch another's history. All five share the
+  # D16 password (restic_password_db), so this costs no extra secret.
+  - name: db-private-mongo
+    kind: db-dump
+    tenant: dontforget
+    enabled_by: servy
+    cadence: daily
+    dump_at: '01:35'
+    dump_format: logical
+    retention: db_daily
+    probe_minutes: 1560
+    severity: medium
+    size_floor_bytes: 8192        # measured 24 771 B; an empty archive is 136 B
+    log_key: backup_db_private_mongo
+    log_label: restic-backup-db-private-mongo
+    log_threshold_seconds: 93600
+    dump_log_key: db_dump_dontforget
+    dump_log_label: dump-dontforget
+    dump_log_threshold_seconds: 93600
+
+  # TEMPORARY - WP-10 deletes this row together with shared.db. Firefly's
+  # PGDATA is on /mnt, which the root repo excludes, so until then this pg_dump
+  # is its ONLY protection. Do not delete the repo, the timer or the dump dir
+  # before WP-10 moves Firefly off postgres.
+  - name: db-private-firefly
+    kind: db-dump
+    tenant: firefly
+    enabled_by: servy
+    cadence: daily
+    dump_at: '01:45'
+    dump_format: logical
+    retention: db_daily_short
+    probe_minutes: 1560
+    severity: medium
+    # 128 KiB: measured 414 050 B. An empty pg_dump -Fc archive is 888 B.
+    size_floor_bytes: 131072
+    log_key: backup_db_private_firefly
+    log_label: restic-backup-db-private-firefly
+    log_threshold_seconds: 93600
+    dump_log_key: db_dump_firefly
+    dump_log_label: dump-firefly
+    dump_log_threshold_seconds: 93600
 
 db_tenants:
   # --- high: LeagueSphere core production ---------------------------------
@@ -314,30 +455,43 @@ db_tenants:
     compose_dir: db-business
     compose_service: mariadb
 
+  # WP-8R R6 (2026-11-18): no backup of any kind before this - the data is a
+  # docker volume on /mnt, outside both the `root` and `home` scopes, and
+  # `dump_schedule: none` meant there was nothing to restore from either. Its own
+  # repo (db-lf), because a business tenant must be hand-over-able on its own.
   - tenant: leagues_finance
     tier: business
     engine: mongo
     server: shared.mongo
     db: leagues_finance
     user: leagues_finance
-    dump_schedule: none
-    dump_dir: ''
-    restic_repo: ''
+    dump_schedule: 'daily 01:15'
+    dump_at: '01:15'
+    dump_dir: /home/cda/db-dumps/leagues_finance
+    restic_repo: db-lf
+    size_floor_bytes: 4096
+    probe_minutes: 1560
+    severity: high
     max_user_connections: 0
     max_statement_time: 0
     retiring: false
     compose_dir: shared
     compose_service: mongo
 
+  # WP-8R R6 (2026-11-18): as leagues_finance - no backup before this, own repo.
   - tenant: queen
     tier: business
     engine: mongo
     server: shared.mongo
     db: queen
     user: queen
-    dump_schedule: none
-    dump_dir: ''
-    restic_repo: ''
+    dump_schedule: 'daily 01:25'
+    dump_at: '01:25'
+    dump_dir: /home/cda/db-dumps/queen
+    restic_repo: db-queen
+    size_floor_bytes: 8192
+    probe_minutes: 1560
+    severity: high
     max_user_connections: 0
     max_statement_time: 0
     retiring: false
@@ -349,50 +503,75 @@ db_tenants:
   # `photoprism.mariadb` is stopped and kept (with its ./database datadir) for the
   # one-week rollback, so it is no longer a `retiring` SERVER in the guard's sense
   # - the row now names the tier, and the guard compares it with the other three
-  # 13.0 servers. dump_schedule is still none: it moves onto `dbops` in WP-7,
-  # together with the tier's restic repo (Phase 7). Until then this database - the
-  # one holding 1 014 albums, 46 690 photos and 169 album links, which no
-  # re-index can rebuild - has no dump of its own.
+  # 13.0 servers.
+  # WP-8R R4 (2026-11-18): this row said `dump_schedule: none` while the least
+  # replaceable data on the host (1 014 albums, 46 690 photos, 169 album links -
+  # a re-index rebuilds derived data, never these) had no dump at all; the only
+  # "backup" was the stopped pre-cutover datadir riding the hourly `home` repo,
+  # and a raw datadir is not restorable. Now: `db-dump-photoprism` at 00:45
+  # (dbops_dump.sh.j2) and `restic-backup-db-private` at 00:55.
   - tenant: photoprism
     tier: private
     engine: mariadb
     server: db-private.mariadb
     db: photoprism
     user: photoprism
-    dump_schedule: none
-    dump_dir: ''
-    restic_repo: ''
+    dump_schedule: 'daily 00:45'
+    dump_at: '00:45'
+    dump_dir: /home/cda/db-dumps/photoprism
+    restic_repo: db-private
+    size_floor_bytes: 52428800
+    probe_minutes: 1560
+    severity: medium
     max_user_connections: 0
     max_statement_time: 0
     retiring: false
     compose_dir: db-private
     compose_service: mariadb
 
+  # WP-8R R6 (2026-11-18): one of the three mongo tenants with NO backup of any
+  # kind before this - the data is a docker volume on /mnt, which the `root` repo
+  # excludes and the `home` repo never covered; the only artefacts were two
+  # ad-hoc archives that happened to sit in /home.
   - tenant: dontforget
     tier: private
     engine: mongo
     server: shared.mongo
     db: dontforget
     user: dontforget
-    dump_schedule: none
-    dump_dir: ''
-    restic_repo: ''
+    dump_schedule: 'daily 01:35'
+    dump_at: '01:35'
+    dump_dir: /home/cda/db-dumps/dontforget
+    restic_repo: db-private-mongo
+    size_floor_bytes: 8192
+    probe_minutes: 1560
+    severity: medium
     max_user_connections: 0
     max_statement_time: 0
     retiring: false
     compose_dir: shared
     compose_service: mongo
 
+  # INTERIM (WP-8R R3; deleted in WP-10 with `shared.db`): a daily `pg_dump -Fc`.
+  # PGDATA is on /mnt, which the `root` repo excludes, so before this row firefly
+  # was one host loss from total loss. It is a logical daily dump, NOT PITR, and it
+  # disappears with postgres: WP-10 moves firefly onto MariaDB (D7), where the
+  # ordinary `dbops dump` path takes over. The dump script is therefore NOT dbops -
+  # there is no postgres adapter, and one must not be written for an engine that
+  # is retired in the same programme (roles/restic/templates/firefly_dump.sh.j2).
   - tenant: firefly
     tier: private
     engine: postgres
     server: shared.db
     db: firefly
     user: firefly
-    # Nothing dumps it today; it becomes a MariaDB tenant in Phase 9 (D7).
-    dump_schedule: none
-    dump_dir: ''
-    restic_repo: ''
+    dump_schedule: 'daily 01:45'
+    dump_at: '01:45'
+    dump_dir: /home/cda/db-dumps/firefly
+    restic_repo: db-private-firefly
+    size_floor_bytes: 131072
+    probe_minutes: 1560
+    severity: medium
     max_user_connections: 0
     max_statement_time: 0
     retiring: false

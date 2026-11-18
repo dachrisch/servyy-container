@@ -210,6 +210,129 @@
   tags:
     - restic.backup
 
+# --- WP-8R R3/R4/R6: the dump-backed repos (servy only) --------------------
+# Five tenants get their first real protection here: PhotoPrism (private),
+# leagues_finance + queen (business), dontforget (private mongo) and firefly
+# (private postgres, INTERIM until WP-10 deletes it with shared.db).
+#
+# Each target is one dump job + one restic snapshot job, both rendered from the
+# SAME `backup_targets` row, because the only thing that differs per tenant is
+# name/schedule/command — which is the whole point of the R1 generator. The
+# schedules are the ones decided in docs/plans/2026-11-18_db-tier-work-packages.md
+# (dump first, snapshot 5-10 min later, never two dumps at once on this host).
+#
+# `servy` targets are gated on inventory_hostname in vars/restic.yml, so on any
+# other host `db_dump_targets` is empty and every loop below is a no-op (the
+# same mechanism that keeps moodle/leaguesphere off hosts that do not run them).
+- name: Select the dump-backed backup targets that run on this host
+  ansible.builtin.set_fact:
+    db_dump_targets: >-
+      {{ restic_targets_enabled | default([])
+         | selectattr('enabled_by', 'equalto', 'servy') | list }}
+    db_tier_units: []
+  tags:
+    - restic.backup
+
+# The canonical root (R7). Created here, not by the dump script, so a fresh host
+# has the directory (and its ownership) before the first timer ever fires and
+# before restic is pointed at <root>/current.
+- name: Create the canonical dump directory for each dump-backed tenant
+  ansible.builtin.file:
+    path: "{{ tenant_row.dump_dir }}"
+    state: directory
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0770'
+  vars:
+    tenant_row: "{{ db_tenants | selectattr('tenant', 'equalto', item.tenant) | first }}"
+  loop: "{{ db_dump_targets }}"
+  loop_control:
+    label: "{{ item.tenant }}"
+  tags:
+    - restic.backup
+
+- name: Deploy the database dump script for each dump-backed tenant
+  ansible.builtin.template:
+    src: "{{ 'firefly_dump.sh.j2' if item.tenant == 'firefly' else 'dbops_dump.sh.j2' }}"
+    dest: "{{ (remote_user_home, '.backup-scripts', 'dump-' ~ item.tenant ~ '.sh') | path_join }}"
+    mode: '0750'
+  vars:
+    tenant_row: "{{ db_tenants | selectattr('tenant', 'equalto', item.tenant) | first }}"
+    dump_root: "{{ tenant_row.dump_dir }}"
+    # From the TENANT row, not the target row: the floor is a property of the
+    # tenant's data, and restic_wiring.yml fails the run if the two ever differ.
+    dump_size_floor_bytes: "{{ tenant_row.size_floor_bytes }}"
+    dump_log: "{{ restic.logs[item.dump_log_key] }}"
+    # dbops is rendered by the db_tier role. Its path is a db_tier role default,
+    # which a different role cannot see, hence the fallback — same value, one
+    # owner (roles/db_tier/defaults/main.yml: db_tier_dbops_path).
+    dbops_path: "{{ db_tier_dbops_path | default((remote_user_home, '.dbops', 'dbops') | path_join) }}"
+  loop: "{{ db_dump_targets }}"
+  loop_control:
+    label: "dump-{{ item.tenant }}"
+  tags:
+    - restic.backup
+
+- name: Deploy the restic script for each dump-backed repo
+  ansible.builtin.template:
+    src: restic_backup.sh.j2
+    dest: "{{ (remote_user_home, '.backup-scripts', 'restic-backup-' ~ item.name ~ '.sh') | path_join }}"
+    mode: '0750'
+  vars:
+    backup_name: "{{ item.name }}"
+    source_path: "{{ restic[item.name].source_path }}"
+    exclude_caches: "{{ restic.exclude_caches }}"
+    log_file: "{{ restic.logs[item.log_key] }}"
+  loop: "{{ db_dump_targets }}"
+  loop_control:
+    label: "restic-backup-{{ item.name }}"
+  tags:
+    - restic.backup
+
+# One list, then ONE loop over the unit template: the dump unit and its snapshot
+# unit are two entries and nothing else distinguishes them. Keeping this a fact
+# (rather than 10 hand-written import_tasks blocks) is what keeps "add a tenant"
+# = "add a backup_targets row".
+- name: Build the oneshot unit list (dump + snapshot per dump-backed repo)
+  ansible.builtin.set_fact:
+    db_tier_units: >-
+      {{ db_tier_units + [
+           {'name': 'db-dump-' ~ t.tenant,
+            'description': 'Logical dump of the ' ~ t.tenant ~ ' tenant',
+            'schedule': restic.schedules['dump_' ~ t.tenant],
+            'command': (remote_user_home, '.backup-scripts', 'dump-' ~ t.tenant ~ '.sh') | path_join},
+           {'name': 'restic-backup-' ~ t.name,
+            'description': 'Restic backup - ' ~ t.name ~ ' (' ~ t.tenant ~ ' dumps)',
+            'schedule': restic.schedules['backup_' ~ (t.name | replace('-', '_'))],
+            'command': (remote_user_home, '.backup-scripts', 'restic-backup-' ~ t.name ~ '.sh') | path_join}
+         ] }}
+  loop: "{{ db_dump_targets }}"
+  loop_control:
+    loop_var: t
+    label: "{{ t.name }}"
+  tags:
+    - restic.backup
+
+- name: Deploy the dump and snapshot timers for the dump-backed repos
+  ansible.builtin.include_tasks:
+    file: oneshot_include.yml
+    # Dynamic include + tags: tags on an include statement do NOT propagate into
+    # the included tasks, so without `apply` a `--tags restic.backup` run would
+    # deploy the scripts and leave the timers behind.
+    apply:
+      tags:
+        - restic.backup
+        - restic.systemd
+  vars:
+    service: "{{ unit }}"
+  loop: "{{ db_tier_units }}"
+  loop_control:
+    loop_var: unit
+    label: "{{ unit.name }}"
+  tags:
+    - restic.backup
+    - restic.systemd
+
 - name: Deploy restic backup script for moodle-files
   template:
     src: restic_backup.sh.j2

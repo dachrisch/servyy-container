@@ -1,0 +1,118 @@
+#!/bin/zsh
+# Dump the {{ tenant_row.tenant }} tenant ({{ tenant_row.engine }} on
+# {{ tenant_row.server }}, database {{ tenant_row.db }}) into
+# {{ dump_root }}/current — the ONE directory its restic repo snapshots.
+#
+# WHY THIS SCRIPT EXISTS (WP-8R R4/R6, 2026-11-18): before it, this tenant had no
+# backup of any kind. Its data lives in a place no repo reaches — a bind-mounted
+# datadir under `servyy-container/db-*/data` or a docker volume on /mnt, both
+# excluded from the `home` and `root` scopes on purpose (a copy of a live
+# engine's files is not restorable) — and `dump_schedule` said `none`, so there
+# was nothing to restore from either. Photoprism alone is 1 014 albums and
+# 46 690 photos that no re-index can rebuild.
+#
+# WHAT THIS SCRIPT DOES NOT DO, on purpose:
+#   * it never talks to the database engine itself. `dbops dump` owns the engine
+#     (mariadb: `mariadb-dump`; mongo: `mongodump --archive`), its `.partial` ->
+#     rename discipline, its gzip/stream integrity and its "keep the newest two"
+#     pruning. One wrapper therefore serves every tenant whose engine dbops can
+#     dump, and credentials never appear here: dbops reads the tier's 0600 env
+#     file (mariadb) or the server container's own MONGO_INITDB_ROOT_* env
+#     (mongo).
+#   * it needs no sudo: the dump root is under the deploy user's home. (Moodle's
+#     `moodle_dump.sh.j2` does need it — its target lives in a service data dir
+#     that is root:root 0750.)
+#
+# WHY `new/` -> `current/` RATHER THAN DUMPING STRAIGHT INTO `current/`:
+#   restic snapshots {{ dump_root }}/current — never `new/`, so a dump that is
+#   still being written can never be captured. And a dump that FAILS must not
+#   destroy the last good file, which is the only copy until restic has uploaded
+#   the new one: `dbops dump` writes into `new/`, the size floor below decides
+#   whether the result is a dump at all, and only then is `new/` moved into
+#   place. A failure leaves yesterday's `current/` untouched and the dump-log
+#   freshness probe (`dump-{{ tenant_row.tenant }}`) crosses its threshold — the
+#   repo keeps the previous good dump AND gets paged.
+#
+# WHY A SIZE FLOOR: `dbops` proves the stream completed; it cannot know that a
+# *successful* dump of an empty or truncated database is a defect. The floor is
+# a per-tenant number in `db_tenants.yml` (`size_floor_bytes`), set well under
+# the size measured on 2026-11-18 (see the history entry) but far above what an
+# empty database produces, so an empty schema or a dump of the wrong database
+# fails instead of replacing a good one.
+set -euo pipefail
+
+if [ -f "/home/{{ create_user }}/.zshenv" ]; then
+    source "/home/{{ create_user }}/.zshenv"
+fi
+source "/home/{{ create_user }}/.zprezto/custom/functions/logdy"
+
+TENANT="{{ tenant_row.tenant }}"
+DBOPS="{{ dbops_path }}"
+ROOT="{{ dump_root }}"
+NEW="$ROOT/new"
+CUR="$ROOT/current"
+FLOOR={{ dump_size_floor_bytes }}
+
+export LOGDY_ALSO_TO_FILE="{{ dump_log }}"
+LOG_FILE="{{ dump_log }}"
+
+logdy info "Starting {{ tenant_row.tenant }} dump" tenant="$TENANT" engine="{{ tenant_row.engine }}" target="$CUR"
+
+mkdir -p -m 0770 "$ROOT"
+rm -rf "$NEW"
+mkdir -m 0770 "$NEW"
+
+# DBOPS_DUMP_DIR, not the tenant row's dump_dir: the row names the canonical
+# root (the thing a human restores from and the thing the inventory documents),
+# while this run must land in the staging directory. `dbops` treats it as an
+# override of exactly that field, so the two can never disagree about anything
+# else (server, database, engine).
+if DBOPS_DUMP_DIR="$NEW" "$DBOPS" dump "$TENANT"; then
+    :
+else
+    EXIT_CODE=$?
+    rm -rf "$NEW"
+    logdy error "{{ tenant_row.tenant }} dump failed" tenant="$TENANT" exit_code=$EXIT_CODE
+    exit $EXIT_CODE
+fi
+
+# Exactly one file: more than one would mean the staging directory was reused,
+# and `current/` would then hold a file this run's floor never checked.
+FILE_COUNT=$(ls -1 "$NEW" | wc -l)
+FILE=$(ls -1t "$NEW" | head -1)
+if [ "$FILE_COUNT" -ne 1 ] || [ -z "$FILE" ]; then
+    rm -rf "$NEW"
+    logdy error "dump staging directory does not hold exactly one file" files="$FILE_COUNT"
+    exit 1
+fi
+
+BYTES=$(stat -c %s "$NEW/$FILE")
+if [ "$BYTES" -lt "$FLOOR" ]; then
+    rm -rf "$NEW"
+    logdy error "Dump suspiciously small" file="$FILE" bytes=$BYTES floor=$FLOOR
+    exit 1
+fi
+
+# Atomic-ish swap (new/ and current/ are the same filesystem, so `mv` is a
+# rename). The previous file is dropped only AFTER the new one is in place: the
+# repo may only ever see a complete, floor-checked dump.
+rm -rf "$CUR.old"
+if [ -d "$CUR" ]; then
+    mv "$CUR" "$CUR.old"
+fi
+mv "$NEW" "$CUR"
+rm -rf "$CUR.old"
+
+# Prove the swap actually took effect. `mv new current` onto an existing
+# directory NESTS it (`current/new/...`) and leaves the old dump in place while
+# the repo keeps backing that old dump up with a refreshed mtime — the failure
+# measured on the Moodle job on 2026-11-06. Checking that the file this run
+# produced is now visible at `current/<file>` with the same size is what catches
+# that class of bug.
+SWAPPED_BYTES=$(stat -c %s "$CUR/$FILE" 2>/dev/null || echo 0)
+if [ "$SWAPPED_BYTES" -ne "$BYTES" ]; then
+    logdy error "Swap did not take effect" expected_bytes=$BYTES actual_bytes=$SWAPPED_BYTES target="$CUR/$FILE"
+    exit 1
+fi
+
+logdy info "{{ tenant_row.tenant }} dump refreshed" tenant="$TENANT" target="$CUR/$FILE" bytes=$BYTES

@@ -234,7 +234,15 @@
     fi
   loop: "{{ restic_repos_enabled }}"
   register: restic_init
-  when: restic_env_files.changed or sftp_mkdir.changed
+  # Deliberately NOT gated on `restic_env_files.changed or sftp_mkdir.changed`
+  # any more (WP-8R, 2026-11-18). That gate made initialisation depend on an
+  # unrelated change elsewhere: it worked only because a new repo also brings a
+  # new env file, so a repo that was pruned/unreachable while its env file
+  # already matched was never initialised and every snapshot then failed with
+  # "repository does not exist". `restic snapshots` fails on a missing repo, so
+  # running this every time both inits a new repo and is a no-op for an existing
+  # one; five new repos in one package is exactly the case where "only when
+  # something else changed" stops being a safe shortcut.
   changed_when: "'created restic repository' in restic_init.stdout"
   failed_when: false
   tags:

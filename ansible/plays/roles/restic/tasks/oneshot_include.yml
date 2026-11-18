@@ -30,6 +30,15 @@
     name: '{{service.name}}.timer'
     state: started
     enabled: yes
+    # daemon_reload: a REWRITTEN unit file is not the one systemd has loaded, so
+    # until the next unrelated reload the timer keeps firing the OLD ExecStart.
+    # Measured twice in this repo — on WP-5b (2026-11-18, docker-bnb-office-dump:
+    # `systemctl --user cat` said "the version systemd has loaded is outdated",
+    # so the next fire would still have run the previous command line) and again
+    # on the WP-8R timers. The sibling includes (system_probe,
+    # ls_maintenance_probe, user/oneshot) already did this; this file was the one
+    # that did not, and it is the include every restic timer goes through.
+    daemon_reload: yes
   tags:
     - restic.backup
     - restic.systemd
