@@ -1,0 +1,104 @@
+# private database tier — PhotoPrism (D3/D6), Firefly later (Phase 9).
+# Backend-only project (like `shared`, `db-nonprod`, `db-business`): owns NO app
+# traffic, publishes no port. Consumers attach with:
+#   networks:
+#     backend:
+#       name: db_private_backend
+#       external: true
+# and reach mariadb:3306 on `db-private.mariadb`.
+#
+# Plan: docs/plans/2026-11-17_db-tier-topology.md, Phase 5. WP-6a creates the
+# server and copies PhotoPrism's database; WP-6b points the app here.
+#
+# The compose SERVICE IS NAMED `mariadb` ON PURPOSE. PhotoPrism's
+# `PHOTOPRISM_DATABASE_SERVER` is `mariadb:3306` (photoprism/docker-compose.yml),
+# and compose publishes the service name as a network alias — so once the app is
+# attached to `db_private_backend` in WP-6b, that value keeps resolving to this
+# server with no change. `db-private.mariadb` works too (container-name alias);
+# WP-6b may use either.
+#
+# PHOTOPRISM'S SERVER FLAGS ARE SERVER-WIDE, hence a separate tier: PhotoPrism
+# requires READ-COMMITTED (its own sessions and advisory locking assume it) and
+# pins a high connection ceiling plus long lock-wait tolerance for its indexer.
+# The other tiers must NOT inherit any of that — bnb's invoice-number
+# transactions rely on the default REPEATABLE-READ.
+#
+# DELIBERATELY DROPPED from photoprism/docker-compose.yml's old `mariadb:`
+# service (documented in the plan, Phase 5 step 1):
+#   * `security_opt: seccomp:unconfined` / `apparmor:unconfined` — they existed
+#     only so MariaDB could use the bind-mounted `./database` datadir under
+#     PhotoPrism's own UID;
+#   * `user: ${UID}:${GID}` — same reason. The datadir here is `./data/mariadb`
+#     and the entrypoint takes ownership, exactly as on the other tiers;
+#   * `MARIADB_INITDB_SKIP_TZINFO` — only relevant to the 12.3 image's first
+#     boot; the tier's 13.0 image and `mariadb.env` do not set it.
+name: ${SERVICE_NAME}
+
+services:
+  mariadb:
+    # Pinned to the MINOR, patch floats (D1): watchtower's `db` scope (labels
+    # below) delivers 13.0.x in the fixed 06:00 window with health-gated
+    # rollback; a 13.x -> 14.x step is a reviewed PR.
+    image: mariadb:13.0
+    container_name: ${COMPOSE_PROJECT_NAME}.mariadb
+    restart: unless-stopped
+    # 512m: matches the profile roles/db_tier documents for this tier. The old
+    # app-owned server had NO memory limit; the tier is bounded, so watch
+    # `container_memory_near_limit` on it for a week after WP-6b (Phase 5's
+    # verify step).
+    mem_limit: 512m
+    command:
+      - --innodb-buffer-pool-size=128M
+      # PhotoPrism's requirements, carried over verbatim from the old service:
+      - --transaction-isolation=READ-COMMITTED
+      - --max-connections=512
+      - --innodb-rollback-on-timeout=OFF
+      - --innodb-lock-wait-timeout=120
+      # D5: charset/collation are set explicitly (13.0 changed the default
+      # collation, and a mixed one breaks joins with the existing tables).
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    # Rendered by roles/db_tier (0600): MARIADB_ROOT_PASSWORD +
+    # MARIADB_AUTO_UPGRADE. DB-ONLY env on purpose — no MYSQL_HOST may ever
+    # appear here: the entrypoint's `mariadb-upgrade` step shells out to the
+    # `mysql` client, which honours MYSQL_HOST, dials TCP to that name while the
+    # temporary upgrade server is socket-only, and puts the container in a
+    # restart loop (history/2026-11-18_ls-db-upgrade-flag-outage.md).
+    env_file:
+      - mariadb.env
+    environment:
+      # Same value as in mariadb.env; kept here so a missing line is visible in
+      # the compose diff. A tier server upgrades its own system tables on start.
+      MARIADB_AUTO_UPGRADE: "1"
+    volumes:
+      # D13: the datadir is a bind mount on `/` (≈30 GB free), never a named
+      # volume — the write-heaviest tenants must not land on the network block
+      # storage by accident. No `user:` override: the entrypoint takes ownership.
+      - ./data/mariadb:/var/lib/mysql
+    networks:
+      - backend
+    labels:
+      - traefik.enable=false
+      # Database server: the `db` watchtower scope (D15), daily 06:00 window,
+      # health-check gated with rollback. Not `prod` — that poller runs every 2 h.
+      - com.centurylinklabs.watchtower.scope=db
+    # 30s, not 10s, like every check in this repo: each check is a `docker exec`
+    # and this host is queue-bound rather than CPU-bound
+    # (history/2026-10-30_load-alert-tuning.md). start_interval/start_period are
+    # sized for a MariaDB FIRST boot, which initialises a fresh datadir (~10-30 s
+    # on this disk) before it can answer: without them the first check fails,
+    # `retries: 5` at 30 s intervals would still cover it, but the container
+    # would flap through "unhealthy" during every fresh-volume start.
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -uroot -p$$MARIADB_ROOT_PASSWORD --silent"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_interval: 2s
+      start_period: 60s
+
+networks:
+  backend:
+    # Explicit name: consumers attach with `external: true`.
+    name: db_private_backend
+    internal: true
