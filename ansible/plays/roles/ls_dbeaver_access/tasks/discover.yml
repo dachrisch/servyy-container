@@ -14,6 +14,12 @@
 # `com.docker.compose.project.working_dir` label, so the role does not have to
 # guess where a stack lives and a rename in leaguesphere.yml cannot break it.
 #
+# ONE EXCEPTION, the `compose_dir` pin: on a DB-tier stack the database
+# container belongs to the TIER's compose project, so its label names the tier's
+# dir, not the app stack's — and `dba.env` must be written next to the compose
+# file whose sidecar reads it (env_file: dba.env). A pin therefore supplies
+# `compose_dir` explicitly; app-owned stacks keep the label.
+#
 # The block carries all three tags on purpose: tags on a dynamic include do not
 # propagate to the included tasks, so without this a `--tags ls.dbeaver.reap`
 # run would load this file and then skip every task in it.
@@ -66,8 +72,13 @@
       vars:
         dbeaver_stack:
           name: "{{ dbeaver_candidate.name }}"
+          # The only consumer of compose_dir is the `dba.env` write in
+          # tasks/provisioner.yml. A tier pin overrides it (defaults:
+          # dbeaver_stack_pins); otherwise the DB container's own label is the
+          # stack's compose dir, which is correct for an app-owned database.
           compose_dir: >-
-            {{ dbeaver_candidate_db.container.Config.Labels['com.docker.compose.project.working_dir'] }}
+            {{ dbeaver_pin.compose_dir | default(
+                 dbeaver_candidate_db.container.Config.Labels['com.docker.compose.project.working_dir']) }}
           db_container: "{{ dbeaver_candidate_db_container }}"
           db_name: "{{ dbeaver_candidate_db_name }}"
           # Empty for an app-owned stack (the reaper then uses the container's

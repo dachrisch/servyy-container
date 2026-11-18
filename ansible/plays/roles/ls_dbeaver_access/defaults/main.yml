@@ -92,6 +92,18 @@ dbeaver_stack_pins:
     admin_user: ls_stage_access_admin
     admin_password_file_seed: "vars/.dbeaver_stage_admin_password"
     admin_env_path: /etc/ls-db-access/leaguesphere_stage.env
+    # Where the sidecar's environment file lives: the APP stack's compose dir,
+    # built from the same variables plays/leaguesphere.yml uses for that stack's
+    # `container_dir` — never a literal.
+    #
+    # Without this the role derives the dir from the database container's
+    # `com.docker.compose.project.working_dir` label (tasks/discover.yml), which
+    # was correct while the stage DB was an app-owned `leaguesphere_stage.mysql`.
+    # The pin now names db-nonprod.mariadb, whose label is the TIER's project dir
+    # (/home/cda/servyy-container/db-nonprod), so dba.env landed there while the
+    # sidecar kept reading .../container-stage/deployed/dba.env and ticked
+    # `ERROR 2005 (HY000): Unknown server host 'mysql'` (observed 2026-11-18).
+    compose_dir: "{{ (ssh_chroot_jail_path, 'home', ls.user, 'container-stage', 'deployed') | path_join }}"
 
 dbeaver_ls_vars_files:
   - secret_main.yaml
