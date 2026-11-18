@@ -15,8 +15,9 @@
 | WP-0d | **done** | `ebfefb36` + `cc4671d5`; `MARIADB_AUTO_UPGRADE` removed from `ls.env` after the 2026-11-18 outage (`history/2026-11-18_ls-db-upgrade-flag-outage.md`, ~6.5 min public downtime) |
 | WP-0e (drills) | **done / partly deferred** | `d5714b3e`; real play-level minor-mismatch refusal (13.0 vs 12.3, `changed=0`, override downgrades to warning); Grafana rule `db_version_drift` loaded+enabled, `for 1d`, medium, queryable. Deferred: digest-drift drill and health-gate rollback (both need a second active server / a non-prod `db` watcher — unblock in WP-4). Found: the guard is blind under `--check` (command module has no check mode) |
 | WP-2 | **done** | `82ccf8fd` + `050c120f`; `leagues_finance`/`queen` scoped users created, both apps live as their own users (11/14 collections read with their own credential), no `MONGO_INITDB_ROOT_*` in any app env; mongo root rotated (old rejected, new accepted, role authenticates with the new var) |
-| Follow-ups (not packages) | open | guard `check_mode: false`; `--tags user.docker.finance` is not self-contained (needs `user.docker.env.finance`); `shared.env` is shared by mongo and postgres, so a mongo credential change also recreates `shared.db`; Renovate dashboard check |
-| WP-3 … WP-11 | not started | — |
+| WP-3 | **done** (3a + 3b) | 3a `3028ce02`: `db_tenants.yml` seeds 10 tenants from the running containers (prod is `web35_db8`/`web35_8`), the guard reads it (stage+demo now active → three MariaDB servers compared), `check_mode: false` fixes the `--check` blindness. 3b `17c230fc`: `dbops` (dump/restore/verify/shell/tenants, `.partial`, DEFINER stripping, exact counts), `db_tier` role (profiles, D12 limits, per-tier backup user, per-tier tags, `db_tiers`), `.gitignore`, D16 seed. Nothing runs yet: `db_tiers` is empty on every host. Limits: molecule blocked (no docker on the controller, no molecule on servyy-test) → CI; the SQL templates and `restore` are unexecuted; the backup user appears only on first deploy |
+| Follow-ups (not packages) | open | `--tags user.docker.finance` is not self-contained (needs `user.docker.env.finance`); `shared.env` is shared by mongo and postgres, so a mongo credential change also recreates `shared.db`; Renovate dashboard check |
+| WP-4 … WP-11 | not started | — |
 
 ## The stopping rule
 
