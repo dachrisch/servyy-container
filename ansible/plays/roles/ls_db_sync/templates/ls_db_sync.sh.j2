@@ -19,8 +19,14 @@ STAGE_PASSWORD="{{ stage_password }}"
 STAGE_APP_CONTAINER="{{ stage_app_container }}"
 RETIRED_CONTAINER="{{ retired_container }}"
 
-if docker inspect "$RETIRED_CONTAINER" >/dev/null 2>&1; then
-  echo "ERROR: retired container $RETIRED_CONTAINER exists again - refusing to sync" >&2
+# The failure mode is a RESURRECTED, RUNNING app-owned container: it would
+# silently receive the sync into a database nobody reads. A merely STOPPED one is
+# the cutover's one-week rollback and must NOT trip this guard — `docker inspect`
+# succeeds for stopped containers, so testing mere existence would fail the sync
+# every night for the whole rollback window. Hence State.Running.
+RETIRED_RUNNING=$(docker inspect -f {% raw %}'{{.State.Running}}'{% endraw %} "$RETIRED_CONTAINER" 2>/dev/null || echo false)
+if [ "$RETIRED_RUNNING" = "true" ]; then
+  echo "ERROR: retired container $RETIRED_CONTAINER is running again - refusing to sync" >&2
   exit 1
 fi
 
