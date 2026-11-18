@@ -50,9 +50,12 @@ Supporting surface and hazards found:
 - **2 restic DB repos** (`db` for LS, `moodle-db`), seeds `vars/.restic_password_ls_db` /
   `.restic_password_moodle` (`roles/restic/defaults/main.yml`).
 - **3 migration/restore roles**: `ls_db_sync`, `ls_db_migrate`, `ls_stage_restore`.
-- **Renovate automerges every minor+patch update** (`renovate.json`), including database
-  images: `mariadb 13.0.x → 13.1` and `mongo 9.0.8 → 9.1` would be merged unattended and
-  applied as in-place upgrades on the next deploy.
+- **Two things deliver database updates today, neither on a schedule anyone chose.**
+  Renovate automerges every minor+patch update (`renovate.json`), so `mariadb:12.3`,
+  `postgres:15` and `mongo:9.0.8` can move a minor or a patch unattended at the next deploy;
+  and watchtower's prod scope polls every 2 h, so `mariadb:latest` (LS prod/stage/demo) and
+  `mariadb:lts` (PhotoPrism) jump to whatever upstream re-points the channel alias to —
+  including a new minor, mid-day, with no window.
 - **Apps holding database root:** leagues-finance and queen connect to mongo as root
   (`templates/leagues-finance/.env.j2:10-12`, `templates/finance/queen.env.j2:4`,
   `authSource=admin`); `leaguesphere_stage.db-access` and `ls_db_sync` use MariaDB root.
@@ -82,8 +85,11 @@ Rules that hold in every tier:
 - Datadirs are **bind mounts on `/`** at `db-<tier>/data/<engine>` (gitignored), never
   named volumes (D13).
 - One backend network per tier (`db_<tier>_backend`); a consumer joins only its tier's.
-- Exact image tags, written literally in each committed compose file (D1). **No watchtower
-  label on any database server.**
+- Tags pin the **minor** and float the patch (`mariadb:13.0`, `mariadb:12.3`, `postgres:15`,
+  `mongo:9.0`), written literally in each committed compose file (D1). `:latest` and `:lts`
+  are banned — both re-point across minors.
+- Database servers carry the **`db` watchtower scope**, which delivers patches in a fixed
+  daily window (D15), health-check gated with automatic rollback.
 - No published port except the nonprod/high tunnels on `127.0.0.1`
   (`check_published_ports.py` already rejects all-interface binds).
 - An instance exists only when a tenant of that engine is classified into the tier.
@@ -115,21 +121,21 @@ it to SQLite is an app change in the dontforget repo. Neither is in this plan.
 
 | # | Decision | Rationale |
 |---|---|---|
-| D1 | **One version line per engine; the tag is a literal in each committed compose file** (`mariadb:13.0.2`, `mongo:9.0.8`, `postgres:15.20`) | Renovate's docker-compose manager is what delivers patches, and it only sees tags in compose files — an Ansible var would never move. MariaDB line = **13.0 now, hop later**: LS prod's datadir is already 13.0; 13.0 is a *rolling* release (community support ends ~2026-12-31 per endoflife trackers — confirm on mariadb.org before scheduling Phase 10), 12.3 is the current LTS (to 2029-06). Rejected by the owner: 12.3 LTS fleet-wide (needs an LS-prod logical move) and a permanent 12.3/13.0 mix. The only tolerated mix is the *migration-time* one in D14. |
+| D1 | **One version line per engine; the tag pins the minor and floats the patch** (`mariadb:13.0`, `mariadb:12.3`, `postgres:15`, `mongo:9.0`) | Patches are delivered by watchtower (D15), and watchtower can only pull a tag that is re-pointed on release — so the tag must name the minor and let the patch move. `:latest` and `:lts` are banned because both re-point across minors (`latest` already put 13.0.2 on prod unannounced). Renovate does not touch these tags for patches; it only proposes a minor/major change as a reviewed PR. MariaDB line = **13.0 now, hop later**: LS prod's datadir is already 13.0; 13.0 is a *rolling* release (community support ends ~2026-12-31 per endoflife trackers — confirm on mariadb.org before scheduling Phase 10), 12.3 is the current LTS (to 2029-06). Owner rejected a 12.3 fleet and a permanent mix; the only tolerated mix is the migration-time one in D14. |
 | D2 | **Tier is the primary axis, engine the secondary** | A new tenant of any engine is a row in `db_tenants.yml`, not a new rule. |
 | D3 | **Four tiers: high / nonprod / business / private** | Lifecycle (prod vs non-prod) × owner (LS core / business / personal). Rejected: Moodle with stage+demo (stage has the external `dbeaver_stage` tunnel and takes full prod restores); business and private on one server (mixes business with personal data and forces PhotoPrism's server-wide flags on bnb). **Deliberate reversal:** the earlier rule "Moodle, PhotoPrism and bnb never share" is replaced by "business tenants share with each other, never with private or nonprod". |
 | D4 | **Separation by scoped users, per-tier networks and per-tenant dumps, not one server per tenant** | A dedicated server adds no protection against host root and, with D1, no independent upgrades. The crash domain per tier is accepted. No contractual requirement for physical separation exists for OFFD or bnb. |
 | D5 | **Every MariaDB server sets charset/collation explicitly** (`utf8mb4` / `utf8mb4_unicode_ci`) | 13.0 changed the default collation; otherwise new tables differ from existing ones and joins fail with `Illegal mix of collations`. |
 | D6 | **Each tier is a backend-only compose project `db-<tier>` in this repo**; LS prod stays `leaguesphere.db` in the leaguesphere repo; there is no `db-high` project | Same conventions as `shared`. Moving the prod DB container buys nothing and risks prod. `shared` ends as `redis` only. |
 | D7 | **Postgres is removed last** (Phase 9: Firefly → `db-private.mariadb`, mechanism decided on a scratch instance — table-by-table `data only` load preferred, export/import only as a documented fallback) | Never pgloader against the *live* DB, and never an export/import cut-over that silently drops budgets, rules and piggies (see Phase 9's pre-check). `shared.db` is not re-homed first — that would move it twice. |
-| D8 | **Drift is checked before anything restarts: a line mismatch fails, a patch mismatch alerts** | The guard is a `pre_task` tagged `always`, so it runs on every deploy whatever the tag scope. It reads the *intended* images from the compose files about to be applied — this repo plus the leaguesphere checkout on the host — so it stops a mixed fleet instead of reporting one. **Major.minor mismatch** among active servers of an engine (e.g. 13.0 vs 13.1) **fails the play**. **Patch mismatch** (13.0.2 vs 13.0.3) only warns and pushes `db_version_drift{engine}=1` (Grafana alert after 24 h): patches automerge independently per repo (D15), and a patch mix shares the datadir format, so failing on it would break routine deploys with no human in the loop. The only override, `-e db_version_guard_allow_drift=<engine>`, exists for the runs of a scheduled hop (Phase 10) and is named in the history entry. |
+| D8 | **Drift is checked before anything restarts: a minor mismatch fails, a patch mismatch alerts** | The guard is a `pre_task` tagged `always`, so it runs on every deploy whatever the tag scope. It reads each server's **tag** from the compose file about to be applied (this repo plus the leaguesphere checkout on the host) and its **digest** from the running container, so it can fail *before* a restart rather than report afterwards. **Minor mismatch** among active servers (`13.0` vs `13.1`) **fails the play**. **Digest mismatch on the same tag** — the normal state for a few hours after a watchtower patch pull — only warns and pushes `db_version_drift{engine}=1` (Grafana alert after 24 h); failing on it would block routine deploys with no human in the loop, and the patch mix shares the datadir format. The only override, `-e db_version_guard_allow_drift=<engine>`, exists for the runs of a scheduled hop (Phase 10) and is named in the history entry. |
 | D9 | **SQLite apps stay SQLite** | `devhub`, `waggle`, `opencode`: single-writer embedded DBs. |
 | D10 | **Physical backups + PITR are high-tier-only** | `mariadb-backup`/binlog assume "the server is LS prod" (`ls_stage_restore` depends on it). |
 | D11 | **Moves are logical dump/import onto a fresh server, never an in-place upgrade across a move** | The old datadir is never opened by the new server, so it is an untouched rollback. |
 | D12 | **Per-user resource limits are the load guardrail** | `MAX_USER_CONNECTIONS` + `MAX_STATEMENT_TIME` per tenant user. No pooler. |
 | D13 | **Datadirs are bind mounts on `/`** (`/home/cda/servyy-container/db-<tier>/data/<engine>`, gitignored) | Avoids landing the write-heaviest tenants on network block storage by accident. Entrypoint takes ownership — no `user:` override. |
-| D14 | **Servers awaiting retirement are pinned and fenced, not upgraded** | `moodle.db`, `bnb-office.db`, `photoprism.mariadb` stay on `mariadb:12.3.3` until their move. In `db_tenants.yml` they carry `retiring: true`: the guard requires an exact pin but excludes them from the equality check, and Renovate never offers them `13.x`. |
-| D15 | **Renovate: database patches automerge, everything else waits for approval** | A minor bump of a database is an in-place upgrade (Phase 10's job, in order, with dumps first) — never an automerge. Bumps are grouped per engine so one PR moves every file in a repo. |
+| D14 | **Servers awaiting retirement float their own line and are excluded from the equality check** | `moodle.db`, `bnb-office.db`, `photoprism.mariadb` sit on `mariadb:12.3` (already the tag on the first two): they keep receiving 12.3 patches but **cannot cross to 13.x**, because the tag names the minor — the tag is the fence, no Renovate rule needed. `retiring: true` in `db_tenants.yml` keeps them out of the active-server equality check and makes the guard fail if one leaves the 12.3 line. |
+| D15 | **Patches come from watchtower; minors and majors come from a reviewed PR** | A database patch is a same-line image refresh: the datadir format is unchanged, and the `openserbia/watchtower` fork is health-check gated — a new image that never reports healthy is rolled back automatically. So patches land unattended, but only in the **`db` scope**, whose schedule is a single daily window at 06:00, clear of the hourly dumps (:30/:40/:50), the 02:00–04:00 restic run and the 05:00 Firefly import. Minor/major is *not* watchtower's job: Renovate proposes it, `dependencyDashboardApproval` gates it, and it is applied one tier per run (Phase 10). Renovate's patch updates are disabled for these packages, so it cannot replace a floating `13.0` with a concrete `13.0.3`. |
 | D16 | **New DB restic repos share one seed** (`vars/.restic_password_db`) | Avoids five new controller-local seeds. Registered in `seed_guard.yml` and the Vaultwarden push like the others. Existing `ls_db` and `moodle` repos keep their seeds — no restic password change is needed. Hand-over of a business tenant is a restored dump, never the repo itself. |
 
 ## Non-goals
@@ -141,41 +147,58 @@ it to SQLite is an app change in the dontforget repo. Neither is in this plan.
 
 ---
 
-## Phase 0 — Version pins, Renovate fence, drift guard (no data movement)
+## Phase 0 — Tag policy, watchtower patch window, drift guard (no data movement)
 
-1. **Exact tags in compose files** (this repo): `moodle/docker-compose.yml:22`,
-   `bnb-office/docker-compose.yml:17` → `mariadb:12.3.3`;
-   `photoprism/docker-compose.yml:153` (`mariadb:lts`) → `mariadb:12.3.3`;
-   `shared/docker-compose.yml:77` (`postgres:15`) → `postgres:15.20`.
-2. **Remove watchtower labels from database servers:** `photoprism/docker-compose.yml:162`
-   and the `shared.db` service. Official images are re-pushed under the same tag on base-OS
-   updates, so an exact tag alone does not stop an unattended restart. `shared.mongo` keeps
-   its label until Phase 8 retires the container; every `db-<tier>` service is created without
-   one, so the end-state count is zero.
-3. **Renovate rules** (`renovate.json`, `packageRules`, placed *after* the existing
-   automerge rule so they win):
-   - `matchPackageNames: ["mariadb", "mongo", "postgres"]`, `matchUpdateTypes: ["patch"]` →
-     `automerge: true`, `groupName` per engine.
+1. **Pin the minor, float the patch.** `moodle/docker-compose.yml:22` and
+   `bnb-office/docker-compose.yml:17` already read `mariadb:12.3` — leave them;
+   `photoprism/docker-compose.yml:153` `mariadb:lts` → `mariadb:12.3`;
+   `shared/docker-compose.yml:77` stays `postgres:15`; `shared.mongo` → `mongo:9.0`
+   (*only after Phase 1 step 0* — the tag change recreates that container too, see step 2).
+   No `:latest`, no `:lts`, no exact patch pin anywhere: watchtower can only deliver a
+   patch if the tag is re-pointed on release.
+2. **A watchtower scope for databases.** Add `watchtower-db` to
+   `portainer/docker-compose.yml` next to `watchtower-prod`/`-dev`:
+   `openserbia/watchtower:latest`, `WATCHTOWER_SCOPE: db`, `WATCHTOWER_SCHEDULE: "0 0 6 * * *"`,
+   `WATCHTOWER_CLEANUP: "true"`, `WATCHTOWER_HEALTH_CHECK_GATED: "true"`,
+   `WATCHTOWER_HEALTH_CHECK_TIMEOUT: "2m"`, and the
+   `com.centurylinklabs.watchtower.scope=db` label on the instance itself, as its two peers do.
+   Move every database server's label from
+   `com.centurylinklabs.watchtower.scope=prod` to `=db` (`shared.mongo`, `shared.db`,
+   `photoprism.mariadb`; `moodle.db` and `bnb-office.db` have no label today and get `=db`),
+   and give every `db-<tier>` service the same label as it is created.
+   **A label change recreates the container**, so stagger these one server at a time, and move
+   `shared.mongo`'s label **only after Phase 1 step 0 is merged** — recreating it before the
+   volume-wipe block is removed is exactly the hazard that step exists to close.
+   **06:00 is chosen, not arbitrary:** the hourly dumps fire at :30/:40/:50, restic runs
+   02:00–04:00 and the Firefly import at 05:00 — a database restart must fit between them.
+3. **`MARIADB_AUTO_UPGRADE=1` on the high tier.** LS prod never had it. With patches landing
+   unattended the entrypoint must run `mariadb-upgrade` on restart; add it to `ls.env` in the
+   leaguesphere repo. The tier servers get it in their env files.
+4. **Renovate rules** (`renovate.json`, `packageRules` after the existing automerge rule):
+   - `matchPackageNames: ["mariadb", "mongo", "postgres"]`,
+     `matchUpdateTypes: ["patch"]` → **`enabled: false`**. Watchtower owns patches, and
+     Renovate must never replace the floating `13.0` with a concrete `13.0.3`.
    - same packages, `matchUpdateTypes: ["minor", "major"]` → `automerge: false`,
-     `dependencyDashboardApproval: true`.
-   - `matchFileNames` for the three D14 files + `matchPackageNames: ["mariadb"]` →
-     `allowedVersions: "<13"`.
-4. **LeagueSphere repo** (separate PR; deployed by `ls_app` via git pull): the three server
+     `dependencyDashboardApproval: true`, `groupName` per engine.
+5. **LeagueSphere repo** (separate PR; deployed by `ls_app` via git pull): the three server
    tags `deployed/docker-compose.yaml:112`, `docker-compose.staging.yaml:4`,
-   `docker-compose.demo.yaml:4` → `mariadb:13.0.2`; the db-access client sidecars
+   `docker-compose.demo.yaml:4` → `mariadb:13.0`; the db-access client sidecars
    (`docker-compose.yaml:177`, `docker-compose.staging.yaml:61`) to the same tag. Add the
-   same patch-only automerge / approval-for-minor rule to that repo's `renovate.json`.
-5. **Drift guard** `ansible/plays/tasks/db_version_guard.yml`, a `pre_task` of
+   same "patches disabled, minors need approval" rule to that repo's `renovate.json`.
+6. **Drift guard** `ansible/plays/tasks/db_version_guard.yml`, a `pre_task` of
    `plays/user.yml` tagged `always` (D8). Server list: static in Phase 0, `db_tenants.yml`
-   from Phase 2. For each listed server it reads the `image:` of its service from the
-   compose file that this run will apply (this repo after repo sync; for `leaguesphere.db`
-   the leaguesphere checkout on the host), not from the running container. Rules per engine:
-   - active servers differ in **major.minor** → **fail**, before any service task runs;
-   - active servers differ only in **patch** → warn + push `db_version_drift{engine}=1`;
-   - a `retiring: true` server not at its exact pinned tag → **fail**;
+   from Phase 2. For each listed server it reads the `image:` **tag** from the compose file
+   this run will apply (this repo after repo sync; for `leaguesphere.db` the leaguesphere
+   checkout on the host) and the **digest** from the running container. Rules per engine:
+   - active servers on different **minor tags** (`13.0` vs `13.1`) → **fail**, before any
+     service task runs;
+   - active servers on the same tag but different **digests** → warn + push
+     `db_version_drift{engine}=1` (this is the normal state for a few hours after a
+     watchtower pull, which is why the alert waits 24 h);
+   - a `retiring: true` server not on its pinned line (`12.3`) → **fail**;
    - otherwise push `db_version_drift{engine}=0`.
 
-   A post-deploy check compares running `.Config.Image` with the intended image and pushes
+   A post-deploy check compares the running digest with the tag's current digest and pushes
    the same metric, which catches a container that was not recreated. The Grafana rule fires
    on `db_version_drift > 0` for 24 h. Messages name both sides and point at
    `leaguesphere/deployed/docker-compose.yaml` when `leaguesphere.db` is the odd one out.
@@ -188,11 +211,14 @@ it to SQLite is an app change in the dontforget repo. Neither is in this plan.
    which is exactly the ordering Phase 10 depends on. The task is shared, not duplicated:
    `include_tasks` the same file from both plays.
 
-**Verify** (servyy-test): one intended image per engine; Renovate's dashboard lists
-database minor updates as awaiting approval; set one compose file to `mariadb:13.1.0` →
-`./servyy.sh`, `--tags docker` and `--tags user.docker.monitor` all fail before any task
-restarts a container; set it to `mariadb:13.0.1` instead → the run passes, warns, and the
-metric reads 1.
+**Verify** (servyy-test): every database server carries `scope=db` and none carries a
+floating `latest`/`lts` tag; `docker inspect` shows one watchtower per scope; Renovate's
+dashboard lists no database patch updates at all and any minor/major as awaiting approval;
+set one compose to `mariadb:13.1` → `./servyy.sh`, `--tags docker` and
+`--tags user.docker.monitor` all fail before a task restarts anything; simulate a patch by
+pulling a re-tagged image into one server → `db_version_drift` reads 1 and the alert does not
+fire before 24 h; a deliberately broken image in the `db` scope is rolled back by the
+health-check gate.
 
 **Rollback:** revert the tags and rules. No datadir is touched.
 
@@ -270,7 +296,8 @@ servyy-test and in CI.
 
 ## Phase 3 — nonprod: LS stage + demo → `db-nonprod.mariadb`
 
-1. Commit `db-nonprod/docker-compose.yml` (`mariadb:13.0.2`, 512m, 128M pool, D5 flags,
+1. Commit `db-nonprod/docker-compose.yml` (`mariadb:13.0`, 512m, 128M pool, D5 flags,
+   watchtower scope `db`,
    `MARIADB_AUTO_UPGRADE=1`, network `db_nonprod_backend`, bind `data/mariadb`,
    `traefik.enable=false`); add `db-nonprod` to `docker_backend_services`.
 2. **Secrets:** tier root + backup user + one user per existing stage/demo database in
@@ -313,11 +340,12 @@ Smallest business tenant first; proves the tier before Moodle's 1.6 GB.
 
 1. **Pre-flight:** `free -m` on servy (≈3 GB of 7.5 GB used at plan time); 1.25g replaces
    today's 1g + 512m ceilings.
-2. Commit `db-business/docker-compose.yml` (`mariadb:13.0.2`, 1.25g, 384M pool, D5 flags,
+2. Commit `db-business/docker-compose.yml` (`mariadb:13.0`, 1.25g, 384M pool, D5 flags,
+   watchtower scope `db`,
    default isolation, network `db_business_backend`, bind `data/mariadb`); add it to
    `docker_backend_services`. Sized for Moodle so Phase 6 is not a resize.
 3. Secrets: tier root + backup user + bnb user (existing `bnb_office.db_name`).
-4. Stop `bnb-office.web`, `dbops dump` from `bnb-office.db` (12.3.3) → restore (13.0.2,
+4. Stop `bnb-office.web`, `dbops dump` from `bnb-office.db` (12.3.x) → restore (13.0.x,
    same database name) → verify → collation check:
    ```sql
    SELECT table_name, table_collation FROM information_schema.tables
@@ -340,7 +368,8 @@ in its directory and its own restic repo.
 
 ## Phase 5 — private: PhotoPrism → `db-private.mariadb`
 
-1. Commit `db-private/docker-compose.yml` (`mariadb:13.0.2`, 512m, 128M pool, network
+1. Commit `db-private/docker-compose.yml` (`mariadb:13.0`, 512m, 128M pool, watchtower scope
+   `db`, network
    `db_private_backend`, bind `data/mariadb`) with PhotoPrism's server flags:
    `--transaction-isolation=READ-COMMITTED --max-connections=512
    --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120` plus D5 flags. Its
@@ -410,7 +439,8 @@ dumps, high would need a new `db-high` project.)
 
 1. Mongo adapter for `dbops` (`mongodump`/`mongorestore` per database, same `.partial`
    rename and verify-by-counts).
-2. **`db-business.mongo`:** add a `mongo:` service (`mongo:9.0.8`, 384m,
+2. **`db-business.mongo`:** add a `mongo:` service (`mongo:9.0`, 384m,
+   watchtower scope `db`,
    `--wiredTigerCacheSizeGB 0.25`, `db_business_backend`, bind `data/mongo`) to
    `db-business/docker-compose.yml`. Move leagues-finance and queen (pattern:
    `dontforget_mongo_migrate.yml`); their scoped users from Phase 1 are recreated by
@@ -465,11 +495,14 @@ runs; the counts from step 2 still match; the month's postgres snapshot is still
 13.0 stops receiving fixes around 2026-12-31 (confirm on mariadb.org). Forward upgrades are
 supported in place, so a hop does not use D11's dump/import.
 
-1. **This repo first, leaguesphere last.** Approve the grouped Renovate PR (D15) here; it
-   moves the three tier files. The leaguesphere PR (`deployed/docker-compose.yaml`, i.e.
-   `leaguesphere.db`) is approved only after step 2 has finished, because any LS deploy
-   applies it — merging it first would upgrade the high tier first. Until the next LTS
-   exists this is rolling → rolling; switch to the first LTS of the 13 line once released.
+1. **This repo first, leaguesphere last.** The change is the **minor tag** (`mariadb:13.0` →
+   `mariadb:13.1`) in the compose files — a Renovate minor PR, approval-gated by D15; a
+   patch inside a line needs no PR at all, watchtower pulls it in the `db` window. Approve the
+   grouped PR here first; it moves the three tier files. The leaguesphere PR
+   (`deployed/docker-compose.yaml`, i.e. `leaguesphere.db`) is approved only after step 2 has
+   finished, because any LS deploy applies it — merging it first would upgrade the high tier
+   first. Until the next LTS exists this is rolling → rolling; switch to the first LTS of the
+   13 line once released.
 2. **One tier per run, in order:** `--tags user.docker.db-nonprod`, then
    `user.docker.db-private`, then `user.docker.db-business`, each preceded by `dbops dump`
    of every tenant on that server and followed by its phase smoke test. Each of these runs
@@ -490,7 +523,8 @@ supported in place, so a hop does not use D11's dump/import.
 | MariaDB servers / versions | 6 / 3 | 4 / 1 line |
 | Mongo servers | 1, untiered, 2 of 3 apps on root | 2, tiered, no app on root |
 | Postgres servers | 1 | 0 |
-| Floating tags / watchtower on DB servers | 5 / 3 | 0 / 0 |
+| Floating tags / unattended minor on DB servers | 3 `latest`/`lts` + 2h poll | 0 floating lines; patches via the `db` scope only |
+| Database patch delivery | uneven: `12.3` floats, `lts`/`latest` jump lines, two servers have no label | watchtower `db` scope, daily 06:00, health-gated rollback |
 | Unattended DB minor/major upgrades via Renovate | possible | impossible (approval only) |
 | Dump/backup jobs | 5 jobs on 5 timers, 3 places | 5 jobs on 4 timers, one inventory |
 | Bespoke dump scripts / restore procedures | 2 / 3 roles | 1 tool (`dbops`) |
@@ -500,10 +534,13 @@ supported in place, so a hop does not use D11's dump/import.
 
 | Risk | Mitigation |
 |---|---|
-| A database minor bump is automerged and applied in place | D15 Renovate rules (Phase 0 step 3) |
-| A 12.3 server gets a 13.x bump before its move | D14: `allowedVersions: "<13"` + exact-pin check in the guard |
-| A mixed version line is applied before the guard notices | D8: `pre_task`, tag `always`, reads intended images, included in **both** `user.yml` and `leaguesphere.yml`; major.minor mismatch fails before any restart |
-| Independent patch automerges break routine deploys | D8: patch mismatch only warns and alerts after 24 h |
+| A database patch pull restarts a server mid-dump | D15: dedicated `db` scope, one daily window at 06:00, clear of the :30/:40/:50 dumps, the 02:00–04:00 restic run and the 05:00 import; `dbops` writes `.partial` and renames |
+| A bad database patch image is pulled | watchtower health-check gating rolls back to the previous image after 2m; `db_version_drift` fires while servers differ |
+| A database minor or major lands unattended | the tag names the minor, so watchtower cannot cross one; Renovate minors are approval-gated (D15) |
+| A 12.3 server gets a 13.x bump before its move | D14: the tag names the minor (`mariadb:12.3`); `retiring: true` makes the guard fail if it leaves the 12.3 line |
+| A mongo patch pull breaks the daemon as it did on 2026-11-03 | WP-1 closes the wipe path first; the health-check gate rolls the image back and `db_version_drift` stays 1 until fixed |
+| A mixed version line is applied before the guard notices | D8: `pre_task`, tag `always`, reads the compose tag and the running digest, included in **both** `user.yml` and `leaguesphere.yml`; a minor mismatch fails before any restart |
+| A watchtower patch leaves servers on different digests for a while | D8: a digest mismatch only warns and alerts after 24 h — the pull completes across the fleet within one window |
 | A version hop upgrades LS prod first | Phase 10: this repo tier by tier, leaguesphere PR last |
 | A deploy recreating `shared.mongo` wipes all mongo data | Phase 1 step 0: dump, wipe replaced by `fail`, healthcheck `start_interval` |
 | Mongo root rotation changes nothing or locks out `shared_mongo_users` | Phase 1 step 3: `changeUserPassword` first, var second |

@@ -23,7 +23,8 @@
 - `docker ps` shows every container `healthy` (or `running` where it has no healthcheck).
 - `systemctl --user list-timers` has no failed unit; `restic snapshots` shows the newest
   snapshot inside its normal window.
-- `db_version_drift` is `0` for every engine (or the documented hop window).
+- `db_version_drift` is `0` for every engine — or `1` only because a watchtower patch pull is
+  still in flight, or inside a documented hop window.
 - The package's own verification list from the plan passes.
 - Rollback for the package is still possible, or its window is explicitly recorded as closed.
 
@@ -31,7 +32,7 @@
 
 | WP | Title | Plan ref | Depends on | Data at risk | Downtime |
 |---|---|---|---|---|---|
-| 0 | Fence the versions | Phase 0 | — | none (tag/label only) | 2 container recreates |
+| 0 | Fence the versions | Phase 0 | **1** | none (tag/label only) | one restart per DB server, staggered |
 | 1 | Disarm the mongo wipe | Phase 1 step 0 | — | none (adds a backup) | none |
 | 2 | Take mongo off root | Phase 1 steps 1–3 | **1** | mongo (rotate) | shared.mongo recreate |
 | 3 | Inventory, `dbops`, `db_tier` | Phase 2 | 0 | none | none |
@@ -44,9 +45,12 @@
 | 10 | Retire Postgres (Firefly) | Phase 9 | 6 | financial data | Firefly restart |
 | 11 | MariaDB version hop (recurring) | Phase 10 | all of 0–10 | every MariaDB | one server at a time |
 
-**WP-0 and WP-1 are independent** and can be merged in either order. **WP-2 must never be
-merged before WP-1** — WP-2 recreates `shared.mongo`, which is exactly what the volume-wipe
-block in WP-1 defuses.
+**WP-1 and WP-0 are both no-data packages but they are not freely reorderable:**
+a watchtower label is a container label, so changing it recreates that container — and
+recreating `shared.mongo` before WP-1 disarms the volume wipe is exactly the hazard WP-1
+removes. **Merge WP-1 first, then WP-0.** Everything else in WP-0 (tags, the `db` watchtower
+instance, Renovate, the guard) is independent of WP-1. **WP-2 must never be merged before
+WP-1** either, for the same reason.
 
 ---
 
@@ -55,16 +59,22 @@ block in WP-1 defuses.
 **Goal.** No floating tags and no unattended database upgrades anywhere; drift becomes a
 checked condition instead of a convention.
 
-**Changes.** Exact tags (`moodle`, `bnb-office`, `photoprism` → `mariadb:12.3.3`;
-`shared.db` → `postgres:15.20`); watchtower labels removed from `photoprism.mariadb` and
-`shared.db`; Renovate rules (patch automerge per engine, minor/major behind dashboard
-approval, `allowedVersions: "<13"` for the three retiring servers); the three LeagueSphere
-server tags pinned in that repo's PR; the drift guard as a shared `pre_task` included from
-**both** `plays/user.yml` and `plays/leaguesphere.yml`.
+**Changes.** Tags pin the minor and float the patch: `moodle`/`bnb-office` stay
+`mariadb:12.3`, `photoprism` `mariadb:lts` → `mariadb:12.3`, `shared.db` stays
+`postgres:15`, `shared.mongo` → `mongo:9.0`; a `watchtower-db` instance (`db` scope, daily
+06:00 window, health-gated rollback) and the `db` scope label on every database server —
+**each label change recreates that server, so stagger them one at a time**; `shared.mongo`'s
+label moves only after WP-1 (see the ordering note above). Plus `MARIADB_AUTO_UPGRADE=1` on
+the high tier; Renovate patches disabled for database packages and minors/majors behind
+dashboard approval; the three LeagueSphere server tags (`mariadb:latest` → `mariadb:13.0`)
+in that repo's PR; the drift guard as a shared `pre_task` included from **both**
+`plays/user.yml` and `plays/leaguesphere.yml`.
 
-**Exit gate.** One intended image per engine; dashboard shows database minor updates as
-awaiting approval; deliberately setting one compose to `mariadb:13.1.0` fails a run before
-anything restarts; setting `13.0.1` passes with `db_version_drift=1`.
+**Exit gate.** Every database server has a minor-pinned tag and the `db` scope; no
+`:latest`/`:lts` left on a database; Renovate shows no database patch updates and gates
+minors; deliberately setting one compose to `mariadb:13.1` fails a run before anything
+restarts; a simulated patch (same tag, new digest) gives `db_version_drift=1` without
+blocking; a broken image in the `db` scope is rolled back by the health gate.
 
 **Rollback.** Revert the tags and rules. Two containers were recreated, no data touched.
 
@@ -242,13 +252,16 @@ exercise.
 
 **Goal.** Off an expiring line, without a mixed fleet.
 
-**Changes.** Renovate PRs here first (three tier files), one tier per `--tags
-user.docker.db-<tier>` run with `-e db_version_guard_allow_drift=mariadb`, then the
-leaguesphere PR and the high-tier deploy last; fresh physical backup after the high-tier
-upgrade; previous image kept pullable until its backups age out.
+**Changes.** A minor change is `mariadb:13.0` → `mariadb:13.1` in the compose files — a
+Renovate minor PR (approval-gated), not a patch. Merge it here first (three tier files), then
+run one tier at a time with `--tags user.docker.db-<tier>` and
+`-e db_version_guard_allow_drift=mariadb`, followed by the leaguesphere PR and the high-tier
+deploy last; fresh physical backup after the high-tier upgrade; the previous minor's tag
+stays pullable until its backups age out. Patches inside a line need no package at all —
+watchtower applies them daily.
 
-**Exit gate.** All four servers on the new line; `db_version_drift=0`; high-tier PITR
-backups from the new version exist.
+**Exit gate.** All four servers on the new minor tag; `db_version_drift=0` once every server
+has been deployed; high-tier PITR backups from the new version exist.
 
 **Rollback.** Previous image is still pullable — but a hop is forward-only for the datadir,
 so the real rollback is the pre-hop dump.
@@ -260,14 +273,22 @@ sitting. Do not start it inside WP-4…WP-7.
 
 ## Recommended order and stopping points
 
-```
-WP-0 ─┐
-      ├─> WP-3 ─> WP-4 ─> WP-5 ─> WP-7 ─> WP-8 ─┐
-WP-1 ─┴─> WP-2              WP-6 ───────────────┼─> WP-10
-                                                 └─> WP-9 ─> WP-11
-```
+**The order is a chain, not a menu:**
 
-**Good places to pause for weeks:** after WP-0, WP-1, WP-2, WP-3, WP-5, WP-6, WP-7, WP-8.
+1. **WP-1** (disarm the mongo wipe) — nothing else may recreate or relabel `shared.mongo`
+   before this is merged.
+2. **WP-0** (tags, `db` watchtower scope, Renovate, drift guard) — its mongo tag/label change
+   needs step 1 already merged.
+3. **WP-2** (mongo off root).
+4. **WP-3** (inventory, `dbops`, `db_tier`).
+5. **WP-4 → WP-5 → WP-7** (nonprod, business with bnb, then Moodle). **WP-6** (PhotoPrism) can
+   slot in any time after WP-3 — it is independent of bnb.
+6. **WP-8** (backups, probes, delete the old surface) — after 4, 5, 6, 7 are green for a week.
+7. **WP-9** (mongo into the tiers) and **WP-10** (Postgres) — either order; both need their
+   target tier servers to exist (WP-5 / WP-6).
+8. **WP-11** (version hop) — scheduled, once everything else has settled.
+
+**Good places to pause for weeks:** after WP-1, WP-0, WP-2, WP-3, WP-5, WP-6, WP-7, WP-8.
 Each leaves the host fully working with no pending cleanup.
 
 **Never pause:** inside WP-2 (root rotated in the DB but not in the var — apps and the
