@@ -76,6 +76,12 @@ prod:
         # until the Strato DNS for ibs.bricksnbytes.de is flipped). DNS for
         # ibs.bumbleflies.de already points at servy; own Traefik router/cert.
         bnb_office_alt_host: ibs.bumbleflies.de
+        # Where bnb's app reaches its database. WP-5b (2026-11-18): the business
+        # tier server, on the internal db_business_backend network — the
+        # app-owned `db:` sidecar is stopped (kept a week for rollback). The
+        # compose renders this into DB_HOSTNAME; the default is the old sidecar
+        # name, so any host without this override keeps working as before.
+        bnb_office_db_host: db-business.mariadb
         # Waggle: signup was open for the first deploy only — that account is now
         # the instance administrator (created 2026-11-11), so public signup is
         # closed. Reopen by setting the host var false and redeploying.

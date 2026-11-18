@@ -28,9 +28,10 @@
 #   compose_service       GUARD-ONLY: the compose service inside that file
 #
 # `dump_schedule` / `dump_dir` / `restic_repo` mirror the timers and scripts that
-# exist today (mariadb-backup-ls, moodle-dump + restic-backup-moodle-db, the bnb
-# one-liner). WP-3b's `dbops` takes ownership of them; until then this file only
-# *describes* them, it does not drive them.
+# exist today (mariadb-backup-ls, moodle-dump + restic-backup-moodle-db, and since
+# WP-5b the bnb dump, which already runs through `dbops dump bnb_office`). WP-3b's
+# `dbops` takes ownership of the rest; until then this file only *describes* them,
+# it does not drive them.
 #
 # The guard groups rows by `server`, so several tenants on one server produce one
 # entry in its per-server check (shared.mongo holds three, shared.db one).
@@ -113,7 +114,10 @@ db_tenants:
   - tenant: bnb_office
     tier: business
     engine: mariadb
-    server: bnb-office.db
+    # WP-5b (2026-11-18): cut over to the business tier. bnb-office.db — the
+    # app-owned sidecar — is STOPPED, not deleted, and is the rollback for a
+    # week (`docker start bnb-office.db` + revert the compose/DB_HOSTNAME).
+    server: db-business.mariadb
     db: ibs
     user: ibs_app
     dump_schedule: 'daily 02:30'
@@ -122,9 +126,17 @@ db_tenants:
     restic_repo: home
     max_user_connections: 0
     max_statement_time: 0
-    retiring: true
-    compose_dir: bnb-office
-    compose_service: db
+    # WP-5b: no longer frozen on the old line — it is an ACTIVE server now, so
+    # it joins the D8 minor-line equality check with the high and nonprod tiers.
+    # All three are mariadb:13.0 (the old 12.3 server is stopped and not a tenant
+    # any more).
+    retiring: false
+    # GUARD-ONLY (WP-5b): the intended tag now comes from the TIER's compose,
+    # not from bnb-office/docker-compose.yml — which no longer has a `db`
+    # service at all, so the guard would resolve an empty tag and drop the
+    # server out of the D8 check silently.
+    compose_dir: db-business
+    compose_service: mariadb
 
   - tenant: leagues_finance
     tier: business
