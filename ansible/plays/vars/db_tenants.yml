@@ -374,6 +374,17 @@ db_tenants:
     dump_schedule: hourly
     dump_dir: /var/jail/home/leaguesphere/container/deployed/mysql-backup/current
     restic_repo: db
+    # WP-8R R2b: measured by the dump-age probe, not assumed. `current` is an
+    # atomic swap (`mv new current` in mariadb_backup.sh.j2, hourly at :40), so
+    # its mtime IS the moment the prepared set was refreshed; and while the set
+    # is root-only inside, the directory itself is 0755 root:root, so the probe's
+    # `cda` stat() succeeds. Nothing else covers this case: if mariadb-backup
+    # fails, restic keeps re-uploading the unchanged `current/` every hour, so
+    # `restic_snapshot_age_seconds{repo="db"}` stays fresh and only a dump-age
+    # series can see it. 120 min matches the repo's own snapshot threshold; high
+    # because this is production data with a physical + binlog recovery story.
+    probe_minutes: 120
+    severity: high
     max_user_connections: 0
     max_statement_time: 0
     retiring: false
@@ -439,6 +450,20 @@ db_tenants:
     dump_schedule: hourly
     dump_dir: /home/cda/servyy-container/moodle/data/db-backup/current
     restic_repo: moodle-db
+    # WP-8R R2b: NO probe_minutes/severity — deliberately, and it is a measured
+    # limitation, not an oversight. The probe runs as `cda` (user timer
+    # system-db-dump-age.timer) and `.../moodle/data/` is 0750 root:root, so
+    # stat() on the dump dir is refused: a row here would emit -1 and page high
+    # forever (a permanent false positive, the opposite of coverage). What it
+    # would take: run this one check as root (system unit) or grant the probe a
+    # sudoers/ACL stat on that path.
+    # The condition is NOT silent meanwhile: `restic['moodle-db']` carries the
+    # stale-source guard (roles/restic/tasks/backup.yml,
+    # stale_guard_max_age_minutes: 120), so a dump that stops refreshing FAILS
+    # the restic-backup-moodle-db job, and stale_restic_snapshot_high then pages
+    # on `repo="moodle-db"` at 2 h. Different signal (the snapshot fails rather
+    # than the dump ageing), same condition, and it only works because of that
+    # guard — do not drop the guard without adding a dump-age series first.
     max_user_connections: 0
     max_statement_time: 0
     retiring: false
@@ -458,6 +483,17 @@ db_tenants:
     dump_dir: /home/cda/servyy-container/bnb-office/.backup
     # No repo of its own: the dumps ride the hourly `home` snapshot.
     restic_repo: home
+    # WP-8R R2b: this tenant had NO dump-age series, and its snapshot age could
+    # never stand in for one — the dumps ride `home`, which keeps succeeding
+    # while the daily `dbops dump bnb_office` (docker-bnb-office-dump.timer)
+    # writes nothing. The dump is one timestamped .sql.gz per run written INTO
+    # `.backup/` (flat, no `current/`), so the DIRECTORY's mtime advances with
+    # every dump and the probe's fallback path (no `<dir>/current`) is correct
+    # here. 26 h = the daily cadence + slack; high, because ibs is a customer's
+    # bookkeeping data and the dump is its only copy (WP-5b moved it to the
+    # business tier).
+    probe_minutes: 1560
+    severity: high
     max_user_connections: 0
     max_statement_time: 0
     # WP-5b: no longer frozen on the old line — it is an ACTIVE server now, so
