@@ -233,6 +233,21 @@ nothing about DNS serving changed and the site stayed up throughout:
   the zone) needs a subaccount API key. `scripts/dns-layout.sh bumbleflies.de`
   will fail until one is configured.
 
+A subaccount key pair was added to `vars/secrets.yml` as `bumbleflies_porkbun`
+(git-crypt encrypted, separate from `porkbun_api` which keeps the spending and
+the other domains). With it, on 2026-11-18:
+
+- the zone reads back **22 records** and is unchanged — 2 A, 2 AAAA, 4 CNAME,
+  5 MX, 4 NS, 5 TXT — wildcard `*.bumbleflies.de` present, no leftover
+  `_acme-challenge` records;
+- a TXT create/delete round-trip succeeded, so the zone is writable again;
+- `autoRenew: 1`, `apiAccess: 1`, `expireDate: 2027-11-18`, `securityLock: 0`,
+  `whoisPrivacy: 0`.
+
+Porkbun does not offer granular scopes — the key reports `full` — so inside that
+account it can also spend. Nothing is wired to it yet: no playbook or script
+writes to this zone, and DNS-01 was deliberately not pointed at it.
+
 ## Rollback Procedure
 
 Not practically reversible: an outbound `.de` transfer needs a fresh `AUTHINFO`
