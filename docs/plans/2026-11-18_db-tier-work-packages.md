@@ -11,6 +11,9 @@
    master (test host first, then production) → exit gate. Deploying a branch is never allowed;
    if a merged package misbehaves, revert that one commit or forward-fix. A package that lists
    a dependency cannot start before that dependency is merged.
+   **A deploy must sync the checkout on the host:** `--tags user.repo.clone,<service tags>`.
+   A tag-scoped run alone deploys whatever commit the host already has — verified in WP-1,
+   where the first run "succeeded" against the previous checkout.
 2. **Never stop inside a package.** The only unsafe moments are inside a single run: after a
    dump but before the app points at the new server, after pointing but before the smoke
    test, and inside the version hop. Each is minutes, not days — finish the run.

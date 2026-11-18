@@ -96,27 +96,37 @@ merged to master before it is deployed. What was verified here:
 - No removal path: `grep -n "shared_mongo_data" ansible/plays/user.yml` shows only the
   migration variable and comments.
 
-**Pending, to be appended once the merged commit is deployed** (test host first, then
-production):
+**Verified after the merge and deploy (2026-11-18).** Merge commit `9552f2a`.
 
-1. recreate the test `shared.mongo` so it enters `starting`, run the play with tag
-   `user.docker` — the wait must pass at `start_interval` speed and
-   `docker volume ls` must still show `shared_mongo_data`;
-2. stop `shared.mongo` and run the play again — it must FAIL with the new message and the
-   volume must still exist;
-3. production `./servyy.sh --limit servy.lehel.xyz`: volume present, all three databases
-   listable, no destructive task in the run.
+| Step | Result |
+|---|---|
+| servyy-test, `--tags user.docker.shared` (no repo sync) | mongo recreated, volume intact — but the host ran its **old** checkout, so the old healthcheck was still in effect: the wait consumed **11 of 15 retries (~22 s)**, i.e. within seconds of the old wipe threshold. Proof that the hazard was real, not theoretical |
+| servyy-test, `--tags user.repo.clone,user.docker.shared` | checkout `f25854e` → `9552f2a`; mongo recreated `08:36:04Z`; effective healthcheck `StartInterval=2s, StartPeriod=30s`; wait passed after **1 retry**; `Fail the deploy…` **skipped**; volume present; counts unchanged |
+| servyy-test, failure path | `docker pause` aborts earlier, at `docker_service : Deploy shared` ("cannot start a paused container"); used `docker kill -s STOP` instead: health `unhealthy` → play **FAILED** with the new message (`State.Health.Status=unhealthy. NOTHING WAS DELETED…`), exit 2; after `SIGCONT`: healthy, `Created` unchanged, volume present, counts unchanged |
+| production, `--tags user.repo.clone,user.docker.shared` | exit 0, changed=3 (repo clone, modes, `Deploy shared`); checkout `9b01e57` → `9552f2a`; mongo `Created` `2026-11-17T14:48:58Z` → `2026-11-18T08:44:21Z`; healthcheck live; wait `ok:` with **zero** retries; fail task **skipped**; `shared_mongo_data` present; counts **11/186, 14/360, 14/717** — identical to the pre-change baseline, re-checked independently after the run; `shared.mongo|redis|db` all healthy; restic home snapshot `1cb0b5c4` (09:45:47) contains `mongo-all-pre-wp1-20261118T081534Z.archive.gz` (65 609 bytes) |
+
+No run contained a `docker_volume` removal or the old `Remove corrupted` task. No consumer
+logged mongo/connection errors after the recreates; `finance-api` reports
+`{"status":"ok","db":"connected"}`.
+
+**Operational note for every later package:** a tag-scoped deploy does **not** update the
+host's checkout — `docker_service` deploys `docker.remote_dir` as it is on the host. Use
+`--tags user.repo.clone,<service tags>` (as above) or a full run, or the change will appear
+to "deploy" while the host still runs the previous commit. The test host's LXD container was
+also stopped and had to be started (`lxc start servyy-test`).
 
 ## Deploy (after merge only)
 
 ```bash
 cd ansible
-./servyy-test.sh                       # -i testing; recreate + stop-mongo cases above
-./servyy.sh --limit servy.lehel.xyz --tags user.docker
+./servyy-test.sh --tags user.repo.clone,user.docker.shared
+./servyy.sh --limit servy.lehel.xyz --tags user.repo.clone,user.docker.shared
 ```
 
-Rendering the changed healthcheck recreates `shared.mongo` on each host — expected, and now
-harmless: it is the exact event that used to be able to wipe the volume.
+`user.repo.clone` is not optional: without it the host keeps its previous checkout and the
+deploy silently does nothing (verified above). Rendering the changed healthcheck recreates
+`shared.mongo` on each host — expected, and now harmless: it is the exact event that used to
+be able to wipe the volume.
 
 ## Rollback
 
