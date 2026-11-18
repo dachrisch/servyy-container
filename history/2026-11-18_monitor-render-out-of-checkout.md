@@ -189,13 +189,14 @@ used for `.env` / `grafana.env`, so no new convention was introduced.
    A dashboard file it cannot read is logged (`permission denied`) and skipped;
    a datasource file it cannot parse kills the process. Both failure modes were
    exercised during verification.
-5. **Every deploy rewrites every tracked file.** `find … -exec chown` (line 148
-   of `repository.yml`) bumps each file's ctime even when ownership does not
-   change, which invalidates git's stat cache, so the next `git reset --hard`
-   rewrites the whole tree at umask-007 modes. Measured on `monitor/promtail.yml`
-   right after a deploy: index `ctime: 1794999427` vs file `ctime=11:57:27`
-   (11:57:07 checkout, `chown` 20 s later). Restarting a container inside that
-   window reads half-written `0660` files.
+5. **Every deploy rewrites every tracked file.** The `find … -exec chown` in
+   `repository.yml` (line 148 then) bumps each file's ctime even when ownership
+   does not change, which invalidates git's stat cache, so the next `git reset
+   --hard` rewrites the whole tree at umask-007 modes. Measured on
+   `monitor/promtail.yml` right after a deploy: index `ctime: 1794999427` vs file
+   `ctime=11:57:27` (11:57:07 checkout, `chown` 20 s later). Restarting a
+   container inside that window reads half-written `0660` files. Fixed in
+   [`2026-11-18_checkout-ctime-churn.md`](2026-11-18_checkout-ctime-churn.md).
 
 **Known Issues & Limitations:**
 
@@ -204,8 +205,9 @@ used for `.env` / `grafana.env`, so no new convention was introduced.
   world-readable `chmod` — and Grafana's one-shot provisioning scan — race. It is
   non-fatal (logged `permission denied`, no crash), does not affect datasources
   or contact points, and self-heals on the next restart once modes are restored.
-  Observed once during verification (11:51:21Z checkout, 11:51:26Z Grafana scan);
-  not addressed here.
+  Observed once during verification (11:51:21Z checkout, 11:51:26Z Grafana scan).
+  The window itself is closed by
+  [`2026-11-18_checkout-ctime-churn.md`](2026-11-18_checkout-ctime-churn.md).
 - `datasources.yml` still lives under the directory mount, so its mode depends on
   the central `world_readable_paths` list; a future monitor config with a secret
   needs the `rendered/` treatment and not a new entry in that list.
@@ -240,5 +242,6 @@ everywhere else; the `template` + assert already covers the missing-file case.
 ## Related Decisions
 
 - [`2026-10-30_monitor-provisioning-render-trap.md`](2026-10-30_monitor-provisioning-render-trap.md) — the incident; its structural fix is this entry
+- [`2026-11-18_checkout-ctime-churn.md`](2026-11-18_checkout-ctime-churn.md) — the checkout rewrite / `0660` window this entry's verification exposed
 - [`2026-10-09_monitor-contact-points-readable.md`](2026-10-09_monitor-contact-points-readable.md) — the `mode: '0644'` requirement this render keeps
 - `CLAUDE.md` → "Never `git pull` the deploy checkout on the server"
