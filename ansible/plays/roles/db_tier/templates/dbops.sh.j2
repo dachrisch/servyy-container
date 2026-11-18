@@ -239,7 +239,17 @@ cmd_verify() {
 
 # --- restore ------------------------------------------------------------------
 strip_definers() { sed -E 's/DEFINER=`[^`]*`@`[^`]*`//g'; }
-has_tables() { [ "$(sql "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$T_DB'")" != "0" ]; }
+# `sql` defaults its database argument to $T_DB, so on a FRESH tier - where that
+# database does not exist yet - the client refused the query with "ERROR 1049
+# (42000): Unknown database", the command substitution came back empty, and the
+# empty string was read as "!= 0", i.e. "already has tables". Every first copy
+# into a new tier was therefore refused without --force (found on the WP-5a
+# bnb restore, 2026-11-18). Use `information_schema` as that database: it always
+# exists and every account may read it, whereas `mysql` is root-only and the
+# tier's backup user is tenant scoped (it was refused there on the first
+# attempt). A missing database then reads as "no tables" and the caller takes
+# the create path.
+has_tables() { [ "$(sql "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$T_DB'" information_schema)" != "0" ]; }
 
 cmd_restore() {
   [ $# -ge 2 ] || usage
@@ -268,7 +278,11 @@ cmd_restore() {
     [ "$force" = "1" ] || die "database '$T_DB' already has tables; refusing to import over it (--force to override)" 4
   else
     info "dbops: creating database '$T_DB' (utf8mb4 / utf8mb4_unicode_ci, D5)"
-    sql "CREATE DATABASE IF NOT EXISTS \`$T_DB\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci" mysql \
+    # information_schema, not `mysql`: `mysql` is root-only and the credential
+    # doing a restore is a tenant-scoped one (the tenant's own app user, which
+    # holds CREATE on its database) - the tier's backup user is SELECT-only and
+    # cannot restore at all. CREATE DATABASE needs no default database.
+    sql "CREATE DATABASE IF NOT EXISTS \`$T_DB\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci" information_schema \
       || die "cannot create database '$T_DB'" 4
   fi
 
