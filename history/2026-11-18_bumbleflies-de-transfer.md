@@ -232,10 +232,26 @@ but GoDaddy no longer holds a zone for the domain, so that would blackhole it.
       DNS-01 is impossible because the domain is at Strato/GoDaddy.
 - [x] `acme.json.bak-20261118` deleted from the traefik certificates volume, with
       the live `acme.json` intact (46 certificates across both resolvers).
-- [ ] **The IPv4 path to `49.13.6.173:443` from the workstation and
-      `servyy-test`** fails while IPv6 succeeds and `codey` reaches it fine on
-      both. Looks like a fail2ban ban or a firewall rule on that source range,
-      and it silently hides IPv4-only breakage from local testing. Unrelated to
-      this transfer, worth its own investigation.
+- [x] **The IPv4 path to `49.13.6.173:443` — resolved.** Not a firewall or
+      routing fault: the operator's uplink sits behind **carrier-grade NAT**, so
+      the household shares one public IPv4 with other customers of the same ISP,
+      and `loki-blocklist` (the Traefik web-abuse jail) had banned that shared
+      address for 80/443. SSH stayed reachable because that jail is deliberately
+      scoped to `http,https` in the FORWARD chain — which is what made the
+      failure look like "IPv4 is broken" while everything still worked.
+      Retention is only 4 weekly rotations, but the logs show the household's
+      address blocked on 2026-11-10, 11 and 18 from **three different pool
+      addresses**, i.e. a fresh CGNAT assignment is re-poisoned by neighbours
+      within days. Unbanned on 2026-11-18; a request for a non-shared IPv4 was
+      sent to the ISP the same day.
+
+      Two operating rules from this: a web-tier ban on the operator's own uplink
+      is an expected condition, not an incident — check
+      `fail2ban-client status loki-blocklist` before debugging DNS, and do not
+      add the pool address to `ignoreip` (the jail config explains why, and on
+      CGNAT it would also stop throttling the neighbours). And because that
+      address is shared, a neighbour's failed SSH logins are indistinguishable
+      from the operator's in the logs.
+
 - [ ] `securityLock: 0` — confirm whether Porkbun offers a registrar lock for
       `.de`; the previous `.de` transfer also ended with the lock off.

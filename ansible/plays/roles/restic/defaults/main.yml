@@ -30,6 +30,10 @@ restic_seeds:
   # play and asks for it interactively.
   - name: "restic - moodle (lehel.xyz)"
     seed: "vars/.restic_password_moodle"
+  # DB-tier repos (WP-4..7) share ONE password (D16): one more repo per
+  # tier/business tenant must not mean one more secret to hand over.
+  - name: "restic - db (lehel.xyz)"
+    seed: "vars/.restic_password_db"
 
 # Field is `secret` (not `password`) to match vaultwarden/tasks/push_items.yml's
 # generic item shape {name, secret, notes}.
@@ -48,6 +52,10 @@ restic_vaultwarden_items:
   - name: "restic - moodle (lehel.xyz)"
     secret: "{{ restic_password_moodle }}"
     notes: "RESTIC_PASSWORD for /etc/restic/env.moodle-files and /etc/restic/env.moodle-db (copy of Ansible seed vars/.restic_password_moodle)"
+  # Shared by every DB-tier repo created from WP-4 on (D16).
+  - name: "restic - db (lehel.xyz)"
+    secret: "{{ restic_password_db }}"
+    notes: "RESTIC_PASSWORD for the db-tier repos (copy of Ansible seed vars/.restic_password_db)"
 
 # --- Scoped repo lists --------------------------------------------------------
 # `db` exists only where LeagueSphere runs; `moodle-files`/`moodle-db` only

@@ -46,3 +46,19 @@ vars/.waggle_encryption_key
 .vw_master_pw
 __pycache__/
 .ansible/
+# DB-tier restic seed (D16): one password for the tier DB repos created from
+# WP-4 on. Same lookup('password', ...) mechanism as the restic seeds above.
+plays/vars/.restic_password_db
+vars/.restic_password_db
+
+# Per-tier dbops backup-user passwords (roles/db_tier). Unlike the restic seeds
+# these are REGENERABLE: the role re-sets the password in the database with
+# ALTER USER, so losing a seed costs one deploy, not a backup history.
+plays/vars/.dbops_password_high
+vars/.dbops_password_high
+plays/vars/.dbops_password_nonprod
+vars/.dbops_password_nonprod
+plays/vars/.dbops_password_business
+vars/.dbops_password_business
+plays/vars/.dbops_password_private
+vars/.dbops_password_private
