@@ -203,14 +203,17 @@
       schedule: 'Mon..Sun *-*-* 02:30'
       # `dbops dump` writes <dump_dir>/bnb_office-<UTC>.sql.gz through a
       # .partial file (a restic run can never capture a half-written dump) and
-      # is idempotent about the directory. The prune covers BOTH name patterns
-      # through one glob — `bnb?office-*` matches the pre-WP-5b one-liner's
-      # `bnboffice-*` and dbops' `bnb_office-*` — so the old files age out too.
+      # is idempotent about the directory. The prune glob `bnb*office-*` covers
+      # BOTH naming patterns — the pre-WP-5b one-liner's `bnboffice-*` and
+      # dbops' `bnb_office-*` — so the old files age out too. (`bnb?office-*`
+      # was the first attempt and does NOT match `bnboffice-*`: `?` consumes the
+      # `o`, so the pattern then demands a second `office`. Verified on the host
+      # 2026-11-18 by planting one file per pattern.)
       # No parentheses/backslashes in here on purpose: ExecStart is parsed by
       # systemd, not by a shell, and this is the string it must hand to `sh -c`.
       command: >-
         sh -c '{{ (remote_user_home, '.dbops', 'dbops') | path_join }} dump bnb_office
         && find {{ (docker.remote_dir, 'bnb-office', '.backup') | path_join }}
-        -type f -name "bnb?office-*.sql.gz" -mtime +35 -delete'
+        -type f -name "bnb*office-*.sql.gz" -mtime +35 -delete'
   tags:
     - user.docker.bnb-office
