@@ -1,5 +1,11 @@
 #!/bin/zsh
 # Nightly prod -> stage DB sync (mirrors ls_db_sync role's 'local' source path)
+#
+# WP-4b: the staging database lives on the nonprod DB tier (db-nonprod.mariadb),
+# not in an app-owned `leaguesphere_stage.mysql` container. The import runs as the
+# STAGE APP USER (ALL on its own database — no root on the tier), and the sync
+# refuses to run at all if the retired container is ever resurrected, because it
+# would then fill a database nobody reads (plan Phase 3 step 8).
 set -euo pipefail
 source "/home/{{ create_user }}/.zprezto/custom/functions/logdy" 2>/dev/null || true
 
@@ -8,8 +14,15 @@ PROD_DB="{{ prod_db_name }}"
 PROD_ROOT_PASSWORD="{{ prod_root_password }}"
 STAGE_CONTAINER="{{ stage_container }}"
 STAGE_DB="{{ stage_db_name }}"
-STAGE_ROOT_PASSWORD="{{ stage_root_password }}"
+STAGE_USER="{{ stage_user }}"
+STAGE_PASSWORD="{{ stage_password }}"
 STAGE_APP_CONTAINER="{{ stage_app_container }}"
+RETIRED_CONTAINER="{{ retired_container }}"
+
+if docker inspect "$RETIRED_CONTAINER" >/dev/null 2>&1; then
+  echo "ERROR: retired container $RETIRED_CONTAINER exists again - refusing to sync" >&2
+  exit 1
+fi
 
 DUMP_FILE="/tmp/leaguesphere_prod_$(date +%s).sql"
 cleanup() { rm -f "$DUMP_FILE"; }
@@ -32,13 +45,16 @@ if [ "$STATUS" != "healthy" ]; then
   exit 1
 fi
 
-docker exec "$STAGE_CONTAINER" mariadb -h 127.0.0.1 -u root -p"$STAGE_ROOT_PASSWORD" \
+# The stage app user has ALL on its own database, so it can drop/recreate and
+# import it. MYSQL_PWD reaches the container through the docker CLI's
+# ENVIRONMENT (pass-through by name), never through a host argv.
+MYSQL_PWD="$STAGE_PASSWORD" docker exec -e MYSQL_PWD "$STAGE_CONTAINER" \
+  mariadb -h 127.0.0.1 -u "$STAGE_USER" \
   -e "DROP DATABASE IF EXISTS $STAGE_DB; CREATE DATABASE $STAGE_DB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
-docker cp "$DUMP_FILE" "$STAGE_CONTAINER:/tmp/dump.sql"
-docker exec -i "$STAGE_CONTAINER" mariadb -h 127.0.0.1 -u root -p"$STAGE_ROOT_PASSWORD" "$STAGE_DB" < "$DUMP_FILE"
-docker exec "$STAGE_CONTAINER" rm -f /tmp/dump.sql
+MYSQL_PWD="$STAGE_PASSWORD" docker exec -i -e MYSQL_PWD "$STAGE_CONTAINER" \
+  mariadb -h 127.0.0.1 -u "$STAGE_USER" "$STAGE_DB" < "$DUMP_FILE"
 
 docker restart "$STAGE_APP_CONTAINER"
 
-echo "Nightly stage DB sync completed: $PROD_DB -> $STAGE_DB"
+echo "Nightly stage DB sync completed: $PROD_DB -> $STAGE_DB on $STAGE_CONTAINER"

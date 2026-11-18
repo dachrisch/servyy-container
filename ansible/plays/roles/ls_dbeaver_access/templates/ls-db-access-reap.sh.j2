@@ -17,9 +17,13 @@
 # placed on a host command line.
 set -uo pipefail
 
+# container|database|host-pattern|cap-hours|admin-credential-file
+# The 5th field is empty for an app-owned stack (the SQL then runs as the
+# container's own root, from its env); a DB-tier stack names a 0600 file whose
+# DBADMIN_USER/DBADMIN_PASSWORD the reaper uses instead of the tier's root.
 STACKS=(
 {% for stack in dbeaver_stacks %}
-  "{{ stack.db_container }}|{{ stack.db_name }}|{{ stack.grant_host_pattern }}|{{ stack.ttl_cap_hours }}"
+  "{{ stack.db_container }}|{{ stack.db_name }}|{{ stack.grant_host_pattern }}|{{ stack.ttl_cap_hours }}|{{ stack.admin_env_path | default('') }}"
 {% endfor %}
 )
 
@@ -27,10 +31,30 @@ log() {
   echo "ls-db-access-reap[${DB:-?}]: $*"
 }
 
+# Credentials for the stack being swept. Empty DBADMIN_USER means "app-owned
+# stack": the container's own root comes from its environment. For a DB-tier
+# stack provisioner.yml has rendered DBADMIN_USER/DBADMIN_PASSWORD into a 0600
+# file, and that scoped account is used instead of the tier's root.
+load_admin() {
+  DBADMIN_USER=""
+  DBADMIN_PASSWORD=""
+  if [ -n "${1:-}" ] && [ -r "$1" ]; then
+    # shellcheck disable=SC1090
+    . "$1"
+  fi
+}
+
 sql() {
   # $1 = container; SQL on stdin
-  docker exec -i "$1" sh -c \
-    'exec mariadb -h 127.0.0.1 -u root -p"$MYSQL_ROOT_PASSWORD" --batch --skip-column-names'
+  if [ -n "${DBADMIN_USER:-}" ]; then
+    # MYSQL_PWD is handed to the container through the docker CLI's ENVIRONMENT
+    # (pass-through by name), so the value never appears in a host argv.
+    MYSQL_PWD="$DBADMIN_PASSWORD" docker exec -i -e MYSQL_PWD "$1" \
+      mariadb -h 127.0.0.1 -u "$DBADMIN_USER" --batch --skip-column-names
+  else
+    docker exec -i "$1" sh -c \
+      'exec mariadb -h 127.0.0.1 -u root -p"$MYSQL_ROOT_PASSWORD" --batch --skip-column-names'
+  fi
 }
 
 sql_str() {
@@ -89,7 +113,8 @@ SQL
 }
 
 sweep() {
-  IFS='|' read -r DB_CONTAINER DB PATTERN CAP_H <<< "$1"
+  IFS='|' read -r DB_CONTAINER DB PATTERN CAP_H ADMIN_ENV <<< "$1"
+  load_admin "$ADMIN_ENV"
   local has_ledger verdict user host pid LEDGER
 
   # Fail the stack early (and loudly) if its database is not reachable, rather

@@ -10,3 +10,12 @@ ls_db_sync_source: "local"
 # would otherwise break the external dump. Override with -e if the external host moves.
 ls_db_sync_external_host: "s207.goserver.host"
 ls_db_sync_local_container: "leaguesphere.db"
+
+# WP-4b: the staging database lives on the nonprod DB tier, not in an app-owned
+# `leaguesphere_stage.mysql` container. Both the immediate run (tasks/main.yml)
+# and the nightly timer (templates/ls_db_sync.sh.j2) target this container and
+# connect as the STAGE APP USER (ALL on its own database - no root needed).
+ls_db_sync_target_container: "db-nonprod.mariadb"
+# Guard: if this container ever exists again the sync would be writing into a
+# database nobody reads. Fail loudly instead (plan Phase 3 step 8).
+ls_db_sync_retired_container: "leaguesphere_stage.mysql"
