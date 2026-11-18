@@ -153,9 +153,47 @@ https://www.bumbleflies.de/            301
   both nameserver pairs throughout, so mail and the whole subdomain tree were
   never served from an empty zone.
 - `.de` carries no 60-day transfer lock and needs no registrant change.
-- The four services that were forced onto HTTP-01 because of this domain are now
-  *eligible* for DNS-01 — see Next Steps; nothing was switched as part of the
-  transfer itself.
+- **The DNS-01 switch was deployed and reverted the same day** — see below. All
+  `bumbleflies.de` hosts are back on HTTP-01 with their original certificates.
+
+## The DNS-01 switch that had to be rolled back (2026-11-18, same session)
+
+The domain now being in the Porkbun account, `bumbleflies/docker-compose.yml`
+was changed to put the apex `_prod`, `edu` and `live` routers on
+`letsencryptdnsresolver`, deployed, and then rolled back. Recording it because
+the failure mode is invisible until it is too late to plan for:
+
+1. **The label alone changes nothing.** Traefik serves any certificate it finds
+   in its local store and only calls a resolver when no certificate matches the
+   SNI. The existing HTTP-01 certificates therefore kept being served, and no
+   ACME order was created at all.
+2. **Renewal follows the store, not the router.** `acme.json` is keyed per
+   resolver, and Traefik renews each entry with the resolver that owns it. So
+   leaving the old certificates in place would have meant renewals quietly
+   continuing over HTTP-01 regardless of the new label — a cosmetic switch.
+3. **Forcing the issue means deleting the HTTP-01 entries** from `acme.json`
+   (backup: `acme.json.bak-20261118` in the traefik certificates volume;
+   delete once this is settled) and restarting Traefik. That immediately serves
+   Traefik's default self-signed certificate for those names until issuance
+   completes — a live user-visible window, not a background operation.
+4. **lego then never completed the challenge.** It sat on
+   `dns01: waiting for record propagation` for the full window. Everything
+   checkable from outside was correct: the four Porkbun nameservers, `8.8.8.8`
+   and `9.9.9.9` all served the challenge TXT, and `1.1.1.1` did too once the
+   post-transfer delegation cache expired. Flushing the host's
+   `systemd-resolved` cache did not help either. **This is a lego propagation-check
+   problem, not a credentials problem** — a TXT create/delete in this zone with
+   the Traefik key succeeded, and the same resolver holds 27 working
+   `lehel.xyz` certificates.
+5. One credible suspect, not yet confirmed: the wildcard `*` record. The zone
+   answers every non-existent name, which changes what an authoritative server
+   returns for NODATA/CNAME probes during propagation checking, and no other
+   zone in the estate has a wildcard.
+
+**Do not retry this on live traffic.** It costs ~3–5 minutes of self-signed
+certificates on three hostnames per attempt. Diagnose the propagation check
+first (lego's own view from inside the container, with the wildcard removed or
+a test zone), then redo it in a maintenance window.
 
 ## Rollback Procedure
 
@@ -168,14 +206,15 @@ but GoDaddy no longer holds a zone for the domain, so that would blackhole it.
 
 ## Next Steps
 
-- [ ] **Switch the `bumbleflies.de` routers to `letsencryptdnsresolver`** —
-      `bumbleflies/docker-compose.yml` lines 21 (`_prod`, the apex), 62 (bnb),
-      85 (edu), 110 (live). HTTP-01 still works today, so this is an improvement
-      rather than a fix, and it needs a deploy to take effect.
-- [ ] **Correct the now-false comments** in `waggle/docker-compose.yml`,
-      `dontforget/docker-compose.yml`, `bnb-office/docker-compose.yml`,
-      `finance/docker-compose.yml` and `ansible/production`, all of which say DNS-01
-      is impossible because "bumbleflies.de is at Strato/GoDaddy".
+- [ ] **Diagnose the DNS-01 propagation check before retrying** (see the section
+      above). Until then the apex/edu/live routers stay on HTTP-01, which works.
+- [ ] **Correct the `pending` comments** left in `waggle/docker-compose.yml`,
+      `dontforget/docker-compose.yml`, `bnb-office/docker-compose.yml`
+      and `ansible/production` — those were already updated on 2026-11-18 to say
+      DNS-01 is now possible but not switched, which is accurate as it stands.
+- [ ] Delete `acme.json.bak-20261118` from the traefik certificates volume once
+      the DNS-01 question is settled (it holds a rollback copy of the private
+      keys).
 - [ ] **The IPv4 path to `49.13.6.173:443` from the workstation and
       `servyy-test`** fails while IPv6 succeeds and `codey` reaches it fine on
       both. Looks like a fail2ban ban or a firewall rule on that source range,

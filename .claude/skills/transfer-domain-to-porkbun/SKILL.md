@@ -370,8 +370,39 @@ A cert already in `acme.json` keeps serving until renewal, so a broken DNS-01
 path shows up **30 days before expiry**, not at deploy time. That probe is the
 only cheap early warning.
 
+**The label alone changes nothing, and forcing it is a maintenance-window job.**
+Traefik serves any certificate in its local store and only calls a resolver when
+nothing matches the SNI; renewal follows the *store* entry's resolver, not the
+router's label. So after flipping the label the old HTTP-01 cert keeps being
+served and keeps renewing over HTTP-01 — a cosmetic switch. To make it real you
+must delete that domain's entries from `acme.json` (back it up first) and restart
+Traefik, which immediately serves Traefik's **default self-signed certificate**
+for those hostnames until issuance completes. Only do that deliberately, with a
+rollback ready:
+
+```bash
+# on the host; ACME lives in the traefik certificates volume
+sudo cp -a $ACME ${ACME}.bak-$(date +%Y%m%d)   # restore copies over it
+docker stop traefik.traefik
+# remove entries whose domain.main is the host(s) being moved, then:
+docker start traefik.traefik
+docker logs -f traefik.traefik | grep dns01:
+```
+
+Verified DNS-01 issuance has still failed *after* all four Porkbun nameservers
+and the public resolvers serve the challenge TXT: lego sits on "waiting for
+record propagation" for its full timeout, and the hostnames stay self-signed.
+In that case restore the backup, restart Traefik, revert the label, and diagnose
+off live traffic. Two suspects worth checking first: a **wildcard** `*` record in
+the zone (it makes every name exist, changing NODATA/CNAME answers during the
+propagation check — no other zone in this estate has one), and a stale negative
+or delegation cache somewhere in lego's resolution path.
+
 Deploy through the normal ansible path (`--limit servy.lehel.xyz --tags
-user.docker.<service>`), see `manage-service`.
+user.docker.<service>`), see `manage-service`. **The deploy does not pull** —
+`servyy.sh` only runs the playbook against the checkout at
+`/home/cda/servyy-container` on the host, so `git push`, then `git pull` there,
+then deploy. Skipping the pull deploys the old file and reports success.
 
 ## Step 10 — lock it down and write it up
 
@@ -454,5 +485,7 @@ returns `TRANSFER_STATE_UNCONFIRMED` and refunds nothing — deliberately.
 - [ ] `startTransfer` accepted (no `TRANSFER_ZONE_EMPTY`)
 - [ ] nameservers repointed, confirmed at the registry and two public resolvers
 - [ ] site answers 200 on apex and www, over IPv4 **and** IPv6
-- [ ] cert resolver switched to DNS-01 **and** the Traefik key proven to write TXT
+- [ ] cert resolver decision made explicitly: either proven DNS-01 in a maintenance
+      window (label **and** re-issued cert), or honestly left on HTTP-01
+- [ ] deploy pulled the new file on the host (`servyy.sh` does not `git pull`)
 - [ ] `autoRenew`, `securityLock`, `apiAccess` all set; history entry written
