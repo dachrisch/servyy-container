@@ -113,6 +113,17 @@ engine — `1` if they differ, else `0` — with the **existing** probe mechanis
 gated on the same "host runs the monitor stack" condition. It can never fail a run: a
 watchtower pull legitimately leaves the fleet split for a few hours.
 
+Both task files are pulled in with **`import_tasks`**, not `include_tasks`: a dynamic include
+inherits its `tags: [always]` only on the include statement, so under any `--tags` filter
+(`user.docker.shared`, `ls.app`, …) the include would run and every untagged task inside it
+would be **skipped** — the guard and the drift push would be silent no-ops exactly where D8
+promises they always run. A static import applies `always` to each task in the file (measured
+on ansible-core 2.20.1: include → child skipped, import → child ran, `--list-tasks` shows the
+children only with the import). The same gotcha is why `roles/restic/tasks/main.yml` uses
+`include_tasks` + `apply.tags` for `seed_guard.yml`. Verified after the change:
+`--tags user.docker.monitor`, `--tags user.docker` and a full run each list all 12 guard and
+all 8 drift tasks once, `--tags ls.app` lists all 12 guard tasks.
+
 `monitor/provisioning/alerting/alert-rules.yml` gains `db_version_drift > 0` for **24 h**
 (medium, `infrastructure-alerts`): long enough to ignore a healthy in-flight patch, short
 enough to catch a pull that never reached every server.
