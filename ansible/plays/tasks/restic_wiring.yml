@@ -1,0 +1,165 @@
+---
+# Restic wiring: validate the inventory and build the probe lists (WP-8R R1).
+#
+# WHY: before R1 a new restic repo meant hand edits in 12 places across 9 files.
+# Now `backup_targets` in plays/vars/db_tenants.yml is the single input: the repo
+# lists are derived in vars/restic.yml, the forget/check scripts iterate the
+# targets directly, and this file builds the two system_probe lists (they are
+# consumed by `{% for %}` loops in the probe scripts, so they cannot be derived
+# inside the templates without duplicating the gating logic).
+#
+# WHY VALIDATE HERE: a typo in a repo name, a retention profile or a log key used
+# to degrade silently - a repo that quietly stops being backed up, or a forget
+# block pruning at the wrong rate. Every check below is a hard failure with the
+# offending value in the message.
+#
+# Molecule scenarios do not load the tenant inventory. When `backup_targets` is
+# undefined this file does nothing and the roles' own defaults (kept as molecule
+# fallbacks) are used; production always defines it (the three plays load
+# vars/db_tenants.yml).
+
+- name: Validate the restic backup inventory
+  when: backup_targets is defined
+  block:
+    - name: Fail when a backup target names an unknown retention profile
+      ansible.builtin.assert:
+        that:
+          - item.retention in retention_profiles
+        fail_msg: >-
+          backup_targets '{{ item.name }}': retention '{{ item.retention }}' is not a
+          profile in retention_profiles ({{ retention_profiles.keys() | list | join(', ') }}).
+        quiet: true
+      loop: "{{ backup_targets }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Fail when a backup target is not gated by a known flag
+      ansible.builtin.assert:
+        that:
+          - item.enabled_by in ['always', 'leaguesphere', 'moodle']
+        fail_msg: >-
+          backup_targets '{{ item.name }}': enabled_by '{{ item.enabled_by }}' is not one of
+          always | leaguesphere | moodle.
+        quiet: true
+      loop: "{{ backup_targets }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Fail when a backup target has no repo definition in vars/restic.yml
+      ansible.builtin.assert:
+        that:
+          - item.name in restic
+        fail_msg: >-
+          backup_targets '{{ item.name }}': there is no `restic.{{ item.name }}` in
+          vars/restic.yml. The inventory carries the policy; the transport details
+          (repository, password, source_path, excludes) live there.
+        quiet: true
+      loop: "{{ backup_targets }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Fail when two backup targets share a name
+      ansible.builtin.assert:
+        that:
+          - backup_targets | map(attribute='name') | list | length
+            == backup_targets | map(attribute='name') | unique | list | length
+        fail_msg: >-
+          backup_targets declares at least one repo twice:
+          {{ backup_targets | map(attribute='name') | list | join(', ') }}.
+        quiet: true
+
+    - name: Fail when a target's log key is not a known log file
+      ansible.builtin.assert:
+        that:
+          - item.log_key in restic.logs
+          - (item.dump_log_key | default(none)) is none or item.dump_log_key in restic.logs
+        fail_msg: >-
+          backup_targets '{{ item.name }}': log_key '{{ item.log_key }}' (or dump_log_key
+          '{{ item.dump_log_key | default('-') }}') is not a key in restic.logs
+          ({{ restic.logs.keys() | list | join(', ') }}).
+        quiet: true
+      loop: "{{ backup_targets }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Fail when a tenant points at a repo that is not a backup target
+      ansible.builtin.assert:
+        that:
+          - item.restic_repo | default('') == ''
+            or item.restic_repo in (backup_targets | map(attribute='name') | list)
+        fail_msg: >-
+          db_tenants '{{ item.tenant }}': restic_repo '{{ item.restic_repo }}' is not a
+          backup_targets name ({{ backup_targets | map(attribute='name') | list | join(', ') }}).
+          A dump nobody snapshots is a backup gap.
+        quiet: true
+      loop: "{{ db_tenants }}"
+      loop_control:
+        label: "{{ item.tenant }}"
+
+    # --- the two system_probe lists, in the order the deployed scripts have ---
+    - name: Start the log-check list with the host-level entries
+      ansible.builtin.set_fact:
+        restic_wiring_log_checks:
+          - name: docker-cleanup
+            path: /var/log/docker-cleanup.log
+            threshold_seconds: 691200
+          - name: kernel-cleanup
+            path: /var/log/kernel-cleanup.log
+            threshold_seconds: 2764800
+        restic_wiring_snapshot_checks: []
+
+    - name: Add the host-repo log checks
+      ansible.builtin.set_fact:
+        restic_wiring_log_checks: >-
+          {{ restic_wiring_log_checks
+             + [{'name': t.log_label, 'path': restic.logs[t.log_key],
+                 'threshold_seconds': t.log_threshold_seconds}] }}
+      loop: "{{ restic_targets_enabled | selectattr('tenant', 'equalto', None) | list }}"
+      loop_control:
+        loop_var: t
+        label: "{{ t.name }}"
+
+    - name: Add the host-level forget/check log checks
+      ansible.builtin.set_fact:
+        restic_wiring_log_checks: >-
+          {{ restic_wiring_log_checks
+             + [{'name': 'restic-forget', 'path': restic.logs.forget, 'threshold_seconds': 90000},
+                {'name': 'restic-check', 'path': restic.logs.check, 'threshold_seconds': 691200}] }}
+
+    - name: Add the tenant-repo log checks
+      ansible.builtin.set_fact:
+        restic_wiring_log_checks: >-
+          {{ restic_wiring_log_checks
+             + [{'name': t.log_label, 'path': restic.logs[t.log_key],
+                 'threshold_seconds': t.log_threshold_seconds}] }}
+      loop: "{{ restic_targets_enabled | rejectattr('tenant', 'equalto', None) | list }}"
+      loop_control:
+        loop_var: t
+        label: "{{ t.name }}"
+
+    - name: Add the dump-log checks
+      ansible.builtin.set_fact:
+        restic_wiring_log_checks: >-
+          {{ restic_wiring_log_checks
+             + [{'name': t.dump_log_label, 'path': restic.logs[t.dump_log_key],
+                 'threshold_seconds': t.dump_log_threshold_seconds | default(7200)}] }}
+      loop: "{{ restic_targets_enabled | rejectattr('dump_log_key', 'none') | list }}"
+      loop_control:
+        loop_var: t
+        label: "{{ t.name }}"
+
+    - name: Build the snapshot-age probe list (repo order = inventory order)
+      ansible.builtin.set_fact:
+        restic_wiring_snapshot_checks: >-
+          {{ restic_wiring_snapshot_checks
+             + [{'name': t.name, 'env_file': '/etc/restic/env.' ~ t.name,
+                 'threshold_seconds': (t.probe_minutes | int) * 60}] }}
+      loop: "{{ restic_targets_enabled | selectattr('probe_minutes', 'gt', 0) | list }}"
+      loop_control:
+        loop_var: t
+        label: "{{ t.name }}"
+
+    - name: Publish the generated probe lists
+      ansible.builtin.set_fact:
+        system_probe_log_checks: "{{ restic_wiring_log_checks }}"
+        system_probe_restic_repos: "{{ restic_wiring_snapshot_checks }}"

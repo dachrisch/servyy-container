@@ -58,6 +58,11 @@ restic_vaultwarden_items:
     notes: "RESTIC_PASSWORD for the db-tier repos (copy of Ansible seed vars/.restic_password_db)"
 
 # --- Scoped repo lists --------------------------------------------------------
+# MOLECULE ONLY. Production derives these three names from `backup_targets` in
+# plays/vars/db_tenants.yml (see vars/restic.yml, WP-8R R1); play vars beat role
+# defaults, so the definitions below only take effect in the molecule scenarios,
+# which do not load the tenant inventory. Add new repos to `backup_targets`, not
+# here - the copy below exists so the role stays testable in isolation.
 # `db` exists only where LeagueSphere runs; `moodle-files`/`moodle-db` only
 # where Moodle runs. These derived lists are the gating mechanism for every
 # loop over repos (env files, sftp mkdir, init, verify, log files). Each is a

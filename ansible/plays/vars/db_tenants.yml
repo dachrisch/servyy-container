@@ -36,6 +36,171 @@
 # The guard groups rows by `server`, so several tenants on one server produce one
 # entry in its per-server check (shared.mongo holds three, shared.db one).
 # A server counts as `retiring` only when every tenant on it is.
+#
+# --- restic wiring (WP-8R R1): `backup_targets` + `retention_profiles` --------
+# This file is the GENERATOR for the restic wiring. Before R1 a new repo meant
+# hand edits in 12 places across 9 files (vars/restic.yml, roles/restic/defaults,
+# roles/restic/tasks/backup.yml, the two system templates, the two system_probe
+# lists, and an alert-rule name chain). The lists below are now derived from
+# `backup_targets`; the only remaining hand-written parts are the repo's own
+# transport details in vars/restic.yml (repository URL, password, source path,
+# excludes) and its backup task in roles/restic/tasks/backup.yml, which differ
+# per repo by nature.
+#
+# ONE ROW PER RESTIC REPO (not per tenant — `moodle` has two: files and db):
+#   name                     repo key, = `restic.<name>` and `<repo>` in restic.yml
+#   kind                     files | db-dump  (what the repo holds)
+#   tenant                   tenant id from `db_tenants`, or null for a host repo
+#   enabled_by               always | leaguesphere | moodle  (the gating flag)
+#   cadence                  hourly | daily HH:MM | none   (dump cadence TODAY)
+#   dump_at                  when the dump step runs ('40', '01:20'), null if none
+#   dump_format              physical | logical | none
+#   retention                name in `retention_profiles` (never an inline map, so
+#                            a typo fails the run instead of silently pruning at
+#                            the wrong rate)
+#   probe_minutes            snapshot-age probe threshold; 0 = no series
+#   severity                 alert severity R2 will use for this repo's alerts
+#   size_floor_bytes         below this a fresh snapshot is treated as broken;
+#                            0 = no floor (R2/R3 use it)
+#   log_key                  key in `restic.logs` of this repo's backup log
+#   log_label                metric label of the log-freshness check
+#                            (`restic-backup-ls-db` for the repo `db`: the label
+#                            names the dump job, not the repo)
+#   log_threshold_seconds    log-freshness threshold (scheduler-alive signal)
+#   dump_log_key             optional: key in `restic.logs` of the DUMP script's
+#                            log (a dump is not a repo; its log proves the timer
+#                            fires while the snapshot probe proves the data lands)
+#   dump_log_threshold_seconds
+#   comment                  optional policy note rendered above this repo in the
+#                            forget script (kept next to the policy it explains)
+#
+# Values below are TODAY's reality, copied from the timers and scripts that run,
+# deliberately not a new policy: R3/R4/R6 change some of them with their moves.
+retention_profiles:
+  # Named GFS keep-maps (restic forget flags). Order is the render order:
+  # last, hourly, daily, weekly, monthly; `keep_tag` (optional) is emitted first.
+  host_hourly:
+    last: 24
+    hourly: 48     # ~2 days of hourly
+    daily: 14
+    weekly: 8
+    monthly: 6
+  host_daily:
+    last: 7
+    daily: 30      # daily backup -> no hourly bucket
+    weekly: 12
+    monthly: 12
+  db_hourly:
+    last: 48
+    hourly: 72     # 3 days of hourly
+    daily: 30      # a month of dailies
+    weekly: 12
+    monthly: 12
+  files_daily:
+    keep_tag: baseline   # a manual `restic tag --add baseline` outlives the buckets
+    last: 7
+    daily: 7
+    weekly: 4
+    monthly: 6
+  dump_hourly:
+    keep_tag: baseline
+    last: 24
+    hourly: 24
+    daily: 14
+    weekly: 8
+    monthly: 6
+
+backup_targets:
+  - name: home
+    kind: files
+    tenant: null
+    enabled_by: always
+    cadence: hourly
+    dump_at: null
+    dump_format: none
+    retention: host_hourly
+    probe_minutes: 120            # hourly backup -> 2 h
+    severity: medium
+    size_floor_bytes: 0
+    log_key: backup_home
+    log_label: restic-backup-home
+    log_threshold_seconds: 7200
+    dump_log_key: null
+
+  - name: root
+    kind: files
+    tenant: null
+    enabled_by: always
+    cadence: daily
+    dump_at: '00:00'
+    dump_format: none
+    retention: host_daily
+    probe_minutes: 1500           # daily backup -> 25 h
+    severity: medium
+    size_floor_bytes: 0
+    log_key: backup_root
+    log_label: restic-backup-root
+    log_threshold_seconds: 90000
+    dump_log_key: null
+
+  - name: db
+    kind: db-dump
+    tenant: leaguesphere
+    enabled_by: leaguesphere
+    cadence: hourly
+    dump_at: '40'                 # mariadb-backup, :40 past every hour
+    dump_format: physical
+    retention: db_hourly
+    probe_minutes: 120
+    severity: high
+    size_floor_bytes: 0
+    log_key: backup_ls_db
+    log_label: restic-backup-ls-db
+    log_threshold_seconds: 7200
+    dump_log_key: null
+
+  - name: moodle-files
+    kind: files
+    tenant: moodle
+    enabled_by: moodle
+    cadence: daily
+    dump_at: '01:20'
+    dump_format: none
+    retention: files_daily
+    probe_minutes: 1500
+    severity: medium
+    size_floor_bytes: 0
+    log_key: backup_moodle_files
+    log_label: restic-backup-moodle-files
+    log_threshold_seconds: 90000
+    dump_log_key: null
+    comment: |
+      # Moodle files (daily) and Moodle DB dumps (hourly) live in SEPARATE repos with
+      # their own retention — the file set is content-addressed and cheap to keep, the
+      # hourly dump is replaceable but is the only copy of the DB rows.
+      #
+      # `--keep-tag baseline` makes a manual `restic tag --add baseline <id>` a real
+      # pin: the pre-cutover baseline pair (files + dump) must outlive the GFS buckets
+      # (which would drop it after ~6 monthly runs). Verified combinable with the
+      # repo's own `--tag` filter on restic 0.18 (2026-11-06).
+
+  - name: moodle-db
+    kind: db-dump
+    tenant: moodle
+    enabled_by: moodle
+    cadence: hourly
+    dump_at: '40'                 # moodle-dump.sh at :40; the snapshot is at :50
+    dump_format: logical
+    retention: dump_hourly
+    probe_minutes: 120
+    severity: medium
+    size_floor_bytes: 10485760    # moodle-dump.sh refuses a dump below 10 MiB
+    log_key: backup_moodle_db
+    log_label: restic-backup-moodle-db
+    log_threshold_seconds: 7200
+    dump_log_key: moodle_dump
+    dump_log_label: moodle-dump
+    dump_log_threshold_seconds: 7200
 
 db_tenants:
   # --- high: LeagueSphere core production ---------------------------------
