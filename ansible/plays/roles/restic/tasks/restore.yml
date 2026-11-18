@@ -2,10 +2,19 @@
 # Restic restore task with environment-aware error handling
 # Supports both empty container bootstrap and incremental restore
 
+# Runs as ROOT on purpose: the play's deploy user cannot stat several of these
+# targets (servyy-container/moodle/data/moodledata is root:root 0750), and a
+# failed stat aborted the whole restic play before it could render anything —
+# measured on servy 2026-11-18. `failed_when: false` would be worse: this stat
+# decides whether a path may be REPLACED (line ~217/270), so "cannot inspect"
+# must never read as "absent". Read-only metadata, same idiom as the snapshot
+# check below.
 - name: Check if restore target exists [{{ restore_path }}]
   stat:
     path: "{{ restore_path }}"
   register: target_stat
+  become: true
+  become_user: root
   tags:
     - restic.restore
 
@@ -14,6 +23,8 @@
     paths: "{{ restore_path }}"
     recurse: no
   register: target_files
+  become: true
+  become_user: root
   when: target_stat.stat.exists and target_stat.stat.isdir
   tags:
     - restic.restore
@@ -91,6 +102,8 @@
   stat:
     path: "{{ restore_path | dirname }}/docker-compose.yml"
   register: docker_compose_exists
+  become: true
+  become_user: root
   tags:
     - restic.restore
 

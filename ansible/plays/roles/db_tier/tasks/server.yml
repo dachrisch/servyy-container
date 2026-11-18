@@ -29,6 +29,21 @@
       register: db_tier_accounts
       changed_when: false
 
+    # Fingerprint of every account (name, host, D12 limits, password hash): the
+    # comparison at the end of this block is what makes the role's `changed`
+    # honest — the SQL tasks themselves are `changed_when: false` because
+    # CREATE/ALTER/GREANT report no affected-row count, and pretending otherwise
+    # would lie in the other direction. Idempotent: an unchanged fingerprint is
+    # `changed: false`.
+    - name: Fingerprint the account state before the tier SQL on {{ db_tier_target.server }}
+      community.docker.docker_container_exec:
+        container: "{{ db_tier_target.server }}"
+        command: >-
+          sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" --skip-ssl --batch --skip-column-names -e "SELECT MD5(GROUP_CONCAT(CONCAT(User,\":\",Host,\":\",Max_user_connections,\":\",Max_statement_time,\":\",authentication_string) ORDER BY User,Host)) FROM mysql.user"'
+      register: db_tier_fingerprint_before
+      changed_when: false
+      no_log: true
+
     - name: Fail when a tenant user is missing and no password was supplied
       ansible.builtin.assert:
         that:
@@ -68,3 +83,24 @@
       # The statement text contains any newly created tenant's password.
       no_log: true
       changed_when: false
+
+    - name: Fingerprint the account state after the tier SQL on {{ db_tier_target.server }}
+      community.docker.docker_container_exec:
+        container: "{{ db_tier_target.server }}"
+        command: >-
+          sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" --skip-ssl --batch --skip-column-names -e "SELECT MD5(GROUP_CONCAT(CONCAT(User,\":\",Host,\":\",Max_user_connections,\":\",Max_statement_time,\":\",authentication_string) ORDER BY User,Host)) FROM mysql.user"'
+      register: db_tier_fingerprint_after
+      no_log: true
+      # THIS is the role's change signal: the accounts differ from before the
+      # SQL, so something was created or adjusted. Same fingerprint -> no change.
+      changed_when: >-
+        (db_tier_fingerprint_after.stdout | default('')) !=
+        (db_tier_fingerprint_before.stdout | default(''))
+
+    - name: Report the tier's account changes on {{ db_tier_target.server }}
+      ansible.builtin.debug:
+        msg: >-
+          {{ db_tier_target.server }}: accounts {{ 'changed' if
+             (db_tier_fingerprint_after.stdout | default('')) !=
+             (db_tier_fingerprint_before.stdout | default('')) else 'unchanged' }}
+          ({{ db_tier_target.tenants | map(attribute='tenant') | join(', ') }}).
