@@ -14,44 +14,25 @@
 name: moodle
 
 services:
-  db:
-    # mariadb:12.3 — the tag names the minor and floats the patch (D1). Never
-    # cross a major: MariaDB cannot open a newer data dir, and this volume holds
-    # Moodle's data. Patches arrive through the `db` watchtower scope (D15):
-    # one daily 06:00 window, health-check gated with rollback. This server is
-    # `retiring: true` (D14) — it stays on 12.3 until Moodle moves to the
-    # business tier.
-    image: mariadb:12.3
-    container_name: ${COMPOSE_PROJECT_NAME}.db
-    restart: unless-stopped
-    labels:
-      - traefik.enable=false
-      - com.centurylinklabs.watchtower.scope=db
-    env_file:
-      - db.env
-    command:
-      # Moodle is happy with utf8mb4/unicode_ci; the buffer pool is capped so a
-      # large query cannot push the host into swap (servy runs LeagueSphere prod
-      # on the same 8 GB).
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-      - --innodb-buffer-pool-size=256M
-    volumes:
-      # Existing server storage (prod: <service dir>/data), never the CIFS
-      # Storage Box: no safe fsync/locking for InnoDB, and it is the backup
-      # target. No `user:` override — the image entrypoint takes ownership.
-      - ${MOODLE_DATA_ROOT}/mariadb:/var/lib/mysql
-    networks:
-      - internal
-    # 1G: 256M InnoDB buffer pool + connections + the 1.6G imported dataset's
-    # working set. At 768m a third of the buffer pool lived in swap.
-    mem_limit: 1g
-    healthcheck:
-      test: ["CMD-SHELL", "mariadb-admin ping -uroot -p$$MARIADB_ROOT_PASSWORD --silent"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-
+  ## The database server LEFT THIS PROJECT in WP-7b (2026-11-18).
+  ##
+  ## Plan: docs/plans/2026-11-17_db-tier-topology.md, Phase 6.
+  ## It is `db-business.mariadb`, the business tier, in
+  ## db-business/docker-compose.yml - so Renovate sees its tag, the version guard
+  ## sees its line, and it is sized for Moodle *and* bnb (1.25g).
+  ##
+  ## The tuple moved, nothing else: same database name (`moodle`), same user
+  ## (`moodle`), same port (3306), no socket. DB_HOST comes from app.env, which
+  ## Ansible renders from the host var `moodle_db_host`; the app joins
+  ## db_business_backend below.
+  ##
+  ## ROLLBACK (one week, D11): the old container is stopped, not deleted, and its
+  ## datadir is intact:
+  ##     docker start moodle.db          # bring the old server back
+  ##     + revert moodle_db_host to unset (i.e. `${COMPOSE_PROJECT_NAME}.db`),
+  ##       restore this file, and redeploy
+  ## Do NOT `docker rm` and do NOT delete ${MOODLE_DATA_ROOT}/mariadb before that
+  ## window closes; WP-8 removes both, together with the old dump timer.
   # The service name is NOT cosmetic: Compose registers it as a DNS alias on the
   # `proxy` network, which every other service on this host shares. It must be
   # globally unique here.
@@ -72,9 +53,6 @@ services:
     image: erseco/alpine-moodle:4.5.16
     container_name: ${COMPOSE_PROJECT_NAME}.moodle
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
     env_file:
       # DB_* / SITE_URL / SSLPROXY / MOODLE_* / SMTP_* — rendered by Ansible.
       - app.env
@@ -95,7 +73,10 @@ services:
       # checksum assert in roles/user/tasks/moodle_plugins.yml.
       - ./plugins:/opt/moodle-plugins:ro
     networks:
-      - internal
+      # The DB tier's external network (WP-7b). The app reaches its database as
+      # `db-business.mariadb:3306` from here; `internal` is gone with the `db:`
+      # service.
+      - db_business_backend
       - proxy
     # 1.5G: 5 php-fpm children x 256M memory_limit + nginx + the image's cron
     # loop inside one container. 768m could not hold two real course pages.
@@ -172,7 +153,9 @@ services:
       - traefik.http.middlewares.${SERVICE_NAME}-oldpath-redirect.redirectregex.permanent=true
 
 networks:
-  internal:
-    internal: true
+  # Created by db-business/docker-compose.yml (internal there). Consumers attach
+  # as external so the tier owns its own lifecycle.
+  db_business_backend:
+    external: true
   proxy:
     external: true

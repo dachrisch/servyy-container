@@ -95,6 +95,13 @@ prod:
         # Setting moodle_volume_device here (plus moodle_volume_path) would switch
         # roles/user/tasks/moodle_volume.yml back on; nothing else changes.
         moodle_data_root: /home/cda/servyy-container/moodle/data
+        # Where Moodle's app reaches its database. WP-7b (2026-11-18): the
+        # business tier server, on the internal db_business_backend network - the
+        # app-owned `db:` sidecar leaves moodle/docker-compose.yml and its
+        # container is stopped (kept a week for rollback). The template's default
+        # is the old sidecar name, so servyy-test, which has no such var, keeps
+        # pointing at its own moodle.db.
+        moodle_db_host: db-business.mariadb
         # Public hostname. Feeds the Traefik router AND $CFG->wwwroot. Until
         # 2026-11-13 this was the rehearsal name m.leaguesphere.app (the
         # *.leaguesphere.app wildcard already pointed at servy, so the migration

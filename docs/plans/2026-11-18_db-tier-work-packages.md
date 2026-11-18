@@ -357,6 +357,66 @@ old datadir (kept a week).
 **Stop state.** All four move packages done; every MariaDB tenant on its tier; old servers
 still parked for rollback.
 
+### WP-7b runbook — the Moodle cutover window (≈30 min, owner-scheduled)
+
+Measured on the WP-7a rehearsal (2026-11-18): dump **1m48s** (130 MB gzip), restore
+**13m36s**, 497 tables / 1 671 MB / 10.35 M rows. Copy time alone is ≈15½ min; the rest is
+verification and smoke, so book **30 minutes** and tell OFFD beforehand.
+
+**Preconditions.** Master contains WP-7b and the host is at that commit (`--tags
+user.repo.clone`); `db-business.mariadb` healthy with the `moodle`@`%` account (WP-7a);
+the rehearsal copy is present and may be overwritten with `--force`.
+
+| # | Step | Command / check | Time |
+|---|---|---|---|
+| 0 | Announce; note the last good dump | `systemctl --user list-timers moodle-dump.timer` — note `current/moodle.sql.gz` and its restic snapshot | — |
+| 1 | Maintenance mode **on** | Moodle UI → Site administration → Server → Maintenance mode, or `docker exec -u nobody moodle.moodle php /var/www/html/admin/cli/maintenance.php --enable` | 1 min |
+| 2 | **Stop the app** — this is what stops Moodle's cron (it runs inside the app container, not as a host timer), so no writes and no adhoc tasks land between dump and restore | `docker stop moodle.moodle` | 10 s |
+| 3 | Final dump (as root from the old container's env; the tier backup user does not exist on the old server) | `DBOPS_USER=root DBOPS_PASSWORD="$(docker exec moodle.db printenv MARIADB_ROOT_PASSWORD)" DBOPS_DUMP_DIR=/home/cda/dbops-dumps ~/.dbops/dbops dump moodle` | **≈1m48s** |
+| 4 | Restore over the rehearsal copy, as the **tenant user** (`--force` because tables exist) | `DBOPS_SERVER=db-business.mariadb DBOPS_USER=moodle DBOPS_PASSWORD="$(docker exec moodle.db printenv MARIADB_PASSWORD)" ~/.dbops/dbops restore moodle <file> --force` | **≈13m36s** |
+| 5 | Verify before the app starts: per-table counts vs the (now quiescent) source must now match **exactly** — the WP-7a drift is gone because nothing is writing; `dbops verify moodle`; and `SELECT COUNT(*) FROM ibs.aenderungen` still 1 160 (bnb untouched) | see `compare-moodle` script shape in the WP-7a report | 3 min |
+| 6 | Deploy the new env (renders `DB_HOST=db-business.mariadb`, recreates `moodle.moodle` on `db_business_backend`) | `./servyy.sh --limit servy.lehel.xyz --tags user.repo.clone,user.docker.moodle` | 2 min |
+| 7 | Smoke: `https://offd.de/login/` 200, one real course page loads, then `docker exec moodle.moodle php /var/www/html/admin/cli/cron.php` exits 0 and the log has no new `cron` errors | | 5 min |
+| 8 | Maintenance mode **off**; one login as a real user | | 1 min |
+| 9 | Retire the old server: `docker stop moodle.db` (keep `${MOODLE_DATA_ROOT}/mariadb`, 1.7 GB, one week) | `docker inspect -f '{{.Created}} {{.State.Status}}' moodle.db` | 10 s |
+| 10 | **Repoint the dump — do NOT stop the timer.** The script renders `CONTAINER` from `moodle_db_host`, so deploying it makes it dump the tier; the hourly cadence and the `moodle-db` restic scope stay exactly as they are. Then run it once by hand to prove the target, and delete the now-unused sidecar credentials file (`moodle/db.env`: the compose no longer reads it, the role no longer renders it, it holds the old root password) and any stale `moodle/docker-compose.yml.new` | `./servyy.sh --limit servy.lehel.xyz --tags user.repo.clone,restic.backup` (renders scripts + units, runs **no** backup) → `grep ^CONTAINER ~/.backup-scripts/moodle-dump.sh` = `db-business.mariadb` → `~/.backup-scripts/moodle-dump.sh` → `sudo ls -l …/db-backup/current/` and `sudo gzip -t …/current/moodle.sql.gz` → `rm -f /home/cda/servyy-container/moodle/db.env /home/cda/servyy-container/moodle/docker-compose.yml.new` | 2 min |
+| 11 | Post-checks: guard shows `db-business.mariadb` (already, since the row moved) and no `moodle.db`; `db_version_drift` 0; memory watch on `db-business.mariadb` for a week | | — |
+
+**Ordering that must not be broken:** 2 before 3 (a live dump carries the drift), 4 before
+6 (`compose up` starts Moodle against whatever is in `moodle` — a half-restored database
+boots and "upgrades" it), 5 before 6 (the counts are only exact while both sides are
+quiescent), 9 and 10 together (the timer's target disappears with the container).
+
+**Rollback** (any time before WP-8 deletes the old surface, one week): maintenance on →
+`docker start moodle.db` → remove `moodle_db_host` from `ansible/production` and restore
+the compose (both are one `git revert` of the WP-7b commit) → `--tags user.repo.clone,user.docker.moodle`
+→ maintenance off. Everything written to the tier in between is lost with that rollback —
+the old server's data is the 17:40Z rehearsal + whatever the final dump captured.
+
+**Memory watch.** `db-business.mariadb` is 1.25 GiB and now carries Moodle (1.7 GB on disk)
+**and** bnb; the old setup had a 1 GB Moodle DB server plus the app's own 1.5 GB. 41 % used
+right after the copy. Watch `container_memory_near_limit` (and the buffer-pool hit rate) for
+a week; the business tier is the first candidate to resize if `moodle` + `ibs` together start
+evicting pages.
+
+**The two timer questions**
+
+* `moodle-dump` (script `/home/cda/.backup-scripts/moodle-dump.sh`, hourly at :40, restic scope
+  `moodle-db`, target `…/data/db-backup/current/moodle.sql.gz`): **closed inside this package**, so
+  the cutover leaves no dump gap. The script now renders `CONTAINER` from `moodle_db_host`
+  (`roles/restic/tasks/backup.yml`, `roles/restic/templates/moodle_dump.sh.j2`), which is the same
+  variable the app's `DB_HOST` comes from — the dump and the app can never point at different
+  servers, including through a rollback, and servyy-test keeps dumping its own `moodle.db`. The
+  timer is **not** stopped: step 10 redeploys the script and proves it with one manual run.
+  What must not change: `--skip-dump-date` + `gzip -n` (an unchanged database must produce a
+  byte-identical file so restic deduplicates the hourly 130 MB dump), the prepared `new/`→`current/`
+  swap, and the gzip + 10 MB size floor. A naive `dbops dump moodle` has neither flag and no
+  pruning, so it would store a fresh blob every hour; WP-8's remaining choice is whether to keep
+  this script (fine) or teach `dbops` the same determinism and pruning first.
+* No `docker-photo-index`-style pause exists for Moodle: its cron runs **inside** the app
+  container, so `docker stop moodle.moodle` (step 2) is the pause. Re-enabling is implicit in
+  step 6/8 — the container starts cron with it. Nothing else schedules work against the DB.
+
 ## WP-8 — Backups, probes, retire the old surface
 
 **Goal.** One dump/probe wiring for the whole fleet, and delete what the moves made dead.
