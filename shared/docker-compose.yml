@@ -11,14 +11,19 @@ name: ${SERVICE_NAME}
 
 services:
   mongo:
-    # Pinned to 9.0.4. Linux >= 6.19 (servy runs 7.0) breaks the TCMalloc/rseq
-    # use of mongo 8.x, and current 8.x builds refuse to start on it
-    # (SERVER-121912), so `mongo:8` crash-looped and watchtower rolled back
-    # every 2 h. 9.0 cannot open FCV 8.2 data, so the switch was a dump/restore
-    # onto a NEW volume (pre_tasks in plays/user.yml). A database gets an exact
-    # tag: a major/minor step is a deliberate change, never a watchtower pull.
+    # Tag names the MINOR and floats the patch (D1/D15): patches are delivered by
+    # the `db` watchtower scope, a major/minor step is a reviewed Renovate PR.
+    # The exact patch pin that was here (`9.0.8`) is what `9.0` resolves to today
+    # (same digest, verified 2026-11-18 before the change); it is not repeated
+    # because a pinned patch tag can never receive a fix.
+    #
+    # mongo 9 is not optional: Linux >= 6.19 (servy runs 7.0) breaks the
+    # TCMalloc/rseq use of mongo 8.x, and current 8.x builds refuse to start on it
+    # (SERVER-121912), so `mongo:8` crash-looped and watchtower rolled back every
+    # 2 h. 9.0 cannot open FCV 8.2 data, so the switch was a dump/restore onto a
+    # NEW volume (pre_tasks in plays/user.yml).
     # See history/2026-11-03_shared-mongo9-kernel7.md.
-    image: mongo:9.0.8
+    image: mongo:9.0
     container_name: ${COMPOSE_PROJECT_NAME}.mongo
     restart: unless-stopped
     # 512m: ~285M resident + ~88M in swap measured 2026-10-29. The cap stops the
@@ -38,7 +43,9 @@ services:
       - backend
     labels:
       - traefik.enable=false
-      - com.centurylinklabs.watchtower.scope=prod
+      # Database server: `db` watchtower scope, daily 06:00 patch window,
+      # health-gated (D15). Not `prod` — that poller runs every 2 h.
+      - com.centurylinklabs.watchtower.scope=db
     # Healthcheck interval 30s, not 10s (as are all checks in this repo): every
     # check is a `docker exec`, this host runs ~2.8 of them per second, and each
     # one spawns dockerd+containerd+shim+runc and a burst of runnable tasks on a
@@ -99,7 +106,10 @@ services:
       - backend
     labels:
       - traefik.enable=false
-      - com.centurylinklabs.watchtower.scope=prod
+      # Database server: `db` watchtower scope (D15). Postgres 15 patches are
+      # same-datadir; the 15 -> 16+ step is a reviewed PR, never a pull. This
+      # server is removed in Phase 9 once Firefly moves to db-private.mariadb.
+      - com.centurylinklabs.watchtower.scope=db
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U firefly"]
       interval: 30s

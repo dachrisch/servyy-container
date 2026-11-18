@@ -44,6 +44,23 @@
     - user
     - user.docker
   pre_tasks:
+    # D8: read every database server's intended tag from the controller
+    # checkout and refuse a mixed minor line BEFORE anything restarts.
+    # First pre_task on purpose: the mongo migration blocks below stop and
+    # recreate containers. Tagged `always` so `--tags docker` or a single
+    # service tag still runs it.
+    #
+    # import_tasks, NOT include_tasks: a dynamic include only inherits this
+    # `always` tag on the include task itself, so `--tags user.docker` would run
+    # the include and SKIP every (untagged) task inside it — a silent no-op where
+    # D8 promises a check on every deploy. A static import applies `always` to
+    # every task in the file (measured on ansible-core 2.20.1). Do not "tidy"
+    # this back into an include.
+    - name: Guard the database versions before any service task
+      ansible.builtin.import_tasks: tasks/db_version_guard.yml
+      tags:
+        - always
+
     - name: Read and encode Enable Banking PEM key
       ansible.builtin.slurp:
         src: "{{ docker.local_dir }}/finance/import/eb.pem"
@@ -917,6 +934,18 @@
       tags:
         - user.docker
         - user.docker.traefik
+
+    # D8: patch/digest drift is measured AFTER the deploy and is never fatal —
+    # a watchtower patch pull legitimately leaves the servers apart for hours.
+    # Last post_task: it must see the final container state.
+    #
+    # import_tasks, not include_tasks (same gotcha as the guard above): an
+    # include tagged `always` runs, but skips its untagged children under any
+    # `--tags` filter, so the drift metric would silently never be pushed.
+    - name: Push the post-deploy database drift metric
+      ansible.builtin.import_tasks: tasks/db_version_drift_push.yml
+      tags:
+        - always
 
 # Configure Portainer RBAC and register the slave agent endpoint via the API.
 # Opt-in via portainer_rbac_enabled (does not run on routine deploys). See
