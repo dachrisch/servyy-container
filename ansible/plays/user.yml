@@ -576,8 +576,7 @@
     # A tier WITH a server gets THREE tasks, in this order (WP-4a): pass 1 renders
     # db-<tier>/mariadb.env + dbops, `docker_service` brings the server up, pass 2
     # creates the tenants on the server that now runs. nonprod (WP-4) and business
-    # (WP-5a) have their servers; private is a single invocation until its compose
-    # file exists (WP-6).
+    # (WP-5) and private (WP-6a) have theirs.
     - role: db_tier
       vars:
         db_tier_name: high
@@ -635,6 +634,28 @@
         db_tier_name: business
       when: "'business' in (db_tiers | default([]))"
       tags: [user.docker, user.docker.db-business]
+
+    # private tier (WP-6a), same three-step shape as nonprod/business above:
+    # render db-private/mariadb.env + dbops, bring the server up, then create the
+    # tier's users on it. Only the tenants placed there are created - see the
+    # comment on db_tier_server_tenants in roles/db_tier/tasks/configure.yml.
+    - role: db_tier
+      vars:
+        db_tier_name: private
+        db_tier_render_only: true
+      when: "'private' in (db_tiers | default([]))"
+      tags: [user.docker, user.docker.db-private]
+
+    # The tier's own compose project: committed (D6), backend-only, no Traefik
+    # router; `db_private_backend` is internal. Consumers attach externally.
+    - role: docker_service
+      vars:
+        service_dir: db-private
+        env_templates:
+          - src: docker.env.j2
+            dest: .env
+      when: "'private' in (db_tiers | default([]))"
+      tags: [user.docker, user.docker.db-private]
 
     - role: db_tier
       vars:

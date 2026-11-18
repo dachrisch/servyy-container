@@ -76,6 +76,8 @@ docker_backend_services:
   - dir: db-nonprod
   # business DB tier (D6, WP-5): same shape, same reason.
   - dir: db-business
+  # private DB tier (D6, WP-6): same shape, same reason.
+  - dir: db-private
 
 # Journal log retention (declarative)
 # 200M (was 500M): the journal is a convenience log, not the audit trail —
