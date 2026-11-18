@@ -114,6 +114,9 @@ services:
       - com.centurylinklabs.watchtower.scope=prod
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      # Recording rules (container_memory_near_limit and future ones). Read-only:
+      # they are repo artefacts, never written by the server.
+      - ./rules:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'

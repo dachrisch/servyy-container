@@ -97,6 +97,11 @@ system_probe_restic_repos: >-
 # so the probe is neither deployed nor expected there.
 system_probe_storagebox_mount: "{{ '' if (skip_storagebox | default(false) | bool) else (storagebox.mount | default('')) }}"
 system_probe_storagebox_threshold_pct: 50
+# /tmp usage warns at 70 % and is critical at 90 %: at 82 % (2026-11-18) the
+# tmpfs filled and every restic home snapshot failed with 'disk quota
+# exceeded'. Grabbing a warn before the backup window is cheap.
+system_probe_tmp_warn_pct: 70
+system_probe_tmp_critical_pct: 90
 
 # --- Container-health probe --------------------------------------------------
 # List of docker-compose service dirs to check (mirrors monit.yml's container check,

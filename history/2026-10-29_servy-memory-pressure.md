@@ -180,6 +180,17 @@ Notes on the tuning, all measured against the live Prometheus before being commi
 - All five use the existing `prometheus` datasource uid and route through
   `notification-policies.yml` (critical → `email-critical`, high/medium → `email-admin`).
 
+**Follow-up 2026-11-18 (WP-8R/R13).** `container_memory_near_limit` is an **alert rule
+uid**, not a metric — the table above is right, but the database-tier packages kept citing
+the name as if it were a series, and two of us then "confirmed" it did not exist by querying
+`http://localhost:9091` — the **Pushgateway**, which carries only the probes' own gauges.
+Prometheus is `monitor.prometheus:9090` and is not published on the host, so the check has to
+run inside it (`docker exec monitor.prometheus wget -qO- 'http://localhost:9090/api/v1/query?query=…'`).
+What was actually missing is a **series** of that name; it is now recorded
+(`monitor/rules/container-memory.yml`, same expression as the alert, `and`/`< 1e12` filters
+included), so `container_memory_near_limit{name="db-business.mariadb"}` ≈ 0.39 is queryable
+while uncapped containers stay absent. The alert itself (0.9, 15m, medium) is unchanged.
+
 ## What servyy-test caught before prod
 
 Deploying the branch to `servyy-test.lxd` first (repo policy) paid for itself immediately:

@@ -1,0 +1,29 @@
+# Prometheus recording rules for the container fleet.
+#
+# WHY THIS FILE EXISTS (2026-11-18): every database-tier package says "watch
+# `container_memory_near_limit` for a week", but that name was only a **Grafana
+# alert-rule UID** (provisioning/alerting/alert-rules.yml) that evaluates the
+# ratio inline - there was no series by that name, so the instruction could not
+# be followed with a query and two of us "verified" it against the Pushgateway
+# and concluded the alert did not exist. Recording the ratio makes the name real
+# and queryable, and gives the alert a stable series to compare against.
+groups:
+  - name: container-memory
+    interval: 15s
+    rules:
+      # Working set / mem_limit, ONLY for containers that declare a limit.
+      #   * `and container_spec_memory_limit_bytes > 0` keeps containers without
+      #     a limit out of the result entirely (cAdvisor reports 0 for them),
+      #   * `< 1e12` drops cAdvisor's sentinel for uncapped containers (a value
+      #     near 9.2e18), which would otherwise divide by ~9 exabytes and look
+      #     like 0.0 rather than "no limit".
+      # This is the SAME expression the Grafana alert container_memory_near_limit
+      # uses, so the series and the alert can never disagree.
+      - record: container_memory_near_limit
+        expr: >
+          max by (name) (
+            (container_memory_working_set_bytes{name!=""}
+             / clamp_min(container_spec_memory_limit_bytes{name!=""}, 1))
+            and (container_spec_memory_limit_bytes{name!=""} > 0)
+            and (container_spec_memory_limit_bytes{name!=""} < 1e12)
+          )

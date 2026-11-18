@@ -25,6 +25,15 @@
 # NOTE: repo names contain a dash — dereference them with `restic['moodle-files']`,
 # never attribute syntax.
 restic:
+  # Where restic stages its temporary pack files ($TMPDIR). NOT /tmp: that is a
+  # 3.8 GB tmpfs on this host, shared with every other program, and on
+  # 2026-11-18 two stray 1.6 GB dumps filled it - every `home` snapshot then died
+  # with "Fatal: unable to save snapshot: ... /tmp/user/1000/restic-temp-pack-…:
+  # disk quota exceeded", and the unit looked like it had failed for some other
+  # reason. Pin it to the root filesystem instead. `~/.cache` is excluded from
+  # every backup scope, so this directory is never snapshotted.
+  tmpdir: "{{ (remote_user_home, '.cache', 'restic-tmp') | path_join }}"
+
   # Which directory this host owns under the Storage Box `backup/` share.
   #
   # Defaults to inventory_hostname, but is overridable PER HOST. That override

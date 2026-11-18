@@ -2274,3 +2274,102 @@ groups:
         labels:
           severity: medium
         isPaused: false
+
+  - orgId: 1
+    name: tmp-alerts
+    folder: Infrastructure
+    interval: 1m
+    rules:
+      # MEDIUM: /tmp is filling up. It is a 3.8 GB tmpfs here and has no
+      # node_filesystem_* series, so this probe (system_tmp.sh) is its only
+      # watcher. At 82 % on 2026-11-18 every restic home snapshot started failing
+      # with "disk quota exceeded" - warn well before that.
+      - uid: system_tmp_usage_high
+        title: /tmp Usage High
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: system_tmp_usage_pct
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [70]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: '/tmp is {{ if $values.B }}{{ printf "%.0f" $values.B.Value }}{{ else }}over 70{{ end }}% full'
+          description: '/tmp is a 3.8 GB tmpfs on this host. Above 70 % a stray large file can fill it and break every restic snapshot ("disk quota exceeded"). Find the consumer (du -sh /tmp/*) and remove it.'
+        labels:
+          severity: medium
+        isPaused: false
+
+      # HIGH: /tmp is at or above 90 %. Backups and anything else that stages in
+      # $TMPDIR are already at risk; this is the "act now" state.
+      - uid: system_tmp_usage_critical
+        title: /tmp Usage Critical
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: system_tmp_usage_pct
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [90]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: '/tmp is {{ if $values.B }}{{ printf "%.0f" $values.B.Value }}{{ else }}over 90{{ end }}% full'
+          description: '/tmp is effectively full. Expect restic snapshots and anything else using $TMPDIR to fail immediately. Free space now (du -sh /tmp/*).'
+        labels:
+          severity: high
+        isPaused: false
