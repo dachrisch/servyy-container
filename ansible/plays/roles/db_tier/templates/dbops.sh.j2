@@ -51,7 +51,10 @@ dbops <command> [args]
   tenants                             list the MariaDB tenants this tool knows
 
 Credentials: the per-tier backup user from <env dir>/<tier>.env; DBOPS_USER /
-DBOPS_PASSWORD in the environment override it (drills only).
+DBOPS_PASSWORD in the environment override it (drills and one-off operator work).
+
+DBOPS_SERVER=<container> overrides which container the command talks to, because
+a MOVE targets the new server before the inventory row moves there (WP-4..7).
 USAGE
   exit 1
 }
@@ -81,6 +84,12 @@ KNOWN_TENANTS="{{ db_tenants | selectattr('engine', 'equalto', 'mariadb') | map(
 resolve_tenant() {
   tenant_lookup "$1" || die "unknown tenant '$1'. MariaDB tenants: $KNOWN_TENANTS" 2
   [ "$T_ENGINE" = "mariadb" ] || die "tenant '$1' runs on '$T_ENGINE': the MariaDB adapter cannot handle it (mongo arrives in Phase 8)" 2
+  # A move writes to the NEW server while the inventory still names the old one.
+  # Every path (dump/restore/verify/shell) goes through here, so the override
+  # cannot be forgotten in one command and honoured in another.
+  if [ -n "${DBOPS_SERVER:-}" ]; then
+    T_SERVER="$DBOPS_SERVER"
+  fi
 }
 
 # --- credentials and container ------------------------------------------------
