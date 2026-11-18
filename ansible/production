@@ -52,17 +52,18 @@ prod:
           # Waggle — self-hosted OpenPost (social post scheduling) at
           # waggle.bumbleflies.de. The public name is covered by the existing
           # *.bumbleflies.de wildcard (A 49.13.6.173 / AAAA 2a01:4f8:c013:f6f4::1),
-          # so no DNS change was needed; bumbleflies.de is at Strato, hence the
-          # HTTP-01 certresolver. First-run only: the first account created in
-          # the UI becomes the instance admin, so signup starts OPEN and
-          # waggle_disable_registrations must be flipped to true right after
-          # (history/2026-11-11_waggle-openpost.md).
+          # so no DNS change was needed. bumbleflies.de moved to Porkbun on
+          # 2026-11-18, so DNS-01 is now possible; the HTTP-01 resolver is kept
+          # until that switch is made deliberately. First-run only: the first
+          # account created in the UI becomes the instance admin, so signup starts
+          # OPEN and waggle_disable_registrations must be flipped to true right
+          # after (history/2026-11-11_waggle-openpost.md).
           waggle: true
         # queen enabled on prod (test enables queen only before).
-        # bumbleflies.de is NOT in Porkbun API scope (DNS-01 fails with
-        # INVALID_DOMAIN), so queen uses the HTTP-01 resolver like
-        # bumbleflies_prod and leagues-finance do. A record already points
-        # queen.bumbleflies.de at servy — no Porkbun entry needed.
+        # queen.bumbleflies.de is on the *.bumbleflies.de wildcard, and the domain
+        # moved to Porkbun on 2026-11-18 — DNS-01 can now issue for it, so the
+        # HTTP-01 pin below is only a left-over and can be dropped when the
+        # finance stack is next deployed deliberately.
         finance_services: [firefly, importer, queen]
         queen_traefik_certresolver: letsencrypthttpresolver
         # bnb-office reachable at this second host too (owner-facing stopgap

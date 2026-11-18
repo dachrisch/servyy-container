@@ -67,8 +67,8 @@ services:
       - traefik.http.routers.${SERVICE_NAME}.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
       - traefik.http.routers.${SERVICE_NAME}.tls=${TRAEFIK_TLS:-true}
       # HTTP-01, not the default DNS-01: that resolver is bound to Porkbun
-      # and bricksnbytes.de is at Strato, so DNS-01 cannot issue for it
-      # (same reason as dontforget's BUMBLEFLIES_HOST router).
+      # and bricksnbytes.de is at Strato, so DNS-01 cannot issue for it.
+      # (bricksnbytes.bumbleflies.de, on the same router, would be fine.)
       - traefik.http.routers.${SERVICE_NAME}.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypthttpresolver}
       - traefik.http.services.${SERVICE_NAME}.loadbalancer.server.port=80
       # Alternative public host (TRAEFIK_ALT_HOST, e.g. ibs.bumbleflies.de) as a

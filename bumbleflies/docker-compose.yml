@@ -18,7 +18,11 @@ services:
       # prod resolver
       - traefik.http.routers.${SERVICE_NAME}_prod.tls=true
       - traefik.http.routers.${SERVICE_NAME}_prod.rule=Host(`bumbleflies.de`) || Host(`www.bumbleflies.de`)
-      - traefik.http.routers.${SERVICE_NAME}_prod.tls.certresolver=letsencrypthttpresolver
+      # DNS-01: the domain moved to Porkbun 2026-11-18, so the zone is in the same
+      # account as the Traefik API keys and no longer depends on the HTTP-01 path
+      # staying reachable. Prove any future change with a TXT write/delete probe —
+      # a broken DNS-01 path only surfaces 30 days before renewal.
+      - traefik.http.routers.${SERVICE_NAME}_prod.tls.certresolver=letsencryptdnsresolver
       - traefik.http.routers.${SERVICE_NAME}_local_qualified.rule=Host(`${SERVICE_NAME}.${LOCAL_HOSTNAME}`)
       - traefik.http.routers.${SERVICE_NAME}_local_qualified.entrypoints=web
       - com.centurylinklabs.watchtower.scope=dev
@@ -59,6 +63,9 @@ services:
       - traefik.http.middlewares.${SERVICE_NAME}-bnb-https.redirectscheme.scheme=https
       - traefik.http.routers.${SERVICE_NAME}-bnb.tls=true
       - traefik.http.routers.${SERVICE_NAME}-bnb.rule=Host(`bricksnbytes.bumbleflies.de`) || Host(`bricksnbytes.de`) || Host(`www.bricksnbytes.de`)
+      # HTTP-01 on purpose: this router also carries bricksnbytes.de and
+      # www.bricksnbytes.de, which are still at Strato — DNS-01 would try to
+      # issue a cert with a SAN Porkbun does not host and fail the whole batch.
       - traefik.http.routers.${SERVICE_NAME}-bnb.tls.certresolver=letsencrypthttpresolver
       - traefik.http.services.${SERVICE_NAME}-bnb.loadbalancer.server.port=80
       - traefik.http.routers.${SERVICE_NAME}_bnb_local_qualified.rule=Host(`bricksnbytes.${SERVICE_NAME}.${LOCAL_HOSTNAME}`)
@@ -82,7 +89,7 @@ services:
       - traefik.http.middlewares.${SERVICE_NAME}-edu-https.redirectscheme.scheme=https
       - traefik.http.routers.${SERVICE_NAME}-edu.tls=true
       - traefik.http.routers.${SERVICE_NAME}-edu.rule=Host(`edu.bumbleflies.de`)
-      - traefik.http.routers.${SERVICE_NAME}-edu.tls.certresolver=letsencrypthttpresolver
+      - traefik.http.routers.${SERVICE_NAME}-edu.tls.certresolver=letsencryptdnsresolver
       - traefik.http.services.${SERVICE_NAME}-edu.loadbalancer.server.port=80
       - traefik.http.routers.${SERVICE_NAME}_edu_local_qualified.rule=Host(`edu.${SERVICE_NAME}.${LOCAL_HOSTNAME}`)
       - traefik.http.routers.${SERVICE_NAME}_edu_local_qualified.entrypoints=web
@@ -107,7 +114,7 @@ services:
       - traefik.http.middlewares.${SERVICE_NAME}-live-https.redirectscheme.scheme=https
       - traefik.http.routers.${SERVICE_NAME}-live.tls=true
       - traefik.http.routers.${SERVICE_NAME}-live.rule=Host(`live.bumbleflies.de`)
-      - traefik.http.routers.${SERVICE_NAME}-live.tls.certresolver=letsencrypthttpresolver
+      - traefik.http.routers.${SERVICE_NAME}-live.tls.certresolver=letsencryptdnsresolver
       - traefik.http.services.${SERVICE_NAME}-live.loadbalancer.server.port=3000
       - traefik.http.routers.${SERVICE_NAME}_live_local_qualified.rule=Host(`live.${SERVICE_NAME}.${LOCAL_HOSTNAME}`)
       - traefik.http.routers.${SERVICE_NAME}_live_local_qualified.entrypoints=web
