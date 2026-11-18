@@ -21,6 +21,105 @@
 | WP-5 | **done** (5a + 5b) | 5a `374f910b`+`01a117f8`: `db-business.mariadb` (mariadb:13.0, 1.25g/384M pool, default isolation), bnb's account with its existing credential, data copied and verified (30 tables / 2,616 rows). 5b (merge `64c790bb`, 2026-11-18): `bnb_office_db_host: db-business.mariadb` rendered into the compose `.env` (the hardcoded `${COMPOSE_PROJECT_NAME}.db` is gone; `config.php` now says `mysql:host=db-business.mariadb`), app attached to `db_business_backend`, `db:` service + `db.env.j2` + `depends_on` dropped, `bnb_office` row → `db-business.mariadb` / `retiring: false` / guard-only `compose_dir: db-business`+`compose_service: mariadb`. Invoice numbering state **identical before and after** (auftraege `2026-001` → next `2026-002`; the counter bnb actually uses is `MAX(SUBSTRING(nummer,6))` in `AuftragRepository::nextNumber()`, not `nummernkreise` — that table is empty and vestigial, `rechnungen` has no module yet); per-table counts identical; a failed login wrote a `login_versuche` row **on the tier** (then removed, data back at 2,616); both hosts 303→`/login`, 200 before and after. **Three defects found and fixed:** (1) the old daily dump had never written a file — `ExecStart=` is not a shell, so `| gzip > file && find` were literal argv and every run dumped the whole database into the journal (18,136 lines, exit 0, `.backup` empty); it now runs `dbops dump bnb_office` inside `sh -c`; (2) `includes/oneshot.yml` never `daemon_reload`'d, so the rewritten unit stayed unloaded and the next fire would have run the old command; (3) the first prune glob `bnb?office-*` does not match `bnboffice-*` (measured), now `bnb*office-*`. Old container **stopped, not removed** (`Created` unchanged, volume still referenced — which also keeps the daily `prune --volumes` from eating it). Guard: active MariaDB set `leaguesphere.db`, `db-nonprod.mariadb`, `db-business.mariadb`, all `mariadb:13.0`, D8 skips, `db_version_drift` 0/0/0. Only `bnb-office.web` was recreated. Follow-up: bnb-office is in no container-health probe list (WP-8) |
 | WP-6 … WP-11 | not started | — |
 
+## WP-8R — backup strategy for the tiered fleet (proposed 2026-11-18)
+
+> Design proposal from a read-only session; **owner decisions pending** (four questions at the
+> end). Every number below was measured on servy, not estimated. This package must land
+> **before** the rollback windows of WP-4…WP-7 close, because those windows are currently part
+> of the only protection several tenants have.
+
+**Why it is a separate package:** the existing wiring was built around *per-application*
+database sidecars. Under the tier shape the mechanism, cadence and repo layout are properties
+of the **tenant row**, not of a hand-written script — and today adding one repo means 12
+hand-edited places across 9 files (repo entry, retention, schedules, logs, three `defaults`
+lists, the backup task, a hardcoded `apply_retention` block, a hardcoded `check_repo` line, two
+probe lists, and a repo name inside the static, non-Jinja `alert-rules.yml`).
+
+### Three measured gaps that predate this migration (nobody created them; nobody could see them)
+
+| Tenant | Reality today | Exposure |
+|---|---|---|
+| `firefly` (postgres) | **no backup at all** — `PGDATA` is on `/mnt/servy-docker-data`, and the `root` repo excludes `/mnt` (`vars/restic.yml:120`) | 68 MB of financial data, one host loss from total loss |
+| `leagues_finance`, `queen`, `dontforget` (mongo) | **no backup at all** — `shared_mongo_data` is a docker volume on `/mnt`, same exclusion; the only artefacts are two ad-hoc archives that happen to sit in `/home` | 481 MB, three tenants |
+| `photoprism` | **no dump**; the only protection is the *stopped* pre-cutover datadir (775 MB) riding the hourly `home` repo — and a raw datadir is not a backup | 1 014 albums / 169 links / favourites: a re-index rebuilds derived data, never these |
+| `leaguesphere` (high) | "PITR" is **documented but not wired**: `mariadb-backup` runs without `--binlog`, the prepared set contains **0** binlog files, and the only binlog copies are inside the daily `root` snapshot of a *live* datadir (`expire_logs_days=2`) | the high tier's defining promise is currently accidental |
+
+Also measured: tier datadirs are in **no** repo by design (`servyy-container/db-*/data`
+excluded; `root` covers `/etc`+`/var`), so a tenant with `dump_schedule: none` has **zero**
+protection — which is exactly PhotoPrism's state.
+
+### Strategy
+
+One repo **per business tenant** and **one per tier** (D16 seed), none for nonprod. Cadence
+follows *how recoverable the data is otherwise*, not its size:
+
+| Tenant / tier | RPO target | Cadence | Mechanism |
+|---|---|---|---|
+| `leaguesphere` (high) | 15 min via binlog on a 1 h physical base | hourly physical **+ 5-min binlog shipping** | `mariadb-backup` + `--binlog`, new `ls-binlog` repo (keep previous image pullable — physical sets are version-bound) |
+| `moodle` (business) | 1 h | hourly (keep) | logical dump; **stays on `moodle_dump.sh.j2` through its rollback window** |
+| `bnb_office` (business) | 24 h | daily 02:30 | `dbops`; needs the owner's answer on files-vs-repo for the contract |
+| `leagues_finance`, `queen` (business) | 24 h | daily | `dbops` mongo adapter |
+| `photoprism`, `dontforget`, `firefly` (private) | 24 h | daily | `dbops` (postgres adapter is interim, deleted with `shared.db` in WP-10) |
+| `leaguesphere_stage`, `_demo` (nonprod) | *until the next sync / reset* — not an RPO | **none**, and **no probe series** (emit nothing, never `-1`, or the alert pages forever) | — |
+
+`dbops` must gain, before any convergence: `--skip-dump-date`, a **fixed** target name with an
+atomic `new/`→`current/` swap, `.partial` **outside** the snapshot path, `gzip -t` + a
+per-tenant size floor, pruning (globs must match both `bnb_office-*` and `bnboffice-*` — the
+lesson from `8e3bd8ce`), and `dump-due` + `flock` so one unit per tier serves many tenants.
+Measured reason: two dumps of an *idle* database differ by exactly one line today, and a
+timestamped name means restic re-stores the whole file.
+
+**Do not converge Moodle inside its rollback window** — `moodle_dump.sh.j2` is the one job
+proven against both servers, and its `CONTAINER` is already rendered from `moodle_db_host`, so
+it follows the move in either direction.
+
+### Measured cost, and what would not fit
+
+- Moodle's hourly logical dump costs **126.8 MiB of new data per hour** (2.97 GiB/day, 6.1 GB
+  steady). Decompressing two consecutive snapshots shows only ~1 400 scattered rows changed, so
+  chunk-level dedup cannot help — `--skip-dump-date` is still right, it just cannot rescue
+  Moodle. Per-table dumps would localise it (~20–40 MB/h) but break `dbops verify`'s
+  single-file model; **not worth it at 529 GB free**.
+- Total: servy 45 GB → **≈ 48.5 GB** of a 974 GB box (≈ 525 GB free). Capacity is not a
+  constraint anywhere in this package.
+- **What would not fit:** the *current* `dbops` driven hourly for Moodle. Timestamped names and
+  no pruning grow the source directory 3.1 GB/day → `/` (27 GB free) is full in **~9 days**,
+  and the retained trees reference every file (~90 GB/tenant/year). Those `dbops` changes are
+  blocking, not cosmetic.
+
+### Monitoring
+
+Two generated probes, from the same rows: `db_dump_age_seconds{tenant,tier}` (a broken dump)
+and the existing `restic_snapshot_age_seconds{repo}` (a broken upload). The probe pushes its
+**own threshold and severity**, so `alert-rules.yml` — static and bind-mounted — becomes
+name-free and stops needing an edit per tenant. nonprod emits no series at all. Keep the
+probe-staleness rule: a dead probe must not look like a healthy fleet.
+
+### Tasks (ordered; additive first, deletions last)
+
+| # | Task | Verification |
+|---|---|---|
+| R1 | Inventory schema + generator for repos/retention/forget/check/probes (renders the *same* five repos today) | rendered scripts diff clean against the host's current ones |
+| R2 | Name-free alert rules + threshold-pushing dump-age probe | a deliberately stale dump alerts < 10 min; `probe: none` removes the series |
+| R3 | **`pg_dump` for firefly** (interim, deleted in WP-10) | restore into scratch postgres on servyy-test; counts match |
+| R4 | **PhotoPrism dump** daily into its tier repo | restore shows 1 014 albums / 46 690 photos / 169 links |
+| R5 | **Make PITR real**: `--binlog` + 5-min `ls-binlog` repo (2-day retention, matching `expire_logs_days`) | replay binlogs into a scratch server between two backups; first end-to-end PITR proof |
+| R6 | **Mongo dumps** for all three tenants, cron'd, per repos | `mongorestore` each into scratch; collection counts match |
+| R7 | Canonical dump root + repo separation; exclude `db-dumps` and the stopped PhotoPrism datadir from `home` | bnb's dump appears in its own repo and vanishes from `home`; `home` shrinks ~1.1 GB |
+| R8 | One `db-backup@<tier>` unit per tier (`dbops dump-due`, lock, stale-source guard) | one timer per tier; a killed dump leaves `current/` untouched |
+| R9 | Converge Moodle on `dbops` — **after** its window and after R1…R5 | `restic diff` on an idle period < 5 MiB; `dbops restore`+`verify` accepts |
+| R10 | Delete the old surface (moodle-dump, bnb one-liner, superseded restic units, dead `ls_stage_restore`) | no unit outside the inventory; `grep` clean |
+| R11 | **Restore drills**: `plays/restore_drill.yml` on servyy-test, evidence in `history/`, `db_restore_drill_*` metrics | a drill runs unattended; a broken repo trips the *drill* alert |
+
+Datadir deletion stays in WP-8's old last step — it is irreversible and unrelated to wiring.
+
+### Owner decisions (each with a recommendation)
+
+1. **Keep Moodle hourly (2.97 GiB/day) or drop to 4-hourly (~0.75 GiB/day)?** → **keep hourly**; capacity is free and a lost hour is lost grades.
+2. **Does bnb's "≥30 days retention" accept 35 restic dailies in its own repo rather than 35 files?** → **yes**, keeping the last 7 files on disk for the operator; `keep_dumps: 35` is a one-row fallback if the contract is literal.
+3. **Add 5-minute binlog shipping for the high tier (~60 MB steady), or keep today's accidental daily copy?** → **add it**; it is what makes "high tier = PITR" true.
+4. **Drills weekly for everything, or split?** → **weekly for leaguesphere + moodle, monthly for the other six**, on servyy-test.
+
 ## The stopping rule
 
 1. **One package = one branch + one PR, merged before anything is deployed.** The order is:
