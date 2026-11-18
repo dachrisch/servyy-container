@@ -13,8 +13,10 @@
 | WP-0c | **done** | `5a2fb75b`; guard accumulators reset (6→6), `testing.restic.check_recent` no longer a silent no-op (4 child tasks run) |
 | WP-0b (leaguesphere) | **done** | PR #2436 → `b013e3f08`; prod/stage/demo all on `mariadb:13.0` (`54f493ea…`, same digest as before), prod `db` scope `db`; guard now resolves the high tier as `mariadb:13.0` with no "cannot verify" warning |
 | WP-0d | **done** | `ebfefb36` + `cc4671d5`; `MARIADB_AUTO_UPGRADE` removed from `ls.env` after the 2026-11-18 outage (`history/2026-11-18_ls-db-upgrade-flag-outage.md`, ~6.5 min public downtime) |
-| WP-0 drills | **open** | forced minor mismatch, simulated digest drift, watchtower health-gate rollback — offline only so far |
-| WP-2 … WP-11 | not started | — |
+| WP-0e (drills) | **done / partly deferred** | `d5714b3e`; real play-level minor-mismatch refusal (13.0 vs 12.3, `changed=0`, override downgrades to warning); Grafana rule `db_version_drift` loaded+enabled, `for 1d`, medium, queryable. Deferred: digest-drift drill and health-gate rollback (both need a second active server / a non-prod `db` watcher — unblock in WP-4). Found: the guard is blind under `--check` (command module has no check mode) |
+| WP-2 | **done** | `82ccf8fd` + `050c120f`; `leagues_finance`/`queen` scoped users created, both apps live as their own users (11/14 collections read with their own credential), no `MONGO_INITDB_ROOT_*` in any app env; mongo root rotated (old rejected, new accepted, role authenticates with the new var) |
+| Follow-ups (not packages) | open | guard `check_mode: false`; `--tags user.docker.finance` is not self-contained (needs `user.docker.env.finance`); `shared.env` is shared by mongo and postgres, so a mongo credential change also recreates `shared.db`; Renovate dashboard check |
+| WP-3 … WP-11 | not started | — |
 
 ## The stopping rule
 
