@@ -2,8 +2,64 @@
 # Authenticate + unlock the `bw` (Bitwarden) CLI on the Ansible controller and
 # expose the session token as the `bw_session` fact.
 # Requires: vaultwarden_api.client_id/secret (vars/secrets.yml), vw_master_password
-# (vars_prompt in the calling playbook), vw_server (this role's defaults).
+# (resolved in servyy.yml from ~/.ssh/vw.key), vw_server (this role's defaults).
 # The CALLER is responsible for running `bw lock` when finished.
+#
+# WHY THIS FILE IS MORE THAN `bw login` + `bw unlock` NOW
+# 2026-11-18 22:46: `bw login --apikey` reported ok, then `bw unlock` failed rc=1
+# and `no_log: true` destroyed the reason - the run only said "the output has
+# been hidden". What the run log *did* prove: the key file was read (the prompt
+# task was skipped, password length 12), `bw config server` was skipped and the
+# serverUrl assertion passed (so the CLI claimed to be logged in to
+# https://pass.lehel.xyz), and the same password unlocked the same vault twice
+# afterwards - by hand and through this very task file. So it was not a wrong
+# password, not a missing key and not an unreachable server: `bw unlock` is a
+# purely local operation (it still exits 0 with all network traffic proxied into
+# a closed port). What was left is the CLI's own local store
+# (`~/.config/Bitwarden CLI/data.json`), which holds a second, half-created
+# account record (no email, no kdfConfig, no userDecryptionOptions) next to the
+# real one: `bw login --apikey` answers "already logged in" (rc=0) and repairs
+# nothing, so `bw unlock` runs against a profile without usable KDF/decryption
+# data for the active account.
+#
+# Therefore, in order of cheapness:
+#   1. a missing password is refused before `bw` runs at all;
+#   2. every login/unlock failure is CLASSIFIED into a named cause, so the next
+#      run says what went wrong instead of hiding it;
+#   3. the login state is verified via `bw status` before unlocking;
+#   4. if the unlock still fails, the CLI state is rebuilt ONCE (logout ->
+#      config server -> login) and the unlock retried, which is what made this
+#      failure disappear when it was retried by hand.
+# The rebuild is deliberately NOT unconditional: these pushes run in plays using
+# `strategy: free`, where `run_once` is unsupported, so several hosts can be
+# executing this task file against the one controller-side CLI at the same time -
+# an unconditional `bw logout` would wipe a sibling host's freshly unlocked
+# state. Repair-on-failure keeps the happy path at exactly one login per push.
+#
+# Secrets: the password is only ever referenced by its LENGTH, `bw unlock` and
+# `bw login` output stays under `no_log`, and the reported failure text is the
+# CLI's own error line (never the password or the session key).
+
+- name: Refuse to run a Vaultwarden push with no master password
+  ansible.builtin.assert:
+    that:
+      - vw_master_password | default('') | length > 0
+    success_msg: >-
+      Vaultwarden master password: {{ vw_master_password | default('') | length }}
+      characters resolved on the controller.
+    fail_msg: >-
+      No Vaultwarden master password is available on {{ inventory_hostname }}, so
+      this push would run `bw unlock` with an empty BW_MASTER - which the CLI
+      answers with "Provided passwordenv BW_MASTER is not set", an interactive
+      prompt on a terminal that does not exist, and (worse) exit code 0 with an
+      empty session. Create {{ vw_key_path_hint }} on the controller (mode 0600,
+      one line, no trailing blank line) or pass -e vw_master_password=...
+      explicitly.
+  vars:
+    vw_key_path_hint: "{{ lookup('env', 'HOME') }}/.ssh/vw.key"
+  delegate_to: localhost
+  run_once: true
+  become: false
 
 - name: Check that the bw CLI is installed on the controller
   ansible.builtin.command:
@@ -41,7 +97,7 @@
   delegate_to: localhost
   run_once: true
   become: false
-  changed_when: true
+  changed_when: false
   when: "'unauthenticated' in (bw_status.stdout | lower)"
 
 - name: Assert bw already targets the expected server (when logged in)
@@ -56,6 +112,12 @@
   become: false
   when: "'unauthenticated' not in (bw_status.stdout | lower)"
 
+# no_log: the environment carries the API key. The outcome is reported by the two
+# tasks after it, in terms that never include the key.
+# NOTE: `bw login --apikey` exits 1 with "You are already logged in as ..." when
+# the CLI already holds a session - that is the normal steady state, not a
+# failure, so it must not fail the play (it is what the original failed_when
+# allowed, silently).
 - name: Authenticate with API key (no 2FA prompt)
   ansible.builtin.command:
     cmd: bw login --apikey
@@ -66,13 +128,91 @@
   run_once: true
   become: false
   register: bw_login
-  changed_when: "'logged in' in (bw_login.stdout | lower)"
-  failed_when:
-    - bw_login.rc != 0
-    - "'already logged in' not in (bw_login.stderr | lower)"
+  changed_when: "not ('already logged in' in (((bw_login.stdout | default('')) ~ (bw_login.stderr | default(''))) | lower))"
+  failed_when: false
   no_log: true
 
-- name: Unlock vault with the prompted master password
+# Error classes come from the CLI's own text, verified against bw 2025.11.0 on
+# this controller: an existing session prints "You are already logged in as ..."
+# (rc=1, success), a rejected API key prints "Incorrect client_secret", an
+# unreachable server prints a FetchError with ECONNREFUSED/ENOTFOUND/ETIMEDOUT,
+# rate limiting prints "Too many login attempts" / 429. Empty string = no error.
+- name: Classify the API-key login result (secret-free)
+  ansible.builtin.set_fact:
+    bw_login_error_class: >-
+      {{ '' if ('already logged in' in bw_login_text)
+         else 'api-key-rejected'
+         if ('incorrect client_secret' in bw_login_text or 'invalid api key' in bw_login_text)
+         else 'rate-limited'
+         if ('too many' in bw_login_text or '429' in bw_login_text or 'rate limit' in bw_login_text)
+         else 'server-unreachable'
+         if ('fetcherror' in bw_login_text or 'econnrefused' in bw_login_text
+             or 'enotfound' in bw_login_text or 'etimedout' in bw_login_text
+             or 'unable to fetch serverconfig' in bw_login_text
+             or 'socket hang up' in bw_login_text)
+         else 'unknown' }}
+    bw_login_error_detail: "{{ (bw_login.stderr | default('')) | trim | truncate(300) }}"
+  vars:
+    bw_login_text: "{{ ((bw_login.stdout | default('')) ~ '\n' ~ (bw_login.stderr | default(''))) | lower }}"
+  when: bw_login.rc != 0
+
+- name: Fail legibly when the API-key login did not succeed
+  ansible.builtin.fail:
+    msg: |-
+      `bw login --apikey` failed on the controller (rc={{ bw_login.rc }}).
+      Cause class: {{ bw_login_error_class }}
+      CLI said: {{ bw_login_error_detail }}
+
+      What each class means here:
+        api-key-rejected   -> vaultwarden_api.client_id/client_secret in
+                              vars/secrets.yml is stale or revoked; fix those.
+        rate-limited       -> too many login attempts from this IP; wait a
+                              minute and re-run (do NOT loop).
+        server-unreachable -> {{ vw_server }} did not answer; check Vaultwarden
+                              (docker ps | grep pass) and DNS, then re-run.
+        unknown            -> paste this class plus the CLI line above.
+  when: (bw_login_error_class | default('') | length) > 0
+
+# Proves the state about to be unlocked instead of assuming it: an account record
+# with no email (the half-created one behind the 2026-11-18 failure) is named
+# here, before `bw unlock` runs.
+- name: Read bw status after login
+  ansible.builtin.command:
+    cmd: bw status
+  delegate_to: localhost
+  run_once: true
+  become: false
+  register: bw_status_post_login
+  changed_when: false
+  failed_when: false
+
+- name: Parse the bw status output (tolerating a non-JSON answer)
+  ansible.builtin.set_fact:
+    bw_status_after: >-
+      {{ (bw_status_post_login.stdout | trim | from_json)
+         if (bw_status_post_login.stdout | trim).startswith('{') else {} }}
+
+- name: Fail legibly when bw is not logged in to an account
+  ansible.builtin.fail:
+    msg: |-
+      `bw login --apikey` returned success, but `bw status` does not show a
+      usable account:
+        status    = {{ bw_status_after.get('status', '(none)') }}
+        serverUrl = {{ bw_status_after.get('serverUrl', '(none)') }}
+        account   = {{ bw_status_after.get('userEmail', '(no account)') }}
+
+      Expected 'locked' (or 'unlocked') on {{ vw_server }} with an account email.
+      A missing account email is the half-created account record in
+      ~/.config/Bitwarden CLI/data.json that made `bw unlock` fail on 2026-11-18;
+      `bw logout` on the controller and a re-run usually clears it. A wrong
+      serverUrl means `bw config server {{ vw_server }}` did not take effect.
+  when: >-
+    bw_status_post_login.rc != 0
+    or (bw_status_after.get('status', '') == 'unauthenticated')
+    or ((bw_status_after.get('serverUrl', '') | trim) != vw_server)
+    or ((bw_status_after.get('userEmail', '') | length) == 0)
+
+- name: Unlock vault with the resolved master password
   ansible.builtin.command:
     cmd: bw unlock --passwordenv BW_MASTER --raw
   environment:
@@ -82,11 +222,164 @@
   become: false
   register: bw_unlock
   changed_when: false
+  # Not failing here on purpose: the reason is classified and reported by the
+  # visible tasks below, whereas failing inside this no_log task censors
+  # everything into "the output has been hidden" - exactly what happened on
+  # 2026-11-18.
+  failed_when: false
   no_log: true
+
+# `bw unlock` exits 0 with an EMPTY stdout when BW_MASTER is unset/empty: it
+# prints "Warning: Provided passwordenv BW_MASTER is not set" on stderr and tries
+# to prompt instead. That is not a wrong password, so it gets its own class
+# rather than surfacing later as a bewildering failure of the first `bw list`.
+# Both facts are always set (to '' when the unlock worked) so a class recorded by
+# an earlier push can never be mistaken for this one.
+- name: Classify the first unlock attempt (secret-free)
+  ansible.builtin.set_fact:
+    bw_unlock_error_class: >-
+      {{ '' if (bw_unlock.rc == 0 and (bw_unlock.stdout | trim | length > 0))
+         else 'empty-password'
+         if (bw_unlock.rc == 0)
+         else 'wrong-password'
+         if 'invalid master password' in bw_unlock_text
+         else 'rate-limited'
+         if ('too many' in bw_unlock_text or '429' in bw_unlock_text)
+         else 'server-unreachable'
+         if ('fetcherror' in bw_unlock_text or 'econnrefused' in bw_unlock_text
+             or 'enotfound' in bw_unlock_text or 'etimedout' in bw_unlock_text)
+         else 'not-logged-in'
+         if 'not logged in' in bw_unlock_text
+         else 'unknown' }}
+    bw_unlock_error_detail: "{{ (bw_unlock.stderr | default('')) | trim | truncate(300) }}"
+    bw_unlock_repaired: false
+  vars:
+    # stderr only: on success stdout IS the session key and must never leak.
+    bw_unlock_text: "{{ (bw_unlock.stderr | default('')) | lower }}"
+
+# The one retry this file allows, and only after rebuilding the CLI state from
+# scratch - the case that 2026-11-18 actually hit (a login that reports "already
+# logged in" leaves a stale account profile in place, which nothing else repairs).
+# `bw unlock` itself is local (no server round trip), and this block runs at most
+# once per push, so it cannot add rate-limit pressure.
+- name: Reset the local CLI account state and retry the unlock once
+  when: (bw_unlock_error_class | length) > 0
+  delegate_to: localhost
+  run_once: true
+  become: false
+  block:
+    - name: Drop the stale bw CLI login state
+      ansible.builtin.command:
+        cmd: bw logout
+      changed_when: false
+      failed_when: false
+
+    - name: Point the fresh CLI state at the self-hosted Vaultwarden
+      ansible.builtin.command:
+        cmd: "bw config server {{ vw_server }}"
+      changed_when: false
+
+    - name: Log in again with the API key
+      ansible.builtin.command:
+        cmd: bw login --apikey
+      environment:
+        BW_CLIENTID: "{{ vaultwarden_api.client_id }}"
+        BW_CLIENTSECRET: "{{ vaultwarden_api.client_secret }}"
+      register: bw_login_retry
+      changed_when: "not ('already logged in' in (((bw_login_retry.stdout | default('')) ~ (bw_login_retry.stderr | default(''))) | lower))"
+      failed_when: false
+      no_log: true
+
+    # Same tolerance as the first login: "already logged in" is not an error.
+    - name: Fail legibly when the API-key login fails during the repair
+      ansible.builtin.fail:
+        msg: |-
+          Rebuilding the bw CLI login state failed: `bw login --apikey` returned
+          rc={{ bw_login_retry.rc }} for a reason other than an existing session.
+          Cause class: {{ 'api-key-rejected'
+                          if ('incorrect client_secret' in bw_login_retry_text or 'invalid api key' in bw_login_retry_text)
+                          else 'rate-limited'
+                          if ('too many' in bw_login_retry_text or '429' in bw_login_retry_text)
+                          else 'server-unreachable'
+                          if ('fetcherror' in bw_login_retry_text or 'econnrefused' in bw_login_retry_text
+                              or 'enotfound' in bw_login_retry_text or 'etimedout' in bw_login_retry_text)
+                          else 'unknown' }}
+          CLI said: {{ (bw_login_retry.stderr | default('')) | trim | truncate(300) }}
+      vars:
+        bw_login_retry_text: "{{ ((bw_login_retry.stdout | default('')) ~ '\n' ~ (bw_login_retry.stderr | default(''))) | lower }}"
+      when:
+        - bw_login_retry.rc != 0
+        - "'already logged in' not in bw_login_retry_text"
+
+    - name: Unlock vault again against the rebuilt login state
+      ansible.builtin.command:
+        cmd: bw unlock --passwordenv BW_MASTER --raw
+      environment:
+        BW_MASTER: "{{ vw_master_password }}"
+      register: bw_unlock_retry
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+    - name: Classify the unlock retry (secret-free)
+      ansible.builtin.set_fact:
+        bw_unlock_error_class: >-
+          {{ '' if (bw_unlock_retry.rc == 0 and (bw_unlock_retry.stdout | trim | length > 0))
+             else 'empty-password'
+             if (bw_unlock_retry.rc == 0)
+             else 'wrong-password'
+             if 'invalid master password' in bw_unlock_retry_text
+             else 'rate-limited'
+             if ('too many' in bw_unlock_retry_text or '429' in bw_unlock_retry_text)
+             else 'server-unreachable'
+             if ('fetcherror' in bw_unlock_retry_text or 'econnrefused' in bw_unlock_retry_text
+                 or 'enotfound' in bw_unlock_retry_text or 'etimedout' in bw_unlock_retry_text)
+             else 'not-logged-in'
+             if 'not logged in' in bw_unlock_retry_text
+             else 'unknown' }}
+        bw_unlock_error_detail: "{{ (bw_unlock_retry.stderr | default('')) | trim | truncate(300) }}"
+        bw_unlock_repaired: true
+        # The retry's outcome becomes the one everything downstream uses.
+        bw_unlock: "{{ bw_unlock_retry }}"
+      vars:
+        bw_unlock_retry_text: "{{ (bw_unlock_retry.stderr | default('')) | lower }}"
+
+- name: Fail with the classified unlock cause, never with the secret
+  ansible.builtin.fail:
+    msg: |-
+      `bw unlock` failed on the controller for {{ inventory_hostname }} (rc={{ bw_unlock.rc }},
+      master password length {{ vw_master_password | default('') | length }}).
+      Cause class: {{ bw_unlock_error_class }}
+      CLI state was rebuilt (logout -> login) and the unlock retried: {{ bw_unlock_repaired | default(false) }}
+      CLI said: {{ bw_unlock_error_detail }}
+
+      What each class means here:
+        wrong-password     -> the password is being REJECTED for the account on
+                              {{ vw_server }}{% if bw_unlock_repaired | default(false) %}, even after the
+                              CLI login state was rebuilt from scratch - so it really is the password,
+                              not stale local state{% endif %}. Do not retry in a loop (Vaultwarden
+                              rate-limits): if the master password was rotated, update the key file,
+                              then re-run.
+        empty-password     -> BW_MASTER arrived empty; fix the key file or -e.
+        not-logged-in      -> the CLI lost its login state even after a rebuild;
+                              inspect ~/.config/Bitwarden CLI/data.json for several or partial
+                              account records.
+        rate-limited       -> wait a minute, then re-run (do not loop).
+        server-unreachable -> {{ vw_server }} did not answer; check Vaultwarden.
+        unknown            -> paste this class plus the CLI line above.
+  when: (bw_unlock_error_class | default('') | length) > 0
+
+- name: Report a stale CLI login state that the retry had to repair
+  ansible.builtin.debug:
+    msg: >-
+      The first `bw unlock` failed ({{ bw_unlock_error_detail }}) and a rebuilt
+      login state (logout -> login) unlocked the vault. The CLI's local account
+      data on the controller was stale; this did not affect the vault contents.
+  when: bw_unlock_repaired | default(false)
 
 - name: Expose the unlocked session as bw_session
   ansible.builtin.set_fact:
-    bw_session: "{{ bw_unlock.stdout }}"
+    bw_session: "{{ bw_unlock.stdout | trim }}"
   delegate_to: localhost
   run_once: true
   become: false
