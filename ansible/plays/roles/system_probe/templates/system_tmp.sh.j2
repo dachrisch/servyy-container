@@ -1,0 +1,61 @@
+#!/bin/bash
+# /tmp usage probe.
+#
+# WHY: /tmp on this host is a 3.8 GB tmpfs, and node-exporter does not export a
+# filesystem series for it (it is not a mount in the sense node_filesystem_*
+# reports), so nothing was watching it. On 2026-11-18 two stray 1.6 GB files
+# filled it to 82 % and every restic `home` snapshot died with "disk quota
+# exceeded" — a backup outage with no alert anywhere. This probe reads `df` and
+# pushes the numbers, so the same condition now warns at 70 % and pages at 90 %.
+set -uo pipefail
+# No `set -e`: a failing step must not stop the push, or the silence becomes the
+# alert.
+
+PUSHGATEWAY_URL="{{ system_probe_pushgateway_url }}"
+JOB_NAME="system_tmp"
+TARGET="/tmp"
+WARN_PCT="{{ system_probe_tmp_warn_pct | default(70) }}"
+CRITICAL_PCT="{{ system_probe_tmp_critical_pct | default(90) }}"
+
+probe_success=1
+usage_pct=-1
+avail_bytes=-1
+size_bytes=-1
+fstype=""
+
+usage_pct=$(df --output=pcent "$TARGET" 2>/dev/null | tail -n1 | tr -dc '0-9') || true
+avail_bytes=$(df --output=avail -B1 "$TARGET" 2>/dev/null | tail -n1 | tr -dc '0-9') || true
+size_bytes=$(df --output=size -B1 "$TARGET" 2>/dev/null | tail -n1 | tr -dc '0-9') || true
+fstype=$(stat -f -c %T "$TARGET" 2>/dev/null) || true
+
+if [ -z "$usage_pct" ] || [ -z "$avail_bytes" ] || [ -z "$size_bytes" ]; then
+  probe_success=0
+  usage_pct=-1
+  avail_bytes=-1
+  size_bytes=-1
+fi
+
+# PUT (not POST): replaces the whole job group, so a stale series disappears
+# instead of lingering after a config change.
+cat <<EOF | curl -sf -X PUT --max-time 15 --connect-timeout 5 --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}"
+# HELP system_tmp_usage_pct Used percentage of the /tmp filesystem
+# TYPE system_tmp_usage_pct gauge
+system_tmp_usage_pct ${usage_pct}
+# HELP system_tmp_avail_bytes Free bytes on /tmp
+# TYPE system_tmp_avail_bytes gauge
+system_tmp_avail_bytes ${avail_bytes}
+# HELP system_tmp_size_bytes Total size of /tmp
+# TYPE system_tmp_size_bytes gauge
+system_tmp_size_bytes ${size_bytes}
+# HELP system_tmp_warn_pct Warning threshold for /tmp usage
+# TYPE system_tmp_warn_pct gauge
+system_tmp_warn_pct ${WARN_PCT}
+# HELP system_tmp_critical_pct Critical threshold for /tmp usage
+# TYPE system_tmp_critical_pct gauge
+system_tmp_critical_pct ${CRITICAL_PCT}
+# HELP system_tmp_probe_success 1 when the probe could read df
+# TYPE system_tmp_probe_success gauge
+system_tmp_probe_success ${probe_success}
+EOF
+
+echo "tmp fs=${fstype:-?} usage_pct=${usage_pct} avail_bytes=${avail_bytes} size_bytes=${size_bytes} warn=${WARN_PCT} critical=${CRITICAL_PCT} probe_success=${probe_success}"

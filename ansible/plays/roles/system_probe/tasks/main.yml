@@ -87,6 +87,31 @@
     - system.probe
     - system.probe.storagebox
 
+- name: Deploy /tmp usage probe script
+  template:
+    src: system_tmp.sh.j2
+    dest: "{{ (system_probe_scripts_dir, 'system-tmp.sh') | path_join }}"
+    mode: '0750'
+  become_user: "{{ create_user }}"
+  when: system_probe_push_enabled | default(false) | bool
+  tags:
+    - system.probe
+    - system.probe.tmp
+
+- name: Deploy /tmp usage timer
+  import_tasks: oneshot_include.yml
+  become_user: "{{ create_user }}"
+  vars:
+    service:
+      name: system-tmp
+      description: 'Check /tmp usage (tmpfs is not in node_filesystem_*)'
+      schedule: '*-*-* *:0/10:00'
+      command: "{{ (system_probe_scripts_dir, 'system-tmp.sh') | path_join }}"
+  when: system_probe_push_enabled | default(false) | bool
+  tags:
+    - system.probe
+    - system.probe.tmp
+
 - name: Deploy container-health probe script
   template:
     src: system_container_health.sh.j2

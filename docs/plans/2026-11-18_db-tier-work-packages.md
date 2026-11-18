@@ -113,8 +113,8 @@ probe-staleness rule: a dead probe must not look like a healthy fleet.
 | R10 | Delete the old surface (moodle-dump, bnb one-liner, superseded restic units, dead `ls_stage_restore`) | no unit outside the inventory; `grep` clean |
 | R11 | **Restore drills**: `plays/restore_drill.yml` on servyy-test, evidence in `history/`, `db_restore_drill_*` metrics | a drill runs unattended; a broken repo trips the *drill* alert |
 
-| R12 | **Backups must not depend on `/tmp`.** restic writes its temp pack to `TMPDIR`, which is a 3.8 GB tmpfs here; two stray 1.6 GB dumps filled it and every `home` snapshot failed with `disk quota exceeded` while the unit's failure looked unrelated to backups. Set `TMPDIR` to a disk-backed path in the backup scripts and alert on `/tmp` usage. | `TMPDIR` visible in the rendered script; a deliberately constrained `/tmp` no longer fails a snapshot |
-| R13 | **Wire the memory alert the plan keeps citing.** `container_memory_near_limit` does **not** exist on this host (0 series) — every "watch memory for a week" step in WP-4…WP-7 pointed at an alert that was never provisioned. Provision it from the containers' `mem_limit`, or drop the claim. | A container held at its limit produces the series and fires |
+| R12 | **Backups must not depend on `/tmp`.** restic writes its temp pack to `TMPDIR`, which is a 3.8 GB tmpfs here; two stray 1.6 GB dumps filled it and every `home` snapshot failed with `disk quota exceeded` while the unit's failure looked unrelated to backups. Implemented 2026-11-18: every restic script (all five come from `restic_backup.sh.j2`) exports `TMPDIR={{ restic.tmpdir }}` = `~/.cache/restic-tmp` (0700, excluded from every scope; the sudo branch re-exports it because sudo resets the env), and a `system-tmp` probe pushes `system_tmp_usage_pct` every 10 min with alerts at 70 % (medium) / 90 % (high). | `TMPDIR` in the rendered script; an inherited `TMPDIR=/nonexistent` no longer matters; `/tmp` has a metric and two rules |
+| R13 | **Wire the memory alert the plan keeps citing.** Corrected 2026-11-18: the **alert rule** has always existed (`uid: container_memory_near_limit`, working set / mem_limit > 0.9 for 15m, capped containers only) and evaluates correctly — the "0 series" was measured against the **Pushgateway** (:9091), not Prometheus (:9090, not published). What was missing is a **series** of that name, so the name could not be queried. Added: Prometheus recording rule `monitor/rules/container-memory.yml` producing `container_memory_near_limit{name=…}` from the same expression; docs now say rule *and* series. | `container_memory_near_limit{name="db-business.mariadb"}` ≈ 0.39 and absent for unlimited containers |
 
 Datadir deletion stays in WP-8's old last step — it is irreversible and unrelated to wiring.
 
@@ -338,8 +338,12 @@ per-tenant directory and its own restic repo.
 under the same name; app attached to `db_private_backend`; `mariadb:` service removed.
 
 **Exit gate.** Library and albums load; a manual index run completes; the next scheduled
-index run completes; `container_memory_near_limit` clean for a week (PhotoPrism's DB had no
-limit before).
+index run completes; the **memory alert** `container_memory_near_limit` clean for a week
+(PhotoPrism's DB had no limit before). That name is the Grafana alert rule
+(`monitor/provisioning/alerting/alert-rules.yml`, uid `container_memory_near_limit`:
+working set / `mem_limit` > 0.9 for 15m, capped containers only) **and**, since
+2026-11-18, a Prometheus recording rule of the same name (`monitor/rules/container-memory.yml`)
+— so it can also be queried directly; before that it was only a rule UID and could not be.
 
 **Rollback.** Restore the `mariadb:` service; `./database` untouched.
 
@@ -400,9 +404,10 @@ the old server's data is the 17:40Z rehearsal + whatever the final dump captured
 
 **Memory watch.** `db-business.mariadb` is 1.25 GiB and now carries Moodle (1.7 GB on disk)
 **and** bnb; the old setup had a 1 GB Moodle DB server plus the app's own 1.5 GB. 41 % used
-right after the copy. Watch `container_memory_near_limit` (and the buffer-pool hit rate) for
-a week; the business tier is the first candidate to resize if `moodle` + `ibs` together start
-evicting pages.
+right after the copy. Watch the `container_memory_near_limit` alert (working set / `mem_limit`
+> 0.9 for 15m; also a Prometheus series of that name since 2026-11-18) and the buffer-pool hit
+rate for a week; the business tier is the first candidate to resize if `moodle` + `ibs`
+together start evicting pages.
 
 **The two timer questions**
 
