@@ -1,9 +1,11 @@
 # bumbleflies.de — registry transfer GoDaddy → Porkbun
 
-**Status:** prepared, blocked on the GoDaddy auth code
+**Status:** **done** 2026-11-18 — superseded by
+[`history/2026-11-18_bumbleflies-de-transfer.md`](../../history/2026-11-18_bumbleflies-de-transfer.md).
+Kept for the pre-transfer recon and the captured old zone.
 **Owner:** Christian
 **Started:** 2026-11-17
-**Blocker:** GoDaddy support ticket **1026409** — `.de` `AUTHINFO` promised within 48 h
+**Blocker (cleared):** GoDaddy support ticket **1026409** — `.de` `AUTHINFO` arrived 2026-11-18 11:26
 
 ---
 
@@ -101,8 +103,10 @@ no record of their own.
    `read -rs` into an env var: never argv, never a file, never the history entry.
    Verify `held: 1` via `GET /domain/getTransferSetup/bumbleflies.de`.
 4. **Build the zone** — `POST /domain/prepareTransfer/bumbleflies.de`, then
-   create the 18 records above explicitly (`POST /dns/create/…`, name in **full
-   absolute form**, MX priority in `prio`). Do **not** run `/dns/import`.
+   create the 18 records above explicitly (`POST /dns/create/…`, name **relative**
+   — `""` for the apex, `"*"` for the wildcard, MX priority in `prio`). Do **not**
+   run `/dns/import`, and do not pass FQDNs: they get stored with the suffix
+   doubled.
 5. **Preflight** — `GET /dns/preflight/bumbleflies.de?intent=move-nameservers`
    must have empty `blockers[]` *and* `warnings[]`.
 6. **Prove parity** — compare `dig @<porkbun-ns>` against the old zone for A,

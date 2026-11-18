@@ -9,9 +9,10 @@ description: Use when moving a domain registration from another registrar into P
 
 A domain lives at some other registrar and has to move to Porkbun — because it
 is expiring, because the old registrar is being abandoned, or because the whole
-estate is consolidated at Porkbun. Upcoming cases: `leaguesphere.app`,
-`bumbleflies.de` (**not** currently in the Porkbun account — `INVALID_DOMAIN`
-until it is).
+estate is consolidated at Porkbun. Upcoming case: `leaguesphere.app`.
+`bumbleflies.de` was moved 2026-11-18 (see
+`history/2026-11-18_bumbleflies-de-transfer.md`); `lehel.xyz` and
+`höfer-architekten.de` are already there.
 
 This is **not** the same as changing nameservers. A transfer moves the
 registration; the DNS zone is a separate object that Porkbun only creates when
@@ -212,6 +213,22 @@ missing by hand:
 pb POST /dns/create/$D '{"name":"www","type":"CNAME","content":"example.com","ttl":600}'
 ```
 
+**`name` is relative to the domain** — `www`, not `www.example.com`. The apex is
+`""` and the wildcard is `"*"`. Passing an FQDN does not error: it stores
+`www.example.com.example.com` and the zone then looks plausible while resolving
+nothing. `/dns/retrieve` returns FQDNs, so that reads back looking almost right —
+**`/dns/preflight` in 4c is the check**, not the retrieve output. A wrong-name
+zone announces itself with "Nothing answers at the apex" and
+`wildcard-shadowed`. Fix by deleting by id (`/dns/delete/$D/<id>`) and
+recreating; the four Porkbun NS records are created by `prepareTransfer` and
+must be left alone.
+
+**A wildcard zone breaks the scan.** If step 1 showed a `*.domain` record, do not
+run `/dns/import` at all: the scan answers through the wildcard at every
+well-known name, imports each answer as an explicit record, and never creates the
+wildcard — so every future subdomain silently stops resolving. Create the
+records by hand from the step-1 `dig` inventory instead.
+
 Watch `warnings` on every DNS write: a write to a zone that is not (yet)
 delegated to Porkbun succeeds and does nothing visible. That warning is normal
 during a held transfer and a red flag afterwards.
@@ -233,12 +250,21 @@ The whole point of the hold: Porkbun's nameservers can be queried directly
 before anything public changes.
 
 ```bash
-NS=curitiba.ns.porkbun.com     # from prepareTransfer / getTransferSetup
-for t in A AAAA MX TXT; do
-  echo "$t: old=$(dig +short $t $D | sort | tr '\n' ' ')"
-  echo "$t: new=$(dig +short @$NS $t $D | sort | tr '\n' ' ')"
+OLD=ns49.domaincontrol.com      # the losing registrar's NS, from step 1
+NEW=maceio.ns.porkbun.com       # from prepareTransfer / getTransferSetup
+q() { dig +norecurse +noall +answer "$2" "$3" @"$1" | awk '{print $4,$5,$6,$NF}' | sort -u | tr '\n' ' '; }
+for t in A AAAA MX TXT CNAME; do
+  echo "$t: old=$(q $OLD $t $D)"; echo "$t: new=$(q $NEW $t $D)"
 done
 ```
+
+Compare **authoritative to authoritative**, with `+norecurse` — never against a
+recursive resolver. `dig +short A www.$D` through a resolver follows the CNAME
+and prints the target's addresses, while `dig +short A www.$D @$NEW` prints only
+the CNAME, so every CNAME'd name shows a phantom difference and a correct zone
+looks broken. Repeat for each subdomain, and probe the wildcard separately
+(`dig +short A zzz-anything.$D @…`) since no explicit-record comparison can
+cover it.
 
 The two columns must match (order-insensitive — an RRset is unordered). Do not
 release until they do. This is the difference between a zero-gap cutover and
@@ -401,6 +427,12 @@ returns `TRANSFER_STATE_UNCONFIRMED` and refunds nothing — deliberately.
   of a transfer. Auth code is `AUTHINFO`. A transfer adds a year to the term.
   Punycode: `höfer-architekten.de` → `xn--hfer-architekten-mwb.de`; always use
   the punycode form in API paths and Traefik `Host()` rules.
+  **At GoDaddy the `AUTHINFO` only comes from a support ticket** to
+  `cctldtransferaway@godaddy.com` (incident number, ~48 h). While that ticket is
+  open, WHOIS keeps showing `clientTransferProhibited` — their reply's boilerplate
+  about removing "protection" is generic, and the lock did **not** block the
+  transfer in practice (2026-11-18). Do not burn the 48 h waiting for the flag to
+  clear; submit and read the status.
 - **`.uk`** — no API transfer, no `holdForDnsSetup`. Website only.
 - **`.in`** — registries refuse registrant contacts on temporary/encrypted email
   providers (`REGISTRANT_EMAIL_NOT_ACCEPTED`, nothing charged).
