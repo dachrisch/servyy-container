@@ -38,5 +38,12 @@
     name: '{{service.name}}.timer'
     state: started
     enabled: yes
+    # daemon_reload: a changed unit file stays unloaded otherwise. Measured on
+    # WP-5b (2026-11-18): after rewriting docker-bnb-office-dump's ExecStart,
+    # `systemctl --user cat` said "the version systemd has loaded is outdated",
+    # so the next timer fire would still have run the OLD command line. The
+    # sibling includes (system_probe, ls_maintenance_probe) already do this;
+    # this file was the one that did not.
+    daemon_reload: yes
   tags:
     - user.systemd.start.timer
