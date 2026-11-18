@@ -163,6 +163,7 @@ used for `.env` / `grafana.env`, so no new convention was introduced.
 | `./servyy.sh --limit servy.lehel.xyz --tags user.docker.repo,user.docker.monitor` | exit 0, `changed=5` (clone, world-readable modes, render dir, render, `Deploy monitor`) |
 | same command again | exit 0, **`changed=0`** |
 | `--tags user.docker.repo` (the run that breaks prod today) | exit 0, `changed=1` (`chmod a+rX` only); `git status` has no modified tracked files afterwards |
+| `--tags user.docker.monitor` alone (the reported invocation) | exit 0, **`changed=0`** |
 | `docker compose up -d --dry-run` in `monitor/` | all 8 services `Running` |
 | host files | `promtail.yml` + `datasources.yml` = plaintext tenant; `rendered/contact-points.yml` = 1397 bytes, `0644 cda:cda`, resolved address, Grafana subject templating intact |
 | grafana mount | `rendered/contact-points.yml → /etc/grafana/provisioning/alerting/contact-points.yml` (read-only) |
@@ -191,7 +192,9 @@ used for `.env` / `grafana.env`, so no new convention was introduced.
 5. **Every deploy rewrites every tracked file.** `find … -exec chown` (line 148
    of `repository.yml`) bumps each file's ctime even when ownership does not
    change, which invalidates git's stat cache, so the next `git reset --hard`
-   rewrites the whole tree at umask-007 modes. Restarting a container inside that
+   rewrites the whole tree at umask-007 modes. Measured on `monitor/promtail.yml`
+   right after a deploy: index `ctime: 1794999427` vs file `ctime=11:57:27`
+   (11:57:07 checkout, `chown` 20 s later). Restarting a container inside that
    window reads half-written `0660` files.
 
 **Known Issues & Limitations:**
