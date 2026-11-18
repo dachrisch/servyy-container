@@ -87,8 +87,15 @@
           db_root_password: "{{ dbeaver_pin.db_root_password | default(dbeaver_candidate.db_root_password) }}"
           backend_network: "{{ dbeaver_candidate_backend_network }}"
           networks: "{{ dbeaver_candidate_db.container.NetworkSettings.Networks | list }}"
+          # Prefix-correct pattern: take exactly the octets the subnet's prefix
+          # fully covers (a /16 -> two octets, a /20 or /24 -> three), then `.x.%`.
+          # The old fixed `[0:2]` produced `192.168.%` — a /16 grant — for the
+          # tier's 192.168.16.0/20, i.e. a far wider grant than the network it is
+          # meant to describe.
           grant_host_pattern: >-
-            {{ (dbeaver_candidate_net.network.IPAM.Config[0].Subnet.split('/')[0].split('.')[0:2]
+            {{ (dbeaver_candidate_net.network.IPAM.Config[0].Subnet.split('/')[0]
+                .split('.')[: (((dbeaver_candidate_net.network.IPAM.Config[0].Subnet.split('/')[1] | int)
+                                / 8) | round(0, 'ceil') | int)]
                 | join('.')) ~ '.%' }}
           ttl_cap_hours: "{{ dbeaver_ttl_cap_hours }}"
           password_file: "{{ dbeaver_provisioner_local_file_prefix }}_{{ dbeaver_candidate.name }}"
