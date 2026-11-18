@@ -113,12 +113,40 @@ probe-staleness rule: a dead probe must not look like a healthy fleet.
 
 Datadir deletion stays in WP-8's old last step — it is irreversible and unrelated to wiring.
 
-### Owner decisions (each with a recommendation)
+### Schedules (decided 2026-11-18)
 
-1. **Keep Moodle hourly (2.97 GiB/day) or drop to 4-hourly (~0.75 GiB/day)?** → **keep hourly**; capacity is free and a lost hour is lost grades.
-2. **Does bnb's "≥30 days retention" accept 35 restic dailies in its own repo rather than 35 files?** → **yes**, keeping the last 7 files on disk for the operator; `keep_dumps: 35` is a one-row fallback if the contract is literal.
-3. **Add 5-minute binlog shipping for the high tier (~60 MB steady), or keep today's accidental daily copy?** → **add it**; it is what makes "high tier = PITR" true.
-4. **Drills weekly for everything, or split?** → **weekly for leaguesphere + moodle, monthly for the other six**, on servyy-test.
+Chosen so that (a) no dump overlaps another on the same host, (b) all daily work finishes
+before the 02:00–04:00 nightly restic window, (c) nothing lands in the 06:00 `db` watchtower
+patch window or the 05:00 Firefly import, and (d) every dump is followed by its own restic
+snapshot, not by a shared one.
+
+| Tenant | Cadence | Dump at | Snapshot at | Retention | RPO | RTO |
+|---|---|---|---|---|---|---|
+| `leaguesphere` (high) | physical hourly + **binlog every 5 min** | :40 | :55 | physical 24 h + 14 d + 8 w + 6 m; binlog `--keep-within 2d` (matches `expire_logs_days=2`) | **15 min** | ≤ 2 h (manual copy-back + replay) |
+| `moodle` (business) | hourly | :40 | :50 | 24 h + 14 d + 8 w + 6 m (~52 snapshots) | 1 h | ≤ 30 min (13m36s measured + smoke) |
+| `bnb_office` (business) | daily | 01:05 | 01:10 | **35 dailies** (contract) + 8 w + 6 m, and the last **7 files** kept on disk for the operator | 24 h | ≤ 5 min |
+| `leagues_finance` (business) | daily | 01:15 | 01:20 | 30 dailies + 8 w + 6 m | 24 h | minutes |
+| `queen` (business) | daily | 01:25 | 01:30 | 30 dailies + 8 w + 6 m | 24 h | minutes |
+| `photoprism` (private) | daily | 00:45 | 00:55 | 30 dailies + 8 w + 6 m | 24 h | ≤ 30 min (103 MB gz) |
+| `dontforget` (private) | daily | 01:35 | 01:40 | 30 dailies + 8 w + 6 m | 24 h | minutes |
+| `firefly` (private, **interim until WP-10**) | daily `pg_dump -Fc` | 01:45 | 01:50 | 14 dailies + 4 w (it is short-lived by design) | 24 h | minutes |
+| `leaguesphere_stage`, `_demo` (nonprod) | **none** | — | — | — | until the 02:00 sync / 00:00 reset | 47 min (re-run the sync) |
+
+Notes on the decisions themselves:
+
+- **Moodle stays hourly.** 2.97 GiB/day is the honest price of a 1 h RPO; 529 GB is free, and a
+  lost hour is a lost hour of grades and forum posts. Cadence is now a row, so revisiting it is
+  one edit.
+- **bnb's contract is satisfied by 35 restic dailies plus 7 on-disk files** — the repo is the
+  stronger artefact (deduplicated, checksummed, read-verified weekly); if the contract turns out
+  to be literal about files, `keep_dumps: 35` is a one-row change.
+- **Binlog shipping is in**, otherwise "high tier = PITR" remains a documented promise with no
+  mechanism behind it.
+- **Drills:** weekly (Sun 06:30) for `leaguesphere` and `moodle` — the two with a real RTO;
+  monthly (first Sun 06:30) for the other six. Weekly-for-everything would become noise, and
+  noise is how a four-week backup gap went unnoticed in 2026-09.
+- **Photoprism at 00:45**, not in the crowded 01:00–02:00 slot, because its 103 MB dump is the
+  slowest of the dailies.
 
 ## The stopping rule
 
