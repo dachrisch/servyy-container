@@ -946,6 +946,26 @@
       when: "'monitor' in (services | default([]))"
       tags: [user.docker, user.docker.monitor]
 
+    # `docker_service` recreates a container only when its SPEC changes, and
+    # neither Prometheus (no --web.enable-lifecycle) nor Grafana (alerting
+    # provisioning is read at start only) reloads on its own. This restarts the
+    # one container whose startup content changed, and nothing when nothing did -
+    # see roles/monitor_reload/tasks/main.yml for why each is independent.
+    #
+    # A role, not a bare task: `roles:` only accepts roles, and this must run
+    # after the monitor role above.
+    - role: monitor_reload
+      vars:
+        monitor_reload_service_dir: "{{ (docker.remote_dir, 'monitor') | path_join }}"
+        monitor_reload_state_dir: "{{ (remote_user_home, '.deploy-state', 'monitor') | path_join }}"
+        # The compose project (and therefore the container-name prefix) is the
+        # service directory: `name: ${SERVICE_NAME}` in monitor/docker-compose.yml
+        # with SERVICE_NAME=monitor.
+        monitor_reload_prometheus_container: monitor.prometheus
+        monitor_reload_grafana_container: monitor.grafana
+      when: "'monitor' in (services | default([]))"
+      tags: [user.docker, user.docker.monitor]
+
   post_tasks:
     - name: Wait for shared mongo to become healthy
       community.docker.docker_container_info:
