@@ -573,10 +573,11 @@
     # DB tiers (WP-3b): one invocation per tier so a single tier can be deployed
     # alone (`--tags user.docker.db-business`) — Phase 10's version hop needs that.
     #
-    # The nonprod tier gets THREE tasks, in this order (WP-4a): pass 1 renders
-    # db-nonprod/mariadb.env + dbops, `docker_service` brings the server up, pass 2
-    # creates the tenants on the server that now runs. The other tiers are a
-    # single invocation until their compose files exist (WP-5/WP-6).
+    # A tier WITH a server gets THREE tasks, in this order (WP-4a): pass 1 renders
+    # db-<tier>/mariadb.env + dbops, `docker_service` brings the server up, pass 2
+    # creates the tenants on the server that now runs. nonprod (WP-4) and business
+    # (WP-5a) have their servers; private is a single invocation until its compose
+    # file exists (WP-6).
     - role: db_tier
       vars:
         db_tier_name: high
@@ -606,6 +607,28 @@
         db_tier_name: nonprod
       when: "'nonprod' in (db_tiers | default([]))"
       tags: [user.docker, user.docker.db-nonprod]
+
+    # business tier (WP-5a), same three-step shape as nonprod above: render
+    # db-business/mariadb.env + dbops, bring the server up, then create the
+    # tier's users on it. Only the tenants placed there are created - see the
+    # comment on db_tier_server_tenants in roles/db_tier/tasks/configure.yml.
+    - role: db_tier
+      vars:
+        db_tier_name: business
+        db_tier_render_only: true
+      when: "'business' in (db_tiers | default([]))"
+      tags: [user.docker, user.docker.db-business]
+
+    # The tier's own compose project: committed (D6), backend-only, no Traefik
+    # router; `db_business_backend` is internal. Consumers attach externally.
+    - role: docker_service
+      vars:
+        service_dir: db-business
+        env_templates:
+          - src: docker.env.j2
+            dest: .env
+      when: "'business' in (db_tiers | default([]))"
+      tags: [user.docker, user.docker.db-business]
 
     - role: db_tier
       vars:

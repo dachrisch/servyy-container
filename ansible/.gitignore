@@ -67,5 +67,7 @@ vars/.dbops_password_private
 # backup-user passwords: the role re-sets them in the database.
 plays/vars/.db_tier_root_password_nonprod
 vars/.db_tier_root_password_nonprod
+plays/vars/.db_tier_root_password_business
+vars/.db_tier_root_password_business
 plays/vars/.dbeaver_stage_admin_password
 vars/.dbeaver_stage_admin_password
