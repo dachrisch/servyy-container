@@ -74,6 +74,8 @@ docker_backend_services:
   # nonprod DB tier (D6): backend-only project, no Traefik router. Listed here so
   # the container-health probe resolves db-nonprod.mariadb like shared's.
   - dir: db-nonprod
+  # business DB tier (D6, WP-5): same shape, same reason.
+  - dir: db-business
 
 # Journal log retention (declarative)
 # 200M (was 500M): the journal is a convenience log, not the audit trail —

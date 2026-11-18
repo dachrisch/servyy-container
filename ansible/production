@@ -67,9 +67,11 @@ prod:
         finance_services: [firefly, importer, queen]
         queen_traefik_certresolver: letsencrypthttpresolver
         # DB tiers this host runs (roles/db_tier). nonprod = LS stage + demo on
-        # db-nonprod.mariadb (WP-4); its tenants still point at the old servers
-        # until the WP-4b cutover, so this only creates the server + its users.
-        db_tiers: [nonprod]
+        # db-nonprod.mariadb (WP-4, cut over); business = bnb office now and
+        # Moodle in WP-7 on db-business.mariadb (WP-5a; bnb's row still names
+        # bnb-office.db until the WP-5b cutover, so this only creates the server,
+        # its users and the copy target).
+        db_tiers: [nonprod, business]
         # bnb-office reachable at this second host too (owner-facing stopgap
         # until the Strato DNS for ibs.bricksnbytes.de is flipped). DNS for
         # ibs.bumbleflies.de already points at servy; own Traefik router/cert.

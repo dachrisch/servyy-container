@@ -22,14 +22,36 @@
   ansible.builtin.set_fact:
     db_tier_targets: []
 
+# Whose accounts must exist on the tier's OWN server?
+#
+#   * tenants the inventory already places there (row `server` == this server) —
+#     the post-cutover state, and
+#   * tenants this run is explicitly creating (supplied in db_tier_user_passwords)
+#     — the pre-cutover state, where the row still names the old server.
+#
+# A tenant of this tier that still lives on its old server and is not supplied is
+# deliberately NOT included. That is the transition state between a tier server
+# being built (WP-4a, WP-5a) and its tenants moving (WP-4b, WP-5b): the business
+# tier has four tenants (bnb + Moodle + two mongo), and only bnb is placed here
+# in WP-5a. Including the rest would demand credentials the apps have not adopted
+# yet (and would create MariaDB accounts for mongo tenants — the mongo adapter is
+# Phase 8). The assert in server.yml keeps its teeth: a tenant that IS placed
+# here, or IS supplied, must end up with an account.
+- name: Work out whose account must exist on the tier's own server
+  ansible.builtin.set_fact:
+    db_tier_server_tenants: >-
+      {{ (db_tier_tenants | selectattr('server', 'equalto', db_tier_server_name) | list
+          + db_tier_tenants | selectattr('tenant', 'in', db_tier_user_passwords.keys() | list) | list)
+         | unique(attribute='tenant') | list }}
+
 # One entry per server: {server, tenants}. On the tier's own server the tenants
-# are the inventory's rows for the tier (their `server` still names the old one
-# until the cutover); on any other server it is the rows that live there.
+# are db_tier_server_tenants (above); on any other server it is the rows that live
+# there.
 - name: Build the list of servers to configure
   ansible.builtin.set_fact:
     db_tier_targets: >-
       {{ db_tier_targets + [{'server': item,
-                             'tenants': (db_tier_tenants if item == db_tier_server_name
+                             'tenants': (db_tier_server_tenants if item == db_tier_server_name
                                          else db_tier_tenants | selectattr('server', 'equalto', item) | list)}] }}
   loop: "{{ [db_tier_server_name] if (db_tier_own_server.stdout | default('')) == 'true'
             else (db_tier_tenants | map(attribute='server') | unique | list) }}"
