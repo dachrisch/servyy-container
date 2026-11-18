@@ -216,3 +216,102 @@ involved. Reverting `ls.env.j2` recreates `leaguesphere.db` once more on the nex
 - Deploy, the test-host-first verification and the exit-gate measurements (one watchtower per
   scope, Renovate dashboard, a forced `mariadb:13.1` run) happen after the merge, per the
   merge-before-deploy rule.
+
+---
+
+## WP-0e — the three open drills (2026-11-19)
+
+WP-0 shipped and its three environments run the fence (prod 2026-11-18, stage + demo
+2026-11-19). Three exit-gate items were still unproven at play level. Nothing below changed
+production: no deploy, no container restart, no image pull.
+
+### Drill 1 — a real play-level minor-mismatch failure (prod, read-only) — PASSED
+
+On a throwaway branch, `photoprism.mariadb` (its compose really says `mariadb:12.3`) was
+flipped to `retiring: false`, which puts it into the D8 equality set next to
+`leaguesphere.db` (`mariadb:13.0`). Then, on prod:
+
+```
+ansible-playbook plays/user.yml -i production --limit servy.lehel.xyz --tags user.docker.monitor
+```
+
+aborted in the guard's first pre_task, exit 2, `ok=12 changed=0 failed=1` (nothing applied):
+
+```
+TASK [Fail when active database servers of one engine are on different minor lines (D8)]
+[ERROR]: Task failed: Action failed: Refusing to deploy: mariadb servers are on different
+minor lines — leaguesphere.db (mariadb:13.0), photoprism.mariadb (mariadb:12.3).
+The tag names the minor (D1), so a server can only change line through a reviewed PR,
+one tier per run (Phase 10, then the leaguesphere high tier last): patch the odd one out's
+compose tag before deploying, or pass -e db_version_guard_allow_drift=mariadb for a hop run.
+leaguesphere.db is one of them: its tag lives in leaguesphere/deployed/docker-compose.yaml
+(other repo).
+```
+
+The override was then proven on the same branch and host with the guard run alone (the
+production task file imported by a minimal play, so no service task and no post-task can run):
+
+```
+ansible-playbook -i production /tmp/…/drill1-guard-only.yml -e db_version_guard_allow_drift=mariadb
+→ exit 0, and:
+"db_version_guard_allow_drift is set for mariadb: the minor-line equality check is DOWNGRADED
+ to a warning for that engine. This is correct only for a Phase 10 hop run …"
+TASK [Fail when active database servers …] skipping (mariadb)
+```
+
+Side effects: none — `changed=0`; `monitor.grafana/prometheus/loki` kept their timestamps;
+`db_version_drift` stayed `0/0/0` (the play aborts before post_tasks, so the drift push never
+ran and could not have published a synthetic `mariadb 1`).
+
+**Finding while running it: the guard is blind under `--check`.** The prescribed
+`… --check` run exits **0** and proves nothing: `Inspect each listed database container` is
+skipped (the `command` module does not support check mode), so every server resolves with an
+empty tag — the log shows `leaguesphere.db ()` and D8 skipping. A `--check` run that "passes"
+must not be read as a version check. Follow-up (not WP-0): give that task `check_mode: false`
+(it only reads) so `--check` runs are honest.
+
+### Drill 2 — the drift alert exists where Grafana reads it — PASSED
+
+- Pushgateway: `db_version_drift{engine="mariadb"} 0`, `{engine="mongo"} 0`,
+  `{engine="postgres"} 0`.
+- The provisioned file on the host is byte-identical to master's
+  (`md5 c50b73cc47b287618d52e22b3c531332` for both
+  `monitor/provisioning/alerting/alert-rules.yml`).
+- Grafana, asked over its API (admin credential read from the rendered `monitor/grafana.env`
+  on the host and used in-process — never printed), reports the rule as loaded and enabled:
+  `uid: db_version_drift`, title **Database Patch Drift**, folder `Infrastructure`, group
+  `infrastructure-alerts` (interval 1m), `for: 1d` (= 24 h), `labels.severity: medium`,
+  `is_paused: false`, `condition: C`, `noDataState: OK`, `execErrState: Error`,
+  expr `db_version_drift > 0`, with the summary/description annotations intact.
+- A query through the rule's own datasource (`/api/datasources/proxy/uid/prometheus/…?query=
+  db_version_drift`) returns the three series with value `0`, i.e. the alert can evaluate it.
+
+A *real* digest mismatch is not producible yet: it needs two **active** servers of one engine,
+and the only active MariaDB server is `leaguesphere.db` (the 12.3 servers are `retiring`).
+That arrives with WP-4.
+
+### Drill 3 — watchtower health-gate rollback — DEFERRED (no safe host)
+
+Verified on every host:
+
+| host | watchtower instances | containers labelled `scope=db` |
+|---|---|---|
+| servy (prod) | `watchtower-db` (db), `-prod`, `-dev` | `leaguesphere.db`, `shared.mongo`, `shared.db`, `photoprism.mariadb`, `moodle.db`, `bnb-office.db` (+ the watchtower itself) |
+| servyy-test | **none at all** | `shared.mongo`, `moodle.db`, `bnb-office.db` |
+| codey | `watchtower-prod`, `watchtower-dev` (no `-db`; its portainer project predates WP-0) | none |
+
+There is exactly **one** db-scope watchtower in the fleet and it lives on production, where a
+deliberately broken database image is not an acceptable test (it would restart a real database
+and, if the gate failed, keep it on a broken image). servyy-test has the containers but no
+db-scope watcher to act on them, and codey has neither. **No improvised variant was run.**
+
+Unblocked by WP-4: the `db-nonprod` tier on servyy-test should carry its own
+`watchtower` instance for that tier's scope, at which point a broken-image drill is a
+non-prod test with a disposable datadir. Until then the health gate remains proven only by
+the fork's own behaviour and by the images it already rolled back before WP-0
+(history/2026-11-03_shared-mongo9-kernel7.md).
+
+Incidental observation: after WP-0 the three servyy-test database containers carry
+`scope=db` while no db-scope watcher exists there. Harmless today (nothing looks at that
+scope on that host) and it disappears by itself when the test host gets its own tier watcher,
+but it means "labelled" ≠ "patched" on test.
