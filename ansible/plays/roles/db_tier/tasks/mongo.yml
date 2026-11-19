@@ -65,15 +65,20 @@
       changed_when: false
 
     # Root comes from the CONTAINER's env, not from argv: the password never
-    # appears in a host or in-container process list. The JS goes in on STDIN
-    # for the same reason — it carries the tenants' passwords.
+    # appears in a host process list. The JS goes through --eval (like the old
+    # shared_mongo_users role): mongosh reading stdin emits "admin> " prompts,
+    # which is not parseable JSON.
     - name: Create or repair the tier's mongo tenant users
       community.docker.docker_container_exec:
         container: "{{ db_tier_mongo_server_name }}"
-        command: >-
-          sh -c 'exec mongosh admin --quiet -u "$MONGO_INITDB_ROOT_USERNAME"
-          -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin'
-        stdin: "{{ lookup('ansible.builtin.template', 'mongo_users.js.j2') }}"
+        argv:
+          - sh
+          - -c
+          - >-
+            exec mongosh admin --quiet -u "$MONGO_INITDB_ROOT_USERNAME"
+            -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "$1"
+          - dbops
+          - "{{ lookup('ansible.builtin.template', 'mongo_users.js.j2') }}"
       register: db_tier_mongo_users_result
       no_log: true
       changed_when: (db_tier_mongo_users_result.stdout | trim) != '[]'
