@@ -68,6 +68,7 @@
   # them outright, so keep this task FIRST and keep the list complete when a new
   # accumulator is added.
   ansible.builtin.set_fact:
+    db_version_guard_servers: []
     db_version_guard_intended: {}
     db_version_guard_resolved: []
     db_version_guard_checked: []

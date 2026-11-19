@@ -12,8 +12,14 @@
 # cross-project shared.mongo is never touched from here (it is the rollback).
 
 - name: Work out the mongo users this tier must own
+  # ONLY the rows of THIS tier. A `set_fact` survives across the tier role
+  # invocations inside one play, so the business tier's map is still visible
+  # when the private tier runs; taking the whole map would create leagues_finance
+  # and queen accounts on db-private.mongo (measured on the WP-9 cutover run,
+  # 2026-11-19). The inventory row is the authority.
   ansible.builtin.set_fact:
-    db_tier_mongo_users: "{{ db_tier_mongo_user_passwords | dict2items | map(attribute='value') | list }}"
+    db_tier_mongo_users: >-
+      {{ db_tier_mongo_tenants | map(attribute='tenant') | map('extract', db_tier_mongo_user_passwords) | list }}
 
 - name: Refuse a mongo tenant without a credential
   ansible.builtin.assert:
