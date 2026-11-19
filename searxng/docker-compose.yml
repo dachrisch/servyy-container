@@ -11,7 +11,6 @@ services:
     restart: unless-stopped
     networks:
       - proxy
-      - internal
     env_file: ./.env
     volumes:
       - ./core-config/:/etc/searxng/:Z
@@ -23,25 +22,17 @@ services:
       - "traefik.http.routers.searxng.tls=${TRAEFIK_TLS:-true}"
       - "traefik.http.routers.searxng.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencryptdnsresolver}"
       - "traefik.http.services.searxng.loadbalancer.server.port=${SEARXNG_PORT:-8080}"
-
-  valkey:
-    container_name: searxng.valkey
-    image: docker.io/valkey/valkey:9-alpine
-    restart: unless-stopped
-    networks:
-      - internal
-    command: valkey-server --save 30 1 --loglevel warning
-    volumes:
-      - valkey-data:/data/
-    labels:
-      - "traefik.enable=false"
+# No valkey/cache sidecar. SearXNG caches results in SQLite (the `core-data`
+# volume); the only valkey consumer is the bot-detection limiter, which is
+# off (`server.limiter: false`). The standalone `searxng.valkey` was removed
+# 2026-11-19 after four days at 0 keys / 3 connections. If the limiter is
+# ever enabled, point it at `shared.redis` (db 2) on an external
+# `shared_backend` network instead of re-adding a local container.
+# See history/2026-11-19_searxng-drop-valkey.md.
 
 networks:
   proxy:
     external: true
-  internal:
-    internal: true
 
 volumes:
   core-data:
-  valkey-data:

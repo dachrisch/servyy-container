@@ -14,7 +14,13 @@ had that address.
 | Container | Image | Purpose |
 |---|---|---|
 | `moodle.moodle` | `erseco/alpine-moodle:4.5.16` | nginx + php-fpm + **cron**, one container, configured by env |
-| `moodle.db` | `mariadb@sha256:2bdff15…` (already on the host) | project-internal DB, no published port |
+| `db-business.mariadb` | business tier (`db-business/`) | the database, as of WP-7b (2026-11-18). Not this project's container: it also serves bnb-office, so `moodle/docker-compose.yml` has no `db:` service and the app joins the external `db_business_backend` network. The old `moodle.db` container is gone (the stopped rollback container was pruned; the `data/mariadb` datadir was its rollback path). |
+
+`moodle.moodle` carries `io.portainer.accesscontrol.teams=leaguesphere`, so Portainer CE scopes the
+container to that team through a resource control instead of granting it endpoint-wide access to
+servy (2026-11-19, [history](../history/2026-11-19_moodle-portainer-team-label.md)). Keep the label in
+the compose: a hand `compose up` that drops it revokes the team's access. The DB is deliberately
+**not** labelled — it is shared with bnb-office.
 
 There is **no separate cron container, no `config.php` in git, and no Dockerfile**: the image writes
 `config.php` from env vars on first boot, runs `admin/cli/install.php`, and runs
@@ -186,6 +192,11 @@ ssh lehel.xyz 'sudo tail -20 /var/log/restic/backup-moodle-{db,files}.log /var/l
 ```
 
 **Restore runbook** (rehearsed end-to-end on `servyy-test.lxd` 2026-11-06 — full loss, both scopes):
+
+> Stale since WP-7b/WP-9: this runbook still names `moodle.db` and `data/mariadb`. On servy the
+> database now lives on the business tier (`db-business.mariadb`), and the dump still targets the old
+> container (R9 converges it on `dbops`). Until R9 lands, restore the DB into the tier and treat the
+> `moodle.db`/`data/mariadb` steps as the servyy-test path only.
 
 ```bash
 cd /home/cda/servyy-container/moodle && docker compose -p moodle down
