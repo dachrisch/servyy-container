@@ -151,6 +151,15 @@ services:
       - traefik.http.middlewares.${SERVICE_NAME}-oldpath-redirect.redirectregex.regex=^https?://${SERVICE_HOST}/offd/moodle/?(.*)
       - traefik.http.middlewares.${SERVICE_NAME}-oldpath-redirect.redirectregex.replacement=https://${SERVICE_HOST}/$1
       - traefik.http.middlewares.${SERVICE_NAME}-oldpath-redirect.redirectregex.permanent=true
+      # Portainer CE creates a ResourceControl from this label when it discovers
+      # the container, so team "leaguesphere" can manage this container without
+      # endpoint-wide access to servy. Same convention as the leaguesphere/*
+      # containers (their compose carries the identical label). The value is the
+      # team NAME, not its id. Moodle's DB is deliberately NOT labelled:
+      # `db-business.mariadb` also serves bnb-office, and `moodle.db` is an
+      # exited rollback container. See
+      # docs/plans/2026-11-19_moodle-portainer-team-label.md.
+      - io.portainer.accesscontrol.teams=leaguesphere
 
 networks:
   # Created by db-business/docker-compose.yml (internal there). Consumers attach
