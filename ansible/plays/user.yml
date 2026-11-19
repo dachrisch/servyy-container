@@ -9,6 +9,15 @@
     - vars/default.yml
     - vars/restic.yml
     - vars/secrets.yml
+  pre_tasks:
+    # Every lookup('password', …) seed vars/secrets.yml expects must exist before
+    # anything dereferences it — a missing seed GENERATES a new credential that
+    # then disagrees with a database or an app (three outages on 2026-11-19, see
+    # tasks/secret_seed_guard.yml). `always` so a narrowly-tagged deploy gets it.
+    - name: Guard the password seeds
+      ansible.builtin.import_tasks: tasks/secret_seed_guard.yml
+      tags:
+        - always
   roles:
     - user
   tags:
