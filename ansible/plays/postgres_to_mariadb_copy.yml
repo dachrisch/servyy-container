@@ -1,0 +1,184 @@
+---
+# PostgreSQL -> MariaDB data-only copy for a tenant whose schema is built by the
+# application's own migrations (WP-10, Firefly III).
+#
+# WHY: WP-10 moves Firefly off `shared.db` (Postgres 15) onto db-private.mariadb.
+# The schema is NOT translated here — Firefly is a Laravel app whose migrations
+# build the MariaDB schema when the same image starts against an empty database.
+# This play copies DATA ONLY, table by table, and then proves it row by row plus
+# the two financial invariants (per-currency transaction sums and every
+# account's balance, which is the expression Firefly's UI uses).
+#
+# THE CONVERTER: plays/scripts/pg_to_mariadb_copy.py. It reads each source row as
+# JSON (so NULL vs '' and decimal scale survive), converts against the TARGET's
+# information_schema, disables FK checks for the session, loads parents first
+# and sets every AUTO_INCREMENT to max(id)+1. Read its docstring before changing
+# a conversion rule — every rule there exists for a measured failure mode.
+#
+# USAGE
+#   # Rehearsal (scratch MariaDB whose schema the same Firefly image built):
+#   ansible-playbook plays/postgres_to_mariadb_copy.yml -i production -l servy.lehel.xyz \
+#       -e pg_copy_target_container=wp10-scratch-db \
+#       -e pg_copy_target_user=root
+#
+#   # Production cutover (app stopped, target is the private tier):
+#   ansible-playbook plays/postgres_to_mariadb_copy.yml -i production -l servy.lehel.xyz \
+#       -e pg_copy_target_container=db-private.mariadb -e pg_copy_truncate=true
+#
+#   # Re-prove an existing copy without writing:
+#   ansible-playbook plays/postgres_to_mariadb_copy.yml -i production -l servy.lehel.xyz \
+#       -e pg_copy_verify_only=true
+#
+# The password is written to a 0600 file on the host for the duration of the run
+# and deleted in `always`; it is never on a command line or in Ansible output.
+- name: Copy a tenant's data from PostgreSQL to MariaDB, and prove it
+  hosts: all
+  gather_facts: true
+  remote_user: "{{ create_user }}"
+  become: true
+  become_user: "{{ create_user }}"
+  vars_files:
+    - vars/default.yml
+    - vars/db_tenants.yml
+    - vars/secrets.yml
+  vars:
+    pg_copy_script: "{{ (remote_user_home, '.dbops', 'pg_to_mariadb_copy.py') | path_join }}"
+    pg_copy_password_file: "{{ (remote_user_home, '.dbops', '.pgcopy-password') | path_join }}"
+    pg_copy_source_container: shared.db
+    pg_copy_source_db: firefly
+    pg_copy_source_user: firefly
+    pg_copy_target_container: db-private.mariadb
+    pg_copy_target_db: firefly
+    pg_copy_target_user: firefly
+    # The tenant's EXISTING credential — the same key the app renders as
+    # DB_PASSWORD. Never invent one here: the cutover must not rotate it.
+    pg_copy_password: "{{ finance.db_password }}"
+    pg_copy_truncate: false
+    pg_copy_verify_only: false
+  tasks:
+    - name: Copy - the tier tool directory exists
+      ansible.builtin.file:
+        path: "{{ (remote_user_home, '.dbops') | path_join }}"
+        state: directory
+        mode: '0750'
+
+    - name: Copy - deploy the converter
+      ansible.builtin.copy:
+        src: scripts/pg_to_mariadb_copy.py
+        dest: "{{ pg_copy_script }}"
+        mode: '0750'
+
+    - name: Copy - the converter parses
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - "compile(open('{{ pg_copy_script }}').read(), '{{ pg_copy_script }}', 'exec')"
+      changed_when: false
+
+    # The key pair of the running Firefly is a JWT signing key, NOT data in the
+    # database: a recreated container generates a different pair and every
+    # existing OAuth/PAT token stops authenticating (measured on the rehearsal,
+    # 2026-11-19: live PAT 200 -> 401 after loading the same rows into a fresh
+    # container, and 200 again after copying these two files in). The cutover
+    # runbook saves them before the recreate; this play only warns, because the
+    # copy itself does not touch the app container.
+    - name: Copy - note that the app's OAuth key pair must survive the recreate
+      ansible.builtin.debug:
+        msg: >-
+          Reminder: BEFORE recreating finance.firefly, copy
+          /var/www/html/storage/oauth-private.key and oauth-public.key out of the
+          current container and back into the new one after the recreate (chown
+          www-data, chmod 600). The importer's PAT is a JWT signed by that key
+          pair; without it the token returns 401. See WP-10's history entry.
+
+    - name: Copy - write, then prove, the tenant's data
+      block:
+        - name: Copy - stage the target password for the duration of this run
+          ansible.builtin.copy:
+            content: "{{ pg_copy_password }}\n"
+            dest: "{{ pg_copy_password_file }}"
+            mode: '0600'
+          no_log: true
+
+        - name: Copy - print the foreign-key-safe load order
+          ansible.builtin.command:
+            argv:
+              - python3
+              - "{{ pg_copy_script }}"
+              - order
+              - --source-container
+              - "{{ pg_copy_source_container }}"
+              - --source-db
+              - "{{ pg_copy_source_db }}"
+              - --source-user
+              - "{{ pg_copy_source_user }}"
+          register: pg_copy_order
+          changed_when: false
+          when: not (pg_copy_verify_only | bool)
+
+        - name: Copy - load the data (parents first)
+          ansible.builtin.command:
+            argv: "{{ pg_copy_load_argv }}"
+          vars:
+            pg_copy_load_argv: >-
+              {{ ['python3', pg_copy_script, 'load',
+                  '--source-container', pg_copy_source_container,
+                  '--source-db', pg_copy_source_db,
+                  '--source-user', pg_copy_source_user,
+                  '--target-container', pg_copy_target_container,
+                  '--target-db', pg_copy_target_db,
+                  '--target-user', pg_copy_target_user,
+                  '--password-file', pg_copy_password_file]
+                 + (['--truncate'] if (pg_copy_truncate | bool) else []) }}
+          register: pg_copy_load
+          when: not (pg_copy_verify_only | bool)
+
+        - name: Copy - show what was written
+          ansible.builtin.debug:
+            msg: "{{ pg_copy_load.stdout_lines | default([]) }}"
+          when: pg_copy_load is defined and pg_copy_load.stdout_lines is defined
+
+        - name: Copy - verify every table row by row and the financial invariants
+          ansible.builtin.command:
+            argv:
+              - python3
+              - "{{ pg_copy_script }}"
+              - verify
+              - --source-container
+              - "{{ pg_copy_source_container }}"
+              - --source-db
+              - "{{ pg_copy_source_db }}"
+              - --source-user
+              - "{{ pg_copy_source_user }}"
+              - --target-container
+              - "{{ pg_copy_target_container }}"
+              - --target-db
+              - "{{ pg_copy_target_db }}"
+              - --target-user
+              - "{{ pg_copy_target_user }}"
+              - --password-file
+              - "{{ pg_copy_password_file }}"
+          register: pg_copy_verify
+          changed_when: false
+          # Keep the report visible: the verify output contains no credential.
+          failed_when: pg_copy_verify.rc != 0
+
+        - name: Copy - report the verification
+          ansible.builtin.debug:
+            msg: "{{ pg_copy_verify.stdout_lines | default([]) }}"
+
+        - name: Copy - still the same tenant row after the copy
+          ansible.builtin.assert:
+            that:
+              - (db_tenants | selectattr('tenant', 'equalto', 'firefly') | first).db == pg_copy_target_db
+            fail_msg: >-
+              the copy target database is not the firefly tenant's database;
+              check pg_copy_target_db before trusting the verification.
+            quiet: true
+
+      always:
+        - name: Copy - remove the staged password
+          ansible.builtin.file:
+            path: "{{ pg_copy_password_file }}"
+            state: absent

@@ -80,6 +80,12 @@
     dbops_password_private: "molecule-backup-pw-private"
     photoprism:
       db_password: molecule-photoprism-pw
+    # WP-10: the private tier also supplies Firefly's existing credential. No
+    # firefly row is in this play's inventory (the scenario proves the mongo
+    # path), so the task only records it; the MariaDB account path is covered by
+    # the business play above. The var must exist or the task is undefined.
+    finance:
+      db_password: molecule-firefly-pw
     vault_dontforget_mongo_username: dontforget_app
     vault_dontforget_mongo_password: molecule-tenant-c
     # Stands in for db-private.mongo, which the committed compose owns.

@@ -1,22 +1,31 @@
 #!/bin/zsh
-# INTERIM daily `pg_dump -Fc` of the `firefly` tenant (postgres on
-# {{ tenant_row.server }}, database {{ tenant_row.db }}) into
+# RETIRED 2026-11-19 (WP-10): firefly is now a MariaDB tenant on
+# db-private.mariadb, and the dump is the ordinary `dbops dump firefly` into the
+# SAME directory (`dbops_dump.sh.j2`). This file is no longer selected for a
+# `mariadb` row (roles/restic/tasks/backup.yml picks by ENGINE), but it is kept
+# in the tree for the one-month rollback: reverting the inventory row to
+# `engine: postgres`/`server: shared.db` must render a working pg_dump again.
+# Delete it in the postgres cleanup commit, with shared.db and the db-private-
+# firefly postgres snapshots (history/2026-11-19_db-tier-wp10-postgres.md).
+#
+# ORIGINAL PURPOSE (WP-8R R3): a daily `pg_dump -Fc` of the `firefly` tenant
+# (postgres on {{ tenant_row.server }}, database {{ tenant_row.db }}) into
 # {{ dump_root }}/current — the ONE directory its restic repo snapshots.
 #
-# ⚠️ THIS JOB AND ITS REPO ARE TEMPORARY. WP-10 retires postgres: `shared.db`,
-# the `db-private-firefly` backup_targets row, the `restic-db-private-firefly`
-# repository, the `db-dump-firefly` / `restic-backup-db-private-firefly` timers
-# and {{ dump_root }} are all deleted together in that package, and must not be
-# deleted before it. Until then this dump is the ONLY protection firefly has
-# ever had: `PGDATA` is a bind mount on /mnt/servy-docker-data, which the `root`
-# repo excludes (vars/restic.yml), so a lost host was 68 MB of financial history
-# gone. It is a daily logical dump, NOT point-in-time recovery.
+# WHAT WP-10 ACTUALLY CHANGED: the tenant, its repo (`db-private-firefly`), its
+# dump directory (`{{ dump_root }}`) and its timers all SURVIVE. Only the dump
+# COMMAND changes, from this pg_dump to `dbops dump firefly`. The postgres
+# container (`shared.db`) is stopped for one month; when it and its datadir are
+# deleted, this file and the postgres-specific drill recipe go with them.
+# Until then this dump (or, after the move, the MariaDB dump in the same
+# directory) is the tenant's only off-host copy: `PGDATA` is a bind mount on
+# /mnt/servy-docker-data, which the `root` repo excludes (vars/restic.yml). It
+# is a daily logical dump, NOT point-in-time recovery.
 #
-# WHY A SEPARATE SCRIPT INSTEAD OF `dbops dump firefly`: dbops has no postgres
-# adapter yet, and it must not grow one for a tenant whose engine disappears in
-# the same programme — WP-10's move to MariaDB brings the tenant under the
-# ordinary `dbops dump` path instead. When that happens this file is deleted,
-# not ported.
+# WHY A SEPARATE SCRIPT INSTEAD OF `dbops dump firefly`: dbops had no postgres
+# adapter, and it must not grow one for an engine that is being retired —
+# WP-10's move to MariaDB brings the tenant under the ordinary `dbops dump`
+# path instead.
 #
 # CREDENTIALS: none. `shared.db` carries POSTGRES_USER/POSTGRES_PASSWORD and its
 # local unix socket trusts that user, so `docker exec … pg_dump -U firefly` needs

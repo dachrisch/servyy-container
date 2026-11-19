@@ -342,7 +342,11 @@
 
 - name: Deploy the database dump script for each dump-backed tenant
   ansible.builtin.template:
-    src: "{{ 'firefly_dump.sh.j2' if item.tenant == 'firefly' else 'dbops_dump.sh.j2' }}"
+    # ENGINE, not tenant name: WP-10 moved firefly to MariaDB and the ordinary
+    # `dbops dump` path must take over with the SAME dump dir and repo. The
+    # postgres template is kept only for the rollback (a reverted inventory row
+    # must render a working pg_dump again) until shared.db is deleted.
+    src: "{{ 'firefly_dump.sh.j2' if tenant_row.engine == 'postgres' else 'dbops_dump.sh.j2' }}"
     dest: "{{ (remote_user_home, '.backup-scripts', 'dump-' ~ item.tenant ~ '.sh') | path_join }}"
     mode: '0750'
   vars:

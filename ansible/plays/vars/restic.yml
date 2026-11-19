@@ -268,8 +268,11 @@ restic:
     repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ restic_repo_name | default(inventory_hostname) }}/restic-db-private-mongo"
     password: "{{ restic_password_db }}"
     source_path: "/home/cda/db-dumps/dontforget/current"
-  # TEMPORARY (WP-10 deletes it with shared.db): firefly's pg_dump has no other
-  # protection - PGDATA lives on /mnt, which the root repo excludes.
+  # WP-10 (2026-11-19): firefly is now a MariaDB tenant on db-private.mariadb,
+  # but the repo key, repository URL and source_path are UNCHANGED on purpose —
+  # the repo belongs to the TENANT, not to the engine, so the move keeps every
+  # existing snapshot and the restic/probe wiring needs no new repo. The dump is
+  # now `dbops dump firefly` (mariadb adapter) in exactly the same `current/`.
   'db-private-firefly':
     repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ restic_repo_name | default(inventory_hostname) }}/restic-db-private-firefly"
     password: "{{ restic_password_db }}"
