@@ -37,6 +37,50 @@
     cacheable: true
   run_once: true
 
+# The key above is GENERATED when its seed is missing (a fresh clone/worktree).
+# That is fine for a first bootstrap, but silently replacing the key a host
+# already holds breaks github.com access for that host: the new public half is
+# not in the repository's deploy-key list, so `git ls-remote` starts failing with
+# "Permission denied (publickey)" — measured 2026-11-19, from a fresh worktree.
+# Compare before writing and refuse when they differ.
+- name: Read the deploy key already installed on this host
+  ansible.builtin.command: ssh-keygen -y -f ~/.ssh/id_servyy_container_deploy
+  register: servyy_host_deploy_key_pub
+  changed_when: false
+  failed_when: false
+
+- name: Derive the public half of the controller's seed
+  ansible.builtin.command: ssh-keygen -y -f "{{ playbook_dir }}/vars/.servyy_container_deploy_key"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  register: servyy_seed_deploy_key_pub
+  changed_when: false
+
+- name: Fail before replacing a DIFFERENT deploy key on this host
+  ansible.builtin.assert:
+    that:
+      - >-
+        servyy_host_deploy_key_pub.rc | default(1) != 0 or
+        (servyy_host_deploy_key_pub.stdout | trim).split(' ')[1] ==
+        (servyy_seed_deploy_key_pub.stdout | trim).split(' ')[1]
+    fail_msg: >-
+      This host already holds a servyy-container GitHub deploy key that is NOT the
+      one in {{ playbook_dir }}/vars/.servyy_container_deploy_key
+      {%- if not servyy_deploy_key_seed.stat.exists %} (and that seed did not exist,
+      so ssh-keygen just generated a NEW one — a fresh clone or worktree does this){% endif %}.
+
+      Writing the new key would break github.com access for this host with
+      "Permission denied (publickey)", because its public half is not in the
+      repository's deploy-key list. Nothing was overwritten.
+
+      Recovery: restore vars/.servyy_container_deploy_key from the canonical
+      checkout (or your offline copy) and re-run. To rotate on purpose, remove
+      ~/.ssh/id_servyy_container_deploy on the target AND add the new public key to
+      the repository's deploy keys first.
+    quiet: true
+  when: not ansible_check_mode
+
 - name: Ensure ~/.ssh exists
   ansible.builtin.file:
     path: "~/.ssh"

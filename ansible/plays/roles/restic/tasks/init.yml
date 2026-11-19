@@ -182,13 +182,26 @@
   tags:
     - restic.init
 
-- name: Deploy SSH config for Storage Box
-  template:
-    src: ssh_config_storagebox.j2
-    dest: "{{ remote_user_home }}/.ssh/config"
+# A whole-file `template:` used to write ~/.ssh/config here and WIPED every other
+# managed block in it — measured 2026-11-19: after a restic deploy the host could
+# no longer `git ls-remote` github.com ("Permission denied (publickey)") because
+# the servyy-container deploy-key block written by
+# roles/user/tasks/includes/github_deploy_key.yml was gone. Both writers now use
+# blockinfile with their own marker, so they compose.
+- name: Add the Storage Box host block to ~/.ssh/config
+  ansible.builtin.blockinfile:
+    path: "{{ remote_user_home }}/.ssh/config"
+    create: true
     owner: "{{ create_user }}"
     group: "{{ create_user }}"
     mode: '0600'
+    marker: "# {mark} ANSIBLE MANAGED - restic Storage Box"
+    block: |
+      Host {{ restic.sftp.host_alias }}
+          HostName {{ restic.sftp.hostname }}
+          User {{ restic.sftp.username }}
+          Port {{ restic.sftp.port }}
+          IdentityFile {{ restic.sftp.ssh_key_path }}
   tags:
     - restic.init
 
