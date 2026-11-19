@@ -68,6 +68,20 @@ structural difference was **column order** in `account_balances` (same set,
 values matched by name). No `zero dates` (PostgreSQL cannot store them), no
 negative unsigned values, no case-only duplicate unique keys.
 
+**Identifiers and collation.** Every table and column is backtick-quoted in the
+generated SQL, so reserved words (`order`, `key`, `type`, `count`,
+`configuration`, …) are safe. All identifiers are lower-case on both sides and
+MariaDB ran with its default case-sensitive table names; the table and column
+name sets matched exactly. Collation differs by design — PostgreSQL
+`en_US.utf8`/UTF8 vs MariaDB `utf8mb4_unicode_ci` (the tier's server flag, D5) —
+so the unique text keys (`transaction_currencies.code`, `account_types.type`,
+`roles.name`, `user_groups.title`, …) were checked again **after** the load with
+a `GROUP BY … HAVING COUNT(*)>1` over **all 27 non-primary unique indexes**:
+**0 duplicate groups**. That check is not optional: the load sets
+`UNIQUE_CHECKS=0` per batch, and re-enabling it does not retroactively validate
+rows already written. Strings are inserted with `NO_BACKSLASH_ESCAPES` **added** to strict mode,
+so a backslash is data and only `'` is doubled.
+
 Session settings for the load: `FOREIGN_KEY_CHECKS=0` and `UNIQUE_CHECKS=0`
 per batch, re-enabled after each batch; `NO_BACKSLASH_ESCAPES` **added** to the
 existing strict `sql_mode` (not replacing it), so the only string escaping is
@@ -151,7 +165,10 @@ The gate is not row counts. On both engines, with the **same SQL expressions**:
 
 ## Retirement: stopped, not deleted
 
-`docker stop shared.db` at **2026-11-19T13:16:20Z**. The container, its image
+`docker stop shared.db` at **2026-11-19T13:16:20Z**. It was briefly started
+**read-only** at 13:43Z to re-run the final verification after the
+unique-index check was added to the converter (no app writes: Firefly is on
+MariaDB), then stopped again at **2026-11-19T13:43:53Z**. The container, its image
 (`postgres:15`) and its bind-mounted datadir
 (`/mnt/servy-docker-data/docker/finance/db`, **69 MB**, untouched) are the
 rollback. `shared/docker-compose.yml` no longer defines the `db:` service; a

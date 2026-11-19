@@ -436,6 +436,42 @@ def verify(args, password: str) -> int:
             failures.append((t, src_n, dst_n, int(missing), int(extra)))
         print(f"{t:32s} {src_n:8d} {dst_n:8d}  {result}")
 
+    print("\nunique indexes under the TARGET collation:")
+    # The load runs with UNIQUE_CHECKS=0, and InnoDB does not re-validate rows
+    # that were written while it was off. A cross-engine move can therefore
+    # leave a case-only duplicate that PostgreSQL allowed under a
+    # case-sensitive collation. Check every non-primary unique index here, on
+    # the data that is actually in the target.
+    uniques = mariadb_json(
+        args.target_container,
+        args.target_user,
+        password,
+        args.target_db,
+        """SELECT JSON_OBJECT('t', table_name, 'i', index_name,
+                              'c', group_concat(column_name ORDER BY seq_in_index)) AS j
+           FROM information_schema.statistics
+           WHERE table_schema = DATABASE() AND non_unique = 0 AND index_name <> 'PRIMARY'
+           GROUP BY table_name, index_name ORDER BY table_name, index_name""",
+    )
+    unique_bad = []
+    for u in uniques:
+        cols = [c for c in (u["c"] or "").split(",") if c]
+        group = ", ".join(quote_ident(c) for c in cols)
+        sql = (
+            "SELECT JSON_OBJECT('n', (SELECT COUNT(*) FROM ("
+            f"SELECT 1 FROM {quote_ident(u['t'])} GROUP BY {group} HAVING COUNT(*) > 1) d)) AS j"
+        )
+        n = int(mariadb_json(args.target_container, args.target_user, password, args.target_db, sql)[0]["n"])
+        if n:
+            unique_bad.append((u["t"], u["i"], cols, n))
+    if unique_bad:
+        print(f"  DUPLICATE KEYS: {len(unique_bad)} unique index(es) violated")
+        for t, i, cols, n in unique_bad[:10]:
+            print(f"    {t}.{i} ({', '.join(cols)}): {n} duplicate group(s)")
+        failures.append(("unique-indexes", 0, 0, 0, 0))
+    else:
+        print(f"  {len(uniques)} non-primary unique indexes, 0 duplicate groups")
+
     print("\nfinancial invariants (the same expressions on both engines):")
 
     def money(v):
