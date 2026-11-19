@@ -92,7 +92,7 @@ Two policies came out of these and are now enforced:
 |---|---|
 | **WP-12** | **done** — `moodle.moodle` carries `io.portainer.accesscontrol.teams=leaguesphere`; verified through Portainer's own API (`ResourceControl` + `TeamAccesses`, the same shape `leaguesphere.app` has). The recreate cost ~6 minutes of `offd.de` downtime, not seconds, because a fresh worktree regenerated the app seeds — the incident that produced the seed guard above |
 | **WP-13** | **done** — the `searxng.valkey` sidecar, its volume and network removed after confirming `dbsize=0` and nothing else attached; `search.lehel.xyz` 200, caches SQLite as they always were |
-| **WP-14** | **not started** — its own plan requires a quiet tree and warns against staging unrelated work; it is the last thing on this list for exactly that reason |
+| **WP-14** | **done 2026-11-19** — graphify retired from the container role and from codey: the skill list entry plus a retired-skills pruning task, three `startup.sh` blocks, `install-graphify.sh`, `PYTHONPATH`, and `/root/.graphify-pkgs` (141 MiB freed on the container volume). setup-home `5b917d5` removed the canonical skill tree in the same change, because it is the `copy` source for that list. Verified on codey: no binary, no import, no skill dir, healthy, `code.lehel.xyz` 200. It ran last for the reason its plan gave — a quiet tree |
 
 ## Deliberately not done
 
