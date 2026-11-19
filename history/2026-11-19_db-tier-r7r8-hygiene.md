@@ -191,6 +191,11 @@ scopes R8 must not converge) and one `restic-backup-*` per repo.
    → `has_tables` read the empty answer as "already has tables") and **passed on
    the immediate retry in 53.7 s from the same snapshot** (`37587d55`). That is
    the R11 scratch-server readiness race, not this package — see follow-ups.
+   The whole monthly class was then re-run from a clean `reset-failed` and every
+   tenant passed from its own repo: **bnb_office ok 34.3 s** (`8c0dafca`,
+   `db-bnb`), leagues_finance 20.3 s, queen 19.0 s, photoprism 109.4 s,
+   dontforget 19.3 s, firefly 57.6 s — unit `Result=success`,
+   `systemctl --user --failed` lists 0 units.
 
 ## Files changed
 
