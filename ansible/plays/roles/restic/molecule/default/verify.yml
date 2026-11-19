@@ -236,16 +236,33 @@
           # It must never write a dump itself — it runs the per-tenant script.
           - "'dump-$t.sh' in (tier_runner.content | b64decode)"
 
-    - name: Check the business tier timer is enabled and started
-      command: systemctl --user is-active db-backup@business.timer
-      register: tier_active
-      changed_when: false
-      failed_when: false
+    # `is-active` (and even `is-enabled`) needs a running systemd USER manager,
+    # which a molecule container does not have — it runs systemd as PID 1, not
+    # per-user. Asserting on them tests the harness, not the role: measured in CI,
+    # everything up to here passed and then this failed with stdout 'unknown'.
+    # What the role is responsible for is ENABLEMENT, and that is a symlink the
+    # `systemd` module writes — filesystem state, observable here.
+    - name: Stat the enablement symlink for the business tier timer
+      ansible.builtin.stat:
+        path: "{{ unit_dir }}/timers.target.wants/db-backup@business.timer"
+      register: tier_enabled_link
 
-    - name: Assert the business tier timer runs on this host
+    - name: Stat the timer unit itself
+      ansible.builtin.stat:
+        path: "{{ unit_dir }}/db-backup@business.timer"
+      register: tier_timer_unit
+
+    - name: Assert the business tier timer is enabled on this host
       assert:
         that:
-          - tier_active.stdout | trim == 'active'
+          - tier_timer_unit.stat.exists
+          - tier_enabled_link.stat.exists and tier_enabled_link.stat.islnk
+        fail_msg: >-
+          db-backup@business.timer is not enabled (unit exists:
+          {{ tier_timer_unit.stat.exists }}, enablement symlink:
+          {{ tier_enabled_link.stat.exists | default(false) }}) — without it nothing
+          drives `dbops dump-due` and every dump silently ages.
+        quiet: true
 
     - name: Check the legacy per-tenant dump units are gone
       stat:
