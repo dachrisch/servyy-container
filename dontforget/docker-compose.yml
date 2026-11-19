@@ -56,35 +56,16 @@ services:
       - traefik.http.routers.${SERVICE_NAME}-http.rule=Host(`${TRAEFIK_HTTP_REDIRECT_HOST:-dontforget-http-redirect.invalid}`)
       - traefik.http.routers.${SERVICE_NAME}-http.middlewares=${SERVICE_NAME}-https-redirect
       - traefik.http.middlewares.${SERVICE_NAME}-https-redirect.redirectscheme.scheme=https
-      # Diagnostic second hostname on an established domain. Google Calendar
-      # refuses to subscribe to feeds on dontforget.lehel.xyz without ever
-      # fetching them; bumbleflies.de is a long-lived domain on the *same* IP
-      # (wildcard A record), so this isolates domain reputation from the IP.
-      # On letsencrypthttpresolver rather than DNS-01. The domain moved to
-      # Porkbun on 2026-11-18, but the DNS-01 switch was tried and reverted the
-      # same day (lego stalled on "waiting for record propagation"), so HTTP-01
-      # is kept by decision: history/2026-11-18_bumbleflies-de-transfer.md.
-      # BUMBLEFLIES_HOST is empty when TLS is off (servyy-test), so both
-      # routers then match nothing rather than colliding.
-      # The two fallback hosts differ on purpose: when BUMBLEFLIES_HOST is
-      # empty (servyy-test) these routers must not end up with an identical
-      # rule, or they collide with each other the way the -http router nearly
-      # collided with the main one. With the var set, both resolve to the same
-      # real host, which is what we want.
-      - traefik.http.routers.${SERVICE_NAME}-bf.rule=Host(`${BUMBLEFLIES_HOST:-dontforget-bf-unset.invalid}`)
-      - traefik.http.routers.${SERVICE_NAME}-bf.entrypoints=websecure
-      # tls follows TRAEFIK_TLS, which is false on servyy-test — that is what
-      # keeps Traefik from ordering a cert for the .invalid fallback host
-      # there (a certresolver name is still rendered, exactly as the main
-      # router already does, but with tls off it is never acted on).
-      - traefik.http.routers.${SERVICE_NAME}-bf.tls=${TRAEFIK_TLS:-true}
-      - traefik.http.routers.${SERVICE_NAME}-bf.tls.certresolver=${BUMBLEFLIES_CERTRESOLVER:-letsencrypthttpresolver}
-      - traefik.http.routers.${SERVICE_NAME}-bf.service=${SERVICE_NAME}
-      # Same bare-JSON 404 as the main router above.
-      - traefik.http.routers.${SERVICE_NAME}-bf.middlewares=error-pages-404@file
-      - traefik.http.routers.${SERVICE_NAME}-bf-http.entrypoints=web
-      - traefik.http.routers.${SERVICE_NAME}-bf-http.rule=Host(`${BUMBLEFLIES_HOST:-dontforget-bf-http-unset.invalid}`)
-      - traefik.http.routers.${SERVICE_NAME}-bf-http.middlewares=${SERVICE_NAME}-https-redirect
+      # A second hostname (dontforget.bumbleflies.de, HTTP-01, plus its own http
+      # redirect router) lived here to test whether Google Calendar's refusal to
+      # subscribe to feeds on dontforget.lehel.xyz was tied to the domain rather
+      # than the IP. REMOVED 2026-11-19 by owner decision: the app is served on
+      # its own domain only. Do not reintroduce it as a "harmless" second name —
+      # it made the app reachable under a customer domain, and the wildcard A of
+      # bumbleflies.de means the name still resolves to this host, where it now
+      # gets Traefik's plain 404. The calendar redirect router above is
+      # unrelated and stays (webcal:// needs the http→https hop).
+      # See history/2026-11-19_dontforget-drop-bumbleflies-host.md.
 
 networks:
   # Owned by the private DB tier (WP-9) — deploy db-private FIRST. The old
