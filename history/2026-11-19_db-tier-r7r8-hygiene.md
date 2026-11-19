@@ -264,11 +264,31 @@ reason the coordinator is fixing on master.
   Repaired here by symlinking the canonical seed files into the working copy and
   re-running the render pass (the root-password guard passed every time; no
   server was recreated).
-* The host's own GitHub deploy key (`~/.ssh/id_servyy_container_deploy`) is
-  **refused** by GitHub, so `--tags user.repo` cannot sync `/home/cda/servyy-container`
-  and the host checkout is one commit behind master (`348ed29`). The deploy was
-  therefore rendered from this branch's checkout on the controller. Worth fixing
-  before the next host checkout is trusted.
+* **The host's `/home/cda/servyy-container` could not be synced, for two
+  separate reasons — both found and repaired, both worth fixing in the repo:**
+  1. `roles/restic/tasks/init.yml` deploys `~/.ssh/config` with a *template*,
+     i.e. it replaces the whole file with the Storage Box block. That deletes the
+     `# BEGIN/END ANSIBLE MANAGED - servyy-container GitHub deploy key` block that
+     `roles/user/tasks/includes/github_deploy_key.yml` maintains, so the next
+     `git fetch` in the checkout has no identity and fails
+     `Permission denied (publickey)` (measured: the file's mtime is the restic
+     init run, and `ssh -F /dev/null -i ~/.ssh/id_servyy_container_deploy -T git@github.com`
+     succeeds while plain `ssh -T git@github.com` does not). Repaired by
+     re-adding the block by hand; **the next `--tags restic.init` will delete it
+     again** — the two roles need one owner for that file (blockinfile, or
+     `Include config.d/*`).
+  2. `github_deploy_key.yml` GENERATES a new ed25519 keypair into the checkout
+     when its seed file is missing — which a fresh worktree always is — and then
+     copies the new private key over the host's
+     `~/.ssh/id_servyy_container_deploy`. Here that replaced a working key with
+     one GitHub has never seen and broke the first clone attempt. Restored the
+     host's key from the canonical checkout's seed (`SHA256:IFnvl2k…`, which
+     GitHub accepts — verified from both boxes) and deleted the generated pair.
+     The include should fail closed when the seed is absent, not mint a new
+     identity.
+  Consequence: the deploy was rendered from this branch's checkout on the
+  controller, and the host checkout is still at `348ed29` while origin master has
+  moved on. Nothing on the host was left on the branch.
 
 ## Follow-ups (not done here)
 
