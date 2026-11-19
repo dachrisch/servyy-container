@@ -126,16 +126,21 @@
         # filesystem and fail for the wrong reason. Stat the target instead.
         quiet: true
 
-    - name: The role created NO container of its own (it never renders compose — D6)
-      community.docker.docker_container_info:
-        name: db-business.mariadb
+    - name: Look for a container the role might have created (it never renders compose — D6)
+      ansible.builtin.command:
+        argv: [docker, ps, -a, --filter, "name=^db-business.mariadb$", --format, "{{ '{{.Names}}' }}"]
       register: tier_container
+      changed_when: false
       failed_when: false
 
     - name: Assert no db-business.mariadb exists
       ansible.builtin.assert:
         that:
-          - tier_container.container is none or tier_container.failed | default(false)
+          - tier_container.stdout | default('') | trim == ''
+        # `docker_container_info` on a missing container FAILS, and its result then
+        # carries no `container` key — so 'container is none or failed' would have
+        # asserted on an Undefined rather than on the absence of a container. `docker
+        # ps` answers the actual question.
         quiet: true
 
     # --- WP-9: the mongo side ------------------------------------------------
