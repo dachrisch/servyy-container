@@ -42,6 +42,8 @@ Two of those were pure waste:
 
 **graphify on aarch64 — it is achievable, the assumption was wrong.**
 
+> Obsolete 2026-11-19 — graphify removed as unused; the rest of this record still applies.
+
 Only the **core `tree-sitter`** package lacks a musllinux-aarch64 wheel at every
 version (x86_64 has one). 16 of 26 language packs do publish one — but only on
 older versions, and pip prefers the newest sdist over an older wheel, so it

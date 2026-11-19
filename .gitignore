@@ -48,8 +48,6 @@ ansible/plays/vars/.servyy_container_deploy_key
 # python bytecode (test suites under bind-mounted service dirs, e.g. opencode/scripts)
 __pycache__/
 
-# graphify skill output (generated, never commit)
-graphify-out/
 db-*/data/
 # Rendered by roles/db_tier (0600, holds the tier root password)
 db-*/mariadb.env

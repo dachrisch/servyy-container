@@ -39,17 +39,6 @@ Target after Part 2: **< 8 s**.
 - **`chromium` IS available on aarch64** (`156.0.8078.79-r0`). A first test
   appeared to show otherwise — that was a missing apk index, not a missing
   package. Verified with `apk update` first.
-- **`graphify` is NOT x86_64-only** (corrected 2026-11-17 after measuring). Only
-  the core `tree-sitter` package lacks a musllinux aarch64 wheel at every
-  version; 16 of 26 language packs publish one. It now works on aarch64 by
-  compiling the core (Rust) and forcing `--only-binary` so pip backtracks to
-  wheel-available pack versions. See Task 1 and
-  `opencode/scripts/install-graphify.sh`, which already implements this and is
-  the source of truth for the build-time equivalent.
-- `PYTHONPATH=/root/.graphify-pkgs` is **already set in docker-compose.yml**
-  (2026-11-17), with the install living on the persistent volume. Baking it
-  into the image should therefore move the directory and update that one env
-  var, not add a second mechanism.
 - Baking chromium pulls ~196 apk packages. Expect a **materially larger image**
   (~+300–400 MB uncompressed). Accepted: it is pulled once per update, not per
   boot, and watchtower handles the update.
@@ -61,7 +50,6 @@ Target after Part 2: **< 8 s**.
 | Registry | Docker Hub `dachrisch/opencode` | dachrisch org convention (see `devhub`); `DOCKER_TOKEN` is an org secret |
 | Tags | `latest`, `<upstream-version>` (`2.3.0`), `2.3.0-r<N>` | `r<N>` lets us rebuild our layer without bumping upstream |
 | Chromium | baked in | removes 7 s/boot + a network dependency; size cost accepted |
-| graphify | baked on `x86_64` only | no aarch64 wheels exist; install would fail |
 | Rollback | revert compose `image:` to upstream tag | `startup.sh` stays idempotent and upstream-compatible |
 
 ---
@@ -111,23 +99,6 @@ RUN python3 -m pip install --no-cache-dir --break-system-packages \
         google-api-python-client \
         google-auth-oauthlib \
         google-auth-httplib2
-
-# graphify — works on BOTH architectures, but not with a plain `pip install`.
-# Reuse scripts/install-graphify.sh rather than duplicating its logic:
-#   - core tree-sitter has no musllinux aarch64 wheel -> must compile (Rust)
-#   - pip prefers the newest sdist over an older wheel, so language packs try to
-#     compile and die on "tree_sitter/parser.h: No such file" (0.25+ dropped the
-#     C headers); --only-binary makes pip backtrack to wheel-available versions
-#   - graphifyy itself goes in with --no-deps so its tight pins don't undo that
-# The toolchain is only needed during the build, so it stays in this layer.
-COPY opencode/scripts/install-graphify.sh /tmp/install-graphify.sh
-RUN apk add --no-cache rust cargo build-base python3-dev \
- && sed 's#^DEST=/root/.graphify-pkgs#DEST=/usr/local/lib/graphify-pkgs#' \
-      /tmp/install-graphify.sh > /tmp/build-graphify.sh \
- && sh /tmp/build-graphify.sh \
- && apk del rust cargo build-base python3-dev \
- && rm -f /tmp/install-graphify.sh /tmp/build-graphify.sh
-ENV PYTHONPATH=/usr/local/lib/graphify-pkgs
 
 # gh-stack extension (used by the gh-stack skill). Needs a token for API calls,
 # so install from the public repo without auth.
@@ -192,13 +163,13 @@ Expected: build succeeds, smoke test prints `build-time smoke test OK`.
 
 ```bash
 docker run --rm --entrypoint sh opencode-derived:test-amd64 -c \
-  'bash -c true && python3 -c "import graphify; print(\"graphify OK\")" \
+  'bash -c true \
    && /usr/lib/chromium/chromium --version \
    && gh extension list | grep -q gh-stack && echo "gh-stack OK" \
    && command -v git-crypt gettext envsubst node npm | wc -l'
 ```
 
-Expected: `graphify OK`, a chromium version line, `gh-stack OK`, `6`.
+Expected: a chromium version line, `gh-stack OK`, `6`.
 
 **Step 3: Build and verify arm64**
 
@@ -206,11 +177,10 @@ Expected: `graphify OK`, a chromium version line, `gh-stack OK`, `6`.
 docker buildx build --platform linux/arm64 -t opencode-derived:test-arm64 --load .
 docker run --rm --entrypoint sh --platform linux/arm64 opencode-derived:test-arm64 -c \
   'python3 -c "import googleapiclient.discovery; print(\"youtube OK\")" \
-   && /usr/lib/chromium/chromium --version \
-   && (python3 -c "import graphify" 2>/dev/null && echo "UNEXPECTED: graphify present" || echo "graphify absent as designed")'
+   && /usr/lib/chromium/chromium --version'
 ```
 
-Expected: `youtube OK`, chromium version, `graphify absent as designed`.
+Expected: `youtube OK`, chromium version.
 
 **Step 4: Record image sizes**
 
@@ -436,11 +406,6 @@ Expected: **< 10 s** steady state on both, down from 22 s / 26 s.
 curl -sS -o /dev/null -w 'codey %{http_code}\n'   https://code.lehel.xyz/
 curl -sS -o /dev/null -w 'codacle %{http_code}\n' https://codacle.lehel.xyz/
 
-# graphify present where it can be, absent where it cannot
-ssh codey.lehel.xyz 'docker exec opencode.web python3 -c "import graphify; print(\"codey graphify OK\")"'
-ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes cda@138.2.180.191 \
-  'docker exec opencode.web sh -c "python3 -c \"import graphify\" 2>/dev/null || echo oracle-graphify-absent-as-designed"'
-
 # the MCP still has its browser
 ssh codey.lehel.xyz 'docker exec opencode.web /usr/lib/chromium/chromium --version'
 ```
@@ -492,7 +457,7 @@ gh pr list --repo dachrisch/servyy-container --author app/renovate
 
 **Step 1:** Write the ADR (per the infrastructure-history-tracking skill) with:
 measured before/after boot times on both architectures, image sizes for
-amd64/arm64, the aarch64 graphify limitation, and the rollback procedure:
+amd64/arm64, and the rollback procedure:
 
 ```bash
 # rollback = revert one line, containers self-heal on boot
