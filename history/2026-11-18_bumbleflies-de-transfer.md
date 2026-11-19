@@ -260,6 +260,12 @@ but GoDaddy no longer holds a zone for the domain, so that would blackhole it.
 
 ## Next Steps
 
+- [ ] **Blocked on an external reply:** a non-shared public IPv4 was requested
+      from the ISP on 2026-11-18 to stop the CGNAT pool bans described above.
+      Resume from
+      [`history/2026-11-19_public-ipv4-vs-cgnat.md`](2026-11-19_public-ipv4-vs-cgnat.md)
+      — it carries the evidence, the question list sent, and how to judge the
+      answer. Nothing else is outstanding for this domain.
 - ~~Diagnose the DNS-01 propagation check~~ — **closed 2026-11-18: staying on
   HTTP-01**, see the decision in the section above. The routers are on
   `letsencrypthttpresolver` deliberately and the comment in
