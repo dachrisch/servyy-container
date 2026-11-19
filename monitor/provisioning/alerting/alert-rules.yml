@@ -2632,3 +2632,222 @@ groups:
         labels:
           severity: high
         isPaused: false
+
+  # --- restore drills (WP-8R R11) ---------------------------------------------
+  # A backup nobody restores is a hypothesis. The drill play picks the newest
+  # snapshot of each backed-up tenant, restores it into a throwaway container,
+  # verifies it against the live tenant and publishes the result. The most
+  # likely failure of that feature is not a corrupted restore — it is the drills
+  # silently STOPPING (a timer disabled by a bad deploy, a host rebuilt without
+  # them, a script that exits early). So the primary rule is an age rule, and it
+  # is name-free like the backup rules: the probe pushes the threshold its own
+  # `drill:` field implies (8 d weekly / 32 d monthly), and the rule compares.
+  #
+  # `(age < bool 0) > 0`: the probe reports -1 when the per-tenant state file is
+  # missing/unreadable. Grafana maps -1 to "not met" (measured 2026-11-18, see
+  # monitor/AGENTS.md), so a literal `< 0` would make an unverifiable drill
+  # silent; `< bool 0` turns it into a positive 1 before the threshold sees it.
+  #
+  # ONE rule, high, no severity series: unlike backup staleness (where a private
+  # repo may legitimately be less urgent), losing the ability to prove a restore
+  # works is the same failure for every tenant — and the cadence already differs
+  # per tenant through the threshold. A tenant whose row says `drill: none` emits
+  # no series at all, so this rule can never page for one.
+  - orgId: 1
+    name: restore-drill-alerts
+    folder: Infrastructure
+    interval: 1m
+    rules:
+      - uid: db_restore_drill_overdue
+        title: Restore Drill Overdue
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: >-
+                ((db_restore_drill_age_seconds > on(tenant) group_left() db_restore_drill_threshold_seconds)
+                 or ((db_restore_drill_age_seconds < bool 0) > 0))
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        annotations:
+          summary: 'No restore drill for {{ $labels.tenant }} within its cadence'
+          description: '{{ if $labels.tenant }}The {{ $labels.tenant }} restore drill is {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} s{{ else }}far{{ end }} old, against the threshold its own `drill:` field sets (8 d weekly, 32 d monthly), or its state file is unreadable (-1). The backups may still be fine — this alert says NOBODY HAS PROVEN IT. Check `systemctl --user list-timers "db-restore-drill-*"` and `journalctl --user -u db-restore-drill-weekly`; run one by hand with `~/.restore-drills/restore-drill.sh --tenant <tenant>`. Evidence: history/&lt;date&gt;_db-restore-drills.md.{{ else }}A tenant that should be drilled has not been within its cadence{{ end }}.'
+        labels:
+          severity: high
+        # A tenant whose row becomes `drill: none` stops emitting; without this
+        # its instance would keep its last state forever.
+        missingSeriesEvalsToResolve: 3
+        isPaused: false
+
+      # The last drill RAN and FAILED. Distinct from overdue: the timer is alive
+      # and the age may still be inside its window (a failure does not reset the
+      # last-success origin), but the restore did not verify. The threshold is
+      # 1 h, not the drill cadence: one failed attempt is already a lost
+      # capability until someone looks.
+      - uid: db_restore_drill_failed
+        title: Restore Drill Failed
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: db_restore_drill_success == 0
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 1h
+        annotations:
+          summary: 'The {{ $labels.tenant }} restore drill failed'
+          description: '{{ if $labels.tenant }}The last {{ $labels.tenant }} restore drill did not verify. The evidence file records the snapshot, the mismatch and the full verify output; read the newest section in history/&lt;date&gt;_db-restore-drills.md and the per-drill log under ~/.restore-drills/logs/. A failed drill does not reset the age, so the overdue rule will fire too if it stays broken.{{ else }}A restore drill failed{{ end }}.'
+        labels:
+          severity: high
+        missingSeriesEvalsToResolve: 3
+        isPaused: false
+
+      # The probe itself cannot read a state file (deleted, permissions, wrong
+      # path). Kept separate so one tenant's unreadable state does not look like
+      # a fleet-wide failure — and so it cannot hide behind noDataState: OK.
+      - uid: db_restore_drill_probe_failure
+        title: Restore-Drill Probe Failing
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: db_restore_drill_probe_success
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: lt
+        noDataState: OK
+        execErrState: Error
+        for: 30m
+        annotations:
+          summary: 'The restore-drill probe cannot read a tenant state file'
+          description: '~/.restore-drills/restore-drill-probe.sh could not read at least one state file under ~/.restore-drills/state/. Every drill age is therefore unknown for that tenant, not healthy. The deploy seeds a state file per drillable tenant; a missing one means the inventory and the host disagree.'
+        labels:
+          severity: medium
+        isPaused: false
+
+      # The probe has stopped running entirely. Pushgateway keeps serving the
+      # last values and `noDataState: OK` covers an empty series, so without
+      # this a dead probe is indistinguishable from a healthy fleet — the same
+      # hole the dump-age probe had before R2.
+      - uid: db_restore_drill_probe_stale
+        title: Restore-Drill Probe Stale
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: time() - push_time_seconds{job="db_restore_drill"}
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [5400]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: 'The restore-drill probe has not pushed metrics recently'
+          description: 'No successful push from system-restore-drill.timer in over 90 minutes. The drill ages are frozen at their last values, so the overdue rule cannot fire — a stopped probe silences the whole feature. Check `systemctl --user list-timers system-restore-drill` and the probe log.'
+        labels:
+          severity: medium
+        isPaused: false

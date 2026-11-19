@@ -7,9 +7,16 @@
 # Usage:
 #   dbops dump <tenant>                       logical dump into the tenant's dump dir
 #   dbops restore <tenant> <file> [--force]   import a logical dump (DEFINER-stripped)
-#   dbops verify <tenant> [--against <server>]
+#   dbops verify <tenant> [--against <server>] [--drill]
 #                                             dump-vs-live, or live-vs-live with
-#                                             --against (the post-restore gate)
+#                                             --against (the post-restore gate).
+#                                             --drill relaxes the exact count
+#                                             equality of --against into the
+#                                             restore-drill policy (structure
+#                                             identical, no populated table empty,
+#                                             equal-count tables checksum-equal),
+#                                             because a drill compares a snapshot
+#                                             with a database that has moved on
 #   dbops shell <tenant>                      interactive mariadb client in the db
 #   dbops restore <tenant> --from-physical <dir>
 #                                             physical mariadb-backup set (high -> nonprod)
@@ -51,6 +58,11 @@ dbops <command> [args]
   restore <tenant> <file> [--force]   import a logical dump, DEFINER-stripped
   verify <tenant> [--against <srv>]   dump-vs-live, or live-vs-live with --against
                                       (mongo: per-collection document counts)
+  verify <tenant> --against <srv> --drill
+                                      restore-drill policy: the target is an older
+                                      snapshot, so counts may lag; structure must
+                                      be identical and no populated table may be
+                                      empty in the restore (see cmd_verify)
   shell <tenant>                      interactive mariadb client in that database
   restore <tenant> --from-physical <dir>
                                       physical mariadb-backup set (high -> nonprod)
@@ -58,6 +70,8 @@ dbops <command> [args]
 
 Credentials: the per-tier backup user from <env dir>/<tier>.env; DBOPS_USER /
 DBOPS_PASSWORD in the environment override it (drills and one-off operator work).
+For `verify --against`, DBOPS_AGAINST_USER / DBOPS_AGAINST_PASSWORD override the
+credentials used for the TARGET side only (a scratch server has its own accounts).
 Mongo tenants use the server container's own MONGO_INITDB_ROOT_* account
 (DBOPS_MONGO_USER / DBOPS_MONGO_PASSWORD override it) and never a tier env file.
 
@@ -125,10 +139,16 @@ container_alive() {
     || die "container '$T_SERVER' is not running on this host (tenant '$1' lives elsewhere)" 3
 }
 
-sql() {   # sql "<query>" [database]
-  local q="$1" db="${2:-$T_DB}"
-  printf '%s\n%s\n' "$DBOPS_USER" "${DBOPS_PASSWORD:-}" \
-    | docker exec -i "$T_SERVER" sh -c 'read -r U; read -r P; exec mariadb --skip-ssl --batch --skip-column-names -u"$U" -p"$P" -e "$1" "$2"' dbops "$q" "$db"
+sql() {   # sql "<query>" [database] [server] [user] [password]
+  # The last four arguments exist for `verify --against`: the live side and the
+  # target side are different servers with different accounts, and the ORIGINAL
+  # implementation ignored the server argument entirely (see live_snapshot).
+  local q="$1" db="${2:-$T_DB}" srv="${3:-$T_SERVER}"
+  # `-` not `:-` on the credential args: an EMPTY password is a valid value
+  # (root on a throwaway container), and must not fall back to the live one.
+  local u="${4-$DBOPS_USER}" p="${5-${DBOPS_PASSWORD:-}}"
+  printf '%s\n%s\n' "$u" "$p" \
+    | docker exec -i "$srv" sh -c 'read -r U; read -r P; exec mariadb --skip-ssl --batch --skip-column-names -u"$U" -p"$P" -e "$1" "$2"' dbops "$q" "$db"
 }
 
 # --- mongo adapter (WP-8R R6) -------------------------------------------------
@@ -223,6 +243,10 @@ cmd_dump_mongo() {
   info "dbops: ok  $(du -h "$out" | cut -f1)  $out"
 }
 
+row_delta() {   # $1 live, $2 restored, [$3 unit] -> a sentence about the point-in-time gap
+  awk -v l="$1" -v r="$2" -v u="${3:-rows}" 'BEGIN{d=l-r; if (d>=0) printf "restore is %d %s behind live", d, u; else printf "restore is %d %s ahead of live", -d, u}'
+}
+
 mongo_counts() {   # $1 = server, $2 = database -> sorted "collection:count" lines
   local srv="$1" db="$2"
   mongo_env "$srv"
@@ -257,31 +281,41 @@ latest_dump() {
 dump_objects() { gzip -dc "$DUMP_FILE" | sed -nE 's/^CREATE (TABLE|VIEW) `([^`]+)`.*/\2/p' | sort -u; }
 dump_definers() { gzip -dc "$DUMP_FILE" | grep -oE 'DEFINER=`[^`]+`@`[^`]+`' | sort -u; }
 
-live_snapshot() {   # $1 server, $2 database -> canonical text on stdout
-  local srv="$1" db="$2" t
-  info "  -- $srv / $db"
-  sql "SELECT CONCAT('table ', TABLE_NAME) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$db' AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME"
-  sql "SELECT CONCAT('view ', TABLE_NAME) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$db' AND TABLE_TYPE='VIEW' ORDER BY TABLE_NAME"
+live_snapshot() {   # $1 server, $2 database, $3 user, $4 password -> canonical text on stdout
+  # The SERVER ARGUMENT IS LOAD-BEARING. Until WP-8R R11 this function printed
+  # "  -- $srv / $db" and then queried $T_SERVER anyway, so
+  # `dbops verify <tenant> --against <scratch>` compared the live database with
+  # itself and could never fail. That is the worst possible defect in the one
+  # command a restore drill uses as its gate. Every query below names the server
+  # and the credential it must run as.
+  local srv="$1" db="$2" u="$3" p="$4" t
+  # The server banner goes to STDERR, not into the compared text: the two sides
+  # of a verify are different servers by definition, so including their names
+  # made every comparison differ (found on the first R11 drill).
+  info "  -- $srv / $db" >&2
+  sql "SELECT CONCAT('table ', TABLE_NAME) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$db' AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME" "$db" "$srv" "$u" "$p"
+  sql "SELECT CONCAT('view ', TABLE_NAME) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$db' AND TABLE_TYPE='VIEW' ORDER BY TABLE_NAME" "$db" "$srv" "$u" "$p"
   # exact per-table counts: TABLE_ROWS is an estimate, so count each table
-  for t in $(sql "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='$db' AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME"); do
-    info "count $t $(sql "SELECT COUNT(*) FROM \`$t\`")"
+  for t in $(sql "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='$db' AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME" "$db" "$srv" "$u" "$p"); do
+    info "count $t $(sql "SELECT COUNT(*) FROM \`$t\`" "$db" "$srv" "$u" "$p")"
   done
   # checksum of the three biggest tables (row counts can match while data differs)
-  for t in $(sql "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='$db' AND TABLE_TYPE='BASE TABLE' ORDER BY DATA_LENGTH DESC LIMIT 3"); do
-    info "checksum $t $(sql "CHECKSUM TABLE \`$t\`" | cut -f2)"
+  for t in $(sql "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='$db' AND TABLE_TYPE='BASE TABLE' ORDER BY DATA_LENGTH DESC LIMIT 3" "$db" "$srv" "$u" "$p"); do
+    info "checksum $t $(sql "CHECKSUM TABLE \`$t\`" "$db" "$srv" "$u" "$p" | cut -f2)"
   done
-  sql "SELECT CONCAT('routine ', ROUTINE_NAME) FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA='$db' ORDER BY ROUTINE_NAME"
-  sql "SELECT CONCAT('trigger ', TRIGGER_NAME) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA='$db' ORDER BY TRIGGER_NAME"
-  sql "SELECT CONCAT('event ', EVENT_NAME) FROM information_schema.EVENTS WHERE EVENT_SCHEMA='$db' ORDER BY EVENT_NAME"
+  sql "SELECT CONCAT('routine ', ROUTINE_NAME) FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA='$db' ORDER BY ROUTINE_NAME" "$db" "$srv" "$u" "$p"
+  sql "SELECT CONCAT('trigger ', TRIGGER_NAME) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA='$db' ORDER BY TRIGGER_NAME" "$db" "$srv" "$u" "$p"
+  sql "SELECT CONCAT('event ', EVENT_NAME) FROM information_schema.EVENTS WHERE EVENT_SCHEMA='$db' ORDER BY EVENT_NAME" "$db" "$srv" "$u" "$p"
 }
 
 cmd_verify() {
   [ $# -ge 1 ] || usage
   local tenant="$1"; shift
-  local against=""
+  local against="" drill=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --against) against="${2:-}"; shift 2 ;;
+      --drill) drill=1; shift ;;
       *) usage ;;
     esac
   done
@@ -299,10 +333,50 @@ cmd_verify() {
       # it cannot authenticate, and "both sides empty" would then read as success.
       [ -s "$mt/src.txt" ] || { rm -rf "$mt"; die "cannot read collection counts from $T_SERVER (empty output)" 5; }
       [ -s "$mt/dst.txt" ] || { rm -rf "$mt"; die "cannot read collection counts from $against (empty output)" 5; }
+
+      if [ "$drill" = "1" ]; then
+        # DRILL MODE: the target is a snapshot taken BEFORE now, so live may
+        # legitimately hold documents the snapshot cannot. Structure must be
+        # identical; a collection that is non-empty live and EMPTY in the
+        # restore is a lost backup, not drift. Exact per-collection counts are
+        # printed so the evidence records the delta.
+        cut -d: -f1 "$mt/src.txt" | sort > "$mt/src.cols"
+        cut -d: -f1 "$mt/dst.txt" | sort > "$mt/dst.cols"
+        if ! diff -u "$mt/src.cols" "$mt/dst.cols" > "$mt/obj.diff"; then
+          cat "$mt/obj.diff"; rm -rf "$mt"
+          die "verify $tenant: the restored collection set differs from live" 5
+        fi
+        local bad=0 c l r
+        : > "$mt/drift.txt"
+        while IFS=: read -r c l; do
+          r=$(awk -F: -v k="$c" '$1==k{print $NF}' "$mt/dst.txt")
+          if [ -z "$r" ]; then printf 'MISSING %s (live %s)\n' "$c" "$l" >> "$mt/drift.txt"; bad=1; continue; fi
+          [ "$l" = "$r" ] || printf '%s live=%s restored=%s\n' "$c" "$l" "$r" >> "$mt/drift.txt"
+          [ "$l" -gt 0 ] && [ "$r" -eq 0 ] && { printf 'EMPTY_IN_RESTORE %s (live %s)\n' "$c" "$l" >> "$mt/drift.txt"; bad=1; }
+        done < "$mt/src.txt"
+        local lr rr nc
+        lr=$(awk -F: '{s+=$NF} END{print s+0}' "$mt/src.txt")
+        rr=$(awk -F: '{s+=$NF} END{print s+0}' "$mt/dst.txt")
+        nc=$(wc -l < "$mt/src.cols")
+        info "  compared $nc collections, live $lr documents / restored $rr documents ($(row_delta "$lr" "$rr" documents))"
+        if [ -s "$mt/drift.txt" ]; then
+          info "  per-collection differences (drift is expected; EMPTY_IN_RESTORE/MISSING is not):"
+          sed -n '1,40p' "$mt/drift.txt" | sed 's/^/    /'
+        fi
+        if [ "$bad" = "1" ]; then
+          rm -rf "$mt"
+          die "verify $tenant: the restore lost a collection or holds an empty copy of a populated one" 5
+        fi
+        rm -rf "$mt"
+        info "dbops: ok  drill check: collection set identical, no populated collection empty in the restore"
+        exit 0
+      fi
+
       if ! diff -u "$mt/src.txt" "$mt/dst.txt"; then
         rm -rf "$mt"
         die "verify $tenant: per-collection document counts differ" 5
       fi
+      info "  compared $(grep -c ':' "$mt/src.txt") collections, $(awk -F: '{s+=$NF} END{print s+0}' "$mt/src.txt") documents"
       rm -rf "$mt"
       info "dbops: ok  per-collection document counts identical"
       exit 0
@@ -318,14 +392,86 @@ cmd_verify() {
 
   if [ -n "$against" ]; then
     info "dbops: verify $tenant  live($T_SERVER) vs live($against)"
+    # Per-side credentials: on a real move the target is a tier server and the
+    # same backup user works on both; on a DRILL the target is a throwaway
+    # container with its own accounts (root on a fresh mariadb, or the tenant's
+    # app user on a restored physical set). DBOPS_AGAINST_* defaults to the live
+    # credentials, so nothing changes for the copy/move use.
     local here="$T_SERVER"
-    live_snapshot "$here" "$T_DB" > "$tmp/src.txt" 2>&1
-    live_snapshot "$against" "$T_DB" > "$tmp/dst.txt" 2>&1
-    T_SERVER="$here"
+    local live_user="$DBOPS_USER" live_pass="${DBOPS_PASSWORD:-}"
+    local against_user="${DBOPS_AGAINST_USER:-$DBOPS_USER}"
+    local against_pass="${DBOPS_AGAINST_PASSWORD-${DBOPS_PASSWORD:-}}"
+    live_snapshot "$here" "$T_DB" "$live_user" "$live_pass" > "$tmp/src.txt"
+    live_snapshot "$against" "$T_DB" "$against_user" "$against_pass" > "$tmp/dst.txt"
+
+    if [ "$drill" = "1" ]; then
+      # DRILL MODE. The target is a restore of a snapshot taken BEFORE now, so
+      # live is legitimately ahead on append-only tables (the first R11 drill
+      # measured exactly 6 new rows in photoprism.errors). An exact comparison
+      # would therefore fail every drill on a busy tenant — the noise that makes
+      # a recurring check worthless. What IS a broken backup, and what is checked
+      # here instead:
+      #   * STRUCTURE: tables, views, routines, triggers, events must be
+      #     identical. A truncated dump loses objects; this catches it.
+      #   * EMPTY IN RESTORE: a table that is populated live but empty in the
+      #     restore is lost data, never drift.
+      #   * CHECKSUM: for every table whose row count happens to be equal, the
+      #     largest-table checksum must also match (catches corruption where
+      #     counts agree).
+      # The exact per-table delta is PRINTED and goes into the evidence file, so
+      # "how far behind is the snapshot" is a measured number, not an assumption.
+      grep -E '^(table|view|routine|trigger|event) ' "$tmp/src.txt" | sort > "$tmp/src.obj"
+      grep -E '^(table|view|routine|trigger|event) ' "$tmp/dst.txt" | sort > "$tmp/dst.obj"
+      if ! diff -u "$tmp/src.obj" "$tmp/dst.obj" > "$tmp/obj.diff"; then
+        cat "$tmp/obj.diff"; rm -rf "$tmp"
+        die "verify $tenant: the restored object set differs from live" 5
+      fi
+      awk '/^count /{print $2"\t"$3}' "$tmp/src.txt" > "$tmp/src.cnt"
+      awk '/^count /{print $2"\t"$3}' "$tmp/dst.txt" > "$tmp/dst.cnt"
+      local bad=0 t l r cs_l cs_r
+      : > "$tmp/drift.txt"
+      while IFS=$'\t' read -r t l; do
+        r=$(awk -F'\t' -v k="$t" '$1==k{print $2}' "$tmp/dst.cnt")
+        if [ -z "$r" ]; then
+          printf 'MISSING %s (live %s)\n' "$t" "$l" >> "$tmp/drift.txt"; bad=1; continue
+        fi
+        [ "$l" = "$r" ] || printf '%s live=%s restored=%s\n' "$t" "$l" "$r" >> "$tmp/drift.txt"
+        if [ "$l" -gt 0 ] && [ "$r" -eq 0 ]; then
+          printf 'EMPTY_IN_RESTORE %s (live %s)\n' "$t" "$l" >> "$tmp/drift.txt"; bad=1
+        fi
+        if [ "$l" = "$r" ]; then
+          cs_l=$(awk -v k="$t" '$1=="checksum" && $2==k{print $3}' "$tmp/src.txt")
+          cs_r=$(awk -v k="$t" '$1=="checksum" && $2==k{print $3}' "$tmp/dst.txt")
+          if [ -n "$cs_l" ] && [ -n "$cs_r" ] && [ "$cs_l" != "$cs_r" ]; then
+            printf 'CHECKSUM %s live=%s restored=%s\n' "$t" "$cs_l" "$cs_r" >> "$tmp/drift.txt"; bad=1
+          fi
+        fi
+      done < "$tmp/src.cnt"
+      local lr rr nt
+      lr=$(awk -F'\t' '{s+=$2} END{print s+0}' "$tmp/src.cnt")
+      rr=$(awk -F'\t' '{s+=$2} END{print s+0}' "$tmp/dst.cnt")
+      nt=$(wc -l < "$tmp/src.cnt")
+      info "  structure: $(wc -l < "$tmp/src.obj") objects identical (tables, views, routines, triggers, events)"
+      info "  compared $nt tables, live $lr rows / restored $rr rows ($(row_delta "$lr" "$rr"))"
+      if [ -s "$tmp/drift.txt" ]; then
+        info "  per-table differences (drift is expected; EMPTY_IN_RESTORE/MISSING/CHECKSUM is not):"
+        sed -n '1,40p' "$tmp/drift.txt" | sed 's/^/    /'
+        [ "$(wc -l < "$tmp/drift.txt")" -gt 40 ] && info "    ... $(wc -l < "$tmp/drift.txt") differences in total"
+      fi
+      if [ "$bad" = "1" ]; then
+        rm -rf "$tmp"
+        die "verify $tenant: the restore lost data it cannot explain (see EMPTY_IN_RESTORE / MISSING / CHECKSUM)" 5
+      fi
+      rm -rf "$tmp"
+      info "dbops: ok  drill check: structure identical, no populated table empty in the restore, equal-count tables checksum-identical"
+      exit 0
+    fi
+
     if ! diff -u "$tmp/src.txt" "$tmp/dst.txt" > "$tmp/diff.txt"; then
       cat "$tmp/diff.txt"; rm -rf "$tmp"
       die "verify $tenant: source and target differ" 5
     fi
+    info "  compared $(grep -c '^count ' "$tmp/src.txt") tables, $(awk '/^count /{s+=$3} END{print s+0}' "$tmp/src.txt") rows, $(grep -c '^checksum ' "$tmp/src.txt") table checksums"
     rm -rf "$tmp"
     info "dbops: ok  object set + per-table counts + largest-table checksums identical"
     exit 0

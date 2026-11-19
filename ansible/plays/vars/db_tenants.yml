@@ -26,6 +26,18 @@
 #                         well under the healthy size but far above an empty one
 #   probe_minutes         dump-age probe threshold for this tenant (0 or absent =
 #                         NO series at all — that is how nonprod stays quiet)
+#   drill                 restore-drill cadence (WP-8R R11): weekly | monthly | none.
+#                         The rule from the plan's Schedules section, applied here:
+#                         weekly for the two tenants with a real RTO promise
+#                         (leaguesphere, moodle), monthly for every other backed-up
+#                         tenant, none for nonprod. `none` emits NO drill series at
+#                         all — the same convention as probe_minutes 0 — so the
+#                         alert cannot page for a tenant that is not supposed to be
+#                         drilled. A tenant with a restic_repo but drill: none is
+#                         only legal on the nonprod tier (stage is re-synced
+#                         nightly, demo reseeds itself): plays/tasks/restic_wiring.yml
+#                         refuses every other shape, because "we stopped drilling it"
+#                         must be a decision visible in the inventory, not an omission.
 #   severity              high | medium. The probes push it as
 #                         `db_dump_severity{tier}`, so the alert rule picks a
 #                         severity from THIS ROW: never hardcode one in
@@ -420,6 +432,7 @@ db_tenants:
     dump_schedule: hourly
     dump_dir: /var/jail/home/leaguesphere/container/deployed/mysql-backup/current
     restic_repo: db
+    drill: weekly
     # WP-8R R2b: measured by the dump-age probe, not assumed. `current` is an
     # atomic swap (`mv new current` in mariadb_backup.sh.j2, hourly at :40), so
     # its mtime IS the moment the prepared set was refreshed; and while the set
@@ -452,6 +465,7 @@ db_tenants:
     dump_schedule: none
     dump_dir: ''
     restic_repo: ''
+    drill: none
     max_user_connections: 0
     max_statement_time: 0
     retiring: false
@@ -469,6 +483,7 @@ db_tenants:
     dump_schedule: none
     dump_dir: ''
     restic_repo: ''
+    drill: none
     max_user_connections: 0
     max_statement_time: 0
     retiring: false
@@ -496,6 +511,7 @@ db_tenants:
     dump_schedule: hourly
     dump_dir: /home/cda/servyy-container/moodle/data/db-backup/current
     restic_repo: moodle-db
+    drill: weekly
     # WP-8R R2b: NO probe_minutes/severity — deliberately, and it is a measured
     # limitation, not an oversight. The probe runs as `cda` (user timer
     # system-db-dump-age.timer) and `.../moodle/data/` is 0750 root:root, so
@@ -529,6 +545,7 @@ db_tenants:
     dump_dir: /home/cda/servyy-container/bnb-office/.backup
     # No repo of its own: the dumps ride the hourly `home` snapshot.
     restic_repo: home
+    drill: monthly
     # WP-8R R2b: this tenant had NO dump-age series, and its snapshot age could
     # never stand in for one — the dumps ride `home`, which keeps succeeding
     # while the daily `dbops dump bnb_office` (docker-bnb-office-dump.timer)
@@ -568,6 +585,7 @@ db_tenants:
     dump_at: '01:15'
     dump_dir: /home/cda/db-dumps/leagues_finance
     restic_repo: db-lf
+    drill: monthly
     size_floor_bytes: 4096
     probe_minutes: 1560
     severity: high
@@ -588,6 +606,7 @@ db_tenants:
     dump_at: '01:25'
     dump_dir: /home/cda/db-dumps/queen
     restic_repo: db-queen
+    drill: monthly
     size_floor_bytes: 8192
     probe_minutes: 1560
     severity: high
@@ -619,6 +638,7 @@ db_tenants:
     dump_at: '00:45'
     dump_dir: /home/cda/db-dumps/photoprism
     restic_repo: db-private
+    drill: monthly
     size_floor_bytes: 52428800
     probe_minutes: 1560
     severity: medium
@@ -642,6 +662,7 @@ db_tenants:
     dump_at: '01:35'
     dump_dir: /home/cda/db-dumps/dontforget
     restic_repo: db-private-mongo
+    drill: monthly
     size_floor_bytes: 8192
     probe_minutes: 1560
     severity: medium
@@ -668,6 +689,7 @@ db_tenants:
     dump_at: '01:45'
     dump_dir: /home/cda/db-dumps/firefly
     restic_repo: db-private-firefly
+    drill: monthly
     size_floor_bytes: 131072
     probe_minutes: 1560
     severity: medium

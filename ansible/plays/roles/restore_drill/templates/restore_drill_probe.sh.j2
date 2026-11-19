@@ -1,0 +1,94 @@
+#!/bin/bash
+# Restore-drill probe: publishes, per tenant, whether a drill has actually
+# happened within its cadence — and the threshold/severity-free comparison data
+# the Grafana rule needs (WP-8R R11).
+#
+# WHY THIS IS A SEPARATE, FREQUENT PROBE AND NOT PART OF THE DRILL:
+# the drill writes the age exactly once, when it finishes. Pushgateway serves
+# the last pushed value, so an `age` refreshed only at drill time stays constant
+# forever and an "overdue" comparison could never become true. This probe runs
+# every 30 minutes and re-derives the age from the per-tenant state file, exactly
+# like system-db-dump-age.sh: the DRILL is a rare event, the AGE is a clock.
+#
+# SERIES (only for tenants whose inventory row says drill: weekly | monthly):
+#   db_restore_drill_age_seconds{tenant}        seconds since the last SUCCESSFUL
+#                                               drill; -1 when no state file can
+#                                               be read (unverifiable -> pages)
+#   db_restore_drill_success{tenant}            1 ok, 0 failed, -1 never drilled
+#   db_restore_drill_threshold_seconds{tenant}  cadence + one day of grace, from
+#                                               db_tenants.yml (8 d weekly / 32 d
+#                                               monthly)
+#   db_restore_drill_duration_seconds{tenant}   the last drill's wall-clock (RTO)
+#   db_restore_drill_probe_success              this script could read every state
+#
+# `drill: none` tenants emit NOTHING. Emitting -1 would page forever for a
+# tenant that is not supposed to be drilled (nonprod), which is the same rule
+# the dump-age probe follows for probe_minutes: 0.
+#
+# The threshold is pushed because monitor/provisioning/alerting/alert-rules.yml
+# must stay name-free (WP-8R R2): it compares
+#   db_restore_drill_age_seconds > on(tenant) db_restore_drill_threshold_seconds
+# and holds no tenant name and no number of its own.
+#
+# set -uo pipefail WITHOUT -e: one unreadable tenant must not stop the others.
+set -uo pipefail
+
+STATE_DIR={{ restore_drill_state_dir | quote }}
+PUSHGATEWAY_URL={{ restore_drill_pushgateway_url | quote }}
+JOB_NAME="db_restore_drill"
+
+now=$(date +%s)
+probe_success=1
+
+series() {   # $1 tenant, $2 threshold_seconds
+  local tenant="$1" threshold="$2" f="$STATE_DIR/$1"
+  local installed=0 success_epoch=0 status=pending duration=0 age=-1 success=-1 origin
+  if [ -r "$f" ]; then
+    installed=$(sed -n 's/^installed_epoch=//p' "$f" | head -1)
+    success_epoch=$(sed -n 's/^last_success_epoch=//p' "$f" | head -1)
+    status=$(sed -n 's/^status=//p' "$f" | head -1)
+    duration=$(sed -n 's/^duration_s=//p' "$f" | head -1)
+    case "${installed:-0}" in ''|*[!0-9]*) installed=0 ;; esac
+    case "${success_epoch:-0}" in ''|*[!0-9]*) success_epoch=0 ;; esac
+    case "${duration:-0}" in ''|*[!0-9.]*) duration=0 ;; esac
+    [ -n "${status:-}" ] || status=pending
+    case "$status" in
+      ok)   success=1 ;;
+      fail) success=0 ;;
+      *)    success=-1 ;;   # pending: installed, never proven
+    esac
+    # Age is measured from the last SUCCESS, or from install time if this tenant
+    # has never been drilled. A FAILED drill deliberately does not reset it:
+    # otherwise a permanently broken repo would keep the age young forever.
+    origin="$success_epoch"
+    [ "$origin" -gt 0 ] || origin="$installed"
+    if [ "$origin" -gt 0 ]; then
+      age=$(( now - origin ))
+      [ "$age" -lt 0 ] && age=0
+    fi
+  else
+    # Missing state on a configured tenant is unverifiable, not healthy.
+    probe_success=0
+  fi
+  printf 'db_restore_drill_age_seconds{tenant="%s"} %s\n' "$tenant" "$age"
+  printf 'db_restore_drill_success{tenant="%s"} %s\n' "$tenant" "$success"
+  printf 'db_restore_drill_threshold_seconds{tenant="%s"} %s\n' "$tenant" "$threshold"
+  printf 'db_restore_drill_duration_seconds{tenant="%s"} %s\n' "$tenant" "$duration"
+}
+
+{
+  echo "# TYPE db_restore_drill_age_seconds gauge"
+  echo "# TYPE db_restore_drill_success gauge"
+  echo "# TYPE db_restore_drill_threshold_seconds gauge"
+  echo "# TYPE db_restore_drill_duration_seconds gauge"
+{% for t in restore_drill_tenants %}
+  series {{ t.tenant | quote }} {{ (((restore_drill_weekly_threshold_days if t.drill == 'weekly' else restore_drill_monthly_threshold_days) | int) * 86400) }}
+{% endfor %}
+  echo "# TYPE db_restore_drill_probe_success gauge"
+  echo "db_restore_drill_probe_success ${probe_success}"
+# PUT (not POST): replaces the whole job group so a tenant whose `drill` field
+# becomes `none` disappears from Prometheus instead of lingering as a stale
+# series with a growing age.
+} | curl -sf -X PUT --max-time 15 --connect-timeout 5 --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}"
+
+echo "restore-drill probe: pushed from $STATE_DIR, probe_success=${probe_success}"

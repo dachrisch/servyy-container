@@ -185,6 +185,60 @@
       loop_control:
         label: "{{ item.name }}"
 
+    # --- restore drills (WP-8R R11) ----------------------------------------
+    # `drill` is a property of the TENANT row, like every other cadence. It must
+    # be stated, not inferred: a new tenant that silently defaults to "not
+    # drilled" is the exact failure this package exists to prevent, and a tenant
+    # with a repo but no drill is a capability gap that nothing would page on.
+    - name: Fail when a tenant row has no usable restore-drill cadence
+      ansible.builtin.assert:
+        that:
+          - item.drill is defined
+          - item.drill in ['weekly', 'monthly', 'none']
+        fail_msg: >-
+          db_tenants '{{ item.tenant }}': drill '{{ item.drill | default('-') }}'
+          must be weekly | monthly | none. The plan's rule: weekly for
+          leaguesphere and moodle, monthly for every other backed-up tenant, none
+          for nonprod. State it on the row — do not rely on a default.
+        quiet: true
+      loop: "{{ db_tenants }}"
+      loop_control:
+        label: "{{ item.tenant }}"
+
+    - name: Fail when a tenant is drilled but has nothing to restore from
+      ansible.builtin.assert:
+        that:
+          - item.restic_repo | default('') | length > 0
+          - item.dump_dir | default('') | length > 0
+        fail_msg: >-
+          db_tenants '{{ item.tenant }}': drill is {{ item.drill }} but restic_repo
+          is '{{ item.restic_repo | default('') }}' and dump_dir is
+          '{{ item.dump_dir | default('') }}'. A drill restores the newest snapshot
+          of the tenant's repo, so both are required; a tenant with neither must
+          say drill: none (and only nonprod may).
+        quiet: true
+      loop: "{{ db_tenants | selectattr('drill', 'defined') | rejectattr('drill', 'equalto', 'none') | list }}"
+      loop_control:
+        label: "{{ item.tenant }}"
+
+    # `none` is not an escape hatch for a real tenant: it removes the only signal
+    # that a restore still works. Nonprod is the one legitimate case (stage is
+    # re-synced from prod nightly, demo reseeds itself nightly), so the guard
+    # names the tier instead of trusting a comment.
+    - name: Fail when a non-nonprod tenant opts out of restore drills
+      ansible.builtin.assert:
+        that:
+          - item.tier == 'nonprod'
+        fail_msg: >-
+          db_tenants '{{ item.tenant }}' (tier '{{ item.tier }}') sets drill: none.
+          Only nonprod may: every high/business/private tenant has a repo whose
+          restorability must be proven on a cadence. If the drill is genuinely
+          impossible, say why in the row and change this guard in the same commit.
+        quiet: true
+      loop: "{{ db_tenants | selectattr('drill', 'defined') | selectattr('drill', 'equalto', 'none') | list }}"
+      loop_control:
+        label: "{{ item.tenant }}"
+
     # --- the two system_probe lists, in the order the deployed scripts have ---
     - name: Start the log-check list with the host-level entries
       ansible.builtin.set_fact:
@@ -198,6 +252,7 @@
         restic_wiring_snapshot_checks: []
         restic_wiring_dump_checks: []
         restic_wiring_dump_severities: []
+        restic_wiring_drill_tenants: []
 
     - name: Add the host-repo log checks
       ansible.builtin.set_fact:
@@ -338,9 +393,33 @@
         loop_var: tier
         label: "{{ tier }}"
 
-    - name: Publish the generated probe lists
+    # --- the tenants this HOST can drill -----------------------------------
+    # A drill reads the tenant's own repo and compares the restored scratch
+    # against the LIVE tenant. Both exist only where the tenant runs, so the
+    # gate is `restic_repo in restic_targets_enabled`: on servy that selects the
+    # eight prod tenants; on servyy-test it selects only moodle (whose repo and
+    # database exist there), and on codey nothing. That is why the play can be
+    # imported from servyy.yml unconditionally: a host without a tenant gets no
+    # script and no timer, instead of a timer that fails every week.
+    - name: Select the tenants this host can restore-drill
+      ansible.builtin.set_fact:
+        restic_wiring_drill_tenants: >-
+          {{ restic_wiring_drill_tenants
+             + [item | combine({'drill_format': (
+                  (drill_target.dump_format | default('none'))
+                  if (drill_target.dump_format | default('none')) in ['logical', 'physical']
+                  else ('logical' if item.engine == 'mariadb' else 'none'))})] }}
+      vars:
+        drill_target: "{{ (backup_targets | selectattr('name', 'equalto', item.restic_repo) | list | first) | default({}, true) }}"
+      loop: "{{ db_tenants | selectattr('drill', 'defined') | rejectattr('drill', 'equalto', 'none') | list }}"
+      when: item.restic_repo in (restic_targets_enabled | map(attribute='name') | list)
+      loop_control:
+        label: "{{ item.tenant }}"
+
+    - name: Publish the generated probe lists and the drill roster
       ansible.builtin.set_fact:
         system_probe_log_checks: "{{ restic_wiring_log_checks }}"
         system_probe_restic_repos: "{{ restic_wiring_snapshot_checks }}"
         system_probe_dump_checks: "{{ restic_wiring_dump_checks }}"
         system_probe_dump_severities: "{{ restic_wiring_dump_severities }}"
+        restore_drill_tenants: "{{ restic_wiring_drill_tenants }}"

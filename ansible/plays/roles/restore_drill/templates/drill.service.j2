@@ -1,0 +1,17 @@
+[Unit]
+Description={{ drill_description }}
+# Deliberately no network-online ordering: a drill only needs the local docker
+# daemon and the restic repo, and the script fails loudly (state + evidence) if
+# either is missing.
+
+[Service]
+Type=oneshot
+# The class script drills its tenants SERIALLY and holds a host-wide flock, so a
+# weekly and a monthly run can never overlap even if a previous run overruns its
+# slot. 3 h is the longest a class run may wait for the lock; after that it exits
+# 3 and the age keeps growing (which is the alert).
+ExecStart={{ restore_drill_script }} --class {{ drill_class }}
+TimeoutStartSec=infinity
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

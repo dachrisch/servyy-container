@@ -1,0 +1,636 @@
+#!/usr/bin/env bash
+# restore-drill — one restore drill per tenant, from the tenant inventory.
+#
+# Rendered by Ansible (roles/restore_drill/templates/restore_drill.sh.j2) from
+# plays/vars/db_tenants.yml. DO NOT EDIT ON THE HOST: the next deploy overwrites
+# it. The tenant list, the repos, the dump directories and the engines below are
+# generated, so adding a row adds a drill.
+#
+# USAGE
+#   restore-drill.sh --class weekly|monthly   what the timers run (serial, per class)
+#   restore-drill.sh --tenant a,b             on-demand, in the order given
+#   restore-drill.sh --all                    every tenant this host can drill
+#
+# WHAT A DRILL IS
+#   1. pick the NEWEST snapshot of the tenant's restic repo (a read; no lock is
+#      taken for the listing, a normal shared lock for the restore);
+#   2. `restic restore` only the tenant's dump directory into a scratch dir;
+#   3. import it into a throwaway container of the SAME image the live server
+#      runs (so a version skew cannot be mistaken for a bad backup);
+#   4. compare it with the LIVE tenant, read-only:
+#        mariadb logical  `dbops verify <tenant> --against <scratch>`
+#        mariadb physical same command, using the app account (the set is a
+#                         full server copy, so its accounts are in the set)
+#        mongo            `dbops verify <tenant> --against <scratch>`
+#        postgres         per-table count diff (no dbops adapter; see R3)
+#   5. drop the scratch container and its datadir, write the state file, append
+#      a section to the evidence file, refresh the metrics.
+#
+# WHAT IT MUST NEVER DO (enforced below, not just documented)
+#   * write to a live database. The only live statements are SELECTs against
+#     information_schema/short count and CHECKSUM TABLE queries via dbops verify.
+#   * touch a rollback container or a live datadir: scratch names are forced to
+#     start with `drill-` and every destructive command is pointed at that name.
+#   * modify a repo: no backup/forget/prune/check runs here; restic only lists
+#     and restores.
+#
+# EXIT CODES: 0 all requested drills passed; 1 at least one failed; 2 usage;
+# 3 another drill holds the lock; 4 this host owns no such tenant.
+set -uo pipefail
+
+BASE={{ restore_drill_base_dir | quote }}
+STATE_DIR={{ restore_drill_state_dir | quote }}
+EVIDENCE_DIR={{ restore_drill_evidence_dir | quote }}
+LOG_DIR={{ restore_drill_log_dir | quote }}
+SCRATCH_ROOT={{ restore_drill_scratch_dir | quote }}
+DBOPS={{ restore_drill_dbops_path | quote }}
+DBOPS_ENV_DIR={{ restore_drill_dbops_env_dir | quote }}
+PROBE={{ restore_drill_probe_script | quote }}
+KEEP_FAILED={{ '1' if (restore_drill_keep_failed_scratch | bool) else '0' }}
+LOCK_FILE="$BASE/.drill.lock"
+TODAY=$(date -u +%Y-%m-%d)
+EVIDENCE_FILE="$EVIDENCE_DIR/${TODAY}_db-restore-drills.md"
+DRILL_TENANTS={{ restore_drill_tenants | map(attribute='tenant') | join(' ') | quote }}
+
+log() { printf '%s  %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2; }
+now_s() { date +%s; }
+now_ms() { date +%s%3N; }
+
+usage() {
+  sed -n 's/^#   restore-drill.sh /restore-drill.sh /p' "$0" >&2
+  exit 2
+}
+
+mkdir -p "$STATE_DIR" "$EVIDENCE_DIR" "$LOG_DIR" "$SCRATCH_ROOT" || {
+  log "cannot create the drill directories under $BASE"
+  exit 4
+}
+
+# --- the tenant table (rendered from db_tenants.yml) -------------------------
+tenant_info() {
+  T_TENANT=""; T_ENGINE=""; T_TIER=""; T_SERVER=""; T_DB=""; T_USER=""
+  T_REPO=""; T_DUMP_DIR=""; T_CADENCE=""; T_FORMAT=""
+  case "$1" in
+{% for t in restore_drill_tenants %}
+    {{ t.tenant }})
+      T_ENGINE={{ t.engine | quote }}; T_TIER={{ t.tier | quote }}
+      T_SERVER={{ t.server | quote }}; T_DB={{ t.db | quote }}; T_USER={{ t.user | quote }}
+      T_REPO={{ t.restic_repo | quote }}; T_DUMP_DIR={{ t.dump_dir | quote }}
+      T_FORMAT={{ t.drill_format | default('none') | quote }}
+      T_CADENCE={{ t.drill | quote }} ;;
+{% endfor %}
+    *) return 1 ;;
+  esac
+  T_TENANT="$1"
+  return 0
+}
+
+class_tenants() {
+  local want="$1" t
+  for t in $DRILL_TENANTS; do
+    tenant_info "$t" || continue
+    [ "$T_CADENCE" = "$want" ] && printf '%s\n' "$t"
+  done
+}
+
+# --- evidence ---------------------------------------------------------------
+ensure_evidence_file() {
+  [ -f "$EVIDENCE_FILE" ] && return 0
+  {
+    printf '# Database restore drills — %s\n\n' "$TODAY"
+    printf 'Machine-written by `ansible/plays/restore_drill.yml` on `%s`.\n' "$(hostname -f 2>/dev/null || hostname)"
+    printf 'One section per drill, appended in the order the drills ran. Do not hand-edit:\n'
+    printf 'the next run appends, and a correction belongs in the commit that fixes the cause.\n\n'
+    printf 'Each drill restores the NEWEST snapshot of the tenant\x27s repo into a throwaway\n'
+    printf 'container of the same image as the live server, compares the restored copy with the\n'
+    printf 'live tenant (read-only), and removes the scratch target. **The wall-clock figure is\n'
+    printf 'the measured restore time — from `restic restore` to a verified scratch target — not\n'
+    printf 'an estimate, and it is the number the RTO tables should quote.**\n\n'
+    printf 'Counts can legitimately lag: the snapshot predates the drill, so a busy table may\n'
+    printf 'have rows live that the restore cannot. The gate is therefore structural equality,\n'
+    printf 'no populated table empty in the restore, and checksum equality wherever the counts\n'
+    printf 'do match ("dbops verify --drill"); the per-table drift is printed below, not hidden.\n'
+    printf 'EMPTY_IN_RESTORE, MISSING or a CHECKSUM difference is a failed drill.\n\n'
+    printf 'Metrics for the same drill: `db_restore_drill_success{tenant}`,\n'
+    printf '`db_restore_drill_age_seconds{tenant}`, `db_restore_drill_duration_seconds{tenant}`.\n'
+    printf 'A tenant with `drill: none` in the inventory appears nowhere in this file.\n\n'
+    printf -- '---\n\n'
+  } > "$EVIDENCE_FILE"
+}
+
+verdict_word() { [ "$1" = ok ] && printf 'ok' || printf 'FAILED'; }
+
+append_evidence() {
+  local total_s phase_s
+  total_s=$(awk -v ms="${E_TOTAL_MS:-0}" 'BEGIN{printf "%.1f", ms/1000}')
+  phase_s=$(awk -v r="${PHASE_RESTIC_MS:-0}" -v s="${PHASE_SERVER_MS:-0}" -v i="${PHASE_IMPORT_MS:-0}" -v v="${PHASE_VERIFY_MS:-0}" \
+    'BEGIN{printf "restic %.1f s · target up %.1f s · import %.1f s · verify %.1f s", r/1000, s/1000, i/1000, v/1000}')
+  ensure_evidence_file
+  {
+    printf '## %s · %s (%s, %s)\n\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$T_TENANT" "$T_TIER" "$T_ENGINE"
+    printf '**Result:** %s **(%s cadence)**\n\n' "$(verdict_word "$E_STATUS")" "$T_CADENCE"
+    printf '| | |\n|---|---|\n'
+    if [ -n "${E_SNAP_ID:-}" ]; then
+      printf '| Snapshot | `%s` from repo `%s`, taken %s |\n' "$E_SNAP_ID" "$T_REPO" "${E_SNAP_TIME:-unknown}"
+    else
+      printf '| Snapshot | none selected |\n'
+    fi
+    if [ -n "${E_SCRATCH:-}" ]; then
+      printf '| Scratch target | `%s` (%s, network `none`) → %s |\n' "$E_SCRATCH" "${E_IMAGE:-?}" "${E_SCRATCH_FATE:-removed}"
+    fi
+    printf '| Restore wall-clock (RTO) | **%s s** (%s) |\n' "$total_s" "$phase_s"
+    [ -n "${E_COUNTS:-}" ] && printf '| Counts compared | %s |\n' "$E_COUNTS"
+    printf '| Mismatch | %s |\n\n' "${E_DETAIL:-none}"
+    if [ -n "${E_VERIFY:-}" ]; then
+      printf 'Verify output (`%s`):\n\n```text\n%s\n```\n\n' "${E_VERIFY_CMD:-verify}" "$E_VERIFY"
+    fi
+    printf 'Full log: `%s`\n\n' "${LOG_FILE:-none}"
+    printf -- '---\n\n'
+  } >> "$EVIDENCE_FILE"
+}
+
+# --- state -----------------------------------------------------------------
+read_state() {   # $1 tenant -> PREV_SUCCESS, INSTALLED
+  PREV_SUCCESS=0; INSTALLED=0
+  local f="$STATE_DIR/$1"
+  [ -r "$f" ] || return 0
+  # Parse, never source: `detail=` carries free text and must not become a
+  # command if a drill's failure message ever contains a space.
+  PREV_SUCCESS=$(sed -n 's/^last_success_epoch=//p' "$f" | head -1)
+  INSTALLED=$(sed -n 's/^installed_epoch=//p' "$f" | head -1)
+  case "${PREV_SUCCESS:-0}" in ''|*[!0-9]*) PREV_SUCCESS=0 ;; esac
+  case "${INSTALLED:-0}" in ''|*[!0-9]*) INSTALLED=0 ;; esac
+  return 0
+}
+
+write_state() {   # $1 status, $2 duration_s, $3 detail
+  local f="$STATE_DIR/$T_TENANT" status="$1" origin now
+  now=$(now_s)
+  [ "$status" = ok ] && origin="$now" || origin="${PREV_SUCCESS:-0}"
+  {
+    printf 'tenant=%s\n' "$T_TENANT"
+    printf 'status=%s\n' "$status"
+    printf 'installed_epoch=%s\n' "${INSTALLED:-$now}"
+    printf 'last_attempt_epoch=%s\n' "$now"
+    printf 'last_success_epoch=%s\n' "$origin"
+    printf 'duration_s=%s\n' "$2"
+    printf 'snapshot=%s\n' "${E_SNAP_ID:-}"
+    printf 'snapshot_time=%s\n' "${E_SNAP_TIME:-}"
+    printf 'detail=%s\n' "$(printf '%s' "$3" | tr '\n' ' ' | cut -c1-400)"
+  } > "$f.tmp" && mv -f "$f.tmp" "$f"
+}
+
+# --- container helpers ------------------------------------------------------
+wait_mariadb_auth() {   # $1 container, $2 user, $3 password
+  # NOT a log grep: the MariaDB entrypoint starts a TEMPORARY server to create
+  # the accounts, and that server also logs "ready for connections". The first
+  # version of this drill matched that line and ran `dbops restore` against the
+  # temporary server, where the root password does not exist yet — every restore
+  # died with "Access denied" and `has_tables` (fail-safe) read the empty answer
+  # as "already has tables". Authenticate instead: only the final server has the
+  # credentials.
+  local i
+  for i in $(seq 1 180); do
+    if printf '%s\n' "$3" \
+       | docker exec -i "$1" sh -c 'read -r P; exec mariadb --skip-ssl -u"$1" -p"$P" -e "select 1"' drill "$2" >/dev/null 2>&1; then
+      return 0
+    fi
+    docker inspect -f '{% raw %}{{.State.Running}}{% endraw %}' "$1" 2>/dev/null | grep -q true || return 1
+    sleep 1
+  done
+  return 1
+}
+
+wait_mongo_auth() {   # $1 container, $2 user, $3 password
+  # Authenticate, do not grep the log. Two measured traps: `docker logs | grep
+  # -q` reports failure under `set -o pipefail` (grep exits early, docker logs
+  # gets SIGPIPE), and "Waiting for connections" is logged BEFORE the entrypoint
+  # has created the root user, so the first `dbops restore` raced an
+  # unauthenticated server and read "already holds collections" (2026-11-19,
+  # first queen drill). An authenticated ping is the only honest readiness test.
+  local i uri out running
+  uri="mongodb://$2:$3@127.0.0.1:27017/admin?authSource=admin"
+  for i in $(seq 1 120); do
+    out=$(docker exec "$1" sh -c 'exec mongosh --quiet "$1" --eval "db.runCommand({ping:1}).ok"' drill "$uri" 2>/dev/null || true)
+    [ "$out" = "1" ] && return 0
+    running=$(docker inspect -f '{% raw %}{{.State.Running}}{% endraw %}' "$1" 2>/dev/null || true)
+    [ "$running" = true ] || return 1
+    sleep 1
+  done
+  return 1
+}
+
+wait_postgres() {   # $1 container, $2 user, $3 database
+  # pg_isready is NOT readiness for this image: the postgres entrypoint runs a
+  # TEMPORARY server during initdb, and pg_isready answers for it. The first
+  # firefly drill restored into that server and died with "the database system is
+  # shutting down" (2026-11-19). Query the target database instead — it only
+  # exists on the final server.
+  local i
+  for i in $(seq 1 120); do
+    docker exec "$1" psql -U "$2" -d "$3" -Atc 'select 1' >/dev/null 2>&1 && return 0
+    sleep 1
+  done
+  return 1
+}
+
+cleanup_scratch() {
+  if [ -n "${E_SCRATCH:-}" ]; then
+    if [ "${E_STATUS:-}" = ok ] || [ "$KEEP_FAILED" != 1 ]; then
+      docker rm -f "$E_SCRATCH" >/dev/null 2>&1 && E_SCRATCH_FATE="removed" || E_SCRATCH_FATE="remove FAILED"
+    else
+      E_SCRATCH_FATE="LEFT IN PLACE (restore_drill_keep_failed_scratch)"
+    fi
+  fi
+  # A physical drill's datadir was handed to uid 999 (mysql) so the scratch
+  # server could start; cda cannot delete inside it, and the first leaguesphere
+  # drill left ~300 MB behind with "Permission denied". Hand it back first.
+  if [ -n "${E_WORK:-}" ] && [ -d "$E_WORK/datadir" ] && [ -n "${E_IMAGE:-}" ]; then
+    docker run --rm --user root --entrypoint chown -v "$E_WORK/datadir:/d" "$E_IMAGE" \
+      -R "$(id -u):$(id -g)" /d >/dev/null 2>&1 || true
+  fi
+  [ -n "${E_WORK:-}" ] && rm -rf "$E_WORK"
+}
+
+# --- snapshot selection -----------------------------------------------------
+pick_snapshot() {   # $1 repo env file
+  local envf="$1" json line
+  json=$( ( source "$envf"; restic snapshots --json --no-lock ) 2>>"${LOG_FILE:-/dev/null}" ) || return 1
+  [ -n "$json" ] || return 1
+  line=$(printf '%s' "$json" | python3 -c '
+import datetime, json, sys
+try:
+    snaps = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+if not snaps:
+    sys.exit(1)
+def when(s):
+    return datetime.datetime.fromisoformat(s["time"].replace("Z", "+00:00"))
+newest = max(snaps, key=when)
+print(newest["id"], newest["time"], sep="\t")
+') || return 1
+  E_SNAP_ID=${line%%$'\t'*}
+  E_SNAP_TIME=${line#*$'\t'}
+  [ -n "${E_SNAP_ID:-}" ]
+}
+
+restore_snapshot() {   # $1 repo env file, $2 target, $3 include
+  ( source "$1"; restic restore "$E_SNAP_ID" --target "$2" --include "$3" ) >>"${LOG_FILE:-/dev/null}" 2>&1
+}
+
+newest_file() {   # $1 root, $2 tenant, $3 extension -> newest matching dump file
+  # Two layouts exist today: `dbops` writes <tenant>-<timestamp>.<ext>, while
+  # Moodle still runs the hand-written moodle_dump.sh.j2 (R9 will converge it)
+  # and writes a FIXED moodle.sql.gz. Both must drill, so match either, and fall
+  # back to the only candidate of that extension in the snapshot.
+  local f
+  f=$(find "$1" -type f \( -name "$2-*.$3" -o -name "$2.$3" \) 2>/dev/null | sort | tail -1)
+  if [ -z "$f" ]; then
+    f=$(find "$1" -type f -name "*.$3" 2>/dev/null | sort | tail -1)
+    [ -n "$f" ] && log "note: no $2-*.$3 in the snapshot; using $(basename "$f")"
+  fi
+  printf '%s' "$f"
+}
+
+# --- engine drills ----------------------------------------------------------
+drill_mariadb_logical() {   # $1 dump file, $2 scratch root password
+  local file="$1" rootpass="$2" t
+  docker run -d --name "$E_SCRATCH" --network none \
+    -e MARIADB_ROOT_PASSWORD="$rootpass" \
+    --label restore-drill=1 \
+    "$E_IMAGE" >>"${LOG_FILE:-/dev/null}" 2>&1 || { E_DETAIL="could not start the scratch server ($E_IMAGE)"; return 1; }
+  t=$(now_ms)
+  wait_mariadb_auth "$E_SCRATCH" root "$rootpass" || {
+    docker logs "$E_SCRATCH" >>"${LOG_FILE:-/dev/null}" 2>&1
+    E_DETAIL="scratch server did not become ready"; return 1
+  }
+  PHASE_SERVER_MS=$(( $(now_ms) - t ))
+
+  t=$(now_ms)
+  if ! env DBOPS_SERVER="$E_SCRATCH" DBOPS_USER=root DBOPS_PASSWORD="$rootpass" \
+       "$DBOPS" restore "$T_TENANT" "$file" >>"${LOG_FILE:-/dev/null}" 2>&1; then
+    E_DETAIL="dbops restore into the scratch server failed"
+    return 1
+  fi
+  PHASE_IMPORT_MS=$(( $(now_ms) - t ))
+
+  # A logical dump carries no accounts. `dbops verify` runs as the tier's backup
+  # user on BOTH sides, so the scratch gets that user with exactly the tier's
+  # privileges. (Seeded passwords are ascii_letters+digits, so no SQL quoting.)
+  local envf="$DBOPS_ENV_DIR/$T_TIER.env"
+  if [ ! -r "$envf" ]; then
+    E_DETAIL="no tier credentials at $envf"
+    return 1
+  fi
+  # shellcheck disable=SC1090
+  TBSQL=$(
+    . "$envf"
+    printf "CREATE USER IF NOT EXISTS '%s'@'%%' IDENTIFIED BY '%s';\n" "$DBOPS_USER" "$DBOPS_PASSWORD"
+    printf "GRANT SELECT, SHOW VIEW, TRIGGER, EVENT, LOCK TABLES ON *.* TO '%s'@'%%';\n" "$DBOPS_USER"
+    printf 'FLUSH PRIVILEGES;\n'
+  )
+  { printf '%s\n' "$rootpass"; printf '%s\n' "$TBSQL"; } \
+    | docker exec -i "$E_SCRATCH" sh -c 'read -r P; exec mariadb --skip-ssl -uroot -p"$P"' >>"${LOG_FILE:-/dev/null}" 2>&1 \
+    || { E_DETAIL="could not create the tier backup user on the scratch server"; return 1; }
+
+  t=$(now_ms)
+  E_VERIFY_CMD="dbops verify $T_TENANT --against $E_SCRATCH --drill"
+  E_VERIFY=$("$DBOPS" verify "$T_TENANT" --against "$E_SCRATCH" --drill 2>&1)
+  local rc=$?
+  PHASE_VERIFY_MS=$(( $(now_ms) - t ))
+  printf '%s\n' "$E_VERIFY" >>"${LOG_FILE:-/dev/null}"
+  [ "$rc" -eq 0 ] || { E_DETAIL="dbops verify exited $rc"; return 1; }
+  E_COUNTS=$(printf '%s\n' "$E_VERIFY" | sed -n 's/^  compared /compared /p' | head -1)
+  [ -n "$E_COUNTS" ] || E_COUNTS="object set + per-table counts + checksums identical"
+  return 0
+}
+
+drill_mariadb_physical() {   # $1 set dir
+  local set="$1" t pw
+  if [ ! -d "$set/mysql" ] && [ ! -f "$set/ibdata1" ]; then
+    E_DETAIL="the restored directory is not a prepared mariadb-backup set"
+    return 1
+  fi
+  mkdir -p "$E_WORK/datadir" || { E_DETAIL="cannot create the scratch datadir"; return 1; }
+  t=$(now_ms)
+  docker create --name "$E_SCRATCH" --network none \
+    -v "$E_WORK/datadir:/var/lib/mysql" \
+    --label restore-drill=1 \
+    "$E_IMAGE" >>"${LOG_FILE:-/dev/null}" 2>&1 || { E_DETAIL="could not create the scratch container"; return 1; }
+  docker cp "$set/." "$E_SCRATCH:/var/lib/mysql" >>"${LOG_FILE:-/dev/null}" 2>&1 \
+    || { E_DETAIL="could not copy the prepared set into the scratch datadir"; return 1; }
+  docker run --rm --entrypoint chown -v "$E_WORK/datadir:/d" "$E_IMAGE" -R mysql:mysql /d >>"${LOG_FILE:-/dev/null}" 2>&1 \
+    || { E_DETAIL="could not hand the scratch datadir to mysql"; return 1; }
+  docker start "$E_SCRATCH" >>"${LOG_FILE:-/dev/null}" 2>&1 || { E_DETAIL="could not start the scratch server"; return 1; }
+  # The high tier has no tier backup credential (leaguesphere.db predates the
+  # dbops role), so verify with the app account. The prepared set is a copy of
+  # the server, so the same account and password exist on the scratch side.
+  pw=$(docker exec "$T_SERVER" printenv MYSQL_PWD 2>/dev/null)
+  if [ -z "${pw:-}" ]; then
+    E_DETAIL="cannot read $T_USER credentials from $T_SERVER (MYSQL_PWD)"
+    return 1
+  fi
+  wait_mariadb_auth "$E_SCRATCH" "$T_USER" "$pw" || {
+    docker logs "$E_SCRATCH" >>"${LOG_FILE:-/dev/null}" 2>&1
+    E_DETAIL="scratch server did not become ready from the prepared set"; return 1
+  }
+  PHASE_SERVER_MS=$(( $(now_ms) - t ))
+
+  t=$(now_ms)
+  E_VERIFY_CMD="dbops verify $T_TENANT --against $E_SCRATCH --drill (as $T_USER)"
+  E_VERIFY=$(env DBOPS_USER="$T_USER" DBOPS_PASSWORD="$pw" \
+      DBOPS_AGAINST_USER="$T_USER" DBOPS_AGAINST_PASSWORD="$pw" \
+      "$DBOPS" verify "$T_TENANT" --against "$E_SCRATCH" --drill 2>&1)
+  local rc=$?
+  PHASE_VERIFY_MS=$(( $(now_ms) - t ))
+  printf '%s\n' "$E_VERIFY" >>"${LOG_FILE:-/dev/null}"
+  [ "$rc" -eq 0 ] || { E_DETAIL="dbops verify exited $rc"; return 1; }
+  E_COUNTS=$(printf '%s\n' "$E_VERIFY" | sed -n 's/^  compared /compared /p' | head -1)
+  return 0
+}
+
+drill_mongo() {   # $1 archive
+  local file="$1" t mu mp
+  mu=$(docker exec "$T_SERVER" printenv MONGO_INITDB_ROOT_USERNAME 2>/dev/null)
+  mp=$(docker exec "$T_SERVER" printenv MONGO_INITDB_ROOT_PASSWORD 2>/dev/null)
+  if [ -z "${mu:-}" ] || [ -z "${mp:-}" ]; then
+    E_DETAIL="cannot read the mongo admin credentials from $T_SERVER"
+    return 1
+  fi
+  docker run -d --name "$E_SCRATCH" --network none \
+    -e MONGO_INITDB_ROOT_USERNAME="$mu" -e MONGO_INITDB_ROOT_PASSWORD="$mp" \
+    --label restore-drill=1 \
+    "$E_IMAGE" >>"${LOG_FILE:-/dev/null}" 2>&1 || { E_DETAIL="could not start the scratch mongod ($E_IMAGE)"; return 1; }
+  t=$(now_ms)
+  wait_mongo_auth "$E_SCRATCH" "$mu" "$mp" || {
+    docker logs "$E_SCRATCH" >>"${LOG_FILE:-/dev/null}" 2>&1
+    E_DETAIL="scratch mongod did not accept authenticated work"; return 1
+  }
+  PHASE_SERVER_MS=$(( $(now_ms) - t ))
+
+  t=$(now_ms)
+  if ! env DBOPS_SERVER="$E_SCRATCH" "$DBOPS" restore "$T_TENANT" "$file" >>"${LOG_FILE:-/dev/null}" 2>&1; then
+    E_DETAIL="mongorestore into the scratch server failed"
+    return 1
+  fi
+  PHASE_IMPORT_MS=$(( $(now_ms) - t ))
+
+  t=$(now_ms)
+  E_VERIFY_CMD="dbops verify $T_TENANT --against $E_SCRATCH --drill"
+  E_VERIFY=$("$DBOPS" verify "$T_TENANT" --against "$E_SCRATCH" --drill 2>&1)
+  local rc=$?
+  PHASE_VERIFY_MS=$(( $(now_ms) - t ))
+  printf '%s\n' "$E_VERIFY" >>"${LOG_FILE:-/dev/null}"
+  [ "$rc" -eq 0 ] || { E_DETAIL="dbops verify exited $rc"; return 1; }
+  E_COUNTS=$(printf '%s\n' "$E_VERIFY" | sed -n 's/^  compared /compared /p' | head -1)
+  return 0
+}
+
+pg_counts() {   # $1 container, $2 user, $3 db
+  docker exec "$1" psql -U "$2" -d "$3" -Atc "
+    select c.relname || ':' || (xpath('/row/c/text()',
+      query_to_xml(format('select count(*) as c from %I.%I', n.nspname, c.relname),
+                   false, true, '')))[1]::text::bigint
+    from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relkind = 'r' order by 1" 2>>"${LOG_FILE:-/dev/null}"
+}
+
+drill_postgres() {   # $1 dump file
+  local file="$1" t
+  docker run -d --name "$E_SCRATCH" --network none \
+    -e POSTGRES_USER="$T_USER" -e POSTGRES_PASSWORD=drill -e POSTGRES_DB="$T_DB" \
+    --label restore-drill=1 \
+    "$E_IMAGE" >>"${LOG_FILE:-/dev/null}" 2>&1 || { E_DETAIL="could not start the scratch postgres ($E_IMAGE)"; return 1; }
+  t=$(now_ms)
+  wait_postgres "$E_SCRATCH" "$T_USER" "$T_DB" || {
+    docker logs "$E_SCRATCH" >>"${LOG_FILE:-/dev/null}" 2>&1
+    E_DETAIL="scratch postgres did not become ready"; return 1
+  }
+  PHASE_SERVER_MS=$(( $(now_ms) - t ))
+
+  t=$(now_ms)
+  if ! docker exec -i "$E_SCRATCH" pg_restore -U "$T_USER" --no-owner --no-privileges -d "$T_DB" < "$file" >>"${LOG_FILE:-/dev/null}" 2>&1; then
+    E_DETAIL="pg_restore into the scratch server failed"
+    return 1
+  fi
+  PHASE_IMPORT_MS=$(( $(now_ms) - t ))
+
+  t=$(now_ms)
+  E_VERIFY_CMD="pg per-table count diff (live $T_SERVER vs $E_SCRATCH)"
+  local live scratch
+  live=$(pg_counts "$T_SERVER" "$T_USER" "$T_DB")
+  scratch=$(pg_counts "$E_SCRATCH" "$T_USER" "$T_DB")
+  if [ -z "$live" ] || [ -z "$scratch" ]; then
+    E_DETAIL="could not read per-table counts from one side (empty output)"
+    return 1
+  fi
+  # Same policy as dbops --drill: the snapshot predates now, so live may hold
+  # rows the snapshot cannot (measured on firefly: journal_meta live=2160,
+  # restored=2124). Structure must match; a populated table that is EMPTY in the
+  # restore is lost data. Full per-table drift goes into the evidence.
+  local names_live names_scratch bad=0 tbl lcount rcount lrows rrows
+  names_live=$(printf '%s\n' "$live" | cut -d: -f1 | sort)
+  names_scratch=$(printf '%s\n' "$scratch" | cut -d: -f1 | sort)
+  if ! E_VERIFY=$(diff -u <(printf '%s\n' "$names_live") <(printf '%s\n' "$names_scratch") 2>&1); then
+    PHASE_VERIFY_MS=$(( $(now_ms) - t ))
+    E_DETAIL="the restored table set differs from live"
+    return 1
+  fi
+  local drift=""
+  while IFS=: read -r tbl lcount; do
+    rcount=$(printf '%s\n' "$scratch" | awk -F: -v k="$tbl" '$1==k{print $2}')
+    if [ -z "$rcount" ]; then drift="$drift"$'\n'"MISSING $tbl (live $lcount)"; bad=1; continue; fi
+    [ "$lcount" = "$rcount" ] || drift="$drift"$'\n'"$tbl live=$lcount restored=$rcount"
+    if [ "$lcount" -gt 0 ] && [ "$rcount" -eq 0 ]; then drift="$drift"$'\n'"EMPTY_IN_RESTORE $tbl (live $lcount)"; bad=1; fi
+  done <<< "$live"
+  PHASE_VERIFY_MS=$(( $(now_ms) - t ))
+  E_VERIFY="structure: $(printf '%s\n' "$names_live" | wc -l | tr -d ' ') tables identical"$'\n'"per-table drift (expected; EMPTY_IN_RESTORE/MISSING is not):${drift:- none}"
+  printf '%s\n' "$E_VERIFY" >>"${LOG_FILE:-/dev/null}"
+  if [ "$bad" = "1" ]; then E_DETAIL="the restore lost a table or holds an empty copy of a populated one"; return 1; fi
+  E_VERIFY=$(printf 'identical table set; no populated table empty in the restore\n%s\n' "$drift")
+  lrows=$(printf '%s\n' "$live" | awk -F: '{s+=$NF} END{print s+0}')
+  rrows=$(printf '%s\n' "$scratch" | awk -F: '{s+=$NF} END{print s+0}')
+  local delta; delta=$(awk -v l="$lrows" -v r="$rrows" 'BEGIN{d=l-r; if (d>=0) printf "restore is %d rows behind live", d; else printf "restore is %d rows ahead of live", -d}')
+  E_COUNTS="$(printf '%s\n' "$live" | wc -l | tr -d ' ') tables, live $lrows rows / restored $rrows rows ($delta)"
+  return 0
+}
+
+# --- one drill --------------------------------------------------------------
+run_drill() {
+  local tenant="$1" rc=0 file pset rootpass
+  local started; started=$(now_ms)
+  E_STATUS=ok; E_DETAIL=""; E_SNAP_ID=""; E_SNAP_TIME=""; E_SCRATCH=""
+  E_SCRATCH_FATE="not created"; E_IMAGE=""; E_VERIFY=""; E_VERIFY_CMD=""; E_COUNTS=""
+  PHASE_RESTIC_MS=0; PHASE_SERVER_MS=0; PHASE_IMPORT_MS=0; PHASE_VERIFY_MS=0
+  E_TOTAL_MS=0; E_WORK=""
+
+  if ! tenant_info "$tenant"; then
+    log "unknown tenant '$tenant' on this host"
+    exit 4
+  fi
+  LOG_FILE="$LOG_DIR/${tenant}-$(date -u +%Y%m%dT%H%M%SZ).log"
+  : > "$LOG_FILE"
+  read_state "$tenant"
+  log "drill $tenant ($T_ENGINE/$T_TIER) repo=$T_REPO cadence=$T_CADENCE"
+
+  if [ ! -r "/etc/restic/env.$T_REPO" ]; then
+    E_DETAIL="the repo env /etc/restic/env.$T_REPO is not readable on this host"
+    E_STATUS=fail
+  else
+    E_IMAGE=$(docker inspect -f '{% raw %}{{.Config.Image}}{% endraw %}' "$T_SERVER" 2>/dev/null) || E_IMAGE=""
+    if [ -z "${E_IMAGE:-}" ]; then
+      E_DETAIL="the tenant's server container '$T_SERVER' is not on this host"
+      E_STATUS=fail
+    fi
+  fi
+
+  if [ "$E_STATUS" = ok ]; then
+    # Snapshot + restore share a scratch directory so a 1.7 GB Moodle dump is
+    # never written to /tmp and never inside a restic scope.
+    E_WORK="$SCRATCH_ROOT/${tenant}-$(date -u +%Y%m%dT%H%M%SZ)"
+    mkdir -p "$E_WORK/restore" || { E_DETAIL="cannot create the scratch directory"; E_STATUS=fail; }
+  fi
+
+  if [ "$E_STATUS" = ok ]; then
+    local rs; rs=$(now_ms)
+    if ! pick_snapshot "/etc/restic/env.$T_REPO"; then
+      E_DETAIL="could not select a snapshot from repo $T_REPO"; E_STATUS=fail
+    elif ! restore_snapshot "/etc/restic/env.$T_REPO" "$E_WORK/restore" "$T_DUMP_DIR"; then
+      E_DETAIL="restic restore of $T_DUMP_DIR from $E_SNAP_ID failed"; E_STATUS=fail
+    fi
+    PHASE_RESTIC_MS=$(( $(now_ms) - rs ))
+  fi
+
+  if [ "$E_STATUS" = ok ]; then
+    E_SCRATCH="drill-${tenant}-$(date -u +%Y%m%dT%H%M%SZ)"
+    case "$E_SCRATCH" in drill-*) ;; *) E_DETAIL="refusing a scratch name outside drill-*"; E_STATUS=fail ;; esac
+  fi
+
+  if [ "$E_STATUS" = ok ]; then
+    case "$T_ENGINE" in
+      mariadb)
+        if [ "$T_FORMAT" = physical ]; then
+          pset=$(find "$E_WORK/restore" -type d -name current -path '*mysql-backup*' 2>/dev/null | head -1)
+          [ -n "$pset" ] || pset=$(find "$E_WORK/restore" -type d -path "*${T_DUMP_DIR}" 2>/dev/null | head -1)
+          if [ -z "$pset" ]; then E_DETAIL="the prepared set did not land in the restore"; E_STATUS=fail
+          else drill_mariadb_physical "$pset" || E_STATUS=fail; fi
+        else
+          file=$(newest_file "$E_WORK/restore" "$tenant" "sql.gz")
+          if [ -z "$file" ]; then E_DETAIL="no ${tenant}*.sql.gz in the snapshot"; E_STATUS=fail
+          else
+            rootpass=$( { openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n'; } )
+            drill_mariadb_logical "$file" "$rootpass" || E_STATUS=fail
+          fi
+        fi ;;
+      mongo)
+        file=$(newest_file "$E_WORK/restore" "$tenant" "archive.gz")
+        if [ -z "$file" ]; then E_DETAIL="no ${tenant}*.archive.gz in the snapshot"; E_STATUS=fail
+        else drill_mongo "$file" || E_STATUS=fail; fi ;;
+      postgres)
+        file=$(newest_file "$E_WORK/restore" "$tenant" "dump")
+        if [ -z "$file" ]; then E_DETAIL="no ${tenant}*.dump in the snapshot"; E_STATUS=fail
+        else drill_postgres "$file" || E_STATUS=fail; fi ;;
+      *) E_DETAIL="engine '$T_ENGINE' has no drill recipe"; E_STATUS=fail ;;
+    esac
+  fi
+
+  E_TOTAL_MS=$(( $(now_ms) - started ))
+  cleanup_scratch
+  write_state "$E_STATUS" "$(awk -v ms="$E_TOTAL_MS" 'BEGIN{printf "%.1f", ms/1000}')" "${E_DETAIL:-}"
+  append_evidence
+  if [ "$E_STATUS" = ok ]; then
+    log "drill $tenant OK in $(awk -v ms="$E_TOTAL_MS" 'BEGIN{printf "%.1f", ms/1000}') s"
+    rc=0
+  else
+    log "drill $tenant FAILED: ${E_DETAIL:-unknown}"
+    rc=1
+  fi
+  printf '%s\t%s\t%s\t%s\n' "$tenant" "$E_STATUS" "$(awk -v ms="$E_TOTAL_MS" 'BEGIN{printf "%.1f", ms/1000}')" "${E_SNAP_ID:-none}" || true
+  return "$rc"
+}
+
+# --- main -------------------------------------------------------------------
+MODE=""; CLASS=""; TENANTS=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --class) CLASS="${2:-}"; shift 2 ;;
+    --tenant) TENANTS="${2:-}"; shift 2 ;;
+    --all) MODE=all; shift ;;
+    *) usage ;;
+  esac
+done
+
+if [ -n "$CLASS" ]; then
+  TENANTS=$(class_tenants "$CLASS" | tr '\n' ',' | sed 's/,$//')
+  [ -n "$TENANTS" ] || { log "no tenant in the '$CLASS' class on this host"; exit 0; }
+elif [ "$MODE" = all ]; then
+  TENANTS=$(printf '%s' "$DRILL_TENANTS" | tr ' ' ',')
+elif [ -z "$TENANTS" ]; then
+  usage
+fi
+
+# One drill at a time, host-wide: the two heavy tenants are both weekly and a
+# second concurrent restore is exactly what the quiet-window rule forbids. The
+# lock WAITS (up to 3 h) rather than skipping: a skipped class run would show up
+# later as a false "overdue" page.
+exec 9>"$LOCK_FILE"
+if ! flock -w 10800 9; then
+  log "another restore drill still holds $LOCK_FILE after 3 h; nothing ran"
+  exit 3
+fi
+
+overall=0
+IFS=',' read -r -a wanted <<< "$TENANTS"
+for t in "${wanted[@]}"; do
+  [ -n "$t" ] || continue
+  if ! tenant_info "$t"; then log "skipping '$t': not a drillable tenant on this host"; overall=1; continue; fi
+  run_drill "$t" || overall=1
+done
+
+# Refresh the published drill metrics immediately instead of waiting for the
+# 30-minute probe tick (the probe is still the only publisher — one writer).
+if [ -x "$PROBE" ]; then "$PROBE" >/dev/null 2>&1 || log "metrics probe refresh failed"; fi
+
+log "evidence: $EVIDENCE_FILE"
+exit "$overall"
