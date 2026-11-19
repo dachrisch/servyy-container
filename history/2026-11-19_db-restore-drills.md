@@ -78,3 +78,51 @@ Full log: `/home/cda/.restore-drills/logs/queen-20261119T082636Z.log`
 
 ---
 
+## 2026-11-19T08:48:01Z · dontforget (private, mongo)
+
+**Result:** ok **(monthly cadence)**
+
+| | |
+|---|---|
+| Snapshot | `e10b59c343fcfb603c7d2d4b59b40775b50db0af6e78b7579d8d3bc2cf24e3ef` from repo `db-private-mongo`, taken 2026-11-19T01:40:49.788397562+01:00 |
+| Scratch target | `drill-dontforget-20261119T084740Z` (mongo:9.0, network `none`) → removed |
+| Restore wall-clock (RTO) | **21.4 s** (restic 1.8 s · target up 9.0 s · import 5.3 s · verify 3.4 s) |
+| Counts compared | compared 14 collections, live 717 documents / restored 717 documents (restore is 0 documents behind live) |
+| Mismatch | none |
+
+Verify output (`dbops verify dontforget --against drill-dontforget-20261119T084740Z --drill`):
+
+```text
+dbops: verify dontforget  live(shared.mongo) vs live(drill-dontforget-20261119T084740Z)
+  compared 14 collections, live 717 documents / restored 717 documents (restore is 0 documents behind live)
+dbops: ok  drill check: collection set identical, no populated collection empty in the restore
+```
+
+Full log: `/home/cda/.restore-drills/logs/dontforget-20261119T084737Z.log`
+
+---
+
+## 2026-11-19T08:48:22Z · leagues_finance (business, mongo)
+
+**Result:** ok **(monthly cadence)**
+
+| | |
+|---|---|
+| Snapshot | `985f2ac11604b176a8c19955c92f15b0037c6660375771791d8829b5c39c9bd7` from repo `db-lf`, taken 2026-11-19T01:25:49.434628402+01:00 |
+| Scratch target | `drill-leagues_finance-20261119T084803Z` (mongo:9.0, network `none`) → removed |
+| Restore wall-clock (RTO) | **20.0 s** (restic 2.2 s · target up 8.6 s · import 4.2 s · verify 3.4 s) |
+| Counts compared | compared 11 collections, live 186 documents / restored 186 documents (restore is 0 documents behind live) |
+| Mismatch | none |
+
+Verify output (`dbops verify leagues_finance --against drill-leagues_finance-20261119T084803Z --drill`):
+
+```text
+dbops: verify leagues_finance  live(shared.mongo) vs live(drill-leagues_finance-20261119T084803Z)
+  compared 11 collections, live 186 documents / restored 186 documents (restore is 0 documents behind live)
+dbops: ok  drill check: collection set identical, no populated collection empty in the restore
+```
+
+Full log: `/home/cda/.restore-drills/logs/leagues_finance-20261119T084801Z.log`
+
+---
+
