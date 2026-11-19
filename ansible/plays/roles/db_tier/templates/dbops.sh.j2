@@ -155,8 +155,9 @@ sql() {   # sql "<query>" [database] [server] [user] [password]
 # mongodump/mongorestore speak an archive stream, so a mongo dump is
 # `mongodump --archive --gzip` into a .partial file, renamed on success - the
 # same discipline as the MariaDB path. Credentials come from the SERVER
-# container's own MONGO_INITDB_ROOT_* env (the shared.mongo root account), never
-# from argv, and never from a tier env file (those hold MariaDB backup users).
+# container's own MONGO_INITDB_ROOT_* env (since WP-9 each tier's mongod has its
+# own pair; before that it was shared.mongo's), never from argv, and never from a
+# tier env file (those hold MariaDB backup users).
 DBOPS_MONGO_ADAPTER=1
 
 mongo_env() {   # [$1 = server] sets MU/MP from that container, or from DBOPS_MONGO_*
