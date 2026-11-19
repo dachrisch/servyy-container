@@ -13,6 +13,16 @@
     db_tier_name: business
     db_tier_user_passwords: {}
     dbops_password_business: "molecule-backup-pw"
+    # The role's tenant_passwords.yml reads these from the play's vars on a real
+    # host (secrets.yml). The scenario must supply them or the run dies on an
+    # undefined var before it reaches the assertions.
+    bnb_office:
+      db_password: molecule-bnb-pw
+    vault_moodle_db_password: molecule-moodle-pw
+    vault_leagues_finance_mongo_username: leagues_finance
+    vault_leagues_finance_mongo_password: molecule-tenant-c
+    vault_queen_mongo_username: queen
+    vault_queen_mongo_password: molecule-tenant-d
     db_tenants:
       - tenant: tenant_a
         tier: business
@@ -67,6 +77,11 @@
       local_dir: "/tmp"           # no compose file for this tier: render skips
     db_tier_name: private
     db_tier_user_passwords: {}
+    dbops_password_private: "molecule-backup-pw-private"
+    photoprism:
+      db_password: molecule-photoprism-pw
+    vault_dontforget_mongo_username: dontforget_app
+    vault_dontforget_mongo_password: molecule-tenant-c
     # Stands in for db-private.mongo, which the committed compose owns.
     db_tier_mongo_server_name: db-tier-test.mongo
     db_tier_mongo_root_password: molecule-mongo-root

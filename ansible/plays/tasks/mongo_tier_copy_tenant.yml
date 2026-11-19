@@ -89,7 +89,7 @@
       - >-
         exec mongosh --quiet
         "mongodb://$MONGO_INITDB_ROOT_USERNAME:$MONGO_INITDB_ROOT_PASSWORD@127.0.0.1:27017/$1?authSource=admin"
-        --eval 'db.getCollectionNames().sort().forEach(c=>print(c+":"+db[c].getIndexes().map(i=>i.name).sort().join(",")))'
+        --eval 'var f=c=>db.getCollection(c);db.getCollectionNames().sort().forEach(c=>print(c+":"+f(c).getIndexes().map(i=>i.name).sort().join(",")))'
       - dbops
       - "{{ mongo_copy_row.db }}"
   loop: "{{ [mongo_copy_source, mongo_copy_target] }}"
