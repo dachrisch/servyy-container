@@ -53,8 +53,8 @@ the change; on prod, the cutover's maintenance window (Phase B) avoids this cont
 
 | File | Change |
 |------|--------|
-| `docs/superpowers/plans/2026-06-24-decouple-db-standup.md` | Mark Task 2 & 3 done; add validation status banner |
-| `docs/superpowers/plans/2026-06-22-leaguesphere-local-mariadb-migration.md` | Restructure Task 11 into Phase A (no window) / Phase B (windowed flip + rename) |
+| `docs/superpowers/plans/2026-06-24-decouple-db-standup.md` (removed 2026-11-19, in git history) | Mark Task 2 & 3 done; add validation status banner |
+| `docs/superpowers/plans/2026-06-22-leaguesphere-local-mariadb-migration.md` (removed 2026-11-19, in git history) | Restructure Task 11 into Phase A (no window) / Phase B (windowed flip + rename) |
 | `docs/leaguesphere-environments.md` | Rewrite cutover runbook into Phase A / Phase B |
 | `history/2026-06-25_decouple-db-standup-validation.md` | This note |
 

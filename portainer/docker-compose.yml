@@ -107,7 +107,7 @@ services:
       - proxy
 
   # Database servers only (scope `db`, D15 in
-  # docs/plans/2026-11-17_db-tier-topology.md). A database patch is a same-line
+  # history/2026-11-19_db-tier-programme-close.md). A database patch is a same-line
   # image refresh, and this fork rolls back automatically when the replacement
   # container never reports healthy — so patches may land unattended, but only
   # here, and only once a day. Minors and majors are NOT watchtower's job: the

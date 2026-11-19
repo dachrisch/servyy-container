@@ -1,5 +1,10 @@
 # OFFD Moodle — final drop and release (2026-11-13)
 
+> Moved here from `docs/plans/2026-11-13-moodle-final-drop-release.md` on 2026-11-19, when the
+> completed plans were removed. The import and cutover it describes ran on 2026-11-13
+> (`history/2026-11-13_offd-cutover.md`); the procedure is kept as the runbook for the next
+> drop/release.
+
 **Status:** ready to execute; blockers listed under "Before Friday" (external ones are
 Christoph's). Rehearsal host `m.leaguesphere.app`, live target `offd.de`.
 **Relates to:** [2026-10-27-moodle-offd-hosting.md](2026-10-27-moodle-offd-hosting.md) (plan),

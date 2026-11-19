@@ -3,7 +3,7 @@
 **Date:** 2026-11-04
 **Status:** ✅ **Imported** into `m.leaguesphere.app` on `servy.lehel.xyz`; DB untouched
 **Relates to:** `2026-11-03_moodle-moodledata-ascii-mangled.md` (the rejected export),
-[docs/plans/2026-10-27-moodle-offd-hosting.md](../docs/plans/2026-10-27-moodle-offd-hosting.md) (Task 5)
+`docs/plans/2026-10-27-moodle-offd-hosting.md` (removed 2026-11-19, in git history) (Task 5)
 
 ## The corrected export
 

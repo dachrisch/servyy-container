@@ -1,8 +1,8 @@
 ---
 # Database version guard — a `pre_task` of plays/user.yml AND
 # plays/leaguesphere.yml, tagged `always`.
-# Plan: docs/plans/2026-11-17_db-tier-topology.md (D1, D8, D14, D15, Phase 0.6/2)
-#       docs/plans/2026-11-18_db-tier-work-packages.md (WP-0, WP-3)
+# See history/2026-11-19_db-tier-programme-close.md (D1, D8, D14, D15, Phase 0.6/2)
+#       history/2026-11-19_db-tier-programme-close.md (WP-0, WP-3)
 #
 # SERVER LIST: derived from `vars/db_tenants.yml`, the single source of truth for
 # every database tenant from WP-3 on. Both plays load that file in `vars_files`,
@@ -94,7 +94,7 @@
       vars/db_tenants.yml is invalid: every row needs a non-empty `server`, a
       tier in high|nonprod|business|private, and an engine in
       mariadb|mongo|postgres. It is the single source of truth for the database
-      guard (Phase 2 of docs/plans/2026-11-17_db-tier-topology.md).
+      guard (Phase 2 of history/2026-11-19_db-tier-programme-close.md).
     quiet: true
   tags:
     - always

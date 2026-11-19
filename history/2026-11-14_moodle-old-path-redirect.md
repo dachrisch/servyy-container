@@ -3,7 +3,7 @@
 **Date:** 2026-11-14
 **Status:** ✅ Accepted — deployed to `servy.lehel.xyz` (production)
 **Relates to:** [history/2026-11-13_offd-cutover.md](2026-11-13_offd-cutover.md),
-[docs/plans/2026-11-13-moodle-final-drop-release.md](../docs/plans/2026-11-13-moodle-final-drop-release.md),
+`docs/plans/2026-11-13-moodle-final-drop-release.md` (moved to `moodle/release-runbook.md` on 2026-11-19),
 [moodle/AGENTS.md](../moodle/AGENTS.md)
 
 ## Context

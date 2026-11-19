@@ -3,7 +3,7 @@
 **Date:** 2026-10-31
 **Status:** Accepted (deployed to `servy.lehel.xyz`)
 **Commit:** `e69be50` (PR [#257](https://github.com/dachrisch/servyy-container/pull/257), merge `b849371`)
-**Relates to:** [`2026-08-11_leaguesphere-maintenance-probe-design`](../docs/superpowers/specs/2026-08-11-leaguesphere-maintenance-probe-design.md) (the probe this changes), [`2026-10-30_monitor-provisioning-render-trap.md`](2026-10-30_monitor-provisioning-render-trap.md) (the trap this deploy hit again)
+**Relates to:** `docs/superpowers/specs/2026-08-11-leaguesphere-maintenance-probe-design.md` (removed 2026-11-19, in git history) (the probe this changes), [`2026-10-30_monitor-provisioning-render-trap.md`](2026-10-30_monitor-provisioning-render-trap.md) (the trap this deploy hit again)
 
 ---
 

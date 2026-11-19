@@ -1,8 +1,8 @@
 # DB tier WP-0 — fence the database versions
 
 Date: 2026-11-18
-Plan: `docs/plans/2026-11-17_db-tier-topology.md` (Phase 0), work package
-`docs/plans/2026-11-18_db-tier-work-packages.md` (WP-0).
+Plan: `docs/plans/2026-11-17_db-tier-topology.md` (removed 2026-11-19, in git history) (Phase 0), work package
+`docs/plans/2026-11-18_db-tier-work-packages.md` (removed 2026-11-19, in git history) (WP-0).
 Branch: `db-tier/wp0-version-fence`.
 
 **Goal.** No floating database tags and no unattended database minor/major upgrades anywhere;

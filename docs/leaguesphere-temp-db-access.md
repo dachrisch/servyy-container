@@ -1,6 +1,6 @@
 # Temporary prod DB access — the operator and user flow
 
-> Companion to `docs/plans/2026-10-25-prod-db-temp-credentials.md` (the design and
+> Companion to `history/2026-10-26_temporary-prod-db-access.md` (the design and
 > its evidence). This is the sheet a person follows: who asks, who approves, what
 > they get, and how it ends.
 

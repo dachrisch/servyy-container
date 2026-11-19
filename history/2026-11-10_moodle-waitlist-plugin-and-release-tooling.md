@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-10
 **Status:** ✅ Accepted — plugin deployed to `servy.lehel.xyz`; scripts delivered by repo sync
-**Relates to:** [docs/plans/2026-11-13-moodle-final-drop-release.md](../docs/plans/2026-11-13-moodle-final-drop-release.md),
+**Relates to:** `docs/plans/2026-11-13-moodle-final-drop-release.md` (moved to `moodle/release-runbook.md` on 2026-11-19),
 [history/2026-11-04_moodle-moodledata-ingested.md](2026-11-04_moodle-moodledata-ingested.md),
 [history/2026-11-06_moodle-restic-scopes.md](2026-11-06_moodle-restic-scopes.md)
 
@@ -83,7 +83,7 @@ with nothing executable in the repo.
 - `ansible/plays/roles/docker_service/molecule/default/{converge,verify}.yml` — renders the real
   `moodle.app.env` and asserts the `PLUGINS` line + 0775/0664 modes (MODIFY)
 - `moodle/scripts/{verify-offd-export,import-offd-release,wwwroot-replace}.sh` (NEW)
-- `docs/plans/2026-11-13-moodle-final-drop-release.md` (NEW), `moodle/AGENTS.md` (MODIFY)
+- `docs/plans/2026-11-13-moodle-final-drop-release.md` (moved to `moodle/release-runbook.md` on 2026-11-19) (NEW), `moodle/AGENTS.md` (MODIFY)
 
 **Testing & verification (executed)**
 

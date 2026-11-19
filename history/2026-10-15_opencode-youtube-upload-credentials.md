@@ -9,7 +9,7 @@ channel unattended, by provisioning the existing OAuth token (currently
 container. The token is consumed by a **companion change in the separate
 `leaguesphere` repo** (its own branch/PR) that teaches `yt_upload.py` to read
 it — that change is **not** part of this repo's branch and is not yet merged.
-Plan: `docs/plans/2026-10-15-opencode-youtube-upload-credentials.md` (Part A in
+Plan: `docs/plans/2026-10-15-opencode-youtube-upload-credentials.md` (removed 2026-11-19, in git history) (Part A in
 this repo; Part B in `leaguesphere`).
 
 The token is self-contained (`client_id` + `client_secret` + `refresh_token` +

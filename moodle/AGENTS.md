@@ -6,8 +6,8 @@ hostname: it still resolves to servy through the `*.leaguesphere.app` wildcard, 
 router matches `offd.de` only, so it no longer answers. Retired at cutover on purpose — no user ever
 had that address.
 
-**Plan, verified baseline, cutover runbook:** [docs/plans/2026-10-27-moodle-offd-hosting.md](../docs/plans/2026-10-27-moodle-offd-hosting.md)
-**Final import + release procedure:** [docs/plans/2026-11-13-moodle-final-drop-release.md](../docs/plans/2026-11-13-moodle-final-drop-release.md)
+**Plan, verified baseline, cutover runbook:** [history/2026-10-27_moodle-offd-blank-instance.md](../history/2026-10-27_moodle-offd-blank-instance.md)
+**Final import + release procedure:** [release-runbook.md](release-runbook.md)
 
 ## Layout
 
@@ -231,7 +231,7 @@ Rehearsed end to end on `servyy-test.lxd` on 2026-11-10, twice: a post-migration
 import, no upgrade, nothing to rewrite) and Christoph's **source** dump (4.5.12 → 4.5.15 upgrade
 plus 134 rows rewritten to 0). Rehearse against the *source* dump — our own dump is already migrated
 and silently exercises neither. Numbers and details:
-[the release plan](../docs/plans/2026-11-13-moodle-final-drop-release.md#rehearsal-2026-11-10-servyy-testlxd).
+[the release runbook](release-runbook.md#rehearsal-2026-11-10-servyy-testlxd).
 
 Why hashing matters: the 2026-11-03 export had all 9 317 `contenthash` values present **by name**
 while 9 247 files were ASCII-mangled. A complete-looking file set proves nothing.

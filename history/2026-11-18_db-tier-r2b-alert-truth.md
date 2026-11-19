@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-18
 **Status:** Accepted
-**Relates to:** [`2026-11-18_db-tier-work-packages.md`](../docs/plans/2026-11-18_db-tier-work-packages.md) (WP-8R R2),
+**Relates to:** `docs/plans/2026-11-18_db-tier-work-packages.md` (removed 2026-11-19, in git history) (WP-8R R2),
 [`2026-11-01_grafana-admin-password-drift.md`](2026-11-01_grafana-admin-password-drift.md) (the first admin-password drift),
 [`2026-11-18_monitor-render-out-of-checkout.md`](2026-11-18_monitor-render-out-of-checkout.md) (why a monitor edit needs a restart)
 
@@ -181,7 +181,7 @@ against its 93 600 s threshold (last dump 17:49, next 02:30) — a real measurem
 - `monitor/AGENTS.md` — working verification recipe + the 401 trap; the "provisioning never prunes"
   section; the max-over-the-repo rule; per-tenant dump-age coverage.
 - `CLAUDE.md` — recovery rule 6 now names the reconciler.
-- `docs/plans/2026-11-18_db-tier-work-packages.md` — WP-8R row: R2b and what is still uncovered.
+- `docs/plans/2026-11-18_db-tier-work-packages.md` (removed 2026-11-19, in git history) — WP-8R row: R2b and what is still uncovered.
 
 **Host (servy):**
 - `grafana.db` — orphan rule's 5 rows deleted with Grafana stopped (backup copy at

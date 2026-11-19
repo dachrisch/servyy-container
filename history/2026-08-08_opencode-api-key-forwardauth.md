@@ -3,8 +3,8 @@
 **Date:** 2026-08-08
 **Status:** ✅ Completed, deployed to production
 **Branch:** `claude/opencode-api-key-forwardauth` (merged via PR #58)
-**Design spec:** `docs/superpowers/specs/2026-08-08-opencode-api-key-forwardauth-design.md`
-**Implementation plan:** `docs/superpowers/plans/2026-08-08-opencode-api-key-forwardauth.md`
+**Design spec:** `docs/superpowers/specs/2026-08-08-opencode-api-key-forwardauth-design.md` (removed 2026-11-19, in git history)
+**Implementation plan:** `docs/superpowers/plans/2026-08-08-opencode-api-key-forwardauth.md` (removed 2026-11-19, in git history)
 
 ## Problem
 

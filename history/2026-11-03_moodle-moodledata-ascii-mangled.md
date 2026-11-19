@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-03
 **Status:** ❌ **Import rejected, ingest rolled back** — servy is back to its pre-ingest state
-**Relates to:** [docs/plans/2026-10-27-moodle-offd-hosting.md](../docs/plans/2026-10-27-moodle-offd-hosting.md)
+**Relates to:** `docs/plans/2026-10-27-moodle-offd-hosting.md` (removed 2026-11-19, in git history)
 (Task 5), `2026-10-28_offd-dump-measured-and-rehearsed.md`
 
 ## What arrived

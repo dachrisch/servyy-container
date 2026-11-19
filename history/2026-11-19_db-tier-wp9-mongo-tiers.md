@@ -2,8 +2,8 @@
 
 **Date:** 2026-11-19
 **Branch:** `db-tier/wp9-mongo-tiers` (from `6c00f10f`)
-**Packages:** `docs/plans/2026-11-18_db-tier-work-packages.md` §WP-9,
-`docs/plans/2026-11-17_db-tier-topology.md` Phase 8.
+**Packages:** `docs/plans/2026-11-18_db-tier-work-packages.md` (removed 2026-11-19, in git history) §WP-9,
+`docs/plans/2026-11-17_db-tier-topology.md` (removed 2026-11-19, in git history) Phase 8.
 **State:** implemented and proven live on `servy.lehel.xyz`; **not merged** — the
 coordinator merges and re-deploys from `master` (the branch was deployed only to
 run the copy/cutover proof).

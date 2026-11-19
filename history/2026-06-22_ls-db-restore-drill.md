@@ -2,7 +2,7 @@
 
 **Date executed:** 2026-06-23 (plan dated 2026-06-22)
 **Environment:** `servyy-test.lxd` (isolated LXD test box — test only, no production touched)
-**Plan:** `docs/superpowers/plans/2026-06-22-leaguesphere-local-mariadb-migration.md` (Task 10)
+**Plan:** `docs/superpowers/plans/2026-06-22-leaguesphere-local-mariadb-migration.md` (removed 2026-11-19, in git history) (Task 10)
 
 ## Scope
 

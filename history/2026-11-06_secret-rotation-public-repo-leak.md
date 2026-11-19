@@ -18,8 +18,8 @@ values that were both committed and still live:
 
 | # | Secret | Location | Public since | Verified live before rotation |
 |---|---|---|---|---|
-| 1 | `opencode.server_password` | `docs/superpowers/plans/2026-08-08-opencode-api-key-forwardauth.md` | 2026-08-08 | `curl -u opencode:… https://code.lehel.xyz/api/info` → **200** |
-| 2 | `finance.db_password` | `docs/superpowers/plans/2026-04-29-finance-production-ready.md` | 2026-05-06 | `psql -h shared.db -U firefly` → `firefly\|1` |
+| 1 | `opencode.server_password` | `docs/superpowers/plans/2026-08-08-opencode-api-key-forwardauth.md` (removed 2026-11-19, in git history) | 2026-08-08 | `curl -u opencode:… https://code.lehel.xyz/api/info` → **200** |
+| 2 | `finance.db_password` | `docs/superpowers/plans/2026-04-29-finance-production-ready.md` (removed 2026-11-19, in git history) | 2026-05-06 | `psql -h shared.db -U firefly` → `firefly\|1` |
 | 3 | `finance.app_key` | same file | 2026-05-06 | matched deployed `finance/.env` |
 | 4 | `finance.auto_import_secret` | same file | 2026-05-06 | matched deployed `finance/.env` |
 | 5 | `restic_password_home` | `ansible/DISASTER_RECOVERY_ANALYSIS.md` | 2025-12-29 | matched `/etc/restic/env.home` on 3 hosts |

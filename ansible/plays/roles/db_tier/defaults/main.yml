@@ -1,6 +1,6 @@
 ---
 # db_tier — one database tier (high | nonprod | business | private).
-# Plan: docs/plans/2026-11-17_db-tier-topology.md (D2/D3/D4/D6/D12/D16, Phase 2.3)
+# See history/2026-11-19_db-tier-programme-close.md (D2/D3/D4/D6/D12/D16, Phase 2.3)
 #
 # WHAT THIS ROLE DOES
 #   * resolves the tier's tenants from plays/vars/db_tenants.yml (the single

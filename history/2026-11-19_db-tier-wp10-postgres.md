@@ -2,8 +2,8 @@
 
 **Date:** 2026-11-19
 **Branch:** `db-tier/wp10-postgres-retirement` (from `4b43c190`)
-**Packages:** `docs/plans/2026-11-18_db-tier-work-packages.md` §WP-10,
-`docs/plans/2026-11-17_db-tier-topology.md` Phase 9 / D7.
+**Packages:** `docs/plans/2026-11-18_db-tier-work-packages.md` (removed 2026-11-19, in git history) §WP-10,
+`docs/plans/2026-11-17_db-tier-topology.md` (removed 2026-11-19, in git history) Phase 9 / D7.
 **State:** implemented and proven live on `servy.lehel.xyz`; **not merged** — the
 coordinator merges and re-deploys from `master` (the branch was deployed only to
 run the copy/cutover proof, exactly like WP-9).

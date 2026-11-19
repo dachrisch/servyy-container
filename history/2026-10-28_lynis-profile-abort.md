@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-28
 **Status:** ✅ Fixed and redeployed to `servy.lehel.xyz`
-**Relates to:** `2026-10-08_security-audit-trivy-empty-results.md`, `docs/plans/2026-10-08-host-hardening-p6.md`
+**Relates to:** `2026-10-08_security-audit-trivy-empty-results.md`, `docs/plans/2026-10-08-host-hardening-p6.md` (removed 2026-11-19, in git history)
 
 ## Context
 

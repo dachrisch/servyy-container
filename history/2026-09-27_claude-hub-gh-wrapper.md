@@ -24,7 +24,7 @@ opencode's equivalent), that resolves the target repo owner per invocation
 and exports `GH_TOKEN` from the matching PAT (`GITHUB_PAT_DACHRISCH` /
 `GITHUB_PAT_BUMBLEFLIES`) before handing off to the real `gh` binary.
 
-Full spec/plan: `conductor/tracks/claude-hub-gh-wrapper_20260927/`.
+Full spec/plan: `conductor/tracks/claude-hub-gh-wrapper_20260927/` (removed 2026-11-19, in git history).
 
 ## Design
 
@@ -124,7 +124,7 @@ was the actual gate both times.
   (new) — the Molecule scenario.
 - `.github/workflows/ci.yml` — added `{role: docker_service, scenario:
   gh-wrapper}` to the CI matrix.
-- `conductor/tracks/claude-hub-gh-wrapper_20260927/{spec,plan,metadata}` —
+- `conductor/tracks/claude-hub-gh-wrapper_20260927/{spec,plan,metadata}` (removed 2026-11-19, in git history) —
   full track history, including both mid-flight spec revisions.
 
 ## Testing

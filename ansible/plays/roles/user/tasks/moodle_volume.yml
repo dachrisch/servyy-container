@@ -1,6 +1,6 @@
 ---
 # Attached Hetzner Cloud volume for the Moodle instance — moodledata AND the
-# MariaDB data directory (docs/plans/2026-10-27-moodle-offd-hosting.md, Task 1).
+# MariaDB data directory (history/2026-10-27_moodle-offd-blank-instance.md, Task 1).
 #
 # The volume itself is created and attached out of band, because creating one is
 # a billing action rather than configuration:
