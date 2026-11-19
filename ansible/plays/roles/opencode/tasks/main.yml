@@ -374,6 +374,16 @@
   notify: restart opencode container
   tags: [user.docker.opencode]
 
+- name: Remove retired shared skills from OpenCode server
+  ansible.builtin.file:
+    path: "{{ (opencode_skills_dir, item) | path_join }}"
+    state: absent
+  loop: "{{ opencode_server_retired_skills }}"
+  vars:
+    opencode_skills_dir: "{{ ('/home/', create_user, 'servyy-container/opencode/skills') | path_join }}"
+  notify: restart opencode container
+  tags: [user.docker.opencode]
+
 - name: Deploy server-only canonical skills to OpenCode server
   ansible.builtin.copy:
     src: "{{ (agent_config_skills_src, 'server', item) | path_join }}/"

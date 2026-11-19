@@ -55,6 +55,7 @@ else).
   and the restic target is not configured on this host.
 - ⚠️ `tree-sitter*` wheels fail to build on ARM and `graphify install` fails, so
   the graphify skill is unavailable inside the container on this host.
+  Obsolete 2026-11-19 — graphify removed as unused; the rest of this record still applies.
 - ⚠️ First boot is slow: opencode provisions ~16 repo checkouts before it starts
   listening, so the container is `unhealthy` for several minutes by design.
 

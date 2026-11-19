@@ -70,3 +70,12 @@ Pre-deploy, the wheel closure was proven in the exact prod image in a throwaway 
   is the signal to refresh `agent-config/skills/graphify` in setup-home.
 - No servyy-test run: additive boot-time package + a copied skill dir, with the install path
   verified against the prod image before deploying.
+
+## Update 2026-11-19 — retired: no benefit
+graphify gave no benefit over plain search in practice. Removed everywhere:
+the shared-skills entry and the server copy, `startup.sh` §3c plus the drift
+warning and `graphify-out/` gitignore seeding, `scripts/install-graphify.sh`,
+`PYTHONPATH` in `docker-compose.yml`, `/root/.graphify-pkgs` (143.7 MB, freed),
+and the container's `graphify-out/` global-gitignore line. setup-home's
+canonical skill tree and history entry were updated in `81b799d` (entry removed,
+plugin pruning added) and `5b917d5` (canonical skill tree deleted).
