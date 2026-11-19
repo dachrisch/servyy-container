@@ -38,7 +38,12 @@
     repository_uri: "{{ docker.repo }}"
     remote_dir: "{{ docker.remote_dir }}"
     local_dir: "{{ docker.local_dir }}"
-    branch: "{{ lookup('pipe', 'git -C ' ~ docker.local_dir ~ ' rev-parse --abbrev-ref HEAD') }}"
+    # `docker_branch` is an explicit override for branch deploys. It must be a
+    # DIFFERENT variable from `branch`: a global `-e branch=<feature>` also hits
+    # the zprezto import above, which has no such branch and fails the run
+    # (measured 2026-11-19 during WP-10). The normal path still reads the
+    # controller checkout's HEAD, which is master for every merged deploy.
+    branch: "{{ docker_branch | default(lookup('pipe', 'git -C ' ~ docker.local_dir ~ ' rev-parse --abbrev-ref HEAD')) }}"
     check_git_servyy_reachable: true     # Check git.lehel.xyz is reachable before recursive submodule clone
     clone_submodules: true                # Clone submodules if reachable
     update_submodules: true               # Update submodules on every deployment
