@@ -637,8 +637,14 @@ db_tenants:
     server: db-business.mariadb
     db: ibs
     user: ibs_app
-    dump_schedule: 'daily 02:30'
-    dump_at: '02:30'
+    # 01:05, not 02:30 (WP-8R follow-up, 2026-11-19). 02:30 sat inside the
+    # nightly 02:00–04:00 restic window, where it competed with the tier repos'
+    # snapshots for the same disk and the same Storage Box link; the plan's
+    # schedule table has said 01:05 since 2026-11-18. R8 derives "due" from THIS
+    # row, so this one edit is the whole schedule change (its snapshot follows at
+    # 01:10 — `backup_db_bnb` in vars/restic.yml).
+    dump_schedule: 'daily 01:05'
+    dump_at: '01:05'
     dump_via: dbops
     # WP-8R R7 (2026-11-19): the canonical root, not the app's `.backup/`. Every
     # dump-backed tenant now lives under /home/cda/db-dumps/<tenant>, so ONE rule

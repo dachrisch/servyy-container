@@ -126,11 +126,11 @@ restic:
       # 2. The STOPPED pre-cutover PhotoPrism datadir (775 MB). PhotoPrism has
       #    lived on db-private.mariadb since WP-6; a raw datadir of a stopped
       #    engine is not restorable as a database, and the tenant's real,
-      #    restorable copy is the `db-private` logical dump (R4). This also means
-      #    the `Restore PhotoPrism Database` include in roles/restic/tasks/main.yml
-      #    will no longer find it in `home` — deliberately: that datadir is a
-      #    rollback artefact, not a backup. Delete it with the WP-6 rollback
-      #    window, not by restoring it.
+      #    restorable copy is the `db-private` logical dump (R4). The
+      #    `Restore PhotoPrism Database` include in roles/restic/tasks/main.yml is
+      #    therefore GONE (WP-8R follow-up, 2026-11-19): an entry that restores
+      #    nothing is worse than none, because it is believed during an incident.
+      #    Delete the datadir with the WP-6 rollback window, not by restoring it.
       - 'servyy-container/photoprism/database'
       #
       # 3. Ad-hoc cutover dumps of the MOODLE database (130 MB each, 2026-11-13
@@ -147,6 +147,46 @@ restic:
       # 2026-11-06 on codey + servyy-test). They are deploy artifacts with their
       # own seed files in plays/vars/ and a Vaultwarden copy — not home data.
       - 'servyy-container/opencode/.ssh'
+
+      # --- WP-8R follow-up (2026-11-19): the ~19 MB/h of `home` churn ----------
+      # `restic diff` between two consecutive hourly snapshots in a QUIET hour
+      # (13:02 -> 14:00, 19 changed files) added 19 118 542 B. Attributed at blob
+      # level (per-file new chunks, two independent hours) the top four are:
+      #
+      #   waggle/data/db/openpost.db       10 825 728 B/h   live SQLite
+      #   waggle/data/db/openpost.db-wal    4 152 992 B/h   SQLite WAL
+      #   git/logs/access.log               2 857 761 B/h   nginx access log
+      #   achim-hoefer/logs/access.log        866 096 B/h   nginx access log
+      #   (vw-data sqlite -shm/-wal, openpost -shm: 65 KB/h together)
+      #
+      # Access logs first: they are NOT data of record — they are per-request
+      # traffic traces that the services regenerate, and there is no retention
+      # promise on them (the same content is what the monitoring stack ingests).
+      # Both files exist under `home` and nowhere else in the backup scope; they
+      # are also unbounded (106 MB and 78 MB, never rotated), so every hourly
+      # snapshot re-uploads a whole restic chunk (~1 MiB) for an append of a few
+      # KiB. Excluding the two access logs removes ~3.7 MB/h of the churn.
+      #
+      # NOT excluded, deliberately: `waggle/data/db/openpost.db` and its `-wal`.
+      # OpenPost (waggle.bumbleflies.de) is this repo's own service and that
+      # database is data of record — scheduled posts, accounts, provider
+      # credentials sealed with OPENPOST_ENCRYPTION_KEY. It is an 11.5 MB SQLite
+      # database written continuously: every 1 MiB restic chunk contains at least
+      # one dirty page, and `secure_delete=1` rewrites pages in place, so ~11 MB/h
+      # is genuinely rewritten content. The `-wal` holds COMMITTED transactions not
+      # yet checkpointed; excluding it would silently drop up to an autocheckpoint
+      # interval (1000 pages = the 4 MB you see) of writes. ~15 MB/h here is the
+      # price of hourly CDC backup of a live SQLite app, not junk, and it is NOT
+      # to be "fixed" by exclusions. Cutting it needs a pre-snapshot
+      # `wal_checkpoint(TRUNCATE)` hook (removes the duplicated WAL only) — a
+      # writer change with its own failure modes, recorded as a follow-up.
+      - '**/logs/access.log'
+      #
+      # SQLite `-shm` is a memory-mapped index rebuilt by SQLite on open: it is
+      # never data of record, and a restored stale copy is at best ignored. Only
+      # three exist under `home` (all SQLite). 32 KiB each — the exclusion is for
+      # correctness, not size.
+      - '**/*-shm'
 
       # Temporary files
       - '**/*.tmp'
@@ -364,10 +404,14 @@ restic:
     backup_db_private_mongo: '*-*-* 01:40:00'
     dump_firefly: '*-*-* 01:45:00'
     backup_db_private_firefly: '*-*-* 01:50:00'
-    # WP-8R R7: the bnb dump, at the time its row already declared (02:30). The
-    # snapshot follows 10 minutes later, like the other daily tenants.
-    dump_bnb_office: '*-*-* 02:30:00'
-    backup_db_bnb: '*-*-* 02:40:00'
+    # WP-8R R7 + follow-up (2026-11-19): the bnb dump, moved from 02:30 to 01:05
+    # (the plan's table). 02:30 was inside the 02:00–04:00 nightly restic window;
+    # the snapshot follows at 01:10 instead of 02:40, so the two never overlap that
+    # window. The dump time itself is NOT read from here — `dbops dump-due` derives
+    # it from the tenant row's `dump_at`; this value documents the same instant for
+    # the schedule rendering below.
+    dump_bnb_office: '*-*-* 01:05:00'
+    backup_db_bnb: '*-*-* 01:10:00'
     # WP-8R R8: ONE db-backup@<tier> pair per tier, ticking every 5 minutes.
     # Nothing is dumped on a tick that finds nobody due — the tenant TIMES stay in
     # the inventory rows (dump_at), and `dbops dump-due <tier>` compares each
