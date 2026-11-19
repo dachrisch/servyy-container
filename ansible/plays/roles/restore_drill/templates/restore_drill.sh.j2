@@ -237,9 +237,29 @@ wait_postgres() {   # $1 container, $2 user, $3 database
 cleanup_scratch() {
   if [ -n "${E_SCRATCH:-}" ]; then
     if [ "${E_STATUS:-}" = ok ] || [ "$KEEP_FAILED" != 1 ]; then
-      docker rm -f "$E_SCRATCH" >/dev/null 2>&1 && E_SCRATCH_FATE="removed" || E_SCRATCH_FATE="remove FAILED"
+      # `-v` is NOT optional. mariadb/mongo/postgres images declare VOLUME
+      # /var/lib/mysql|/data|/var/lib/postgresql/data, so every scratch container
+      # is born with an ANONYMOUS volume holding the whole restored datadir.
+      # `docker rm -f` without -v detaches it and leaves it dangling forever:
+      # measured 2026-11-19, the first night of drills left 43 dangling volumes
+      # (10.7 GB) and pushed the Docker data volume to 97% full, which is what
+      # tripped the disk alerts. The nightly prune is 18 h away at that point.
+      docker rm -fv "$E_SCRATCH" >/dev/null 2>&1 && E_SCRATCH_FATE="removed" || E_SCRATCH_FATE="remove FAILED"
     else
       E_SCRATCH_FATE="LEFT IN PLACE (restore_drill_keep_failed_scratch)"
+    fi
+  fi
+  # The leak above was silent: the drill reported ok while the host filled up.
+  # Compare the dangling-volume count with the one taken before this tenant's
+  # scratch target existed, and fail the drill if it grew — a restore that
+  # "works" but eats the disk is not a passing drill.
+  if [ -n "${E_VOL_BEFORE:-}" ]; then
+    local vol_after
+    vol_after=$(docker volume ls -qf dangling=true 2>/dev/null | wc -l)
+    if [ "${vol_after:-0}" -gt "${E_VOL_BEFORE:-0}" ]; then
+      E_STATUS=fail
+      E_DETAIL="${E_DETAIL:+$E_DETAIL; }left $((vol_after - E_VOL_BEFORE)) dangling volume(s) behind (scratch target not fully removed)"
+      log "LEAK: dangling volumes ${E_VOL_BEFORE} -> ${vol_after} (the scratch container's anonymous volume survived)"
     fi
   fi
   # A physical drill's datadir was handed to uid 999 (mysql) so the scratch
@@ -504,6 +524,8 @@ run_drill() {
   E_SCRATCH_FATE="not created"; E_IMAGE=""; E_VERIFY=""; E_VERIFY_CMD=""; E_COUNTS=""
   PHASE_RESTIC_MS=0; PHASE_SERVER_MS=0; PHASE_IMPORT_MS=0; PHASE_VERIFY_MS=0
   E_TOTAL_MS=0; E_WORK=""
+  # Baseline for the volume-leak check in cleanup_scratch (see the `-v` note there).
+  E_VOL_BEFORE=$(docker volume ls -qf dangling=true 2>/dev/null | wc -l)
 
   if ! tenant_info "$tenant"; then
     log "unknown tenant '$tenant' on this host"
