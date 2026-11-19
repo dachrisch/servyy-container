@@ -451,6 +451,22 @@
 
 # The runner logs one file per tier; create them as root with the same ownership
 # the other restic logs have (the runner is the deploy user, /var/log is root's).
+# The DIRECTORY first: on a fresh host (and in molecule) /var/log/restic does not
+# exist yet, and `state: touch` on a path whose parent is missing fails with
+# "Error, could not touch target" instead of saying the directory is absent.
+- name: Ensure the restic log directory exists
+  ansible.builtin.file:
+    path: "{{ restic.log_dir | default('/var/log/restic') }}"
+    state: directory
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0755'
+  become: true
+  become_user: root
+  when: db_backup_tiers | length > 0
+  tags:
+    - restic.backup
+
 - name: Create the per-tier dump log files
   ansible.builtin.file:
     path: "{{ (restic.log_dir | default('/var/log/restic'), 'db-backup-' ~ tier ~ '.log') | path_join }}"
