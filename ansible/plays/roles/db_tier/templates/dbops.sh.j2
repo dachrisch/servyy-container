@@ -6,6 +6,8 @@
 #
 # Usage:
 #   dbops dump <tenant>                       logical dump into the tenant's dump dir
+#   dbops dump-due <tier>                     print the tenants of <tier> whose dump
+#                                             is due (WP-8R R8: one unit per tier)
 #   dbops restore <tenant> <file> [--force]   import a logical dump (DEFINER-stripped)
 #   dbops verify <tenant> [--against <server>] [--drill]
 #                                             dump-vs-live, or live-vs-live with
@@ -64,6 +66,11 @@ dbops <command> [args]
                                       snapshot, so counts may lag; structure must
                                       be identical and no populated table may be
                                       empty in the restore (see cmd_verify)
+  dump-due <tier>                     print the tenants of <tier> whose dump is due
+                                      (one per line, empty = nothing to do). Due =
+                                      <dump_dir>/current older than the tenant's
+                                      last scheduled instant (dump_schedule +
+                                      dump_at). Only tenants with dump_via: dbops.
   shell <tenant>                      interactive mariadb client in that database
   restore <tenant> --from-physical <dir>
                                       physical mariadb-backup set (high -> nonprod)
@@ -92,12 +99,15 @@ USAGE
 # `verify --against` compare nothing.
 tenant_lookup() {
   T_SERVER=""; T_DB=""; T_USER=""; T_TIER=""; T_ENGINE=""; T_DUMP_DIR=""; T_RESTIC=""
+  T_SCHEDULE=""; T_DUMP_AT=""; T_VIA=""
   case "$1" in
 {% for t in db_tenants | sort(attribute='tenant') %}
     {{ t.tenant }})
       T_SERVER={{ t.server | tojson }}; T_DB={{ t.db | tojson }}; T_USER={{ t.user | tojson }}
       T_TIER={{ t.tier | tojson }}; T_ENGINE={{ t.engine | tojson }}
-      T_DUMP_DIR={{ t.dump_dir | tojson }}; T_RESTIC={{ t.restic_repo | tojson }} ;;
+      T_DUMP_DIR={{ t.dump_dir | tojson }}; T_RESTIC={{ t.restic_repo | tojson }}
+      T_SCHEDULE={{ t.dump_schedule | tojson }}; T_DUMP_AT={{ t.dump_at | default('') | tojson }}
+      T_VIA={{ t.dump_via | default('none') | tojson }} ;;
 {% endfor %}
     *) return 1 ;;
   esac
@@ -105,6 +115,11 @@ tenant_lookup() {
 }
 
 KNOWN_TENANTS="{{ db_tenants | rejectattr('engine', 'equalto', 'postgres') | map(attribute='tenant') | sort | join(' ') }}"
+# Inventory order, for `dump-due`: it must walk a tier in the order the plan
+# spaces the times (photoprism 00:45 before dontforget 01:35 before firefly
+# 01:45), so a killed run is reproducible and the log reads chronologically.
+# KNOWN_TENANTS above stays sorted because it is an error message.
+SCHEDULED_TENANTS="{{ db_tenants | rejectattr('engine', 'equalto', 'postgres') | map(attribute='tenant') | join(' ') }}"
 
 resolve_tenant() {
   tenant_lookup "$1" || die "unknown tenant '$1'. Dump-capable tenants: $KNOWN_TENANTS" 2
@@ -593,6 +608,87 @@ cmd_restore() {
   fi
 }
 
+# --- due computation (WP-8R R8) ----------------------------------------------
+# "Due" is derived from the ROW, never from a time written down anywhere else:
+#   * dump_schedule 'daily HH:MM' -> the most recent HH:MM that has passed
+#   * dump_schedule 'hourly'      -> the most recent <dump_at> minute past the hour
+# A tenant is due when its prepared set (<dump_dir>/current) is OLDER than that
+# instant, or missing. Consequences that are the whole point:
+#   * an immediate second run is a NO-OP (the set was just swapped, so its mtime
+#     is newer than the instant the schedule last fired);
+#   * a run missed to a reboot/outage is caught up by the next tick, because the
+#     comparison is against the schedule, not against "did the timer fire";
+#   * changing a dump time is one edit in plays/vars/db_tenants.yml and nothing
+#     else re-hardcodes it.
+# A row with dump_via != dbops is never returned: moodle is still its own unit
+# until WP-8R R9, and the high tier is the physical set + binlog tail (R5).
+last_scheduled_epoch() {   # $1 schedule, $2 dump_at, $3 now(epoch) -> epoch
+  local sched="$1" at="$2" now="$3" when
+  case "$sched" in
+    hourly)
+      [ -n "$at" ] || return 1
+      when=$(date -d "$(date +%H):$at:00" +%s 2>/dev/null) || return 1
+      if [ "$when" -gt "$now" ]; then
+        when=$((when - 3600))
+      fi
+      ;;
+    daily*)
+      [ -n "$at" ] || return 1
+      when=$(date -d "$at:00" +%s 2>/dev/null) || return 1
+      if [ "$when" -gt "$now" ]; then
+        # `yesterday $at` rather than -86400: on a DST changeover the fixed
+        # subtraction lands an hour off and would make a daily tenant look due
+        # for an extra hour (a duplicate dump, not data loss — but noise).
+        when=$(date -d "yesterday $at:00" +%s 2>/dev/null) || return 1
+      fi
+      ;;
+    *) return 1 ;;
+  esac
+  printf '%s\n' "$when"
+}
+
+cmd_dump_due() {
+  local tier="" force=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --force) force=1; shift ;;
+      *) tier="$1"; shift ;;
+    esac
+  done
+  [ -n "$tier" ] || usage
+  local t now scheduled dir
+  now=$(date +%s)
+  for t in $SCHEDULED_TENANTS; do
+    tenant_lookup "$t" || continue
+    [ "$T_TIER" = "$tier" ] || continue
+    [ "$T_VIA" = "dbops" ] || continue
+    [ -n "$T_DUMP_AT" ] || die "tenant '$t' has dump_via dbops but no dump_at in the inventory" 1
+    [ -n "$T_DUMP_DIR" ] || die "tenant '$t' has dump_via dbops but no dump_dir in the inventory" 1
+    # `--force` is the operator override (a pre-maintenance run, or proving the
+    # unit): every dbops tenant of the tier, due or not. It is deliberately NOT
+    # reachable from the timer — the unit passes only the tier name.
+    if [ "$force" = "1" ]; then
+      info "$t"
+      continue
+    fi
+    scheduled=$(last_scheduled_epoch "$T_SCHEDULE" "$T_DUMP_AT" "$now") \
+      || die "tenant '$t' has dump_schedule '$T_SCHEDULE' / dump_at '$T_DUMP_AT', which dbops cannot interpret (hourly|daily HH:MM)" 1
+    dir="$T_DUMP_DIR/current"
+    if [ ! -d "$dir" ]; then
+      info "$t"
+      continue
+    fi
+    # Same measurement as the dump-age probe (db_dump_freshness.sh.j2): the
+    # DIRECTORY's mtime, which the atomic `mv new current` refresh sets. The
+    # dump file's own name carries a UTC timestamp and is deliberately not
+    # parsed — one source of truth for "when did it land".
+    if [ "$(stat -c %Y "$dir" 2>/dev/null || echo 0)" -lt "$scheduled" ]; then
+      info "$t"
+    fi
+  done
+  exit 0
+}
+
 # --- shell --------------------------------------------------------------------
 cmd_shell() {
   [ $# -eq 1 ] || usage
@@ -605,6 +701,7 @@ cmd_shell() {
 # --- main ---------------------------------------------------------------------
 case "${1:-}" in
   dump)    shift; cmd_dump "$@" ;;
+  dump-due) shift; cmd_dump_due "$@" ;;
   restore) shift; cmd_restore "$@" ;;
   verify)  shift; cmd_verify "$@" ;;
   shell)   shift; cmd_shell "$@" ;;

@@ -97,14 +97,49 @@ restic:
 
       # The canonical dump root (WP-8R R7). Every tenant's logical dump lands in
       # /home/cda/db-dumps/<tenant>/current and is snapshotted by ITS OWN repo
-      # (db-private, db-lf, db-queen, db-private-mongo, db-private-firefly). Keeping
-      # it out of `home` matters for two independent reasons:
+      # (db-private, db-lf, db-queen, db-bnb, db-private-mongo,
+      # db-private-firefly, leaguesphere-binlog). Keeping it out of `home` matters
+      # for two independent reasons:
       #   * deduplication: a 107 MB PhotoPrism dump re-uploaded into `home` every
       #     hour would be the same bytes five times a day in a repo whose
       #     retention is hourly;
       #   * a dump in two repos with two retention policies is a restore that can
       #     disagree with itself about how old the newest copy is.
       - 'db-dumps'
+
+      # --- WP-8R R7: the last dump bytes that were still riding `home` --------
+      # `home` is a FILE backup: its retention, its cadence and its dedup shape
+      # are properties of the filesystem, and none of them is the right promise
+      # for a database dump. Everything below was measured on 2026-11-19 before
+      # being excluded (~1.03 GB per snapshot, which is the plan's "home shrinks
+      # ~1.1 GB"), and every one of them is now either superseded by a tenant repo
+      # or is a one-off artefact that must not inherit a backup promise by
+      # accident.
+      #
+      # 1. bnb_office's legacy dump directory (WP-8R R7). Its dumps now land in
+      #    db-dumps/bnb_office/current and are carried by `db-bnb`; the flat
+      #    timestamped files left here are excluded so a stray one can never ride
+      #    the file repo again. (Measured before: 4 files, 210 KB — small, but the
+      #    scope error was the point, not the size.)
+      - 'servyy-container/bnb-office/.backup'
+      #
+      # 2. The STOPPED pre-cutover PhotoPrism datadir (775 MB). PhotoPrism has
+      #    lived on db-private.mariadb since WP-6; a raw datadir of a stopped
+      #    engine is not restorable as a database, and the tenant's real,
+      #    restorable copy is the `db-private` logical dump (R4). This also means
+      #    the `Restore PhotoPrism Database` include in roles/restic/tasks/main.yml
+      #    will no longer find it in `home` — deliberately: that datadir is a
+      #    rollback artefact, not a backup. Delete it with the WP-6 rollback
+      #    window, not by restoring it.
+      - 'servyy-container/photoprism/database'
+      #
+      # 3. Ad-hoc cutover dumps of the MOODLE database (130 MB each, 2026-11-13
+      #    and 2026-11-18). Moodle's database has its own hourly logical stream
+      #    (`moodle-db`); these were manual artefacts of the hosting move and the
+      #    WP-7b cutover drill. They stay on disk (evidence) but leave the backup
+      #    scope — a dump is snapshotted by the tenant's repo or not at all.
+      - 'dbops-dumps'
+      - 'dump-offd-*.sql.gz'
 
       # OpenCode's bind-mounted SSH dir. The container runs as root and writes
       # id_github/id_servy/known_hosts as root, so the backup user cannot read
@@ -285,6 +320,14 @@ restic:
     repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ restic_repo_name | default(inventory_hostname) }}/restic-db-queen"
     password: "{{ restic_password_db }}"
     source_path: "/home/cda/db-dumps/queen/current"
+  # WP-8R R7: bnb_office's own repo. Before this the customer's bookkeeping data
+  # was inside the `home` FILE scope (see the excludes above), with home's
+  # retention and a timestamped file per run. Same D16 password as the other
+  # db-tier repos, same `current/` shape, own retention profile (`db_daily`).
+  'db-bnb':
+    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ restic_repo_name | default(inventory_hostname) }}/restic-db-bnb"
+    password: "{{ restic_password_db }}"
+    source_path: "/home/cda/db-dumps/bnb_office/current"
 
   # Backup schedules
   schedules:
@@ -321,6 +364,17 @@ restic:
     backup_db_private_mongo: '*-*-* 01:40:00'
     dump_firefly: '*-*-* 01:45:00'
     backup_db_private_firefly: '*-*-* 01:50:00'
+    # WP-8R R7: the bnb dump, at the time its row already declared (02:30). The
+    # snapshot follows 10 minutes later, like the other daily tenants.
+    dump_bnb_office: '*-*-* 02:30:00'
+    backup_db_bnb: '*-*-* 02:40:00'
+    # WP-8R R8: ONE db-backup@<tier> pair per tier, ticking every 5 minutes.
+    # Nothing is dumped on a tick that finds nobody due — the tenant TIMES stay in
+    # the inventory rows (dump_at), and `dbops dump-due <tier>` compares each
+    # tenant's last scheduled instant with the mtime of its `current/`. 5 minutes
+    # is the smallest granularity that can honour every dump_at in the inventory
+    # (they are 5-minute spaced by design) without re-writing a single time here.
+    db_backup_tier: '*-*-* *:00/5:00'
     forget_daily: '*-*-* 05:00:00'            # Daily at 05:00 UTC
     check_weekly: 'Sun 06:00'                 # Weekly integrity check
 
@@ -398,9 +452,11 @@ restic:
     backup_db_private_firefly: '/var/log/restic/backup-db-private-firefly.log'
     backup_db_lf: '/var/log/restic/backup-db-lf.log'
     backup_db_queen: '/var/log/restic/backup-db-queen.log'
+    backup_db_bnb: '/var/log/restic/backup-db-bnb.log'
     db_dump_photoprism: '/var/log/restic/dump-photoprism.log'
     db_dump_leagues_finance: '/var/log/restic/dump-leagues_finance.log'
     db_dump_queen: '/var/log/restic/dump-queen.log'
+    db_dump_bnb_office: '/var/log/restic/dump-bnb_office.log'
     db_dump_dontforget: '/var/log/restic/dump-dontforget.log'
     db_dump_firefly: '/var/log/restic/dump-firefly.log'
     forget: '/var/log/restic/forget.log'

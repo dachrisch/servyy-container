@@ -172,48 +172,15 @@
   tags:
     - user.docker.systemd.service.index
 
-# bnb-office daily MariaDB dump (hard requirement from
-# bumbleflies/bricksnbytes#105: daily, >=30d retention). Dumps land in
-# <repo>/bnb-office/.backup/ — gitignored here and covered by the restic
-# home backup (off-host via storage box). Local prune keeps 35 days.
+# bnb-office's daily MariaDB dump USED to be a unit here (WP-5b fixed its
+# `ExecStart=` and pointed it at `dbops`). WP-8R R7+R8 moved it out of this file
+# entirely: the dump now lands in the canonical `/home/cda/db-dumps/bnb_office/
+# current`, is carried by its own restic repo (`db-bnb`), and is run by
+# `db-backup@business.timer` — the tier unit every `dump_via: dbops` tenant uses.
+# Nothing about bnb stays hard-wired in this role.
 #
-# WP-5b (2026-11-18): the database is the business TIER now, and the old
-# one-liner exec'd into `bnb-office.db` (about to be stopped). It also never
-# worked: `ExecStart=` is not a shell, so `... | gzip > file && find ...` was
-# handed to `docker exec` as literal arguments — the dump went to the journal
-# (18k lines on 2026-11-18, no file ever created, exit 0). Two fixes: run
-# `dbops`, which owns the tenant's server from the inventory and the tier's
-# backup credential (`~/.dbops/business.env` — never root, never the app user),
-# and wrap both commands in `sh -c` so the pipeline and the prune actually run.
-- name: Create bnb-office backup directory
-  file:
-    path: "{{ (docker.remote_dir, 'bnb-office', '.backup') | path_join }}"
-    state: directory
-    owner: "{{ create_user }}"
-    group: "docker"
-    mode: '0750'
-  tags:
-    - user.docker.bnb-office
-
-- import_tasks: includes/oneshot.yml
-  vars:
-    service:
-      name: docker-bnb-office-dump
-      description: 'Daily MariaDB dump for bnb-office (BricksnBytes IBS)'
-      schedule: 'Mon..Sun *-*-* 02:30'
-      # `dbops dump` writes <dump_dir>/bnb_office-<UTC>.sql.gz through a
-      # .partial file (a restic run can never capture a half-written dump) and
-      # is idempotent about the directory. The prune glob `bnb*office-*` covers
-      # BOTH naming patterns — the pre-WP-5b one-liner's `bnboffice-*` and
-      # dbops' `bnb_office-*` — so the old files age out too. (`bnb?office-*`
-      # was the first attempt and does NOT match `bnboffice-*`: `?` consumes the
-      # `o`, so the pattern then demands a second `office`. Verified on the host
-      # 2026-11-18 by planting one file per pattern.)
-      # No parentheses/backslashes in here on purpose: ExecStart is parsed by
-      # systemd, not by a shell, and this is the string it must hand to `sh -c`.
-      command: >-
-        sh -c '{{ (remote_user_home, '.dbops', 'dbops') | path_join }} dump bnb_office
-        && find {{ (docker.remote_dir, 'bnb-office', '.backup') | path_join }}
-        -type f -name "bnb*office-*.sql.gz" -mtime +35 -delete'
-  tags:
-    - user.docker.bnb-office
+# The unit FILE is not removed by deleting this block (systemd keeps it and its
+# timer would keep firing), so the deploy that lands this change removes
+# `docker-bnb-office-dump.service`/`.timer` from
+# roles/restic/tasks/backup.yml ("Remove the legacy bnb dump unit"). Do not
+# re-add a dump unit here.

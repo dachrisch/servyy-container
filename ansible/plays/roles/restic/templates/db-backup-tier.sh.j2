@@ -1,0 +1,135 @@
+#!/bin/zsh
+# One backup run for ONE database tier (WP-8R R8).
+#
+# Replaces the per-tenant `db-dump-<tenant>.timer` / `.service` pairs (six of
+# them on servy before this) with `db-backup@<tier>.timer` / `.service`: one timer
+# per tier, ticking every 5 minutes, and ONE question per tick — "who is due?" —
+# answered by `dbops dump-due <tier>` from the tenant inventory.
+#
+# WHY A TICK RATHER THAN ONE TIMER LINE PER TENANT:
+#   * the dump TIMES stay in one place (dump_at on each row). Nothing here, and
+#     nothing in the unit file, names a time. Adding a tenant is a row; changing
+#     a time is one value;
+#   * a missed run (reboot, a long previous dump, a failed tick) is caught up by
+#     the next tick, because "due" compares the prepared set's mtime with the
+#     tenant's last scheduled instant — not "did the timer fire";
+#   * an immediate re-run is a no-op by construction (the set was just swapped,
+#     so it is newer than the last scheduled instant). Proven live in the R8
+#     report.
+#
+# WHY SERIAL, UNDER ONE LOCK (and one lock for ALL tiers):
+#   * the plan's schedule was chosen so no two dumps overlap on this host. One
+#     global lock keeps that true even when two tier timers come due on the same
+#     tick; the loser exits 0 immediately and its tenants are still due on the
+#     next tick 5 minutes later.
+#   * serial also keeps the per-tier log readable and the dumps' I/O bounded.
+#
+# FAILURE ISOLATION: every tenant runs in its own child process and its exit
+# status is recorded. One failing tenant NEVER skips the rest. The unit still
+# ends non-zero when any tenant failed, so `systemctl --user status` and the
+# journal show it — but the success of the others is not hidden by it.
+#
+# STALE-SOURCE GUARD SEMANTICS (preserved, not weakened): this script does NOT
+# dump anything itself. Each tenant's own generated `dump-<tenant>.sh`
+# (roles/restic/templates/dbops_dump.sh.j2) still writes into a sibling `new/`,
+# enforces the tenant's size floor, proves the file, and only then performs the
+# atomic `mv new current`. A killed dump therefore leaves `current/` exactly as
+# the last good run left it — and the dump-age probe (`db_dump_age_seconds`)
+# turns that into a page once the tenant passes its threshold. The repos that
+# already carry restic's own stale-source guard (`moodle-db`, `ls-binlog`) keep
+# it untouched: this unit must not and does not touch those scopes (the high
+# tier's physical set and binlog ship are R5's, moodle is R9's).
+set -uo pipefail
+
+if [ -f "/home/{{ create_user }}/.zshenv" ]; then
+    source "/home/{{ create_user }}/.zshenv"
+fi
+source "/home/{{ create_user }}/.zprezto/custom/functions/logdy"
+
+TIER="${1:-}"
+# Operator override, NEVER used by the timer (ExecStart passes only %i): dump
+# every dbops tenant of this tier now, ignoring "due". Same code path, same
+# per-tenant scripts, same lock and failure isolation.
+FORCE="${2:-}"
+case "$TIER" in
+{% for tier in db_backup_tiers %}    {{ tier }}) ;;
+{% endfor %}    *)
+        logdy error "db-backup: no such tier (or no dbops-managed tenant on it)" tier="$TIER"
+        exit 1
+        ;;
+esac
+
+DBOPS="{{ dbops_path }}"
+SCRIPT_DIR="{{ (remote_user_home, '.backup-scripts') | path_join }}"
+LOCK="{{ (remote_user_home, '.cache', 'db-backup.lock') | path_join }}"
+LOG_FILE="{{ tier_log_dir }}/db-backup-$TIER.log"
+
+export LOGDY_ALSO_TO_FILE="$LOG_FILE"
+
+# ~/.cache is excluded from every restic scope and is disk-backed (NOT /tmp: see
+# WP-8R R12 — a tmpfs there swallowed restic's temp packs once already).
+mkdir -p -m 0700 "{{ (remote_user_home, '.cache') | path_join }}"
+
+# fd 9 + `flock -n`: a tick that finds another tier (or a manual run) holding the
+# lock is NOT a failure — it is the serialisation working. Exit 0 so systemd does
+# not mark the unit failed for doing the right thing.
+exec 9>"$LOCK"
+if ! flock -n 9; then
+    logdy info "another db-backup run holds the lock; leaving this tick to it" tier="$TIER"
+    exit 0
+fi
+
+if [ ! -x "$DBOPS" ]; then
+    logdy error "dbops not found" path="$DBOPS"
+    exit 1
+fi
+
+if [ "$FORCE" = "--force" ]; then
+    logdy info "force run: ignoring the due computation" tier="$TIER"
+    DUE=$("$DBOPS" dump-due "$TIER" --force)
+else
+    DUE=$("$DBOPS" dump-due "$TIER")
+fi
+DUE_RC=$?
+if [ "$DUE_RC" -ne 0 ]; then
+    logdy error "dbops dump-due failed; refusing to guess who is due" tier="$TIER" exit_code="$DUE_RC"
+    exit 1
+fi
+
+if [ -z "$DUE" ]; then
+    logdy info "no tenant due" tier="$TIER"
+    exit 0
+fi
+
+logdy info "tenants due" tier="$TIER" tenants="$(echo $DUE | tr '\n' ' ')"
+
+RUN=0
+FAILED=0
+FAILED_LIST=""
+for t in ${(f)DUE}; do
+    [ -n "$t" ] || continue
+    script="$SCRIPT_DIR/dump-$t.sh"
+    if [ ! -x "$script" ]; then
+        logdy error "no executable dump script for a due tenant" tier="$TIER" tenant="$t" path="$script"
+        FAILED=$((FAILED + 1))
+        FAILED_LIST="$FAILED_LIST $t"
+        continue
+    fi
+    if "$script"; then
+        RUN=$((RUN + 1))
+    else
+        rc=$?
+        # Record and CONTINUE: one tenant's failure must not skip the rest.
+        logdy error "tenant dump failed" tier="$TIER" tenant="$t" exit_code="$rc"
+        FAILED=$((FAILED + 1))
+        FAILED_LIST="$FAILED_LIST $t"
+    fi
+done
+
+if [ "$FAILED" -gt 0 ]; then
+    logdy error "tier run finished with failures" tier="$TIER" dumped="$RUN" failed="$FAILED" tenants="$FAILED_LIST"
+    exit 1
+fi
+
+logdy info "tier run finished" tier="$TIER" dumped="$RUN"
+exit 0

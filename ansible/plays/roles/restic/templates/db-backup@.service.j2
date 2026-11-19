@@ -1,0 +1,15 @@
+[Unit]
+Description=Database dumps for the %i tier (WP-8R R8)
+# ONE instance per tier: db-backup@business, db-backup@private, …
+# WHO runs is decided by the inventory at run time (`dbops dump-due %i`), so this
+# file names no tenant and no time. A tier whose tenants are all dumped by
+# another mechanism has no instance enabled — the roster is rendered from
+# `db_tenants[*].dump_via`.
+
+[Service]
+Type=oneshot
+ExecStart={{ (remote_user_home, '.backup-scripts', 'db-backup-tier.sh') | path_join }} %i
+# A dump that is still running when the next 5-minute tick arrives must not be
+# started twice: the script's own flock already serialises (and exits 0), and
+# this is the same statement to systemd itself.
+TimeoutStartSec=3600

@@ -269,6 +269,15 @@ jobs:
           cd ansible/tests/fail2ban
           python -m unittest -v test_blocklist_regex
 
+      # WP-8R R8: `dbops dump-due` decides who the one db-backup@<tier> unit
+      # dumps. The test renders the real template and proves the three behaviours
+      # the unit depends on: nothing due on an immediate re-run, a missed run is
+      # caught up, and a tenant owned by another mechanism is never returned.
+      - name: Run dbops dump-due tests
+        run: |
+          cd ansible/tests/dbops_dump_due
+          python -m unittest -v test_dump_due
+
   molecule-test:
     name: Molecule Test (${{ matrix.role }}/${{ matrix.scenario }})
     needs: [lint-yaml, lint-ansible, lint-python, syntax-check]

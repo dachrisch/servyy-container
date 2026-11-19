@@ -16,7 +16,24 @@
 #   user                  the tenant's own scoped user (never root — D4)
 #   dump_schedule         what runs TODAY: 'hourly', 'daily HH:MM', or 'none'
 #   dump_at               the HH:MM the dump timer fires (mirrors dump_schedule;
-#                         '' when dump_schedule is none)
+#                         '' when dump_schedule is none). WP-8R R8: this is the
+#                         ONLY place a dump time is written down — `dbops
+#                         dump-due <tier>` derives "is this tenant due" from
+#                         schedule + this field + the mtime of its `current/`.
+#                         'HH:MM' for daily jobs, 'MM' for hourly ones.
+#   dump_via              WHICH mechanism produces the dump:
+#                           dbops          — `dbops dump <tenant>`, driven by the
+#                                            tier's ONE db-backup@<tier> unit (R8)
+#                           moodle-dump    — roles/restic/templates/moodle_dump.sh.j2
+#                                            (its own unit until WP-8R R9 converges it)
+#                           mariadb-backup — the high tier's physical prepared set
+#                                            (mariadb-backup-ls + the binlog ship, R5;
+#                                            never a logical dump)
+#                           none           — nothing dumps this tenant (nonprod only)
+#                         WP-8R R8: `db-backup@<tier>` is rendered from THIS field,
+#                         so a new tenant is picked up by the tier unit by adding
+#                         a row — and an old per-tenant dump unit is removed by the
+#                         deploy for every tenant that says dbops.
 #   dump_dir              directory the dump lands in ('' = none today); the
 #                         CURRENT file lives in <dump_dir>/current, which is what
 #                         the restic repo snapshots
@@ -52,12 +69,29 @@
 #                         container is actually running)
 #   compose_service       GUARD-ONLY: the compose service inside that file
 #
-# `dump_schedule` / `dump_dir` / `restic_repo` mirror the timers and scripts that
-# exist today (mariadb-backup-ls, moodle-dump + restic-backup-moodle-db, and since
-# WP-5b the bnb dump, which already runs through `dbops dump bnb_office`); since
-# WP-8R R3/R4/R6 the five nightly `dbops`/`pg_dump` jobs are described here too,
-# and their scripts + timers are RENDERED from this file
+# `dump_schedule` / `dump_at` / `dump_via` / `dump_dir` / `restic_repo` mirror the
+# timers and scripts that exist today (mariadb-backup-ls, moodle-dump +
+# restic-backup-moodle-db, and since WP-5b the bnb dump, which already runs
+# through `dbops dump bnb_office`); since WP-8R R3/R4/R6 the nightly `dbops` jobs
+# are described here too, and their scripts are RENDERED from this file
 # (roles/restic/tasks/backup.yml) rather than hand-wired.
+#
+# WP-8R R7 (2026-11-19): `bnb_office` no longer rides the `home` FILE repo. Its
+# dump moved to the canonical root (/home/cda/db-dumps/bnb_office) and its own
+# repo (`db-bnb`), because a customer's bookkeeping data inside a file backup is
+# the wrong scope twice over: `home`'s retention (48 hourly + 14 daily) is not the
+# tenant's, and a timestamped dump file inside an hourly file snapshot makes
+# `restic diff` churn on bytes that never change for a day. Every dump-backed
+# tenant now lives under `/home/cda/db-dumps/<tenant>/current` — one root, one
+# rule: a dump is snapshotted by the tenant's repo and by nothing else.
+#
+# WP-8R R8 (2026-11-19): ONE `db-backup@<tier>` unit per tier replaces the
+# per-tenant `db-dump-<tenant>.timer/.service` pairs. The unit runs every 5
+# minutes and asks `dbops dump-due <tier>` who is due (from `dump_schedule` +
+# `dump_at` + the mtime of `<dump_dir>/current`), then runs each tenant's
+# existing dump script in turn under one flock, so a failure is isolated per
+# tenant and a killed dump leaves `current/` at the last good set. The dump
+# TIMES stay exactly as declared here — nothing re-hardcodes them.
 #
 # The `size_floor_bytes` / `probe_minutes` / `severity` facts appear here AND on
 # the tenant's `backup_targets` row. That duplication is deliberate and guarded:
@@ -378,6 +412,45 @@ backup_targets:
     dump_log_label: dump-queen
     dump_log_threshold_seconds: 93600
 
+  # --- WP-8R R7: bnb_office's own repo (business tenant, customer data) ------
+  # Until R7 this tenant had NO repo: `restic_repo: home` pointed at the file
+  # backup, and the dumps were flat timestamped files in
+  # `servyy-container/bnb-office/.backup` (one `.sql.gz` per run, no `current/`).
+  # Three consequences, all measured on 2026-11-19: the customer's bookkeeping
+  # data sat inside a FILE scope; `home` re-uploaded the dump bytes every hour
+  # (a new timestamped name is new data even when the SQL is identical); and the
+  # dump inherited `home`'s retention (48 hourly / 14 daily) instead of the
+  # tenant's.
+  #
+  # Name: `db-bnb` — the same short form as `db-lf` (leagues_finance) and
+  # `db-queen`, and NOT derived from the container/dir name, so it stays stable
+  # if the app is ever renamed. Retention `db_daily` is the plan's decision
+  # (2026-11-18): bnb keeps the same profile as the private tenants —
+  # 30 dailies + 8 weekly + 6 monthly — because the repo IS the artefact for a
+  # customer's bookkeeping data. It is a named profile, not an inline map, so a
+  # typo fails plays/tasks/restic_wiring.yml instead of pruning at the wrong rate.
+  - name: db-bnb
+    kind: db-dump
+    tenant: bnb_office
+    enabled_by: servy
+    cadence: daily
+    dump_at: '02:30'
+    dump_format: logical
+    retention: db_daily
+    probe_minutes: 1560
+    severity: high
+    # 8 KiB: measured 52 372 B (2026-11-18) / 52 357 B (2026-11-19). An empty
+    # `mariadb-dump --databases` of a schema with tables still gzips to a few KiB,
+    # so this catches "dumped the wrong (empty) database" while leaving 6x room
+    # for the tenant's data to shrink.
+    size_floor_bytes: 8192
+    log_key: backup_db_bnb
+    log_label: restic-backup-db-bnb
+    log_threshold_seconds: 93600
+    dump_log_key: db_dump_bnb_office
+    dump_log_label: dump-bnb_office
+    dump_log_threshold_seconds: 93600
+
   # --- WP-8R R6: dontforget (private tier). Its own repo, like every other
   # tenant: `db-private` belongs to PhotoPrism, and a repo per tenant is what
   # makes one tenant's disaster not touch another's history. All five share the
@@ -437,6 +510,11 @@ db_tenants:
     user: web35_8
     # Physical mariadb-backup (hourly) + binlog PITR — not a logical dump (D10).
     dump_schedule: hourly
+    dump_at: '40'
+    # R8: NOT a `dbops` tenant, and it must never become one by accident — the
+    # high tier's protection is the physical prepared set plus the 5-minute
+    # binlog tail (R5), and both have their own units.
+    dump_via: mariadb-backup
     dump_dir: /var/jail/home/leaguesphere/container/deployed/mysql-backup/current
     restic_repo: db
     drill: weekly
@@ -470,6 +548,8 @@ db_tenants:
     user: leaguesphere_stage
     # A restore target, not a backup source: nothing dumps it today.
     dump_schedule: none
+    dump_at: ''
+    dump_via: none
     dump_dir: ''
     restic_repo: ''
     drill: none
@@ -488,6 +568,8 @@ db_tenants:
     user: demo_user
     # Dropped and recreated nightly by the demo entrypoint; never dumped.
     dump_schedule: none
+    dump_at: ''
+    dump_via: none
     dump_dir: ''
     restic_repo: ''
     drill: none
@@ -516,6 +598,13 @@ db_tenants:
     db: moodle
     user: moodle
     dump_schedule: hourly
+    dump_at: '40'
+    # R8: `moodle-dump` (roles/restic/templates/moodle_dump.sh.j2, its own timer)
+    # until WP-8R R9 converges it on dbops. The plan is explicit: do NOT converge
+    # Moodle inside its WP-7b rollback window (closes ~2026-11-25). When R9 runs,
+    # this word becomes `dbops` (plus dump_dir/dump_at) and the tier unit picks
+    # the tenant up with no other edit — the business tier already has its unit.
+    dump_via: moodle-dump
     dump_dir: /home/cda/servyy-container/moodle/data/db-backup/current
     restic_repo: moodle-db
     drill: weekly
@@ -549,19 +638,27 @@ db_tenants:
     db: ibs
     user: ibs_app
     dump_schedule: 'daily 02:30'
-    dump_dir: /home/cda/servyy-container/bnb-office/.backup
-    # No repo of its own: the dumps ride the hourly `home` snapshot.
-    restic_repo: home
+    dump_at: '02:30'
+    dump_via: dbops
+    # WP-8R R7 (2026-11-19): the canonical root, not the app's `.backup/`. Every
+    # dump-backed tenant now lives under /home/cda/db-dumps/<tenant>, so ONE rule
+    # describes them all: restic snapshots `<dump_dir>/current` (written by a
+    # sibling `new/` + atomic swap, floor-checked) and `home` excludes the root.
+    # The old flat directory is excluded from `home` as well (vars/restic.yml) —
+    # after R7 nothing writes there, and a stale file must not ride the file repo
+    # back into a backup whose retention is not this tenant's.
+    dump_dir: /home/cda/db-dumps/bnb_office
+    # WP-8R R7: a customer's bookkeeping data gets its own repo, like every other
+    # business tenant (db-lf, db-queen). See the `db-bnb` backup_targets row.
+    restic_repo: db-bnb
     drill: monthly
-    # WP-8R R2b: this tenant had NO dump-age series, and its snapshot age could
-    # never stand in for one — the dumps ride `home`, which keeps succeeding
-    # while the daily `dbops dump bnb_office` (docker-bnb-office-dump.timer)
-    # writes nothing. The dump is one timestamped .sql.gz per run written INTO
-    # `.backup/` (flat, no `current/`), so the DIRECTORY's mtime advances with
-    # every dump and the probe's fallback path (no `<dir>/current`) is correct
-    # here. 26 h = the daily cadence + slack; high, because ibs is a customer's
-    # bookkeeping data and the dump is its only copy (WP-5b moved it to the
-    # business tier).
+    # WP-8R R7: the dump now lands in `<dump_dir>/current`, so the dump-age probe
+    # takes its PRIMARY path (stat of `current/`) instead of the flat-layout
+    # fallback the old `.backup/` directory needed — same 26 h threshold, same
+    # `high` severity, and the probe file needs no change (it already prefers
+    # `current/` when it exists). 26 h = the daily cadence + slack; high, because
+    # ibs is a customer's bookkeeping data and the dump is its only copy.
+    size_floor_bytes: 8192
     probe_minutes: 1560
     severity: high
     max_user_connections: 0
@@ -594,6 +691,7 @@ db_tenants:
     user: leagues_finance
     dump_schedule: 'daily 01:15'
     dump_at: '01:15'
+    dump_via: dbops
     dump_dir: /home/cda/db-dumps/leagues_finance
     restic_repo: db-lf
     drill: monthly
@@ -616,6 +714,7 @@ db_tenants:
     user: queen
     dump_schedule: 'daily 01:25'
     dump_at: '01:25'
+    dump_via: dbops
     dump_dir: /home/cda/db-dumps/queen
     restic_repo: db-queen
     drill: monthly
@@ -648,6 +747,7 @@ db_tenants:
     user: photoprism
     dump_schedule: 'daily 00:45'
     dump_at: '00:45'
+    dump_via: dbops
     dump_dir: /home/cda/db-dumps/photoprism
     restic_repo: db-private
     drill: monthly
@@ -673,6 +773,7 @@ db_tenants:
     user: dontforget
     dump_schedule: 'daily 01:35'
     dump_at: '01:35'
+    dump_via: dbops
     dump_dir: /home/cda/db-dumps/dontforget
     restic_repo: db-private-mongo
     drill: monthly
@@ -702,6 +803,7 @@ db_tenants:
     user: firefly
     dump_schedule: 'daily 01:45'
     dump_at: '01:45'
+    dump_via: dbops
     dump_dir: /home/cda/db-dumps/firefly
     restic_repo: db-private-firefly
     drill: monthly

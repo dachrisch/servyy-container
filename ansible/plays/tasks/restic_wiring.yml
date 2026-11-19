@@ -185,6 +185,93 @@
       loop_control:
         label: "{{ item.name }}"
 
+    # --- WP-8R R8: the dump mechanism is a row, and the tier unit is generated --
+    # The unit `db-backup@<tier>` runs whatever `dbops dump-due <tier>` returns,
+    # so the row has to be complete enough for that question to have one answer.
+    # These checks are the typo guards for the fields R8 added: a `dbops` row
+    # without a time, a directory, a floor or a schedule entry would either dump
+    # nothing (and page nobody) or dump a database with no size floor.
+    - name: Fail when a tenant declares an unknown dump mechanism
+      ansible.builtin.assert:
+        that:
+          - item.dump_via | default('') in ['dbops', 'moodle-dump', 'mariadb-backup', 'none']
+        fail_msg: >-
+          db_tenants '{{ item.tenant }}': dump_via '{{ item.dump_via | default('-') }}'
+          must be one of dbops | moodle-dump | mariadb-backup | none. `dbops`
+          tenants are driven by the tier's db-backup@<tier> unit (WP-8R R8);
+          anything else must be an explicit mechanism, never an omission.
+        quiet: true
+      loop: "{{ db_tenants }}"
+      loop_control:
+        label: "{{ item.tenant }}"
+
+    - name: Fail when a dbops tenant is missing what the due computation reads
+      ansible.builtin.assert:
+        that:
+          - item.dump_at | default('') | length > 0
+          - item.dump_dir | default('') | length > 0
+          - item.restic_repo | default('') | length > 0
+          - item.size_floor_bytes | default(0) | int > 0
+          - item.dump_schedule | default('none') is match('^(hourly|daily [0-9]{2}:[0-9]{2})$')
+          - ('dump_' ~ item.tenant) in restic.schedules
+        fail_msg: >-
+          db_tenants '{{ item.tenant }}': dump_via is dbops, so the tier unit needs
+          dump_at ('{{ item.dump_at | default('-') }}'), dump_dir
+          ('{{ item.dump_dir | default('-') }}'), restic_repo
+          ('{{ item.restic_repo | default('-') }}'), a size_floor_bytes > 0
+          ('{{ item.size_floor_bytes | default(0) }}') and a dump_schedule of
+          'hourly' or 'daily HH:MM' ('{{ item.dump_schedule | default('-') }}').
+          It also needs a restic.schedules.dump_{{ item.tenant }} entry in
+          vars/restic.yml. Without these, `dbops dump-due` either dumps nothing
+          forever or dumps without the floor that catches an empty database.
+        quiet: true
+      loop: "{{ db_tenants | selectattr('dump_via', 'defined') | selectattr('dump_via', 'equalto', 'dbops') | list }}"
+      loop_control:
+        label: "{{ item.tenant }}"
+
+    # `dump_at` is the ONLY place a time is written down: 'HH:MM' for a daily
+    # tenant, 'MM' for an hourly one (both are what dbops parses). A value in the
+    # other shape would be read as a different clock time without an error.
+    - name: Fail when a tenant's dump_at does not match its cadence shape
+      ansible.builtin.assert:
+        that:
+          - (item.dump_schedule is match('^hourly$') and item.dump_at is match('^[0-9]{2}$'))
+            or (item.dump_schedule is match('^daily') and item.dump_at is match('^[0-5][0-9]:[0-5][0-9]$'))
+            or item.dump_schedule == 'none'
+        fail_msg: >-
+          db_tenants '{{ item.tenant }}': dump_schedule '{{ item.dump_schedule }}'
+          with dump_at '{{ item.dump_at }}'. An hourly tenant carries the MINUTE
+          ('40'); a daily tenant carries HH:MM ('02:30'); a tenant with
+          dump_schedule none carries ''. `dbops dump-due` derives the tenant's
+          last scheduled instant from exactly these two fields.
+        quiet: true
+      loop: "{{ db_tenants }}"
+      loop_control:
+        label: "{{ item.tenant }}"
+
+    - name: Fail when a non-nonprod tenant says nothing dumps it
+      ansible.builtin.assert:
+        that:
+          - item.tier == 'nonprod'
+        fail_msg: >-
+          db_tenants '{{ item.tenant }}' (tier '{{ item.tier }}') sets dump_via:
+          none. Only nonprod may have no dump: stage is re-synced nightly and the
+          demo reseeds itself. A backed-up tenant must name its mechanism.
+        quiet: true
+      loop: "{{ db_tenants | selectattr('dump_via', 'defined') | selectattr('dump_via', 'equalto', 'none') | list }}"
+      loop_control:
+        label: "{{ item.tenant }}"
+
+    - name: Fail when the tier timer has no schedule in vars/restic.yml
+      ansible.builtin.assert:
+        that:
+          - "'db_backup_tier' in restic.schedules"
+        fail_msg: >-
+          vars/restic.yml has no restic.schedules.db_backup_tier. The WP-8R R8
+          template unit db-backup@.timer renders its OnCalendar from that key;
+          without it the timer fails to render on every tier.
+        quiet: true
+
     # --- restore drills (WP-8R R11) ----------------------------------------
     # `drill` is a property of the TENANT row, like every other cadence. It must
     # be stated, not inferred: a new tenant that silently defaults to "not
