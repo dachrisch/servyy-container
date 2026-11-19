@@ -1,0 +1,33 @@
+{# Mongo tenant users for tier {{ db_tier_name }} (WP-9).
+   Mirrors the retired shared_mongo_users/ensure_users.js.j2: create a missing
+   user, repair roles that drifted, and print a JSON array of what changed
+   ("[]" = nothing) so the role's `changed` is decided by mongo, not by hope.
+   Every role is scoped to the tenant's OWN database: no admin, no root, no
+   role on another tenant's db. #}
+const users = {{ db_tier_mongo_users | to_json }};
+const rotate = {{ db_tier_mongo_rotate_passwords | bool | to_json }};
+const changed = [];
+const roleKey = function (list) {
+  return JSON.stringify(list.map(function (r) { return r.role + '@' + r.db; }).sort());
+};
+users.forEach(function (u) {
+  const d = db.getSiblingDB(u.database);
+  const roles = (u.roles || ['readWrite']).map(function (r) {
+    return { role: r, db: u.database };
+  });
+  const current = d.getUser(u.name);
+  if (current === null) {
+    d.createUser({ user: u.name, pwd: u.password, roles: roles });
+    changed.push(u.name + ':created');
+    return;
+  }
+  if (roleKey(current.roles) !== roleKey(roles)) {
+    d.updateUser(u.name, { roles: roles });
+    changed.push(u.name + ':roles');
+  }
+  if (rotate) {
+    d.updateUser(u.name, { pwd: u.password });
+    changed.push(u.name + ':password');
+  }
+});
+print(JSON.stringify(changed));

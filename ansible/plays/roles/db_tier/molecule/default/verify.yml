@@ -5,6 +5,8 @@
   gather_facts: false
   vars:
     dbtest: db-tier-test.mariadb
+    mongotest: db-tier-test.mongo
+    mongoroot: "mongodb://private_admin:molecule-mongo-root@127.0.0.1:27017/admin?authSource=admin"
   tasks:
     - name: Each tenant user reads its OWN database
       community.docker.docker_container_exec:
@@ -121,4 +123,107 @@
       ansible.builtin.assert:
         that:
           - tier_container.container is none or tier_container.failed | default(false)
+        quiet: true
+
+    # --- WP-9: the mongo side ------------------------------------------------
+    - name: Each mongo tenant user reads its OWN database
+      community.docker.docker_container_exec:
+        container: "{{mongotest}}"
+        command: >-
+          sh -c 'exec mongosh --quiet "mongodb://{{item.user}}:{{item.pw}}@127.0.0.1:27017/{{item.db}}?authSource={{item.db}}"
+          --eval "db.widgets.countDocuments({})"'
+      loop:
+        - {user: tenant_c, pw: molecule-tenant-c, db: tenant_c}
+        - {user: tenant_d, pw: molecule-tenant-d, db: tenant_d}
+      loop_control:
+        label: "{{item.user}}"
+      register: mongo_own
+      changed_when: false
+
+    - name: Assert each mongo user saw its own one document
+      ansible.builtin.assert:
+        that:
+          - item.stdout | trim == '1'
+        fail_msg: >-
+          {{item.item.user}} could not read its own collection (got
+          '{{item.stdout | default('')}}' / '{{item.stderr | default('')}}').
+        quiet: true
+      loop: "{{mongo_own.results}}"
+      loop_control:
+        label: "{{item.item.user}}"
+
+    - name: A mongo tenant user CANNOT read the other tenant's database
+      community.docker.docker_container_exec:
+        container: "{{mongotest}}"
+        command: >-
+          sh -c 'exec mongosh --quiet "mongodb://{{item.user}}:{{item.pw}}@127.0.0.1:27017/{{item.other}}?authSource={{item.user}}"
+          --eval "db.widgets.countDocuments({})"'
+      loop:
+        - {user: tenant_c, pw: molecule-tenant-c, other: tenant_d}
+        - {user: tenant_d, pw: molecule-tenant-d, other: tenant_c}
+      loop_control:
+        label: "{{item.user}} -> {{item.other}}"
+      register: mongo_cross
+      failed_when: false
+      changed_when: false
+
+    - name: Assert every cross-database mongo read was refused
+      ansible.builtin.assert:
+        that:
+          - item.rc | default(0) != 0
+          - "'not authorized' in (item.stderr | default('') | lower)"
+        fail_msg: >-
+          {{item.item.user}} could read {{item.item.other}} — the mongo roles are
+          not scoped to one database.
+        quiet: true
+      loop: "{{mongo_cross.results}}"
+      loop_control:
+        label: "{{item.item.user}}"
+
+    - name: Read the roles each mongo user holds
+      community.docker.docker_container_exec:
+        container: "{{mongotest}}"
+        command: >-
+          sh -c 'exec mongosh --quiet "{{mongoroot}}" --eval
+          "const u=db.getSiblingDB(\"{{item.db}}\").getUser(\"{{item.user}}\");
+           print(JSON.stringify(u.roles.sort((a,b)=>a.role.localeCompare(b.role))))"'
+      loop:
+        - {user: tenant_c, db: tenant_c}
+        - {user: tenant_d, db: tenant_d}
+      loop_control:
+        label: "{{item.user}}"
+      register: mongo_roles
+      changed_when: false
+
+    - name: Assert every mongo role is scoped to the user's own database
+      ansible.builtin.assert:
+        that:
+          - "(item.stdout | from_json) == [{'role': 'dbAdmin', 'db': item.item.db}, {'role': 'readWrite', 'db': item.item.db}]"
+        fail_msg: >-
+          {{item.item.user}} holds {{item.stdout | default('')}} — expected
+          readWrite+dbAdmin on {{item.item.db}} and nothing else (no admin, no
+          root).
+        quiet: true
+      loop: "{{mongo_roles.results}}"
+      loop_control:
+        label: "{{item.item.user}}"
+
+    - name: The MariaDB-only tier created no mongo users
+      community.docker.docker_container_exec:
+        container: "{{mongotest}}"
+        command: >-
+          sh -c 'exec mongosh --quiet "{{mongoroot}}" --eval
+          "print([db.getSiblingDB(\"tenant_a\").getUser(\"tenant_a\"),
+                  db.getSiblingDB(\"tenant_b\").getUser(\"tenant_b\")].filter(Boolean).length)"'
+      register: mongo_foreign_users
+      changed_when: false
+
+    - name: Assert the MariaDB tenants never reached the mongod
+      ansible.builtin.assert:
+        that:
+          - mongo_foreign_users.stdout | trim == '0'
+        fail_msg: >-
+          A MariaDB tenant of the business play was created on the mongod:
+          {{mongo_foreign_users.stdout | default('')}}. tasks/mongo.yml must be
+          gated on mongo rows only.
         quiet: true

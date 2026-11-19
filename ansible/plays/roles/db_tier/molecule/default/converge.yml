@@ -42,12 +42,76 @@
         retiring: false
         compose_dir: ''
         compose_service: ''
-  # No mongo tenant on this tier: nothing in the role may reach for mongo.
+  # The business play deliberately has NO mongo tenant: it proves the MariaDB
+  # path does not reach for a mongod when the inventory has none (WP-9's split).
+  # The mongo path is its own play below.
   #
   # include_role (not a play-level `roles:` entry) so the role is resolved at
   # run time from ANSIBLE_ROLES_PATH, like the docker_service scenario — and so
   # `ansible-lint` can check this playbook without molecule's roles path.
   tasks:
     - name: Apply the tier
+      ansible.builtin.include_role:
+        name: db_tier
+
+# WP-9: the mongo side of the same role. A mongo tier gets db-scoped users on
+# its mongod; the MariaDB play above must not have created any (it has no mongo
+# tenant, and tasks/mongo.yml is gated on one). Isolation is asserted across
+# TENANTS on the one server: no user may read the other's database.
+- name: Converge — roles/db_tier on a two-tenant mongo tier
+  hosts: all
+  gather_facts: true
+  vars:
+    remote_user_home: "/home/{{ ansible_user | default('root') }}"
+    docker:
+      local_dir: "/tmp"           # no compose file for this tier: render skips
+    db_tier_name: private
+    db_tier_user_passwords: {}
+    # Stands in for db-private.mongo, which the committed compose owns.
+    db_tier_mongo_server_name: db-tier-test.mongo
+    db_tier_mongo_root_password: molecule-mongo-root
+    # Same shape tasks/tenant_passwords.yml builds from secrets.yml.
+    db_tier_mongo_user_passwords:
+      tenant_c:
+        name: tenant_c
+        password: molecule-tenant-c
+        database: tenant_c
+        roles: [readWrite, dbAdmin]
+      tenant_d:
+        name: tenant_d
+        password: molecule-tenant-d
+        database: tenant_d
+        roles: [readWrite, dbAdmin]
+    db_tenants:
+      - tenant: tenant_c
+        tier: private
+        engine: mongo
+        server: db-tier-test.mongo
+        db: tenant_c
+        user: tenant_c
+        dump_schedule: none
+        dump_dir: "/tmp/dbops-dumps"
+        restic_repo: ''
+        max_user_connections: 0
+        max_statement_time: 0
+        retiring: false
+        compose_dir: ''
+        compose_service: ''
+      - tenant: tenant_d
+        tier: private
+        engine: mongo
+        server: db-tier-test.mongo
+        db: tenant_d
+        user: tenant_d
+        dump_schedule: none
+        dump_dir: "/tmp/dbops-dumps"
+        restic_repo: ''
+        max_user_connections: 0
+        max_statement_time: 0
+        retiring: false
+        compose_dir: ''
+        compose_service: ''
+  tasks:
+    - name: Apply the tier's mongo users
       ansible.builtin.include_role:
         name: db_tier

@@ -1,0 +1,98 @@
+---
+# Move mongo tenants between servers — the WP-9 copy gate.
+#
+#   # rehearsal: apps stay up; the target may lag by the writes that happen
+#   # during the copy, but no collection may be lost or empty
+#   ansible-playbook plays/mongo_tier_copy.yml -i production -l servy.lehel.xyz \
+#       -e mongo_copy_target=db-business.mongo \
+#       -e '{"mongo_copy_tenants":["leagues_finance","queen"]}' \
+#       -e mongo_copy_require_exact=false
+#
+#   # cutover window: stop the writers, copy, and require EXACT counts
+#   ansible-playbook plays/mongo_tier_copy.yml -i production -l servy.lehel.xyz \
+#       -e mongo_copy_target=db-business.mongo \
+#       -e '{"mongo_copy_tenants":["leagues_finance","queen"]}' \
+#       -e '{"mongo_copy_apps":["leagues-finance.finance-api","finance.queen"]}'
+#
+# WHAT IT DOES, per tenant, and nothing else:
+#   1. (cutover) stop the app containers that write to the tenant — the caller
+#      names them; the play never guesses;
+#   2. `dbops dump <tenant>` against the SOURCE container (DBOPS_SERVER), which
+#      writes the tenant's normal dump file (same dir, same .partial rename);
+#   3. `dbops restore <tenant> <file> --force` against the TARGET container;
+#   4. `dbops verify <tenant> --against <target>` (exact counts) or `--drill`
+#      (rehearsal: structure identical, no populated collection empty, delta
+#      printed);
+#   5. compare every collection's INDEX NAMES on both sides.
+#
+# It never starts an app, never drops anything on the source, and never deletes
+# a dump. The following full deploy re-creates the apps against the target.
+#
+# The inventory rows may already name the target (they do in the WP-9 branch):
+# every command passes DBOPS_SERVER explicitly for the SOURCE side, so the play
+# works before and after the row moves.
+- name: Copy mongo tenants into a tier
+  hosts: all
+  strategy: linear
+  remote_user: "{{ create_user }}"
+  become: true
+  become_user: "{{ create_user }}"
+  vars_files:
+    - vars/default.yml
+    - vars/db_tenants.yml
+    - vars/secrets.yml
+  vars:
+    mongo_copy_source: shared.mongo
+    mongo_copy_tenants: []
+    mongo_copy_apps: []
+    # false = rehearsal (drill policy), true = cutover (exact per-collection counts)
+    mongo_copy_require_exact: true
+    mongo_copy_dbops: "{{ (remote_user_home, '.dbops', 'dbops') | path_join }}"
+  tasks:
+    - name: Validate the copy request
+      ansible.builtin.assert:
+        that:
+          - mongo_copy_tenants | length > 0
+          - mongo_copy_target | default('') | length > 0
+          - db_tenants | selectattr('tenant', 'in', mongo_copy_tenants)
+                       | rejectattr('engine', 'equalto', 'mongo') | list | length == 0
+          - db_tenants | selectattr('tenant', 'in', mongo_copy_tenants) | list | length
+            == mongo_copy_tenants | length
+        fail_msg: >-
+          mongo_copy_target must be a container name and every requested tenant
+          must be an existing MOngo row in db_tenants.yml. Requested:
+          {{ mongo_copy_tenants | join(', ') }}.
+        quiet: true
+
+    - name: Check both servers are running
+      ansible.builtin.command:
+        argv: [docker, inspect, --format, "{{ '{{.State.Running}}' }}", "{{ item }}"]
+      loop: "{{ [mongo_copy_source, mongo_copy_target] | unique }}"
+      register: mongo_copy_state
+      changed_when: false
+      failed_when: false
+
+    - name: Refuse to copy into or out of a stopped server
+      ansible.builtin.assert:
+        that:
+          - item.stdout | default('') | trim == 'true'
+        fail_msg: >-
+          {{ item.item }} is not running. Both the source (the rollback copy) and
+          the target must accept authenticated work before anything is copied.
+        quiet: true
+      loop: "{{ mongo_copy_state.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Stop the apps that write to these tenants
+      ansible.builtin.shell: "docker stop {{ item | quote }}"
+      loop: "{{ mongo_copy_apps }}"
+      changed_when: true
+      when: mongo_copy_apps | length > 0
+
+    - name: Copy and verify each tenant
+      ansible.builtin.include_tasks: tasks/mongo_tier_copy_tenant.yml
+      loop: "{{ mongo_copy_tenants }}"
+      loop_control:
+        loop_var: mongo_copy_tenant
+        label: "{{ mongo_copy_tenant }}"

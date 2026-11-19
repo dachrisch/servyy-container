@@ -578,7 +578,11 @@ db_tenants:
   - tenant: leagues_finance
     tier: business
     engine: mongo
-    server: shared.mongo
+    # WP-9 (2026-11-19): moved off shared.mongo to the business tier's mongod.
+    # The database name and the db-scoped user are unchanged; only the host
+    # changed. `compose_dir`/`service` point the version guard at the tier's
+    # committed compose (the business tier's `mongo:` service), not at `shared`.
+    server: db-business.mongo
     db: leagues_finance
     user: leagues_finance
     dump_schedule: 'daily 01:15'
@@ -592,14 +596,15 @@ db_tenants:
     max_user_connections: 0
     max_statement_time: 0
     retiring: false
-    compose_dir: shared
+    compose_dir: db-business
     compose_service: mongo
 
   # WP-8R R6 (2026-11-18): as leagues_finance - no backup before this, own repo.
+  # WP-9 (2026-11-19): now on db-business.mongo, same scoped user.
   - tenant: queen
     tier: business
     engine: mongo
-    server: shared.mongo
+    server: db-business.mongo
     db: queen
     user: queen
     dump_schedule: 'daily 01:25'
@@ -613,7 +618,7 @@ db_tenants:
     max_user_connections: 0
     max_statement_time: 0
     retiring: false
-    compose_dir: shared
+    compose_dir: db-business
     compose_service: mongo
 
   # --- private: the operator's own data -----------------------------------
@@ -652,10 +657,11 @@ db_tenants:
   # kind before this - the data is a docker volume on /mnt, which the `root` repo
   # excludes and the `home` repo never covered; the only artefacts were two
   # ad-hoc archives that happened to sit in /home.
+  # WP-9 (2026-11-19): now on the private tier's mongod; dump dir/repo unchanged.
   - tenant: dontforget
     tier: private
     engine: mongo
-    server: shared.mongo
+    server: db-private.mongo
     db: dontforget
     user: dontforget
     dump_schedule: 'daily 01:35'
@@ -669,7 +675,7 @@ db_tenants:
     max_user_connections: 0
     max_statement_time: 0
     retiring: false
-    compose_dir: shared
+    compose_dir: db-private
     compose_service: mongo
 
   # INTERIM (WP-8R R3; deleted in WP-10 with `shared.db`): a daily `pg_dump -Fc`.
@@ -698,3 +704,29 @@ db_tenants:
     retiring: false
     compose_dir: shared
     compose_service: db
+
+# --- servers kept for rollback, with no tenant rows (WP-9) -------------------
+# The version guard compares every ACTIVE database server, and it derives that
+# set from `db_tenants`. A server that has been retired — every tenant moved off
+# it — would therefore disappear from the comparison while its container and
+# datadir are still there and still startable for the rollback week. That is
+# exactly the window in which a stray pull/manual `docker start` could put a
+# different minor line into the fleet unnoticed.
+#
+# `shared.mongo` (WP-9, 2026-11-19): STOPPED, not removed, and `shared_mongo_data`
+# is kept as the rollback copy. Delete this entry in the same change that
+# removes the container and the volume (one week after the cutover, WP-9's
+# cleanup step) — an entry whose container is gone is a harmless skip, but it
+# must not outlive the rollback on purpose.
+#
+# `compose_dir: ''`: the `mongo:` service is deliberately gone from
+# shared/docker-compose.yml, so there is no file to read the intended tag from.
+# The guard falls back to the RUNNING tag — the same documented exception as
+# leaguesphere.db — and a stopped container still reports its image.
+db_retired_servers:
+  - container: shared.mongo
+    engine: mongo
+    compose_dir: ''
+    service: ''
+    retiring: false
+    pinned_tag: ''

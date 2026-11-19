@@ -123,6 +123,18 @@
   tags:
     - always
 
+- name: Add retired servers that are still startable (WP-9)
+  # `db_tenants` only describes servers that hold a tenant. A server that was
+  # retired but kept for rollback (shared.mongo for a week after WP-9) still
+  # belongs in the comparison: it is stopped, not gone, and `docker start` is the
+  # documented rollback. `db_retired_servers` is the explicit list for exactly
+  # that window; an entry is removed together with its container/volume.
+  ansible.builtin.set_fact:
+    db_version_guard_servers: >-
+      {{ (db_version_guard_servers | default([])) + (db_retired_servers | default([])) }}
+  tags:
+    - always
+
 - name: Read the database compose files from the controller checkout
   ansible.builtin.slurp:
     src: "{{ (docker.local_dir, item.compose_dir, 'docker-compose.yml') | path_join }}"

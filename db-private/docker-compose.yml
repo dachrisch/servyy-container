@@ -1,11 +1,13 @@
-# private database tier — PhotoPrism (D3/D6), Firefly later (Phase 9).
+# private database tier — PhotoPrism (MariaDB) + dontforget (Mongo since WP-9);
+# Firefly's Postgres joins in WP-10 (D3/D6).
 # Backend-only project (like `shared`, `db-nonprod`, `db-business`): owns NO app
 # traffic, publishes no port. Consumers attach with:
 #   networks:
 #     backend:
 #       name: db_private_backend
 #       external: true
-# and reach mariadb:3306 on `db-private.mariadb`.
+# and reach mariadb:3306 on `db-private.mariadb` / mongo:27017 on
+# `db-private.mongo`.
 #
 # Plan: docs/plans/2026-11-17_db-tier-topology.md, Phase 5. WP-6a creates the
 # server and copies PhotoPrism's database; WP-6b points the app here.
@@ -96,6 +98,42 @@ services:
       retries: 5
       start_interval: 2s
       start_period: 60s
+
+  # --- Mongo (WP-9, Phase 8) ------------------------------------------------
+  # dontforget moved here off `shared.mongo`; its database name and its
+  # db-scoped user (`dontforget_app`) are unchanged. Keeping it on the PRIVATE
+  # tier is the D3 owner/business split — it is the operator's own data, not a
+  # business tenant's.
+  #
+  # No replica set: the app runs with transactions disabled, so one mongod is
+  # enough and there is no keyfile/oplog to operate.
+  mongo:
+    image: mongo:9.0
+    container_name: ${COMPOSE_PROJECT_NAME}.mongo
+    restart: unless-stopped
+    mem_limit: 384m
+    command:
+      - --wiredTigerCacheSizeGB
+      - "0.25"
+    # Rendered by roles/db_tier (0600): this tier's root pair only.
+    env_file:
+      - mongo.env
+    volumes:
+      # D13: bind mount on `/`; `shared_mongo_data` is the rollback copy, not a
+      # datadir for this server.
+      - ./data/mongo:/data/db
+    networks:
+      - backend
+    labels:
+      - traefik.enable=false
+      - com.centurylinklabs.watchtower.scope=db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_interval: 2s
+      start_period: 30s
 
 networks:
   backend:
