@@ -662,6 +662,17 @@ CSS = """
   .chip{display:inline-flex;align-items:baseline;gap:6px;border:1px solid var(--rule);
     background:var(--paper);padding:3px 7px;font-size:11px;line-height:1.3}
   .chip em{font-family:"IBM Plex Mono",monospace;font-style:normal;font-size:9.5px;color:var(--muted)}
+  .chip .tk{opacity:.9;letter-spacing:.06em}
+  .tk-high{color:var(--high)} .tk-nonprod{color:var(--nonprod)}
+  .tk-business{color:var(--business)} .tk-private{color:var(--private)}
+  .chips.tiers{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .tier-block{border:1px solid var(--rule);background:var(--paper);padding:5px 8px 6px;min-width:0}
+  .tier-h{display:flex;align-items:baseline;gap:6px;min-width:0}
+  .tier-h b{font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:500;
+    letter-spacing:.06em;text-transform:uppercase;color:var(--ink)}
+  .tier-s{display:block;font-family:"IBM Plex Mono",monospace;font-size:9px;
+    color:var(--muted);margin-top:2px;line-height:1.35;overflow-wrap:anywhere}
+  .tier-r{font-size:10.5px;line-height:1.35;color:#3c3d31;margin-top:3px}
   .dot{width:6px;height:6px;border-radius:50%;background:var(--rule);flex:0 0 auto;transform:translateY(-1px)}
   .d-high{background:var(--high)} .d-nonprod{background:var(--nonprod)}
   .d-business{background:var(--business)} .d-private{background:var(--private)}
@@ -690,6 +701,7 @@ CSS = """
     .lane-k{border-right:0;border-bottom:1px solid var(--rule);
       justify-content:flex-start;text-align:left}
     .lane-flow.inward{grid-template-columns:1fr}
+    .chips.tiers{grid-template-columns:1fr}
   }
 """
 
@@ -723,12 +735,26 @@ def service_chip(svc: dict[str, Any], tiers: dict[str, Any]) -> str:
     dot = '<span class="dot d-%s"></span>' % (tier or "none")
     domain = service_domain(svc)
     tail = ("<em>%s</em>" % e(domain)) if domain else ""
-    return '<span class="chip">%s%s%s</span>' % (dot, e(svc.get("name", svc["id"])), tail)
+    read = ('<em class="tk tk-%s">%s</em>' % (e(tier), e(tier))) if tier in TIER_DOT else ""
+    return '<span class="chip">%s%s%s%s</span>' % (dot, e(svc.get("name", svc["id"])), tail, read)
 
 
-def tier_chip(name: str, tier: dict[str, Any]) -> str:
+def tier_block(name: str, tier: dict[str, Any], readers: list[str]) -> str:
+    """A tier in the server card, with the apps that read it.
+
+    This is the app↔database edge where it is easiest to read: under the server
+    that owns the tier, on the same card as the app chips, derived from the same
+    `dependencies()` the verifier checks.
+    """
     servers = " · ".join(s["name"] for s in tier.get("servers", []))
-    return '<span class="chip"><span class="dot d-%s"></span>%s</span>' % (e(name), e(servers))
+    who = " · ".join(readers) if readers else "no app reads it"
+    return (
+        '<div class="tier-block"><div class="tier-h">'
+        '<span class="dot d-%s"></span><b>%s</b></div>'
+        '<span class="tier-s">%s</span>'
+        '<div class="tier-r">%s</div></div>'
+        % (e(name), e(name), e(servers), e(who))
+    )
 
 
 def render_dependencies(lmap: dict[str, Any], edges: list[dict[str, Any]]) -> str:
@@ -890,6 +916,16 @@ def render_html(lmap: dict[str, Any]) -> str:
     outward = sum(
         1 for edge in edges if edge["kind"] == "external" and edge.get("external") == "opencode"
     )
+    readers: dict[str, list[str]] = {}
+    for edge in edges:
+        if edge["kind"] == "data" and edge.get("tier"):
+            name = next(
+                (s.get("name", edge["src"]) for s in services if s["id"] == edge["src"]),
+                edge["src"],
+            )
+            readers.setdefault(edge["tier"], []).append(name)
+    for names in readers.values():
+        names.sort()
 
     title = e(lmap.get("title", "Three machines, one edge."))
     if "one edge" in title:
@@ -995,10 +1031,15 @@ def render_html(lmap: dict[str, Any]) -> str:
             count = len(tiers) if cluster_name == "Data tier" else len(members)
             out.append(
                 '        <div class="cluster"><div class="h">%s<span class="n">%d</span></div>'
-                '<div class="chips">' % (e(cluster_name), count)
+                '<div class="chips%s">'
+                % (e(cluster_name), count, " tiers" if cluster_name == "Data tier" else "")
             )
             if cluster_name == "Data tier":
-                out.append("".join(tier_chip(n, t) for n, t in tiers.items()))
+                out.append(
+                    "".join(
+                        tier_block(n, t, readers.get(n, [])) for n, t in tiers.items()
+                    )
+                )
             else:
                 out.append("".join(service_chip(svc, tiers) for svc in members))
             out.append("</div></div>\n")

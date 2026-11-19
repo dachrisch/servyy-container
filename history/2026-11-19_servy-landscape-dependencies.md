@@ -13,7 +13,7 @@ that carries the proof.
 | Skill | `servyy-architecture` → **`servy-landscape`** (setup-home `agent-config/skills`), because it now answers "what depends on what", not only "what runs where" |
 | Server copy | `roles/opencode/defaults/main.yml`: new name in `opencode_server_shared_skills`, old name in `opencode_server_retired_skills` (the copy tasks do not prune) |
 | Map schema | `externals:` (the two places apps leave the building), per-service `calls:`, `data.tenant:`, `control:`, `host:` on every `infrastructure:` entry |
-| Renderer | section **3 · What reaches what** — three lanes: inward to the tiers, outward to codey/opencode, and the control plane. Masthead gains `dependency edges` and `apps → codey` |
+| Renderer | section **2** now carries the app↔database edge where it is read most: every app chip names its tier, and each tier block under *Data tier* lists the servers and the apps that read it (derived from the same `dependencies()`); section **3 · What reaches what** adds the aggregate lanes. Masthead gains `dependency edges` and `apps → codey` |
 | Verifier | `verify_edges()` (repository) and `verify_live_edges()` (env + docker networks on the host); `--verify` now reports **28 services, 18 dependency edges** |
 
 An edge is written once: a database is its service's `data:` block (never repeated in
