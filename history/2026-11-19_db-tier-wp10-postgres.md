@@ -300,3 +300,12 @@ service. The entry is removed with the container on 2026-12-19.
 - `finance.queen` and `shared.redis` were recreated as side effects of the
   project-wide `compose up` (13:14:34Z and 13:18:22Z, same images); both
   healthy, no config change.
+- **Secret hygiene (found while proving the importer):**
+  `finance/import/run-import.sh` embeds the importer's PAT as plaintext and is
+  rendered `0755` (pre-existing, `roles/user/tasks/docker_extras.yml`); the
+  importer runs as uid 33, so it needs world-read as the file is owned by
+  `cda`. A diagnostic read of that script during this work echoed the token;
+  **rotate the PAT at the next interactive Firefly session** and, when the
+  importer is next touched, pass it through the container environment instead
+  of a rendered script (and set the file mode accordingly). Nothing in WP-10
+  depends on the token value.
