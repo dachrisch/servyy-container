@@ -648,8 +648,15 @@ last_scheduled_epoch() {   # $1 schedule, $2 dump_at, $3 now(epoch) -> epoch
 }
 
 cmd_dump_due() {
-  [ $# -eq 1 ] || usage
-  local tier="$1" t now scheduled dir
+  local tier="" force=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --force) force=1; shift ;;
+      *) tier="$1"; shift ;;
+    esac
+  done
+  [ -n "$tier" ] || usage
+  local t now scheduled dir
   now=$(date +%s)
   for t in $SCHEDULED_TENANTS; do
     tenant_lookup "$t" || continue
@@ -657,6 +664,13 @@ cmd_dump_due() {
     [ "$T_VIA" = "dbops" ] || continue
     [ -n "$T_DUMP_AT" ] || die "tenant '$t' has dump_via dbops but no dump_at in the inventory" 1
     [ -n "$T_DUMP_DIR" ] || die "tenant '$t' has dump_via dbops but no dump_dir in the inventory" 1
+    # `--force` is the operator override (a pre-maintenance run, or proving the
+    # unit): every dbops tenant of the tier, due or not. It is deliberately NOT
+    # reachable from the timer — the unit passes only the tier name.
+    if [ "$force" = "1" ]; then
+      info "$t"
+      continue
+    fi
     scheduled=$(last_scheduled_epoch "$T_SCHEDULE" "$T_DUMP_AT" "$now") \
       || die "tenant '$t' has dump_schedule '$T_SCHEDULE' / dump_at '$T_DUMP_AT', which dbops cannot interpret (hourly|daily HH:MM)" 1
     dir="$T_DUMP_DIR/current"

@@ -47,6 +47,10 @@ fi
 source "/home/{{ create_user }}/.zprezto/custom/functions/logdy"
 
 TIER="${1:-}"
+# Operator override, NEVER used by the timer (ExecStart passes only %i): dump
+# every dbops tenant of this tier now, ignoring "due". Same code path, same
+# per-tenant scripts, same lock and failure isolation.
+FORCE="${2:-}"
 case "$TIER" in
 {% for tier in db_backup_tiers %}    {{ tier }}) ;;
 {% endfor %}    *)
@@ -80,7 +84,12 @@ if [ ! -x "$DBOPS" ]; then
     exit 1
 fi
 
-DUE=$("$DBOPS" dump-due "$TIER")
+if [ "$FORCE" = "--force" ]; then
+    logdy info "force run: ignoring the due computation" tier="$TIER"
+    DUE=$("$DBOPS" dump-due "$TIER" --force)
+else
+    DUE=$("$DBOPS" dump-due "$TIER")
+fi
 DUE_RC=$?
 if [ "$DUE_RC" -ne 0 ]; then
     logdy error "dbops dump-due failed; refusing to guess who is due" tier="$TIER" exit_code="$DUE_RC"

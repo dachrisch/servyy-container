@@ -150,9 +150,9 @@ class DumpDueTest(unittest.TestCase):
         stamp = time.time() - age_seconds
         os.utime(cur, (stamp, stamp))
 
-    def run_due(self, tier):
+    def run_due(self, tier, *extra):
         return subprocess.run(
-            ["bash", str(self.script), "dump-due", tier],
+            ["bash", str(self.script), "dump-due", tier, *extra],
             capture_output=True, text=True,
         )
 
@@ -178,6 +178,21 @@ class DumpDueTest(unittest.TestCase):
         res = self.run_due("business")
         self.assertEqual(res.returncode, 0, res.stderr)
         self.assertEqual(res.stdout.strip(), "")
+
+    def test_force_returns_every_dbops_tenant_of_the_tier(self):
+        # The operator override must still respect the MECHANISM boundary: it
+        # never returns the moodle-owned row (its dump script is a different one)
+        # and never another tier's.
+        res = self.run_due("business", "--force")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(
+            res.stdout.split(),
+            ["daily_fresh", "daily_stale", "daily_missing", "hourly_fresh",
+             "hourly_stale"],
+            res.stdout,
+        )
+        self.assertNotIn("legacy_owned", res.stdout)
+        self.assertNotIn("private_stale", res.stdout)
 
     def test_other_tier_is_empty_not_an_error(self):
         res = self.run_due("high")
