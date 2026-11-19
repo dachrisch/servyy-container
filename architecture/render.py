@@ -33,7 +33,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import yaml
+try:
+    import yaml
+except ModuleNotFoundError:  # pragma: no cover - environment, not logic
+    raise SystemExit(
+        "render.py needs PyYAML. The ansible interpreter has it:\n"
+        "  /home/cda/.pyenv/versions/servy-ansible/bin/python3 architecture/render.py --verify\n"
+        "or: python3 -m pip install pyyaml"
+    )
 
 HOST_RE = re.compile(r"Host\(`([^`]+)`\)")
 CONTAINER_VAR = re.compile(r"\$\{COMPOSE_PROJECT_NAME\}")
@@ -288,266 +295,310 @@ def build(lmap: dict[str, Any], repo: Path) -> str:
 # html
 # --------------------------------------------------------------------------- #
 CSS = """
+  *,*::before,*::after{box-sizing:border-box}
   :root{
-    --paper:#f6f5f1; --card:#fffefb; --ink:#14161a; --muted:#5d6470; --line:#e2dfd6;
+    --paper:#f1eee6; --card:#f8f6f0; --ink:#16170f; --muted:#5f5b4c; --rule:#d2ccbb;
+    --servy:#a8460a; --codey:#0d6b62; --test:#6b4a9b;
     --high:#6d5efc; --nonprod:#d98324; --business:#0f8b8d; --private:#b3446c; --ext:#6b7280;
-    --radius:14px; --mono:'JetBrains Mono',ui-monospace,monospace;
   }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--paper);color:var(--ink);font-family:'Space Grotesk',system-ui,sans-serif;line-height:1.5}
-  .wrap{max-width:1120px;margin:0 auto;padding:56px 24px 88px}
-  header{border-bottom:1px solid var(--line);padding-bottom:28px;margin-bottom:36px}
-  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
-  h1{font-size:clamp(30px,4.4vw,52px);line-height:1.05;margin:10px 0 14px;letter-spacing:-.02em;font-weight:700}
-  .lede{font-size:17px;color:#3c424c;max-width:70ch;margin:0}
-  .stats{display:flex;flex-wrap:wrap;gap:26px;margin-top:26px}
-  .stat b{display:block;font-size:26px;font-weight:600;letter-spacing:-.01em}
-  .stat span{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
-  h2{font-size:13px;font-family:var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:52px 0 16px;font-weight:600}
-  h3{font-size:15px;margin:0 0 10px;font-weight:600}
-  .spine{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;align-items:stretch}
-  .node{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px 14px 16px;position:relative}
-  .node .k{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
-  .node .v{font-size:14px;font-weight:600;margin-top:6px;line-height:1.3}
-  .node .s{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:6px}
-  .node:not(:last-child):after{content:"\\2192";position:absolute;right:-13px;top:50%;transform:translateY(-50%);color:#b9b5a9;font-size:16px;z-index:2}
-  @media(max-width:860px){.spine{grid-template-columns:1fr}.node:not(:last-child):after{content:"\\2193";right:50%;top:auto;bottom:-16px;transform:translateX(50%)}}
-  .group{margin-top:30px}
-  .row{display:grid;grid-template-columns:minmax(220px,1.15fr) minmax(200px,1fr) minmax(220px,1fr);gap:16px;padding:12px 14px;border-top:1px solid var(--line);align-items:baseline}
-  .row:last-child{border-bottom:1px solid var(--line)}
-  .row.head{border-top:none;font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding-bottom:6px}
-  .host{font-family:var(--mono);font-size:13px;word-break:break-word}
-  .host small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
-  .svc{font-size:14px}
-  .cont{display:block;font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-top:2px}
-  .data{font-family:var(--mono);font-size:12px;color:#3c424c}
-  @media(max-width:820px){.row{grid-template-columns:1fr;gap:4px}.row.head{display:none}}
-  .chip{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:999px;border:1px solid;margin-right:7px;vertical-align:1px}
-  .c-high{color:var(--high);border-color:#c9c3fb;background:#f2f0ff}
-  .c-nonprod{color:var(--nonprod);border-color:#f0d3ae;background:#fdf5ea}
-  .c-business{color:var(--business);border-color:#aadbd9;background:#eefafa}
-  .c-private{color:var(--private);border-color:#e6bccd;background:#fdf1f5}
-  .c-ext{color:var(--ext);border-color:#d6d8dd;background:#f4f5f7}
-  .tiers{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
-  @media(max-width:760px){.tiers{grid-template-columns:1fr}}
-  .tier{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px 18px;border-top:3px solid #b9b5a9}
-  .tier.high{border-top-color:var(--high)}.tier.nonprod{border-top-color:var(--nonprod)}
-  .tier.business{border-top-color:var(--business)}.tier.private{border-top-color:var(--private)}
-  .tier .t{font-size:14px;font-weight:600;margin-bottom:2px}
-  .tier .srv{font-family:var(--mono);font-size:12px;color:#3c424c}
-  .tier ul{margin:10px 0 0;padding-left:16px;font-size:13px;color:#3c424c}
-  .tier li{margin:3px 0}
-  .tier .note{font-size:12px;color:var(--muted);margin-top:10px}
-  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-  @media(max-width:860px){.cards{grid-template-columns:1fr}}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px}
-  .card p{margin:0;font-size:13.5px;color:#3c424c}
-  .rules{margin:0;padding:0;list-style:none;counter-reset:r}
-  .rules li{position:relative;padding:14px 16px 14px 52px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:10px;font-size:14px}
-  .rules li:before{counter-increment:r;content:counter(r);position:absolute;left:16px;top:14px;font-family:var(--mono);font-size:12px;color:var(--muted);width:22px;height:22px;border:1px solid var(--line);border-radius:50%;display:grid;place-items:center}
-  .rules b{display:block;margin-bottom:2px}
-  .foot{margin-top:56px;padding-top:18px;border-top:1px solid var(--line);font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font-family:"Bricolage Grotesque",system-ui,-apple-system,sans-serif;
+    font-optical-sizing:auto;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+    background-image:
+      repeating-linear-gradient(to right,rgba(22,23,15,.05) 0 1px,transparent 1px 92px),
+      repeating-linear-gradient(to bottom,rgba(22,23,15,.05) 0 1px,transparent 1px 92px);
+    -webkit-mask-image:linear-gradient(to bottom,rgba(0,0,0,.9),rgba(0,0,0,.25));
+    mask-image:linear-gradient(to bottom,rgba(0,0,0,.9),rgba(0,0,0,.25))}
+  .poster{position:relative;z-index:1;max-width:1540px;margin:0 auto;
+    padding:clamp(24px,3.4vw,52px) clamp(16px,4vw,56px) 64px}
+  .mast-top{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;
+    font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:10.5px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--muted);padding-bottom:12px;border-bottom:1px solid var(--ink)}
+  .mast-top span:nth-child(2){flex:1;text-align:center;min-width:200px}
+  h1{font-family:"Instrument Serif",Georgia,serif;font-weight:400;
+    font-size:clamp(44px,7vw,100px);line-height:.94;letter-spacing:-.015em;
+    margin:clamp(22px,3vw,40px) 0 0}
+  h1 em{font-style:italic;color:var(--servy)}
+  .mast-body{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);
+    gap:clamp(24px,4vw,64px);align-items:end;margin-top:clamp(18px,2.4vw,30px)}
+  .lede{margin:0;font-size:clamp(15px,1.35vw,18px);line-height:1.5;max-width:56ch;color:#2b2c22}
+  .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 22px;margin:0}
+  .stat{border-top:1px solid var(--ink);padding-top:8px}
+  .stat dt{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.13em;
+    text-transform:uppercase;color:var(--muted)}
+  .stat dd{margin:2px 0 0;font-family:"Instrument Serif",serif;font-size:clamp(24px,2.4vw,34px);line-height:1}
+  .stat dd small{font-family:"Bricolage Grotesque",sans-serif;font-size:11px;color:var(--muted);
+    display:block;margin-top:5px}
+  .sec-head{display:flex;align-items:baseline;gap:14px;margin:clamp(34px,4.6vw,60px) 0 14px}
+  .sec-num{font-family:"Instrument Serif",serif;font-style:italic;font-size:22px;color:var(--servy);line-height:1}
+  .sec-head h2{margin:0;font-size:clamp(17px,1.6vw,21px);font-weight:700;letter-spacing:-.01em}
+  .sec-head .sub{font-size:12.5px;color:var(--muted)}
+  .sec-head .rule{flex:1;height:1px;background:var(--rule)}
+  .edge{display:grid;grid-template-columns:1fr auto 1fr auto 1fr auto 1fr;align-items:stretch;gap:10px;
+    border:1px solid var(--ink);background:var(--card);box-shadow:5px 5px 0 rgba(22,23,15,.08)}
+  .step{padding:13px 15px 14px;min-width:0}
+  .step .k{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--muted);display:block;margin-bottom:3px}
+  .step h3{margin:0;font-size:15px;font-weight:700;letter-spacing:-.01em}
+  .step p{margin:5px 0 0;font-size:11.5px;line-height:1.45;color:#3c3d31}
+  .step .mono{font-family:"IBM Plex Mono",monospace;font-size:10.5px;margin-top:6px;color:var(--muted)}
+  .arrow{display:flex;align-items:center;justify-content:center;color:var(--muted);
+    font-family:"IBM Plex Mono",monospace;font-size:15px;padding:0 2px}
+  .connectors{display:grid;grid-template-columns:1.45fr 1fr 1fr;gap:20px;height:26px}
+  .connectors span{width:1px;height:100%;margin:0 auto;
+    background:repeating-linear-gradient(to bottom,var(--rule) 0 4px,transparent 4px 9px)}
+  .hosts{display:grid;grid-template-columns:1.45fr 1fr 1fr;gap:20px;align-items:start}
+  .host{border:1px solid var(--ink);background:var(--card);box-shadow:5px 5px 0 rgba(22,23,15,.08)}
+  .host-head{padding:12px 14px 11px;border-bottom:1px solid var(--rule)}
+  .host-head.servy{border-top:4px solid var(--servy)}
+  .host-head.codey{border-top:4px solid var(--codey)}
+  .host-head.test{border-top:4px solid var(--test)}
+  .host-name{font-family:"Instrument Serif",serif;font-size:22px;line-height:1.05;margin:0;font-weight:400}
+  .host-role{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.13em;
+    text-transform:uppercase;color:var(--muted);margin-top:4px}
+  .host-tag{font-size:11.5px;color:#3c3d31;margin-top:6px}
+  .specs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;
+    padding:10px 14px;border-bottom:1px solid var(--rule);background:rgba(22,23,15,.02)}
+  .spec{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--muted)}
+  .spec b{display:block;color:var(--ink);font-size:11.5px;font-weight:500;
+    text-transform:none;letter-spacing:0;margin-top:2px}
+  .clusters{padding:12px 14px 14px}
+  .cluster{margin-bottom:12px}
+  .cluster:last-child{margin-bottom:0}
+  .cluster .h{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--muted);margin-bottom:6px;display:flex;gap:6px;align-items:baseline}
+  .cluster .h .n{color:#b3ad9c}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{display:inline-flex;align-items:baseline;gap:6px;border:1px solid var(--rule);
+    background:var(--paper);padding:3px 7px;font-size:11px;line-height:1.3}
+  .chip em{font-family:"IBM Plex Mono",monospace;font-style:normal;font-size:9.5px;color:var(--muted)}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--rule);flex:0 0 auto;transform:translateY(-1px)}
+  .d-high{background:var(--high)} .d-nonprod{background:var(--nonprod)}
+  .d-business{background:var(--business)} .d-private{background:var(--private)}
+  .d-ext{background:var(--ext)} .d-none{background:#c9c4b4}
+  .host-foot{padding:9px 14px;border-top:1px solid var(--rule);font-family:"IBM Plex Mono",monospace;
+    font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .foundation{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .f-card{border:1px solid var(--ink);background:var(--card);padding:13px 15px;box-shadow:4px 4px 0 rgba(22,23,15,.06)}
+  .f-card h3{margin:0 0 5px;font-size:14px;font-weight:700}
+  .f-card p{margin:0;font-size:12px;line-height:1.5;color:#3c3d31}
+  .foot{margin-top:clamp(32px,4vw,56px);padding-top:14px;border-top:1px solid var(--ink);
+    display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;
+    font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--muted)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap}
+  .legend span{display:inline-flex;align-items:baseline;gap:5px}
+  @media(max-width:1080px){ .hosts{grid-template-columns:1fr 1fr} .connectors{display:none} }
+  @media(max-width:820px){
+    .mast-body{grid-template-columns:1fr}
+    .edge{grid-template-columns:1fr}
+    .arrow{display:none}
+    .hosts{grid-template-columns:1fr}
+    .foundation{grid-template-columns:1fr}
+  }
 """
 
-TIER_CLASS = {"high": "c-high", "nonprod": "c-nonprod", "business": "c-business", "private": "c-private"}
-DATA_KIND_CHIP = {
-    "none": None,
-    "mariadb": None,
-    "mongo": None,
-    "sqlite": "SQLite",
-    "volume": None,
-    "external": "external",
-    "tsdb": "TSDB",
-}
+TIER_DOT = {"high": "d-high", "nonprod": "d-nonprod", "business": "d-business", "private": "d-private"}
+HOST_CLASS = {"servy.lehel.xyz": "servy", "codey.lehel.xyz": "codey", "servyy-test.lxd": "test"}
 
 
 def e(value: Any) -> str:
     return html.escape(str(value), quote=True)
 
 
-def split_hosts(domains: list[str]) -> tuple[str, list[str]]:
-    """First domain is the headline; the rest go small underneath."""
+def service_tier(svc: dict[str, Any], tiers: dict[str, Any]) -> str | None:
+    server = (svc.get("data") or {}).get("server")
+    for name, tier in tiers.items():
+        if server in {s["name"] for s in tier.get("servers", [])}:
+            return name
+    if (svc.get("data") or {}).get("kind") == "external":
+        return "ext"
+    return None
+
+
+def service_domain(svc: dict[str, Any]) -> str:
+    domains = svc.get("domains") or []
     if not domains:
-        return "", []
-    primary = min(domains, key=lambda d: (d.startswith("www."), len(d)))
-    return primary, [d for d in sorted(domains) if d != primary]
+        return ""
+    return min(domains, key=lambda d: (d.startswith("www."), len(d)))
 
 
-def data_cell(svc: dict[str, Any]) -> str:
-    data = svc.get("data") or {}
-    kind = data.get("kind", "none")
-    if kind == "none":
-        return '<span class="chip">stateless</span>'
-    if kind == "external":
-        return f'<span class="chip c-ext">external</span>{e(data.get("where", ""))}'
-    if kind in ("sqlite", "volume", "tsdb"):
-        chip = f'<span class="chip">{e(kind)}</span>'
-        return f'{chip}{e(data.get("where", ""))}'
-    tier = next(
-        (name for name, t in TIERS.items() if data.get("server") in {s["name"] for s in t.get("servers", [])}),
-        None,
-    )
-    chip = f'<span class="chip {TIER_CLASS.get(tier, "")}">{e(tier or kind)}</span>' if tier else ""
-    suffix = f' · <em>{e(data["db"])}</em>' if data.get("db") else ""
-    return f'{chip}{e(data.get("server", ""))}{suffix}'
+def service_chip(svc: dict[str, Any], tiers: dict[str, Any]) -> str:
+    tier = service_tier(svc, tiers)
+    dot = '<span class="dot d-%s"></span>' % (tier or "none")
+    domain = service_domain(svc)
+    tail = ("<em>%s</em>" % e(domain)) if domain else ""
+    return '<span class="chip">%s%s%s</span>' % (dot, e(svc.get("name", svc["id"])), tail)
 
 
-TIERS: dict[str, Any] = {}
+def tier_chip(name: str, tier: dict[str, Any]) -> str:
+    servers = " · ".join(s["name"] for s in tier.get("servers", []))
+    return '<span class="chip"><span class="dot d-%s"></span>%s</span>' % (e(name), e(servers))
 
 
 def render_html(lmap: dict[str, Any]) -> str:
-    global TIERS
-    TIERS = lmap.get("tiers") or {}
-
+    tiers = lmap.get("tiers") or {}
+    hosts = lmap.get("hosts") or [{"name": "servy.lehel.xyz", "role": "production"}]
     services = lmap.get("services") or []
     domains = sorted({d for s in services for d in (s.get("domains") or [])})
-    groups = lmap.get("groups") or []
-    group_order = [g["id"] for g in groups]
+    groups = {g["id"]: g["title"] for g in lmap.get("groups") or []}
+    total_containers = sum(int(h.get("containers") or 0) for h in hosts)
+    backups = lmap.get("backups") or {}
 
-    parts: list[str] = []
-    parts.append(
-        f"""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<style>{CSS}</style>
-</head>
-<body><div class="wrap">
-<header>
-  <div class="eyebrow">servy.lehel.xyz · service shape · {e(lmap.get('as_of', ''))}</div>
-  <h1>{e(lmap.get('title', 'Architecture'))}</h1>
-  <p class="lede">{e(lmap.get('subtitle', ''))}</p>
-  <div class="stats">
-    <div class="stat"><b>{len(domains)}</b><span>public hostnames</span></div>
-    <div class="stat"><b>{len(lmap.get('tiers') or {})}</b><span>data tiers</span></div>
-    <div class="stat"><b>{len(services)}</b><span>services</span></div>
-    <div class="stat"><b>{e(lmap.get('backups', {}).get('repositories', '?'))}</b><span>restic repos</span></div>
-    <div class="stat"><b>{e(lmap.get('backups', {}).get('drills', '?'))}</b><span>restore drills</span></div>
-  </div>
-</header>
+    title = e(lmap.get("title", "Three machines, one edge."))
+    if "one edge" in title:
+        title = title.replace("one edge", "<em>one edge</em>", 1)
 
-<h2>The path a request takes</h2>
-<div class="spine">
-"""
+    out: list[str] = []
+    out.append(
+        "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
+        "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n"
+        "<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n"
+        "<link href=\"https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap\" rel=\"stylesheet\">\n"
+        "<style>" + CSS + "</style>\n</head>\n<body>\n<div class=\"poster\">\n"
     )
-    for node in lmap.get("path") or []:
-        parts.append(
-            f'  <div class="node"><div class="k">{e(node["key"])}</div>'
-            f'<div class="v">{e(node["title"])}</div>'
-            f'<div class="s">{e(node.get("detail", ""))}</div></div>\n'
-        )
-    parts.append("</div>\n")
-    if lmap.get("intro"):
-        parts.append(f'<p class="lede" style="margin-top:18px;font-size:14px">{e(lmap["intro"])}</p>\n')
-
-    parts.append("<h2>Domain → service → data</h2>\n")
-    for gid in group_order:
-        title = next(g["title"] for g in groups if g["id"] == gid)
-        members = [s for s in services if s.get("group") == gid]
-        if not members:
-            continue
-        parts.append(f'<div class="group"><h3>{e(title)}</h3>\n')
-        parts.append(
-            '<div class="row head"><div>domain</div><div>service</div><div>data</div></div>\n'
-        )
-        for svc in members:
-            primary, rest = split_hosts(svc.get("domains") or [])
-            host_html = (
-                f'<div class="host">{e(primary)}'
-                + (f'<small>{e(" · ".join(rest))}</small>' if rest else "")
-                + "</div>"
-            ) if primary else f'<div class="host" style="color:var(--muted)">— no public domain —</div>'
-            containers = " · ".join(svc.get("containers") or [])
-            parts.append(
-                f'<div class="row">{host_html}'
-                f'<div class="svc">{e(svc.get("name", svc["id"]))}<span class="cont">{e(containers)}</span></div>'
-                f'<div class="data">{data_cell(svc)}</div></div>\n'
-            )
-        parts.append("</div>\n")
-
-    parts.append("<h2>The data plane</h2>\n<div class=\"tiers\">\n")
-    for name, tier in (lmap.get("tiers") or {}).items():
-        servers = " · ".join(s["name"] for s in tier.get("servers") or [])
-        items = []
-        for server in tier.get("servers") or []:
-            owned = [t for t in tier.get("tenants") or []]
-            if owned:
-                items.append(
-                    f'<li>{e(server["engine"])} — {e(", ".join(owned))}</li>'
-                )
-                break
-        backup = tier.get("backup") or {}
-        if backup.get("kind") and backup["kind"] != "none":
-            items.append(
-                f'<li>backup — {e(backup["kind"])}'
-                + (f', RPO {e(backup["rpo"])}' if backup.get("rpo") else "")
-                + (f', RTO {e(backup["rto"])}' if backup.get("rto") else "")
-                + "</li>"
-            )
-        else:
-            items.append("<li>no backups — disposable by design</li>")
-        parts.append(
-            f'<div class="tier {e(name)}"><div class="t">{e(tier.get("title", name))}</div>'
-            f'<div class="srv">{e(servers)}</div><ul>{"".join(items)}</ul>'
-            + (f'<div class="note">{e(tier["notes"])}</div>' if tier.get("notes") else "")
-            + "</div>\n"
-        )
-
-    retired = lmap.get("retired") or []
-    if retired:
-        items = "".join(
-            f'<li><code>{e(r["name"])}</code> ({e(r["kind"])}) stopped {e(r.get("stopped", "?"))} — '
-            f'delete on/after {e(r.get("delete_after", "?"))}, replaced by {e(r.get("replaced_by", ""))}</li>'
-            for r in retired
-        )
-        parts.append(
-            f'<div class="tier"><div class="t">retired (rollback, not service)</div>'
-            f'<div class="srv">stopped containers, dated deletion</div><ul>{items}</ul></div>\n'
-        )
-    parts.append("</div>\n")
-
-    infra = lmap.get("infrastructure") or []
-    if infra:
-        rows = "".join(
-            f'<div class="row"><div class="host">{e(i["project"])}</div>'
-            f'<div class="svc">{e(i["role"])}</div>'
-            f'<div class="data">{e(", ".join(i.get("containers") or []))}</div></div>'
-            for i in infra
-        )
-        parts.append(
-            '<div class="group"><h3>Containers without a public domain</h3>'
-            '<div class="row head"><div>project</div><div>role</div><div>containers</div></div>'
-            f"{rows}</div>\n"
-        )
-
-    cards = lmap.get("cross_cutting") or []
-    if cards:
-        parts.append('<h2>Cross-cutting</h2>\n<div class="cards">\n')
-        for card in cards:
-            parts.append(
-                f'<div class="card"><h3>{e(card["title"])}</h3><p>{e(card["body"])}</p></div>\n'
-            )
-        parts.append("</div>\n")
-
-    rules = lmap.get("invariants") or []
-    if rules:
-        parts.append('<h2>Invariants worth knowing before changing anything</h2>\n<ol class="rules">\n')
-        for rule in rules:
-            parts.append(
-                f'<li><b>{e(rule["title"])}</b>{e(rule["body"])}</li>\n'
-            )
-        parts.append("</ol>\n")
-
-    parts.append(
-        f'<div class="foot">servy.lehel.xyz · mariadb 13.0 · mongo 9.0 · rendered from '
-        f'architecture/landscape.yaml · {e(lmap.get("as_of", ""))}</div>\n</div></body></html>\n'
+    out.append(
+        '  <div class="mast-top"><span>%s</span><span>%s</span>'
+        '<span>service landscape</span></div>\n'
+        % (e(lmap.get("as_of", "")), " · ".join(e(h["name"]) for h in hosts))
     )
-    return "".join(parts)
+    out.append("  <h1>%s</h1>\n" % title)
+    out.append(
+        '  <div class="mast-body">\n    <p class="lede">%s</p>\n    <dl class="stats">\n'
+        % e(lmap.get("subtitle", ""))
+    )
+    for label, value, small in (
+        ("containers", str(total_containers), "across %d machines" % len(hosts)),
+        ("public hostnames", str(len(domains)), "one router each"),
+        ("database tiers", str(len(tiers)), "mariadb 13.0 · mongo 9.0"),
+        ("restic repos", str(backups.get("repositories", "?")), str(backups.get("drills", ""))),
+    ):
+        out.append(
+            '      <div class="stat"><dt>%s</dt><dd>%s<small>%s</small></dd></div>\n'
+            % (e(label), e(value), e(small))
+        )
+    out.append("    </dl>\n  </div>\n")
 
+    edge = lmap.get("edge") or []
+    if edge:
+        out.append(
+            '  <div class="sec-head"><span class="sec-num">1</span><h2>The edge</h2>'
+            '<span class="sub">nothing reaches a container without passing here</span>'
+            '<span class="rule"></span></div>\n  <div class="edge">\n'
+        )
+        for index, step in enumerate(edge):
+            if index:
+                out.append('    <div class="arrow">&#8594;</div>\n')
+            mono = '<div class="mono">%s</div>' % e(step["mono"]) if step.get("mono") else ""
+            out.append(
+                '    <div class="step"><span class="k">%s</span><h3>%s</h3><p>%s</p>%s</div>\n'
+                % (e(step.get("k", "")), e(step.get("title", "")), e(step.get("body", "")), mono)
+            )
+        out.append("  </div>\n")
+
+    out.append(
+        '  <div class="sec-head"><span class="sec-num">2</span><h2>Three machines</h2>'
+        '<span class="sub">who runs what, and which tier each service reads</span>'
+        '<span class="rule"></span></div>\n'
+        '  <div class="connectors"><span></span><span></span><span></span></div>\n'
+        '  <div class="hosts">\n'
+    )
+    for host in hosts:
+        name = host["name"]
+        cls = HOST_CLASS.get(name, "servy")
+        specs = host.get("specs") or {}
+        out.append('    <div class="host">\n')
+        out.append('      <div class="host-head %s">\n' % cls)
+        out.append('        <h3 class="host-name">%s</h3>\n' % e(name))
+        out.append('        <div class="host-role">%s</div>\n' % e(host.get("role", "")))
+        out.append('        <div class="host-tag">%s</div>\n' % e(host.get("tagline", "")))
+        out.append("      </div>\n      <div class=\"specs\">\n")
+        for key in ("cpu", "mem", "disk", "os"):
+            out.append(
+                '        <div class="spec">%s<b>%s</b></div>\n'
+                % (e({"cpu": "cpu", "mem": "memory", "disk": "disk", "os": "os"}[key]), e(specs.get(key, "—")))
+            )
+        out.append('      </div>\n      <div class="clusters">\n')
+
+        mine = [s for s in services if s.get("host", "servy.lehel.xyz") == name]
+        clusters: dict[str, list[dict[str, Any]]] = {}
+        for svc in mine:
+            key = svc.get("cluster") or groups.get(svc.get("group"), svc.get("group") or "Other")
+            clusters.setdefault(key, []).append(svc)
+        if name == "servy.lehel.xyz":
+            clusters["Data tier"] = []
+        if not clusters:
+            out.append(
+                '        <div class="cluster"><div class="h">no services of its own</div>'
+                '<div class="chips"><span class="chip">the same compose files, deployed for '
+                "testing before production</span></div></div>\n"
+            )
+        def cluster_rank(item: tuple[str, list]) -> tuple[int, str]:
+            name_ = item[0]
+            if name_ == "Edge":
+                return (0, name_)
+            if name_ == "Data tier":
+                return (9, name_)
+            order_ = list(groups.values())
+            return (1 + order_.index(name_) if name_ in order_ else 8, name_)
+
+        for cluster_name, members in sorted(clusters.items(), key=cluster_rank):
+            count = len(tiers) if cluster_name == "Data tier" else len(members)
+            out.append(
+                '        <div class="cluster"><div class="h">%s<span class="n">%d</span></div>'
+                '<div class="chips">' % (e(cluster_name), count)
+            )
+            if cluster_name == "Data tier":
+                out.append("".join(tier_chip(n, t) for n, t in tiers.items()))
+            else:
+                out.append("".join(service_chip(svc, tiers) for svc in members))
+            out.append("</div></div>\n")
+        out.append("      </div>\n")
+        out.append(
+            '      <div class="host-foot">%s containers</div>\n    </div>\n'
+            % e(host.get("containers", "?"))
+        )
+    out.append("  </div>\n")
+
+    def cards_section(number: str, heading: str, sub: str, cards: list[dict[str, Any]]) -> str:
+        if not cards:
+            return ""
+        body = "".join(
+            '    <div class="f-card"><h3>%s</h3><p>%s</p></div>\n'
+            % (e(card["title"]), e(card["body"]))
+            for card in cards
+        )
+        return (
+            '  <div class="sec-head"><span class="sec-num">%s</span><h2>%s</h2>'
+            '<span class="sub">%s</span><span class="rule"></span></div>\n'
+            '  <div class="foundation">\n%s  </div>\n' % (number, e(heading), e(sub), body)
+        )
+
+    out.append(
+        cards_section(
+            "3", "The foundation",
+            "the parts that make three machines behave like one system",
+            lmap.get("foundation") or [],
+        )
+    )
+    out.append(
+        cards_section("4", "Invariants", "each one was learned by breaking it", lmap.get("invariants") or [])
+    )
+
+    legend = "".join(
+        '<span><span class="dot d-%s"></span>%s</span>' % (k, k)
+        for k in ("high", "nonprod", "business", "private", "ext")
+    )
+    out.append(
+        '  <div class="foot"><span>rendered from architecture/landscape.yaml</span>'
+        '<span class="legend">%s</span><span>%s</span></div>\n</div>\n</body>\n</html>\n'
+        % (legend, e(lmap.get("as_of", "")))
+    )
+    return "".join(out)
 
 # --------------------------------------------------------------------------- #
 # main
