@@ -107,3 +107,13 @@
           -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval
           "db.getSiblingDB(\"tenant_c\").widgets.insertOne({name:\"c1\"});
            db.getSiblingDB(\"tenant_d\").widgets.insertOne({name:\"d1\"});"'
+      register: mongo_seed
+      # The mongo entrypoint runs a TEMPORARY mongod to create the root user, shuts
+      # it down, then execs the real one — so a successful ping can be answered by
+      # a server that is about to disappear (measured in CI: ECONNREFUSED on the
+      # very next command). Retry the work itself rather than trusting one probe;
+      # the role's own path waits on the container's healthcheck instead.
+      until: mongo_seed.rc | default(1) | int == 0
+      retries: 30
+      delay: 3
+      changed_when: true
