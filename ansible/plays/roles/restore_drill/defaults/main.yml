@@ -1,0 +1,101 @@
+---
+# restore_drill — recurring, inventory-driven restore drills (WP-8R R11).
+#
+# WHAT THIS ROLE DOES
+#   * renders `restore-drill.sh` from `db_tenants` + the tenant's `backup_targets`
+#     row: for every tenant whose row says `drill: weekly|monthly`, pick the
+#     NEWEST snapshot of its repo, restore it into a throwaway container of the
+#     same image, verify it against the live tenant, drop the scratch target,
+#     append a section to the evidence file and refresh the drill metrics;
+#   * renders `restore-drill-probe.sh`, which publishes `db_restore_drill_*`
+#     from the per-tenant state files (so `age` keeps growing between drills —
+#     a value that only updates at drill time would never trip an "overdue" rule);
+#   * deploys one timer per cadence class (weekly / monthly). The class script
+#     iterates its tenants SERIALLY, so the heavy drills never overlap;
+#   * seeds a `pending` state file for a tenant that has never been drilled, so
+#     the first drill has its full cadence to happen instead of paging on
+#     deploy day. The age then starts at install time — an honest "we installed
+#     this and have not proven it yet", not a fake success.
+#
+# WHAT IT MUST NEVER DO
+#   * write to a live database (only SELECT/information_schema reads, via the
+#     tenant's read-only credential or `dbops verify`);
+#   * touch a rollback container, a datadir that a running server owns, or a
+#     restic snapshot (restore is a read; no forget/prune/backup runs here);
+#   * restore over the tenant: the scratch name is forced to start with `drill-`
+#     and `dbops restore`/`mongorestore` are only ever pointed at THAT name.
+#
+# WHERE IT RUNS: on the host that holds the tenant (today: servy). The repos are
+# reachable from servyy-test too, but the drill's gate is `dbops verify
+# <tenant> --against <scratch>`, which needs the LIVE tenant as the baseline.
+# A drill on the test host would compare a restore against nothing and train an
+# operator on a path that differs from a real restore. The host gate is therefore
+# `restore_repo in restic_targets_enabled` (see plays/tasks/restic_wiring.yml):
+# a host that does not own the tenant gets no script and no timer.
+restore_drill_base_dir: "{{ (remote_user_home, '.restore-drills') | path_join }}"
+restore_drill_state_dir: "{{ (restore_drill_base_dir, 'state') | path_join }}"
+restore_drill_evidence_dir: "{{ (restore_drill_base_dir, 'evidence') | path_join }}"
+restore_drill_log_dir: "{{ (restore_drill_base_dir, 'logs') | path_join }}"
+# Deliberately under ~/.cache: every restic scope excludes `.cache`, so a
+# 1.7 GB Moodle restore can never be uploaded by the hourly `home` snapshot and
+# can never fill /tmp (the R12 lesson).
+restore_drill_scratch_dir: "{{ (remote_user_home, '.cache', 'restore-drills') | path_join }}"
+restore_drill_script: "{{ (restore_drill_base_dir, 'restore-drill.sh') | path_join }}"
+restore_drill_probe_script: "{{ (restore_drill_base_dir, 'restore-drill-probe.sh') | path_join }}"
+
+# Same values as roles/db_tier/defaults/main.yml. Restated here because this role
+# runs in its own play and must not depend on another role's defaults being
+# loaded; the play asserts both paths exist before it will run a drill.
+restore_drill_dbops_path: "{{ (remote_user_home, '.dbops', 'dbops') | path_join }}"
+restore_drill_dbops_env_dir: "{{ (remote_user_home, '.dbops') | path_join }}"
+# --- Cadence and thresholds --------------------------------------------------
+# The plan's rule, encoded as two constants and one field on each tenant row.
+# `weekly` is Sunday morning; `monthly` is the first Sunday. Both avoid the
+# 00:45–01:50 dump window, the 02:00–04:00 restic window and the 06:00
+# watchtower-db patch window, which is why they are NOT the 06:30 the plan first
+# proposed: 06:00–~07:00 belongs to the patch job, whose health gate may restart
+# a database server.
+restore_drill_weekly_schedule: 'Sun *-*-* 08:15:00'
+restore_drill_monthly_schedule: 'Sun *-*-1..7 09:45:00'
+
+# The monthly slot is 90 minutes after the weekly one on purpose: Moodle's
+# logical dump is ~1.7 GB and a measured import takes ~20 minutes, so the two
+# classes must not be scheduled on top of each other on the first Sunday (they
+# would still serialise on the lock, but a wait is not a schedule).
+#
+# Grace built into the alert: a weekly drill that has not happened for 8 days
+# (8 = 7 + 1 day of slack) is overdue; monthly is 32 days (31 + 1). The extra day
+# is not tolerance for a broken drill — it stops one late completion from paging.
+restore_drill_weekly_threshold_days: 8
+restore_drill_monthly_threshold_days: 32
+
+# --- Selection ---------------------------------------------------------------
+# On-demand runs: `-e restore_drill_run_now=true` plus either
+#   -e drill_limit_tenant=photoprism,queen      (the "--limit-tenant" equivalent)
+# or nothing (every tenant this host can drill). The timer path never uses this.
+restore_drill_run_now: false
+drill_limit_tenant: ''
+
+# A drill that fails leaves its scratch container in place for inspection when
+# this is true. Default false: an unattended weekly job must not accumulate
+# stopped containers and datadirs on the production host.
+restore_drill_keep_failed_scratch: false
+
+# --- Deploy gate -------------------------------------------------------------
+# True only on hosts that run the Pushgateway (servy). A drill whose metrics go
+# nowhere is the "silently stopped" shape this package exists to prevent, so the
+# whole feature (script, timers, probe) is scoped to hosts that can report.
+# Mirrors roles/system_probe/defaults/main.yml (role defaults are not shared
+# across roles, so the expression is restated — same idiom, same two inventory
+# shapes: bare `monitor: true` and `monitor: {enabled: true}`).
+restore_drill_enabled: >-
+  {{ (services_enabled.monitor | default(false) == true)
+     or (services_enabled.monitor.enabled | default(false) | bool) }}
+restore_drill_pushgateway_url: "{{ system_probe_pushgateway_url | default('http://localhost:9091') }}"
+
+# The tenants an on-demand run drills: `-e drill_limit_tenant=a,b` (the play's
+# `--limit-tenant`), otherwise every tenant this host can drill.
+restore_drill_selected_tenants: >-
+  {{ (drill_limit_tenant | default('') | length > 0)
+     | ternary(drill_limit_tenant | split(',') | map('trim') | reject('equalto', '') | list,
+               restore_drill_tenants | default([]) | map(attribute='tenant') | list) }}

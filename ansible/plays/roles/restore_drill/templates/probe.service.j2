@@ -1,0 +1,6 @@
+[Unit]
+Description=Publish database restore-drill ages and results
+
+[Service]
+Type=oneshot
+ExecStart={{ restore_drill_probe_script }}

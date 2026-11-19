@@ -1,0 +1,15 @@
+[Unit]
+Description={{ drill_description }}
+
+[Timer]
+OnCalendar={{ drill_schedule }}
+# No jitter: the whole point of the chosen hour is that it is outside the dump
+# (00:45–01:50), restic (02:00–04:00) and watchtower patch (06:00) windows.
+# A 5-minute RandomizedDelaySec would drift the weekly drill into those.
+RandomizedDelaySec=0
+# A host that was down at the slot still gets its drill after boot. This does not
+# hide a stopped timer: the drill-age rule pages if the age exceeds the cadence.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

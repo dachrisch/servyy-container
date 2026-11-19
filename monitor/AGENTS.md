@@ -63,6 +63,17 @@ The observability stack for servy. One compose project (`name: ${SERVICE_NAME}` 
    and on(repo) (restic_snapshot_severity == 1)     #  == 0 for the medium rule
    ```
 
+   The restore drills (WP-8R R11) follow the same rule: the probe
+   `~/.restore-drills/restore-drill-probe.sh` publishes `db_restore_drill_age_seconds{tenant}`,
+   `db_restore_drill_success{tenant}`, `db_restore_drill_duration_seconds{tenant}`
+   and `db_restore_drill_threshold_seconds{tenant}` (the cadence from the row's
+   `drill:` field — 8 d weekly, 32 d monthly), and `db_restore_drill_overdue`
+   compares them. `drill: none` tenants emit no series, so a legitimate opt-out
+   (nonprod) can never page. Do not add a tenant name or a number to those rules
+   either; a drill that silently stops is the failure the rules exist for, so
+   `db_restore_drill_probe_stale` must stay too (a dead probe freezes every age
+   and would otherwise look like a healthy fleet).
+
    Two rules per class (high / not-high), because a Grafana rule has **one static
    `labels.severity`**; the split has to travel as a series. Until WP-8R R2 these were `or`
    chains of literals, so five repos with dumps, timers and snapshots ran unalerted — a

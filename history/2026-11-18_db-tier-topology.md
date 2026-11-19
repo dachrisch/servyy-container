@@ -33,7 +33,7 @@ regenerates `config.php` at start; it now says
 
 `bnb-office/db.env.j2` (the sidecar's `MARIADB_*` init vars) is deleted. The vault's
 `bnb_office.mariadb_root_password` is vestigial from here on — kept because the rollback
-(a `docker start bnb-office.db`) still wants interactive access to that datadir.
+(a datadir/volume restore, not `docker start`) still wants interactive access to that datadir.
 
 ### The dump, and a failure that had been silent for four days
 
@@ -110,7 +110,7 @@ silently drops the server out of the equality check instead of failing.
 
 ### Rollback
 
-`docker start bnb-office.db` (its volume is intact and still referenced), then revert the
+recreate the old server from its data (bind mount or dump — the stopped container and its named volume are removed by the nightly `docker system prune -a -f --volumes`; the owner accepted datadir/restore-based rollback on 2026-11-19), then revert the
 `DB_HOSTNAME`/`bnb_office_db_host` change and the `bnb_office` inventory row. Nothing was
 deleted. Window: one week.
 

@@ -1,0 +1,14 @@
+[Unit]
+Description=Trigger for the database restore-drill probe
+
+[Timer]
+# Every 30 minutes, offset from the other probes' :00/:30 slots. This timer is
+# what keeps `db_restore_drill_age_seconds` GROWING between drills; without it
+# the pushed age would freeze at the last drill and the overdue rule could never
+# fire. Its own staleness is covered by db_restore_drill_probe_stale.
+OnCalendar=*-*-* *:07/30:00
+RandomizedDelaySec=2m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

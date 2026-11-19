@@ -1,0 +1,51 @@
+---
+# Database restore drills — WP-8R R11.
+#
+# Deploys the recurring drills (script + metrics probe + one timer per cadence
+# class) and optionally runs them now:
+#
+#   # deploy only
+#   ansible-playbook plays/restore_drill.yml -i production -l servy.lehel.xyz
+#
+#   # deploy + drill two tenants tonight (unattended)
+#   ansible-playbook plays/restore_drill.yml -i production -l servy.lehel.xyz \
+#       -e restore_drill_run_now=true -e drill_limit_tenant=photoprism,queen
+#
+#   # drill everything this host can drill
+#   ansible-playbook plays/restore_drill.yml -i production -l servy.lehel.xyz \
+#       -e restore_drill_run_now=true
+#
+# The tenant list, each tenant's repo, dump directory, engine and cadence come
+# from plays/vars/db_tenants.yml (`drill:` + `restic_repo`), and the repo gate is
+# `restic_targets_enabled` — a host that does not own a tenant gets no drill for
+# it. The timers run `--class weekly` on Sunday 08:15 and `--class monthly` on
+# the first Sunday 08:45, both outside the dump, restic and patch windows; the
+# class script drills its tenants serially under one flock.
+#
+# Evidence: appended to history/<date>_db-restore-drills.md (the play mirrors the
+# host's file into the checkout it was launched from); the host copy lives in
+# ~/.restore-drills/evidence/. Metrics: db_restore_drill_* pushed to the
+# Pushgateway by the probe; alert rule `db_restore_drill_overdue` in
+# monitor/provisioning/alerting/alert-rules.yml.
+- name: Database restore drills
+  hosts: all
+  strategy: linear
+  remote_user: "{{ create_user }}"
+  become: true
+  become_user: "{{ create_user }}"
+  vars_files:
+    - vars/default.yml
+    - vars/restic.yml
+    # Tenant inventory: the drill roster is generated from db_tenants.yml, and
+    # the same guards that protect the restic wiring validate the `drill` field.
+    - vars/db_tenants.yml
+    - vars/secrets.yml
+  pre_tasks:
+    - name: Wire restic and select the drill roster from the tenant inventory
+      ansible.builtin.import_tasks: tasks/restic_wiring.yml
+      tags:
+        - always
+  roles:
+    - restore_drill
+  tags:
+    - restore.drill

@@ -1,0 +1,254 @@
+---
+# restore_drill tasks — deploy the drill script + probe + one timer per cadence
+# class, then (optionally) run drills now. See defaults/main.yml for the contract.
+#
+# The role is a no-op where the feature cannot report (no Pushgateway) or where
+# the host owns no drillable tenant (`restore_drill_tenants` empty), which is how
+# the play can be imported from servyy.yml on every host.
+
+- name: Restore drills - directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ restore_drill_base_dir }}"
+      mode: '0750'
+    - path: "{{ restore_drill_state_dir }}"
+      mode: '0750'
+    - path: "{{ restore_drill_evidence_dir }}"
+      mode: '0750'
+    - path: "{{ restore_drill_log_dir }}"
+      mode: '0750'
+    # 0700: a drill's scratch datadir is a copy of a live database. It is under
+    # ~/.cache (excluded from every restic scope) and readable by the drill user
+    # only, for as long as the drill runs.
+    - path: "{{ restore_drill_scratch_dir }}"
+      mode: '0700'
+  when: restore_drill_enabled | bool and restore_drill_tenants | default([]) | length > 0
+  tags:
+    - restore.drill
+
+- name: Restore drills - drill script
+  ansible.builtin.template:
+    src: restore_drill.sh.j2
+    dest: "{{ restore_drill_script }}"
+    mode: '0750'
+  when: restore_drill_enabled | bool and restore_drill_tenants | default([]) | length > 0
+  tags:
+    - restore.drill
+
+- name: Restore drills - metrics probe
+  ansible.builtin.template:
+    src: restore_drill_probe.sh.j2
+    dest: "{{ restore_drill_probe_script }}"
+    mode: '0750'
+  when: restore_drill_enabled | bool and restore_drill_tenants | default([]) | length > 0
+  tags:
+    - restore.drill
+
+# Render-time syntax gate. A broken drill script that only fails on Sunday at
+# 08:15 is a silent loss of the capability; `bash -n` on every deploy is cheap.
+- name: Restore drills - scripts parse
+  ansible.builtin.command:
+    argv: [bash, -n, "{{ item }}"]
+  changed_when: false
+  loop:
+    - "{{ restore_drill_script }}"
+    - "{{ restore_drill_probe_script }}"
+  when: restore_drill_enabled | bool and restore_drill_tenants | default([]) | length > 0
+  tags:
+    - restore.drill
+
+# A tenant that has never been drilled gets a `pending` state file. Its age is
+# then measured from install time, which gives the first drill its full cadence
+# instead of paging on deploy day — while still being honest: `status=pending`
+# publishes success=-1 (never proven), not success=1.
+- name: Restore drills - seed the never-drilled state
+  ansible.builtin.copy:
+    dest: "{{ restore_drill_state_dir }}/{{ item.tenant }}"
+    force: false
+    mode: '0640'
+    content: |
+      tenant={{ item.tenant }}
+      status=pending
+      installed_epoch={{ ansible_date_time.epoch }}
+      last_attempt_epoch=0
+      last_success_epoch=0
+      duration_s=0
+      snapshot=
+      snapshot_time=
+      detail=installed; never drilled on this host
+  loop: "{{ restore_drill_tenants | default([]) }}"
+  loop_control:
+    label: "{{ item.tenant }}"
+  when: restore_drill_enabled | bool and restore_drill_tenants | default([]) | length > 0
+  tags:
+    - restore.drill
+
+# One timer per CADENCE CLASS, not per tenant: the class script iterates its
+# tenants serially under one host-wide flock, so the two heavy weekly drills can
+# never run together and a new tenant needs no new unit.
+- name: Restore drills - class units
+  ansible.builtin.template:
+    src: "drill.{{ item.ext }}.j2"
+    dest: "{{ (remote_user_systemd, 'db-restore-drill-' ~ item.name ~ '.' ~ item.ext) | path_join }}"
+  loop:
+    - ext: service
+      name: weekly
+      cls: weekly
+      schedule: "{{ restore_drill_weekly_schedule }}"
+      description: 'Run the weekly database restore drills'
+    - ext: timer
+      name: weekly
+      cls: weekly
+      schedule: "{{ restore_drill_weekly_schedule }}"
+      description: 'Trigger for the weekly database restore drills'
+    - ext: service
+      name: monthly
+      cls: monthly
+      schedule: "{{ restore_drill_monthly_schedule }}"
+      description: 'Run the monthly database restore drills'
+    - ext: timer
+      name: monthly
+      cls: monthly
+      schedule: "{{ restore_drill_monthly_schedule }}"
+      description: 'Trigger for the monthly database restore drills'
+  loop_control:
+    label: "db-restore-drill-{{ item.name }}.{{ item.ext }}"
+  vars:
+    drill_class: "{{ item.cls }}"
+    drill_schedule: "{{ item.schedule }}"
+    drill_description: "{{ item.description }}"
+  when: restore_drill_enabled | bool and restore_drill_tenants | default([]) | length > 0
+  tags:
+    - restore.drill
+
+# Start only the classes that have at least one tenant on this host. Enabling an
+# empty class would create a timer whose every run logs "no tenant in class".
+- name: Restore drills - start the class timers
+  ansible.builtin.systemd:
+    scope: user
+    name: "db-restore-drill-{{ item }}.timer"
+    state: started
+    enabled: true
+    daemon_reload: true
+  loop:
+    - weekly
+    - monthly
+  when:
+    - restore_drill_enabled | bool
+    - restore_drill_tenants | default([]) | selectattr('drill', 'equalto', item) | list | length > 0
+  tags:
+    - restore.drill
+
+# --- the metrics probe timer ------------------------------------------------
+# Separate from the drill timers on purpose: the probe is cheap and frequent
+# (every 30 min), the drills are rare and heavy. It is the only writer of the
+# db_restore_drill_* series, so there is never a PUT race between a drill and a
+# probe (the drill invokes the same script after it finishes).
+- name: Restore drills - probe units
+  ansible.builtin.template:
+    src: "probe.{{ item }}.j2"
+    dest: "{{ (remote_user_systemd, 'system-restore-drill.' ~ item) | path_join }}"
+  loop:
+    - service
+    - timer
+  when: restore_drill_enabled | bool and restore_drill_tenants | default([]) | length > 0
+  tags:
+    - restore.drill
+
+- name: Restore drills - start the probe timer
+  ansible.builtin.systemd:
+    scope: user
+    name: system-restore-drill.timer
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: restore_drill_enabled | bool and restore_drill_tenants | default([]) | length > 0
+  tags:
+    - restore.drill
+
+# --- on-demand run (`-e restore_drill_run_now=true`) -------------------------
+- name: Restore drills - validate the requested tenants
+  ansible.builtin.assert:
+    that:
+      - item in (restore_drill_tenants | default([]) | map(attribute='tenant') | list)
+    fail_msg: >-
+      drill_limit_tenant names '{{ item }}', which this host cannot drill.
+      Drillable here: {{ restore_drill_tenants | default([]) | map(attribute='tenant') | join(', ') }}.
+    quiet: true
+  loop: "{{ restore_drill_selected_tenants }}"
+  when: restore_drill_run_now | bool
+  tags:
+    - restore.drill.run
+
+- name: Restore drills - run now (unattended; the script writes evidence and metrics)
+  ansible.builtin.command:
+    argv: ["{{ restore_drill_script }}", "--tenant", "{{ restore_drill_selected_tenants | join(',') }}"]
+  register: restore_drill_run
+  changed_when: true
+  failed_when: false
+  when: restore_drill_run_now | bool and restore_drill_selected_tenants | length > 0
+  tags:
+    - restore.drill.run
+
+- name: Restore drills - report the per-tenant outcome
+  ansible.builtin.debug:
+    msg: "{{ restore_drill_run.stdout_lines | default([]) }}"
+  when: restore_drill_run is defined and restore_drill_run.stdout_lines is defined
+  tags:
+    - restore.drill.run
+
+- name: Restore drills - a drill that failed fails this run
+  ansible.builtin.fail:
+    msg: >-
+      At least one drill failed (exit {{ restore_drill_run.rc | default('?') }}).
+      The evidence section and the state file were still written; see
+      {{ restore_drill_evidence_dir }} and {{ restore_drill_log_dir }}.
+  when: restore_drill_run is defined and restore_drill_run.rc | default(0) != 0
+  tags:
+    - restore.drill.run
+
+# The evidence file is the deliverable, so the play puts it where a human will
+# find it: `history/<date>_db-restore-drills.md` in the checkout the play was
+# launched from. On the operator's workstation that is the repo working tree
+# (ready to commit); launched from a host checkout it lands in that checkout.
+# The host copy ({{ restore_drill_evidence_dir }}) stays as the operational log.
+- name: Restore drills - locate the evidence file written by this run
+  ansible.builtin.command:
+    argv: [ls, -1t, "{{ restore_drill_evidence_dir }}"]
+  register: restore_drill_evidence_ls
+  changed_when: false
+  when: restore_drill_run is defined and restore_drill_run.rc is defined
+  tags:
+    - restore.drill.run
+
+- name: Restore drills - read that evidence file
+  ansible.builtin.slurp:
+    src: "{{ (restore_drill_evidence_dir, restore_drill_evidence_name) | path_join }}"
+  register: restore_drill_evidence
+  vars:
+    restore_drill_evidence_name: >-
+      {{ restore_drill_evidence_ls.stdout_lines | select('search', '_db-restore-drills.md') | list | first }}
+  when:
+    - restore_drill_evidence_ls is defined
+    - restore_drill_evidence_ls.stdout_lines | default([]) | select('search', '_db-restore-drills.md') | list | length > 0
+  tags:
+    - restore.drill.run
+
+- name: Restore drills - mirror the evidence into the repository's history/
+  ansible.builtin.copy:
+    dest: "{{ (playbook_dir, '..', '..', 'history', restore_drill_evidence_name) | path_join }}"
+    content: "{{ restore_drill_evidence.content | b64decode }}"
+    mode: '0644'
+  delegate_to: localhost
+  become: false
+  vars:
+    restore_drill_evidence_name: >-
+      {{ restore_drill_evidence_ls.stdout_lines | select('search', '_db-restore-drills.md') | list | first }}
+  when:
+    - restore_drill_evidence is defined
+    - restore_drill_evidence.content is defined
+  tags:
+    - restore.drill.run
