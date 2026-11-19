@@ -7,6 +7,11 @@
     dbtest: db-tier-test.mariadb
     mongotest: db-tier-test.mongo
     mongoroot: "mongodb://private_admin:molecule-mongo-root@127.0.0.1:27017/admin?authSource=admin"
+    # The role renders dbops into this directory (defaults/main.yml), and it is
+    # derived from this play's own vars on a real host. Verify is a SEPARATE play
+    # from converge, so it has to state it too — without it the stat tasks fail
+    # with 'Finalization of task args' rather than telling you a var is missing.
+    remote_user_home: "/home/{{ ansible_user | default('root') }}"
   tasks:
     - name: Each tenant user reads its OWN database
       community.docker.docker_container_exec:
