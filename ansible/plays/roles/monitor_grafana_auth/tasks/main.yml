@@ -25,6 +25,10 @@
 # GF_SECURITY_ADMIN_PASSWORD. The secret never appears in argv or in this task's
 # output — only the variable NAME is on the command line, and the value is
 # expanded inside the container's shell.
+#
+# `--retry-connrefused` is what makes a just-restarted Grafana a non-event: the
+# loop only ends when the listener answers, so the code is a real auth answer
+# (200/401) and never `000`.
 - name: Check that the rendered admin password authenticates
   ansible.builtin.command:
     argv:
@@ -35,6 +39,10 @@
       - -c
       - >-
         curl -s -o /dev/null -w '%{http_code}'
+        --retry {{ monitor_grafana_auth_wait_retries }}
+        --retry-delay {{ monitor_grafana_auth_wait_delay }}
+        --retry-connrefused
+        --max-time {{ monitor_grafana_auth_wait_max_time }}
         -u "${GF_SECURITY_ADMIN_USER:-admin}:$GF_SECURITY_ADMIN_PASSWORD"
         http://localhost:3000{{ monitor_grafana_auth_check_path }}
   register: monitor_grafana_auth_probe
@@ -55,7 +63,10 @@
 # Re-assert the rendered value INTO THE DB. `--password-from-stdin` and a pipe
 # inside the container: no secret on a command line, and `no_log` keeps the
 # CLI's settings dump (which echoes every GF_ var name but not its value) out of
-# the deploy log. Only runs on a 401, so a healthy host never touches the row.
+# the deploy log. Runs on a 401 ONLY — that is the one answer that means "env and
+# DB disagree". Any other non-200 (000 unreachable, 403 login disabled, 5xx) is a
+# different fault, and resetting the row would not fix it; the assert below
+# reports it instead of burying it under a pointless password change.
 - name: Re-assert the rendered admin password into grafana.db
   ansible.builtin.command:
     argv:
@@ -69,7 +80,7 @@
         grafana cli admin reset-admin-password --password-from-stdin
   when:
     - not ansible_check_mode
-    - monitor_grafana_auth_probe.stdout | default('') | trim != '200'
+    - monitor_grafana_auth_probe.stdout | default('') | trim == '401'
   no_log: true
   changed_when: true
 
@@ -83,6 +94,10 @@
       - -c
       - >-
         curl -s -o /dev/null -w '%{http_code}'
+        --retry {{ monitor_grafana_auth_wait_retries }}
+        --retry-delay {{ monitor_grafana_auth_wait_delay }}
+        --retry-connrefused
+        --max-time {{ monitor_grafana_auth_wait_max_time }}
         -u "${GF_SECURITY_ADMIN_USER:-admin}:$GF_SECURITY_ADMIN_PASSWORD"
         http://localhost:3000{{ monitor_grafana_auth_check_path }}
   register: monitor_grafana_auth_after
@@ -100,12 +115,17 @@
     that:
       - monitor_grafana_auth_after.stdout | default('') | trim == '200'
     fail_msg: >-
-      Grafana still answers '{{ monitor_grafana_auth_after.stdout | default('-') | trim }}' to
-      admin:<GF_SECURITY_ADMIN_PASSWORD> on {{ monitor_grafana_auth_check_path }} after
-      resetting the password from that same env value. That is not a Grafana bug:
-      check that monitor/grafana.env on the host carries a GF_SECURITY_ADMIN_PASSWORD
-      line at all and that the container was recreated since it changed. Do NOT
-      "fix" it by editing grafana.db or by walking the browser through a password
-      reset — that is exactly how the credential drifted from the rendered env on
-      2026-11-18 (see history/2026-11-18_db-tier-r2b-alert-truth.md).
+      Grafana answers '{{ monitor_grafana_auth_after.stdout | default('-') | trim }}' to
+      admin:<GF_SECURITY_ADMIN_PASSWORD> on {{ monitor_grafana_auth_check_path }}
+      {%- if monitor_grafana_auth_after.stdout | default('') | trim == '000' %} — that is
+      "no answer at all", not a credential answer: check `docker logs
+      {{ monitor_grafana_auth_container }}` and whether it is healthy yet (the probe
+      already retried {{ monitor_grafana_auth_wait_retries }} times).
+      {%- else %} after resetting the password from that same env value. That is not a
+      Grafana bug: check that monitor/grafana.env on the host carries a
+      GF_SECURITY_ADMIN_PASSWORD line at all and that the container was recreated
+      since it changed. Do NOT "fix" it by editing grafana.db or by walking the
+      browser through a password reset — that is exactly how the credential drifted
+      from the rendered env on 2026-11-18 (see
+      history/2026-11-18_db-tier-r2b-alert-truth.md).{% endif %}
   when: not ansible_check_mode

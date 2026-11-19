@@ -37,3 +37,15 @@ monitor_grafana_auth_container: monitor.grafana
 # The endpoint that needs an authenticated admin. `/api/v1/provisioning/
 # alert-rules` is the one the verification recipe reads, and it is what 401'd.
 monitor_grafana_auth_check_path: /api/v1/provisioning/alert-rules
+
+# WAIT FOR THE HTTP SERVER, NOT JUST THE CONTAINER (found 2026-11-19, on R11's
+# deploy): `monitor_reload` runs immediately before this role and may have just
+# restarted Grafana to pick up new provisioning. The first cut probed once, got
+# `000` (connection refused, ~20 s of startup), read "not 200" as "the env does
+# not authenticate", reset the password of a healthy container, and failed the
+# deploy on the second `000`. A `000` is NEVER a credential answer — only a 200
+# or a 401 is — so the probe now retries until the listener answers at all, and
+# the failure message says which of the two it is.
+monitor_grafana_auth_wait_retries: 30
+monitor_grafana_auth_wait_delay: 2
+monitor_grafana_auth_wait_max_time: 8
