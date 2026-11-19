@@ -12,8 +12,10 @@
       community.docker.docker_container_exec:
         container: "{{dbtest}}"
         command: >-
-          sh -c 'mariadb --skip-ssl --batch --skip-column-names -u{{item.user}} -p{{item.pw}} -e "SELECT COUNT(*) FROM widgets"'
-        # `widgets` resolves in the user's default database via the SELECT below
+          sh -c 'mariadb --skip-ssl --batch --skip-column-names -u{{item.user}} -p{{item.pw}} -D {{item.db}} -e "SELECT COUNT(*) FROM widgets"'
+        # `-D` is required: a MariaDB account has no default database, so the
+        # unqualified table name would fail with "No database selected" —
+        # which says nothing about the grant this test exists to check.
       loop:
         - {user: tenant_a, pw: molecule-tenant-a, db: tenant_a}
         - {user: tenant_b, pw: molecule-tenant-b, db: tenant_b}
@@ -104,13 +106,21 @@
         path: "{{remote_user_home}}/.dbops/dbops"
       register: dbops_stat
 
+    - name: Stat dbops' credential file for this tier
+      ansible.builtin.stat:
+        path: "{{remote_user_home}}/.dbops/business.env"
+      register: dbops_env_stat
+
     - name: Assert dbops + its credential file exist with the right modes
       ansible.builtin.assert:
         that:
           - dbops_stat.stat.exists
           - dbops_stat.stat.mode == '0755'
-          - (lookup('ansible.builtin.fileglob',
-                    remote_user_home ~ '/.dbops/business.env') | length) == 1
+          - dbops_env_stat.stat.exists
+          - dbops_env_stat.stat.mode == '0600'
+        # A `lookup('fileglob', …)` here would run on the CONTROLLER, not on the
+        # instance the role just wrote to — it would assert about the CI runner's
+        # filesystem and fail for the wrong reason. Stat the target instead.
         quiet: true
 
     - name: The role created NO container of its own (it never renders compose — D6)
