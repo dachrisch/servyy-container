@@ -449,7 +449,13 @@
         db_tier_name: nonprod
         db_tier_render_only: true
       when: "'nonprod' in (db_tiers | default([]))"
-      tags: [user.docker, user.docker.db-nonprod]
+      # `.render` selects ONLY this pass: it writes db-<tier>/mariadb.env, dbops
+      # and the tier credential, and creates/removes nothing in Docker. Needed by
+      # WP-8R R8, whose `db-backup@<tier>` runner calls `dbops dump-due` — the
+      # dbops on the host must know the new command before the tier timer is
+      # enabled. Without this tag the only way to refresh dbops was the full
+      # `user.docker.db-<tier>` tag, which also runs `docker compose up`.
+      tags: [user.docker, user.docker.db-nonprod, user.docker.db-nonprod.render]
 
     # The tier's own compose project. Committed (D6), backend-only, no Traefik
     # router; `db_nonprod_backend` is internal. Consumers attach externally.
@@ -477,7 +483,13 @@
         db_tier_name: business
         db_tier_render_only: true
       when: "'business' in (db_tiers | default([]))"
-      tags: [user.docker, user.docker.db-business]
+      # `.render` selects ONLY this pass: it writes db-<tier>/mariadb.env, dbops
+      # and the tier credential, and creates/removes nothing in Docker. Needed by
+      # WP-8R R8, whose `db-backup@<tier>` runner calls `dbops dump-due` — the
+      # dbops on the host must know the new command before the tier timer is
+      # enabled. Without this tag the only way to refresh dbops was the full
+      # `user.docker.db-<tier>` tag, which also runs `docker compose up`.
+      tags: [user.docker, user.docker.db-business, user.docker.db-business.render]
 
     # The tier's own compose project: committed (D6), backend-only, no Traefik
     # router; `db_business_backend` is internal. Consumers attach externally.
@@ -505,7 +517,13 @@
         db_tier_name: private
         db_tier_render_only: true
       when: "'private' in (db_tiers | default([]))"
-      tags: [user.docker, user.docker.db-private]
+      # `.render` selects ONLY this pass: it writes db-<tier>/mariadb.env, dbops
+      # and the tier credential, and creates/removes nothing in Docker. Needed by
+      # WP-8R R8, whose `db-backup@<tier>` runner calls `dbops dump-due` — the
+      # dbops on the host must know the new command before the tier timer is
+      # enabled. Without this tag the only way to refresh dbops was the full
+      # `user.docker.db-<tier>` tag, which also runs `docker compose up`.
+      tags: [user.docker, user.docker.db-private, user.docker.db-private.render]
 
     # The tier's own compose project: committed (D6), backend-only, no Traefik
     # router; `db_private_backend` is internal. Consumers attach externally.

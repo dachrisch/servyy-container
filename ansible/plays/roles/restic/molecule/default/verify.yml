@@ -174,3 +174,104 @@
           - "'KEEP_DAYS=3' in (ship_script.content | b64decode)"
           - "'REPO_DAYS=2' in (ship_script.content | b64decode)"
           - "'last_ship_ok' in (ship_script.content | b64decode)"
+
+    # --- WP-8R R8: one db-backup@<tier> unit pair, and the per-tenant dump units
+    # are GONE (removed, not merely stopped). The template pair is deployed once;
+    # systemd's %i is the tier.
+    - name: Check the tier unit template pair exists
+      stat:
+        path: "{{ unit_dir }}/{{ item }}"
+      loop:
+        - db-backup@.service
+        - db-backup@.timer
+      register: tier_unit_pair
+
+    - name: Assert the tier unit template pair was deployed
+      assert:
+        that:
+          - item.stat.exists
+      loop: "{{ tier_unit_pair.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Read the rendered tier service unit
+      slurp:
+        src: "{{ unit_dir }}/db-backup@.service"
+      register: tier_service
+
+    - name: Assert the service runs the runner with the instance name
+      assert:
+        that:
+          - "'db-backup-tier.sh %i' in (tier_service.content | b64decode)"
+          - "'Type=oneshot' in (tier_service.content | b64decode)"
+
+    - name: Read the rendered tier timer unit
+      slurp:
+        src: "{{ unit_dir }}/db-backup@.timer"
+      register: tier_timer
+
+    - name: Assert the timer ticks every 5 minutes with no jitter
+      assert:
+        that:
+          # The tenant TIMES are not here — they live in the inventory rows.
+          - "'OnCalendar=*-*-* *:00/5:00' in (tier_timer.content | b64decode)"
+          - "'RandomizedDelaySec=0' in (tier_timer.content | b64decode)"
+
+    - name: Read the rendered tier runner
+      slurp:
+        src: "{{ script_dir }}/db-backup-tier.sh"
+      register: tier_runner
+
+    - name: Assert the runner is inventory-driven, serialised and failure-isolated
+      assert:
+        that:
+          - "'dump-due' in (tier_runner.content | b64decode)"
+          - "'flock -n 9' in (tier_runner.content | b64decode)"
+          # The tier this host serves is rendered from the inventory (one case
+          # arm per tier that has a dump_via: dbops tenant).
+          - "'    business) ;;' in (tier_runner.content | b64decode)"
+          # Failure isolation: the loop must NOT exit on the first failure.
+          - "'tenant dump failed' in (tier_runner.content | b64decode)"
+          - "'FAILED_LIST' in (tier_runner.content | b64decode)"
+          # It must never write a dump itself — it runs the per-tenant script.
+          - "'dump-$t.sh' in (tier_runner.content | b64decode)"
+
+    - name: Check the business tier timer is enabled and started
+      command: systemctl --user is-active db-backup@business.timer
+      register: tier_active
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the business tier timer runs on this host
+      assert:
+        that:
+          - tier_active.stdout | trim == 'active'
+
+    - name: Check the legacy per-tenant dump units are gone
+      stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ unit_dir }}/db-dump-bnb_office.service"
+        - "{{ unit_dir }}/db-dump-bnb_office.timer"
+        - "{{ unit_dir }}/docker-bnb-office-dump.service"
+        - "{{ unit_dir }}/docker-bnb-office-dump.timer"
+      register: legacy_units
+
+    - name: Assert the deploy removed every per-tenant dump unit
+      assert:
+        that:
+          - not item.stat.exists
+      loop: "{{ legacy_units.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Assert the per-tenant dump SCRIPT is still deployed for the runner
+      stat:
+        path: "{{ script_dir }}/dump-bnb_office.sh"
+      register: tenant_dump_script
+
+    - name: Assert the runner's per-tenant script survived the unit removal
+      assert:
+        that:
+          - tenant_dump_script.stat.exists
+          - tenant_dump_script.stat.executable

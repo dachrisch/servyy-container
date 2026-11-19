@@ -20,12 +20,56 @@
       app:
         db_backup_user: test_backup_user
         db_backup_password: test_backup_password
+    # WP-8R R7/R8 fixtures: ONE dump-backed target so the tier unit, the
+    # canonical dump dir and the legacy-unit removal are all exercised. Production
+    # derives these two structures from plays/vars/db_tenants.yml; the scenario
+    # carries the minimum shape of one business tenant (bnb_office -> db-bnb).
+    restic_targets_enabled:
+      - name: db-bnb
+        kind: db-dump
+        tenant: bnb_office
+        enabled_by: servy
+        cadence: daily
+        dump_at: '02:30'
+        dump_format: logical
+        retention: db_daily
+        probe_minutes: 1560
+        severity: high
+        size_floor_bytes: 8192
+        log_key: backup_db_bnb
+        log_label: restic-backup-db-bnb
+        log_threshold_seconds: 93600
+        dump_log_key: db_dump_bnb_office
+        dump_log_label: dump-bnb_office
+        dump_log_threshold_seconds: 93600
+    db_tenants:
+      - tenant: bnb_office
+        tier: business
+        engine: mariadb
+        server: db-business.mariadb
+        db: ibs
+        user: ibs_app
+        dump_schedule: 'daily 02:30'
+        dump_at: '02:30'
+        dump_via: dbops
+        dump_dir: /home/testuser/db-dumps/bnb_office
+        restic_repo: db-bnb
+        drill: monthly
+        size_floor_bytes: 8192
+        probe_minutes: 1560
+        severity: high
+        max_user_connections: 0
+        max_statement_time: 0
+        retiring: false
+        compose_dir: db-business
+        compose_service: mariadb
     restic:
       # restic_backup.sh.j2 exports this as $TMPDIR. It MUST be set here: the
       # scenarios define their own `restic` dict, so a key added to the play
       # var file (vars/restic.yml) is invisible to them, and the template dies
       # with "object of type 'dict' has no attribute 'tmpdir'".
       tmpdir: /home/testuser/.cache/restic-tmp
+      log_dir: /var/log/restic
       home:
         source_path: /home/testuser
       root:
@@ -45,6 +89,8 @@
           - '/localcache'
       'moodle-db':
         source_path: /home/testuser/servyy-container/moodle/data/db-backup/current
+      'db-bnb':
+        source_path: /home/testuser/db-dumps/bnb_office/current
       schedules:
         backup_home: hourly
         backup_root: daily
@@ -55,6 +101,9 @@
         backup_moodle_dump: '*-*-* *:40:00'
         backup_moodle_db: '*-*-* *:50:00'
         backup_moodle_files: '*-*-* 01:20:00'
+        dump_bnb_office: '*-*-* 02:30:00'
+        backup_db_bnb: '*-*-* 02:40:00'
+        db_backup_tier: '*-*-* *:00/5:00'
       logs:
         backup_home: /var/log/restic/backup-home.log
         backup_root: /var/log/restic/backup-root.log
@@ -64,10 +113,40 @@
         backup_moodle_files: /var/log/restic/backup-moodle-files.log
         backup_moodle_db: /var/log/restic/backup-moodle-db.log
         moodle_dump: /var/log/restic/moodle-dump.log
+        backup_db_bnb: /var/log/restic/backup-db-bnb.log
+        db_dump_bnb_office: /var/log/restic/dump-bnb_office.log
         forget: /var/log/restic/forget.log
         check: /var/log/restic/check.log
       exclude_caches: true
   tasks:
+    - name: Create the systemd and backup-script directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: testuser
+        group: testuser
+        mode: "0755"
+      loop:
+        - /home/testuser/.config/systemd/user
+        - /home/testuser/.backup-scripts
+
+    # WP-8R R8: the per-tenant dump units that existed before the tier units.
+    # They are pre-seeded so the converge has to REMOVE them (stop/disable/delete),
+    # which is the requirement — leaving them stopped-and-enabled would let a
+    # Persistent=true catch-up run in parallel with the tier unit.
+    - name: Pre-seed the legacy per-tenant dump units
+      ansible.builtin.copy:
+        dest: "{{ item }}"
+        content: "# stale fixture\n"
+        owner: testuser
+        group: testuser
+        mode: "0644"
+      loop:
+        - /home/testuser/.config/systemd/user/db-dump-bnb_office.service
+        - /home/testuser/.config/systemd/user/db-dump-bnb_office.timer
+        - /home/testuser/.config/systemd/user/docker-bnb-office-dump.service
+        - /home/testuser/.config/systemd/user/docker-bnb-office-dump.timer
+
     - name: Run restic backup schedules  # noqa: role-name[path]
       ansible.builtin.include_role:
         name: "{{ playbook_dir }}/../../"

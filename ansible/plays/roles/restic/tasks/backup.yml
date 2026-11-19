@@ -300,16 +300,10 @@
     - restic.backup
 
 # --- WP-8R R3/R4/R6: the dump-backed repos (servy only) --------------------
-# Five tenants got their first real protection here: PhotoPrism (private),
-# leagues_finance + queen (business), dontforget (private mongo) and firefly
-# (now private MariaDB; its interim postgres dump was replaced by `dbops` in
-# WP-10, in the same repo/directory).
-#
-# Each target is one dump job + one restic snapshot job, both rendered from the
-# SAME `backup_targets` row, because the only thing that differs per tenant is
-# name/schedule/command — which is the whole point of the R1 generator. The
-# schedules are the ones decided in docs/plans/2026-11-18_db-tier-work-packages.md
-# (dump first, snapshot 5-10 min later, never two dumps at once on this host).
+# PhotoPrism (private), leagues_finance + queen (business), dontforget (private
+# mongo), firefly (private MariaDB) and — since R7 — bnb_office (business). Each
+# target is one restic snapshot job, rendered from its `backup_targets` row; the
+# DUMP side is one unit per TIER since R8 (see below), not one per tenant.
 #
 # `servy` targets are gated on inventory_hostname in vars/restic.yml, so on any
 # other host `db_dump_targets` is empty and every loop below is a no-op (the
@@ -319,7 +313,7 @@
     db_dump_targets: >-
       {{ restic_targets_enabled | default([])
          | selectattr('enabled_by', 'equalto', 'servy') | list }}
-    db_tier_units: []
+    db_snapshot_units: []
   tags:
     - restic.backup
 
@@ -383,18 +377,187 @@
   tags:
     - restic.backup
 
-# One list, then ONE loop over the unit template: the dump unit and its snapshot
-# unit are two entries and nothing else distinguishes them. Keeping this a fact
-# (rather than 10 hand-written import_tasks blocks) is what keeps "add a tenant"
-# = "add a backup_targets row".
-- name: Build the oneshot unit list (dump + snapshot per dump-backed repo)
+# --- WP-8R R8: ONE db-backup@<tier> unit per tier --------------------------
+# Before this file submitted ten per-tenant oneshot units (five dump + five
+# snapshot) and the legacy bnb one-liner made it eleven; every new tenant meant
+# another 02:30/01:25-shaped timer written by hand. Now:
+#   * the SNAPSHOT side stays one timer per repo (a repo's cadence is its own
+#     promise, and the snapshot-age probe expects exactly that), below;
+#   * the DUMP side is one template unit per tier — `db-backup@business`,
+#     `db-backup@private` — ticking every 5 minutes, and `dbops dump-due <tier>`
+#     decides who is due from the rows. No tenant name and no dump time appears
+#     in the unit or in this task list.
+#
+# WHICH TIERS GET A UNIT is derived, not listed: a tier gets one iff it has at
+# least one tenant whose row says `dump_via: dbops` AND whose repo is enabled on
+# this host. On servy that is business + private. The high tier deliberately has
+# none (its protection is the physical prepared set + the 5-minute binlog tail,
+# R5, with their own units) and nonprod has none (nothing dumps it, by design) —
+# rendering an empty unit for either would claim a protection that does not
+# exist.
+- name: Select the tenants whose dump runs through the tier units
   ansible.builtin.set_fact:
-    db_tier_units: >-
-      {{ db_tier_units + [
-           {'name': 'db-dump-' ~ t.tenant,
-            'description': 'Logical dump of the ' ~ t.tenant ~ ' tenant',
-            'schedule': restic.schedules['dump_' ~ t.tenant],
-            'command': (remote_user_home, '.backup-scripts', 'dump-' ~ t.tenant ~ '.sh') | path_join},
+    db_backup_tenants: >-
+      {{ db_tenants | default([]) | selectattr('dump_via', 'defined')
+         | selectattr('dump_via', 'equalto', 'dbops')
+         | selectattr('restic_repo', 'in',
+                      restic_targets_enabled | default([]) | map(attribute='name') | list)
+         | list }}
+  tags:
+    - restic.backup
+
+- name: Build the tier roster (one db-backup@<tier> instance per tier)
+  ansible.builtin.set_fact:
+    db_backup_tiers: "{{ db_backup_tenants | map(attribute='tier') | unique | sort | list }}"
+  tags:
+    - restic.backup
+
+- name: Report the tier roster this host will run
+  ansible.builtin.debug:
+    msg: >-
+      db-backup@<tier> instances: {{ db_backup_tiers | join(', ') | default('(none)', true) }};
+      tenants: {{ db_backup_tenants | map(attribute='tenant') | join(', ') | default('(none)', true) }}
+  tags:
+    - restic.backup
+
+- name: Deploy the tier dump runner
+  ansible.builtin.template:
+    src: db-backup-tier.sh.j2
+    dest: "{{ (remote_user_home, '.backup-scripts', 'db-backup-tier.sh') | path_join }}"
+    mode: '0750'
+  vars:
+    dbops_path: "{{ db_tier_dbops_path | default((remote_user_home, '.dbops', 'dbops') | path_join) }}"
+    tier_log_dir: "{{ restic.log_dir | default('/var/log/restic') }}"
+  when: db_backup_tiers | length > 0
+  tags:
+    - restic.backup
+
+# One file pair for ALL tiers (a real systemd template unit): `%i` is the tier.
+# `systemctl --user enable db-backup@business.timer` is the only per-tier action.
+- name: Deploy the db-backup@ template unit pair
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ (remote_user_systemd, item.dest) | path_join }}"
+    mode: '0644'
+  loop:
+    - {src: 'db-backup@.service.j2', dest: 'db-backup@.service'}
+    - {src: 'db-backup@.timer.j2', dest: 'db-backup@.timer'}
+  loop_control:
+    label: "{{ item.dest }}"
+  when: db_backup_tiers | length > 0
+  tags:
+    - restic.backup
+    - restic.systemd
+
+# The runner logs one file per tier; create them as root with the same ownership
+# the other restic logs have (the runner is the deploy user, /var/log is root's).
+- name: Create the per-tier dump log files
+  ansible.builtin.file:
+    path: "{{ (restic.log_dir | default('/var/log/restic'), 'db-backup-' ~ tier ~ '.log') | path_join }}"
+    state: touch
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0644'
+    modification_time: preserve
+    access_time: preserve
+  loop: "{{ db_backup_tiers }}"
+  loop_control:
+    loop_var: tier
+    label: "db-backup-{{ tier }}.log"
+  become: true
+  become_user: root
+  when: db_backup_tiers | length > 0
+  tags:
+    - restic.backup
+
+- name: Enable the db-backup@<tier>.timer for each tier
+  ansible.builtin.systemd:
+    scope: user
+    name: "db-backup@{{ tier }}.timer"
+    state: started
+    enabled: true
+    daemon_reload: true
+  loop: "{{ db_backup_tiers }}"
+  loop_control:
+    loop_var: tier
+    label: "db-backup@{{ tier }}.timer"
+  when: db_backup_tiers | length > 0
+  tags:
+    - restic.backup
+    - restic.systemd
+
+# --- WP-8R R8: remove the per-tenant dump units the tier units replace ------
+# "Removed by the deploy" is the requirement, not "left stopped": a stopped unit
+# that is still enabled is one `systemctl --user start` (or a `Persistent=true`
+# catch-up) away from running in parallel with the tier unit. Stop, disable, then
+# delete the file pair — for exactly the tenants this host serves FROM a tier
+# unit. The dump SCRIPT stays: it is what the tier runner executes.
+- name: Stop and disable the per-tenant dump timers now served by a tier unit
+  ansible.builtin.systemd:
+    scope: user
+    name: "db-dump-{{ item.tenant }}.timer"
+    state: stopped
+    enabled: false
+    daemon_reload: false
+  loop: "{{ db_backup_tenants }}"
+  loop_control:
+    label: "db-dump-{{ item.tenant }}.timer"
+  ignore_errors: true
+  when: db_backup_tenants | length > 0
+  tags:
+    - restic.backup
+    - restic.systemd
+
+- name: Remove the per-tenant dump unit files now served by a tier unit
+  ansible.builtin.file:
+    path: "{{ (remote_user_systemd, item) | path_join }}"
+    state: absent
+  loop: >-
+    {{ db_backup_tenants | map(attribute='tenant')
+       | map('regex_replace', '^(.*)$', 'db-dump-\1.service') | list
+       + db_backup_tenants | map(attribute='tenant')
+       | map('regex_replace', '^(.*)$', 'db-dump-\1.timer') | list }}
+  loop_control:
+    label: "{{ item }}"
+  when: db_backup_tenants | length > 0
+  tags:
+    - restic.backup
+    - restic.systemd
+
+# The pre-R8 bnb unit lived in roles/user (a one-liner in ExecStart=), not in this
+# role, so no loop above can find it. It is removed here — not merely un-managed —
+# because deleting its task from roles/user leaves the FILE and its timer running
+# until something removes them. Gated on bnb being tier-managed on this host.
+- name: Remove the legacy bnb dump unit replaced by db-backup@business
+  vars:
+    bnb_tenant: "{{ db_backup_tenants | selectattr('tenant', 'equalto', 'bnb_office') | list }}"
+  when: bnb_tenant | length > 0
+  block:
+    - name: Stop and disable the legacy bnb dump timer
+      ansible.builtin.systemd:
+        scope: user
+        name: docker-bnb-office-dump.timer
+        state: stopped
+        enabled: false
+      ignore_errors: true
+    - name: Remove the legacy bnb dump unit files
+      ansible.builtin.file:
+        path: "{{ (remote_user_systemd, item) | path_join }}"
+        state: absent
+      loop:
+        - docker-bnb-office-dump.service
+        - docker-bnb-office-dump.timer
+  tags:
+    - restic.backup
+    - restic.systemd
+
+# One list, then ONE loop over the snapshot unit template: "add a tenant" stays
+# "add a backup_targets row" (R1). The DUMP unit is no longer in this list — the
+# tier unit is (above).
+- name: Build the oneshot unit list (one snapshot job per dump-backed repo)
+  ansible.builtin.set_fact:
+    db_snapshot_units: >-
+      {{ db_snapshot_units + [
            {'name': 'restic-backup-' ~ t.name,
             'description': 'Restic backup - ' ~ t.name ~ ' (' ~ t.tenant ~ ' dumps)',
             'schedule': restic.schedules['backup_' ~ (t.name | replace('-', '_'))],
@@ -407,7 +570,7 @@
   tags:
     - restic.backup
 
-- name: Deploy the dump and snapshot timers for the dump-backed repos
+- name: Deploy the snapshot timers for the dump-backed repos
   ansible.builtin.include_tasks:
     file: oneshot_include.yml
     # Dynamic include + tags: tags on an include statement do NOT propagate into
@@ -419,7 +582,7 @@
         - restic.systemd
   vars:
     service: "{{ unit }}"
-  loop: "{{ db_tier_units }}"
+  loop: "{{ db_snapshot_units }}"
   loop_control:
     loop_var: unit
     label: "{{ unit.name }}"

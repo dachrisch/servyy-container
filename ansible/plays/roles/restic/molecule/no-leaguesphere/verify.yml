@@ -66,3 +66,23 @@
       loop: "{{ kept_timers.results }}"
       loop_control:
         label: "{{ item.item }}"
+
+    # WP-8R R8: on a host with no `dump_via: dbops` tenant there is no tier
+    # roster, so neither the template pair nor the runner may exist — an enabled
+    # `db-backup@<tier>` here would be a unit that can never do anything.
+    - name: Check no tier dump units or runner were deployed
+      stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ unit_dir }}/db-backup@.service"
+        - "{{ unit_dir }}/db-backup@.timer"
+        - "{{ script_dir }}/db-backup-tier.sh"
+      register: tier_artifacts
+
+    - name: Assert the tier dump surface is absent on a tenant-less host
+      assert:
+        that:
+          - not item.stat.exists
+      loop: "{{ tier_artifacts.results }}"
+      loop_control:
+        label: "{{ item.item }}"

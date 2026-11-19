@@ -1,0 +1,18 @@
+[Unit]
+Description=Trigger for db-backup@%i (database dumps due on the %i tier)
+
+[Timer]
+# Every 5 minutes; `dbops dump-due <tier>` decides who is actually due. The
+# tenant times live in plays/vars/db_tenants.yml (`dump_at`) and are never
+# repeated here. 5 minutes is the inventory's own granularity: the declared dump
+# times are 5-minute spaced (00:45, 01:15, 01:25, 01:35, 01:45, 02:30), so a
+# coarser tick would either delay a dump or need a time hard-coded here.
+OnCalendar={{ restic.schedules.db_backup_tier }}
+# NO jitter: jitter on a 5-minute tick is what the binlog pair had to be rescued
+# from in R5 (it turns 5 minutes into 5–10). The tick is already idempotent, so
+# there is nothing to spread.
+RandomizedDelaySec=0
+Persistent=true
+
+[Install]
+WantedBy=timers.target
