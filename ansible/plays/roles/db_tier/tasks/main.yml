@@ -47,6 +47,12 @@
   ansible.builtin.set_fact:
     db_tier_compose_exists: "{{ lookup('ansible.builtin.fileglob', db_tier_compose_hint) }}"
 
+# --- pass 0: the rendered root password must match the datadir ----------------
+# Runs first, and only acts when the tier server is already running. See the
+# header of root_password_guard.yml for the 2026-11-19 incident it prevents.
+- name: Guard the tier's root password against the running datadir
+  ansible.builtin.include_tasks: root_password_guard.yml
+
 # --- pass 1: files the tier's compose needs before it can start ---------------
 - name: Render the tier's env file, dbops and credentials
   ansible.builtin.include_tasks: render.yml

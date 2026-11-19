@@ -285,3 +285,42 @@ verified restorable from restic):
   (shared.mongo's root). No app, role or play reads it any more; the stopped
   container's env is the only consumer.
 * Nothing was rotated, and no secret value appears in this entry.
+
+## Follow-up the same day: the MariaDB root seeds were a latent outage
+
+The WP-9 cutover ran from a fresh clone of this repo (`…/infrastructure/wp9-mongo`,
+kept separate so the shared checkout stayed on `master`). That clone had no
+`ansible/plays/vars/.db_tier_root_password_*` files, because they are gitignored
+machine-local seeds — so `lookup('password', …)` **generated three new values**,
+`docker_service` recreated `db-business.mariadb` with one of them in
+`MARIADB_ROOT_PASSWORD`, and MariaDB applied that only on datadir initialisation.
+The result: root logins failed `1045`, the tier's SQL was dead, and copying the
+canonical seeds back and re-deploying fixed it.
+
+The comment that made this look safe was wrong in one specific way, which is worth
+writing down: **the role's `ALTER USER 'root'` cannot repair a regenerated seed**,
+because the container is recreated with the new password *before* the role runs and
+the role needs that password to log in. For a *tenant* account (`CREATE USER IF NOT
+EXISTS … IDENTIFIED BY`, `ALTER USER`) regeneration really is harmless — the role
+sets it again. For **root**, the datadir owns the credential, and the datadir cannot
+be told.
+
+So, in one change:
+
+* `db_tier_root_password_{nonprod,business,private}` are **literal values** in the
+  encrypted `plays/vars/secrets.yml`, like the mongo roots, and the misleading
+  comment is replaced with this incident. A clone without the git-crypt key now
+  fails to decrypt instead of silently inventing a password.
+* The seed files were deleted, so nothing can regenerate them.
+* `roles/db_tier/tasks/root_password_guard.yml` runs **before** anything is
+  rendered or recreated: when the tier server is running it authenticates with the
+  value the deploy is about to use (`MYSQL_PWD` inside the container's shell,
+  password on stdin, `no_log` — never on a command line, never in the log) and
+  **fails the deploy with the server untouched** if it does not match, naming the
+  three realistic causes and the deliberate-rotation procedure. When the server is
+  stopped it says it cannot check instead of pretending it did.
+
+Verified: a deploy with a deliberately wrong value fails at the guard with
+`mariadb exited 1` and zero changes; a normal targeted deploy of all three tiers
+passes the guard and is `changed=0` on the second run; no MariaDB container was
+recreated (`db-business.mariadb` still up from the cutover).
