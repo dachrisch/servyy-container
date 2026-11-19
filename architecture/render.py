@@ -574,13 +574,19 @@ def main(argv: list[str] | None = None) -> int:
     map_path = args.map or (repo / "architecture" / "landscape.yaml")
 
     if args.selftest:
-        derived = derive(repo, ["dns", "me"])
-        domains = {d for v in derived.values() for d in v["domains"]}
+        # The map may be ciphertext here (CI has no key); the ignore list is
+        # therefore a constant, and --verify is what checks the map knows it.
+        derived = derive(repo, ["dns", "me", "devhub", "platzler-heid", "thore"])
+        resolved = {d for v in derived.values() for d in v["domains"]}
+        public = [c for c, v in derived.items() if v["domains"] or v["templated"]]
         tiers = derive_tiers(repo)
-        ok = len(derived) >= 30 and len(domains) >= 20 and len(tiers) >= 4
+        # Most services render their host from ${SERVICE_HOST}, so the compose TEXT
+        # yields few literal domains: count PUBLIC containers, not literal hosts.
+        ok = len(derived) >= 30 and len(public) >= 20 and len(tiers) >= 4
         print(
-            f"selftest: {len(derived)} containers, {len(domains)} domains, "
-            f"{len(tiers)} tiers -> {'ok' if ok else 'BROKEN'}"
+            f"selftest: {len(derived)} containers ({len(public)} public, "
+            f"{len(resolved)} with literal domains), {len(tiers)} tiers "
+            f"-> {'ok' if ok else 'BROKEN'}"
         )
         return 0 if ok else 1
 
