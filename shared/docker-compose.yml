@@ -5,14 +5,22 @@
 #     shared_backend:
 #       name: shared_backend
 #       external: true
-# and reach hosts shared.redis / shared.db.
+# and reach the host shared.redis.
 #
 # WP-9 (2026-11-19): `shared.mongo` is retired. Its three tenants moved to
 # db-business.mongo / db-private.mongo and the container is STOPPED (not
 # removed) with `shared_mongo_data` intact as the rollback for one week. The
 # service block is deliberately gone, so a deploy of this project can no longer
-# start it; `docker start shared.mongo` is the rollback. What remains here is
-# redis (permanent) and postgres (until WP-10 retires it).
+# start it; `docker start shared.mongo` is the rollback.
+#
+# WP-10 (2026-11-19): `shared.db` (PostgreSQL 15, Firefly) is retired the same
+# way. Firefly now lives on db-private.mariadb; `shared.db` is STOPPED with its
+# bind-mounted datadir (`${DOCKER_DATA_ROOT}/finance/db`) untouched as the
+# rollback for one month. The `db:` service is gone, so a `shared` deploy can
+# neither start it nor remove it (this role runs compose without
+# --remove-orphans). `docker start shared.db` is the rollback until the dated
+# deletion checklist in history/2026-11-19_db-tier-wp10-postgres.md is run.
+# This project is now redis only.
 name: ${SERVICE_NAME}
 
 services:
@@ -34,32 +42,20 @@ services:
       timeout: 5s
       retries: 5
 
-  db:
-    # Firefly III postgres. Bind mount keeps the EXISTING finance path:
-    # zero data movement, adopted on prod, created fresh on test.
-    image: postgres:15
-    container_name: ${COMPOSE_PROJECT_NAME}.db
-    restart: unless-stopped
-    env_file:
-      - shared.env
-    environment:
-      POSTGRES_DB: firefly
-      POSTGRES_USER: firefly
-    volumes:
-      - ${DOCKER_DATA_ROOT}/finance/db:/var/lib/postgresql/data
-    networks:
-      - backend
-    labels:
-      - traefik.enable=false
-      # Database server: `db` watchtower scope (D15). Postgres 15 patches are
-      # same-datadir; the 15 -> 16+ step is a reviewed PR, never a pull. This
-      # server is removed in Phase 9 once Firefly moves to db-private.mariadb.
-      - com.centurylinklabs.watchtower.scope=db
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U firefly"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
+  # db:
+  #   RETIRED 2026-11-19 (WP-10): Firefly moved to db-private.mariadb. The
+  #   container and its bind-mounted datadir are STOPPED, not deleted, for the
+  #   one-month rollback (`docker start shared.db`). The service block is gone
+  #   on purpose: a `shared` deploy must not be able to start or remove it.
+  #   Deletion checklist + date: history/2026-11-19_db-tier-wp10-postgres.md.
+  #   Kept as a comment, not a service, so the datadir path stays documented:
+  #     ${DOCKER_DATA_ROOT}/finance/db -> /var/lib/postgresql/data
+  #   image: postgres:15
+  #   container_name: ${COMPOSE_PROJECT_NAME}.db
+  #   env_file: [shared.env]
+  #   environment: {POSTGRES_DB: firefly, POSTGRES_USER: firefly}
+  #   labels: [com.centurylinklabs.watchtower.scope=db]
+  #   healthcheck: pg_isready -U firefly
 
 networks:
   backend:

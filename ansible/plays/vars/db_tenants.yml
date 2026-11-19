@@ -5,7 +5,7 @@
 # Seeded (2026-11-18) with the CURRENT placement, so nothing moves: an entry here
 # describes where a tenant runs today, not where it will end up. Later phases
 # only edit rows (WP-4..WP-9 move `server`, WP-9 retires `shared.mongo`, WP-10
-# removes `firefly`).
+# moves `firefly` to MariaDB and retires `shared.db`).
 #
 # Schema — one row per TENANT, not per server (several tenants share a server):
 #   tenant                stable id, never renamed (history and dumps key off it)
@@ -160,7 +160,12 @@ retention_profiles:
     daily: 30
     weekly: 8
     monthly: 6
-  # Firefly is interim until WP-10 deletes it with shared.db: short on purpose.
+  # 14 dailies + 4 weekly: Firefly's retention, chosen while it was an interim
+  # postgres tenant. WP-10 kept it UNCHANGED on purpose: the move's contract is
+  # that the repo/dump path is byte-identical, and changing retention in the
+  # same package would make the "a dump still lands in the same repo" proof
+  # ambiguous. Revisit as its own change now that firefly is a permanent
+  # MariaDB tenant.
   db_daily_short:
     last: 7
     daily: 14
@@ -395,10 +400,12 @@ backup_targets:
     dump_log_label: dump-dontforget
     dump_log_threshold_seconds: 93600
 
-  # TEMPORARY - WP-10 deletes this row together with shared.db. Firefly's
-  # PGDATA is on /mnt, which the root repo excludes, so until then this pg_dump
-  # is its ONLY protection. Do not delete the repo, the timer or the dump dir
-  # before WP-10 moves Firefly off postgres.
+  # WP-10 (2026-11-19): firefly moved to db-private.mariadb. The repo, the dump
+  # dir, the floor and the drill cadence are UNCHANGED — the tenant's repo is
+  # its history, and the dump script switched from the interim pg_dump to
+  # `dbops dump firefly` in the same `current/`. The pg_dump is kept only for
+  # the one-month rollback; delete this repo only with the postgres cleanup
+  # checklist (history/2026-11-19_db-tier-wp10-postgres.md).
   - name: db-private-firefly
     kind: db-dump
     tenant: firefly
@@ -678,17 +685,19 @@ db_tenants:
     compose_dir: db-private
     compose_service: mongo
 
-  # INTERIM (WP-8R R3; deleted in WP-10 with `shared.db`): a daily `pg_dump -Fc`.
-  # PGDATA is on /mnt, which the `root` repo excludes, so before this row firefly
-  # was one host loss from total loss. It is a logical daily dump, NOT PITR, and it
-  # disappears with postgres: WP-10 moves firefly onto MariaDB (D7), where the
-  # ordinary `dbops dump` path takes over. The dump script is therefore NOT dbops -
-  # there is no postgres adapter, and one must not be written for an engine that
-  # is retired in the same programme (roles/restic/templates/firefly_dump.sh.j2).
+  # WP-10 (2026-11-19): moved off PostgreSQL (`shared.db`) to the private tier's
+  # MariaDB. The schema is Firefly's own migration output (this row's `engine`
+  # is what makes `dbops` and the restore drill use the MariaDB recipe), and the
+  # data was copied table by table with `plays/postgres_to_mariadb_copy.yml`.
+  # The dump DIR and the restic REPO are deliberately unchanged: `db-private-
+  # firefly` keeps carrying the tenant's only off-host copy, now a `dbops`
+  # logical dump (`<tenant>-<ts>.sql.gz`) instead of the interim `pg_dump -Fc`.
+  # `shared.db` is STOPPED, not deleted, for one month — see db_retired_servers
+  # at the bottom of this file and history/2026-11-19_db-tier-wp10-postgres.md.
   - tenant: firefly
     tier: private
-    engine: postgres
-    server: shared.db
+    engine: mariadb
+    server: db-private.mariadb
     db: firefly
     user: firefly
     dump_schedule: 'daily 01:45'
@@ -702,8 +711,8 @@ db_tenants:
     max_user_connections: 0
     max_statement_time: 0
     retiring: false
-    compose_dir: shared
-    compose_service: db
+    compose_dir: db-private
+    compose_service: mariadb
 
 # --- servers kept for rollback, with no tenant rows (WP-9) -------------------
 # The version guard compares every ACTIVE database server, and it derives that
@@ -726,6 +735,24 @@ db_tenants:
 db_retired_servers:
   - container: shared.mongo
     engine: mongo
+    compose_dir: ''
+    service: ''
+    retiring: false
+    pinned_tag: ''
+  # `shared.db` (WP-10, 2026-11-19): STOPPED, not removed. Its datadir
+  # (`${DOCKER_DATA_ROOT}/finance/db`) and the container are the rollback for
+  # one month; `docker start shared.db` is the rollback. The `db:` service is
+  # deliberately gone from shared/docker-compose.yml, so a `shared` deploy can
+  # neither start nor remove it (compose runs without --remove-orphans).
+  #
+  # `retiring: false` ON PURPOSE: this is the ONLY Postgres server left, so the
+  # drift value stays 0 (one image ID = no drift) instead of the engine silently
+  # dropping out of the comparison while the container is still startable. The
+  # guard still resolves the running tag, which is why the entry can have no
+  # compose_dir. Delete this entry in the same change that removes the container
+  # and the datadir (step 1/2 of the deletion checklist in the WP-10 history).
+  - container: shared.db
+    engine: postgres
     compose_dir: ''
     service: ''
     retiring: false

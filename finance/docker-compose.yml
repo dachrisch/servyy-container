@@ -11,10 +11,19 @@ services:
     environment:
       APP_ENV: production
       APP_URL: "https://${SERVICE_HOST}"
-      DB_CONNECTION: pgsql
-      # Cross-project host: postgres moved to the shared project (no data moved).
-      DB_HOST: shared.db
-      DB_PORT: 5432
+      # WP-10 (2026-11-19): Firefly is a Laravel app and its own migrations are
+      # the schema source of truth, so the move off PostgreSQL is a connection
+      # change, not a schema translation. `firefly` is a tenant of the private
+      # tier (db_tenants.yml: engine mariadb, server db-private.mariadb) and the
+      # account is provisioned by roles/db_tier with the SAME credential this
+      # service already renders (finance.db_password -> .env DB_PASSWORD).
+      #
+      # Do NOT set MYSQL_* here: Firefly reads DB_* only, and a stray
+      # MARIADB_AUTO_UPGRADE-style flag on a DB client is how LS was taken down
+      # on 2026-11-18 (history/2026-11-18_ls-db-upgrade-flag-outage.md).
+      DB_CONNECTION: mysql
+      DB_HOST: db-private.mariadb
+      DB_PORT: 3306
       DB_DATABASE: firefly
       DB_USERNAME: firefly
       TRUSTED_PROXIES: "**"
@@ -23,7 +32,10 @@ services:
     networks:
       - proxy
       - backend
-      - shared_backend
+      # The database lives on the private tier's internal network (WP-10).
+      # `shared_backend` is gone from this service: nothing PostgreSQL-related
+      # may still be reachable from the app after the cutover.
+      - db_private_backend
     labels:
       - traefik.enable=true
       - traefik.http.routers.${SERVICE_NAME}.rule=Host(`${SERVICE_HOST}`)
@@ -120,12 +132,17 @@ networks:
     internal: true
   proxy:
     external: true
-  # Owned by the business DB tier (WP-9). Deploy db-business FIRST.
+  # Owned by the private DB tier (WP-6/WP-10). Deploy db-private FIRST.
+  db_private_backend:
+    name: db_private_backend
+    external: true
+  # Owned by the business DB tier (WP-9) for queen's mongod. Deploy
+  # db-business FIRST.
   db_business_backend:
     name: db_business_backend
     external: true
-  # Owned by the shared project (redis, and Firefly's postgres until WP-10) —
-  # deploy shared FIRST.
+  # Owned by the shared project (redis; Firefly's postgres lived here until
+  # WP-10 and is now stopped for the rollback month) — deploy shared FIRST.
   shared_backend:
     name: shared_backend
     external: true

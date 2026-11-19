@@ -180,3 +180,30 @@ Full log: `/home/cda/.restore-drills/logs/leagues_finance-20261119T100727Z.log`
 
 ---
 
+## 2026-11-19T13:27:55Z · firefly (private, mariadb)
+
+**Result:** ok **(monthly cadence)**
+
+| | |
+|---|---|
+| Snapshot | `37587d55f707514188808ea80f15faced2ccc1d5bcadb672f2731ffc80a5828b` from repo `db-private-firefly`, taken 2026-11-19T14:25:46.975296413+01:00 |
+| Scratch target | `drill-firefly-20261119T132659Z` (mariadb:13.0, network `none`) → removed |
+| Restore wall-clock (RTO) | **57.5 s** (restic 2.1 s · target up 12.1 s · import 7.1 s · verify 34.1 s) |
+| Counts compared | compared 81 tables, live 6530 rows / restored 6530 rows (restore is 0 rows behind live) |
+| Mismatch | none |
+
+Verify output (`dbops verify firefly --against drill-firefly-20261119T132659Z --drill`):
+
+```text
+dbops: verify firefly  live(db-private.mariadb) vs live(drill-firefly-20261119T132659Z)
+  -- db-private.mariadb / firefly
+  -- drill-firefly-20261119T132659Z / firefly
+  structure: 81 objects identical (tables, views, routines, triggers, events)
+  compared 81 tables, live 6530 rows / restored 6530 rows (restore is 0 rows behind live)
+dbops: ok  drill check: structure identical, no populated table empty in the restore, equal-count tables checksum-identical
+```
+
+Full log: `/home/cda/.restore-drills/logs/firefly-20261119T132657Z.log`
+
+---
+
