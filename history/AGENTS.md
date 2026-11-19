@@ -6,7 +6,7 @@ the durable record; plans are not.
 
 ## Plans are temporary: remove them when the job is done
 
-Plans (`docs/plans/`, `docs/superpowers/plans|specs/`, `conductor/**/plan.md`, or any other
+Plans (`docs/plans/`, `docs/superpowers/plans|specs/`, a `conductor/` track, or any other
 plan/spec file) exist only while the work is in flight. In the change that closes the job:
 
 1. **Write or finish the history entry** for the work.
