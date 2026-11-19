@@ -106,5 +106,12 @@ the rest of servy is not.
 - Giving the team access to Moodle's MariaDB.
 - Cleanup of the exited `moodle.db` / `moodledata/mariadb` (WP-8, after the
   one-week rollback window).
-- The inert `io.portainer.accesscontrol.teams=photoprism` label on
-  `photoprism.mariadb` (no such team exists) — separate decision.
+- ~~The inert `io.portainer.accesscontrol.teams=photoprism` label on
+  `photoprism.mariadb`~~ — **resolved, nothing to remove** (verified 2026-11-19 on
+  the host and in the repo): the label left with the WP-6b cutover, which removed
+  the `mariadb:` service from `photoprism/docker-compose.yml`. `docker ps -a` shows
+  **no** container carrying team `photoprism`, and `grep -rn accesscontrol.teams`
+  over this repo's compose files returns nothing. The only team labels that exist
+  now are `leaguesphere` on the LS stacks, and they come from the leaguesphere
+  repo's own compose. Nothing to delete, and no phantom team to clean up in the
+  Portainer UI beyond the org's own bookkeeping.
