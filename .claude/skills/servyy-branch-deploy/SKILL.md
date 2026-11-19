@@ -108,10 +108,9 @@ the testing inventory enables the service.
    TRAEFIK_ENTRYPOINT=web
    TRAEFIK_TLS=false
    TRAEFIK_CERTRESOLVER=
-   BUMBLEFLIES_HOST=
    ```
-   (On servyy-test there is no real ACME, so TLS is off and the bf/http
-   routers must resolve to nothing — same as the testing inventory overrides.)
+   (On servyy-test there is no real ACME, so TLS is off — same as the testing
+   inventory overrides.)
 4. Copy the rendered secrets env (e.g. `web.env`) and fix `PUBLIC_BASE_URL` to
    the preview host:
    ```bash
