@@ -91,18 +91,9 @@
     # Stands in for db-private.mongo, which the committed compose owns.
     db_tier_mongo_server_name: db-tier-test.mongo
     db_tier_mongo_root_password: molecule-mongo-root
-    # Same shape tasks/tenant_passwords.yml builds from secrets.yml.
-    db_tier_mongo_user_passwords:
-      tenant_c:
-        name: tenant_c
-        password: molecule-tenant-c
-        database: tenant_c
-        roles: [readWrite, dbAdmin]
-      tenant_d:
-        name: tenant_d
-        password: molecule-tenant-d
-        database: tenant_d
-        roles: [readWrite, dbAdmin]
+    # The mongo credential map is NOT set here: a play var loses to the fact the
+    # business play already made, so it is set inside this play's tasks instead
+    # (see the first task below).
     db_tenants:
       - tenant: tenant_c
         tier: private
@@ -133,6 +124,27 @@
         compose_dir: ''
         compose_service: ''
   tasks:
+    # A `set_fact` from the play above BEATS this play's `vars:` (fact precedence
+    # is higher than play vars), so tenant_passwords.yml's
+    # `db_tier_mongo_user_passwords := (existing) | combine({dontforget})` would
+    # start from the business play's map — {leagues_finance, queen} — and this
+    # play would then look up tenant_c in a map that has never heard of it
+    # (measured in CI: "object of type 'dict' has no attribute 'tenant_c'").
+    # Setting it here, inside this play, is what the role's real path does.
+    - name: Give this play its own mongo credentials
+      ansible.builtin.set_fact:
+        db_tier_mongo_user_passwords:
+          tenant_c:
+            name: tenant_c
+            password: molecule-tenant-c
+            database: tenant_c
+            roles: [readWrite, dbAdmin]
+          tenant_d:
+            name: tenant_d
+            password: molecule-tenant-d
+            database: tenant_d
+            roles: [readWrite, dbAdmin]
+
     - name: Apply the tier's mongo users
       ansible.builtin.include_role:
         name: db_tier
