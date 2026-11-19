@@ -83,6 +83,12 @@ defect in the catch-all service and needs a look at how the code is handed to
 `error-pages` v4. Once this hostname's certificate expires it will fail TLS like any
 other unknown name (e.g. `foo.servy.lehel.xyz` → curl exit 60).
 
+**Fixed the same day** in `history/2026-11-19_traefik-catchall-branded-404.md`
+(branch `fix/traefik-catchall-branded-404`): the cause was not the panic but a lost
+network alias on `traefik.error-pages`, and the catch-all now rewrites every request
+to `/404.html` so a numeric path can no longer reach `WriteHeader`. This hostname and
+every other unmatched one now render the branded 404 instead of a 502.
+
 ## Notes for later
 
 - The certificate for `dontforget.bumbleflies.de` stays in the traefik `acme.json`
