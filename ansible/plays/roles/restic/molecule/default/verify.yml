@@ -247,20 +247,18 @@
         path: "{{ unit_dir }}/timers.target.wants/db-backup@business.timer"
       register: tier_enabled_link
 
-    - name: Stat the timer unit itself
-      ansible.builtin.stat:
-        path: "{{ unit_dir }}/db-backup@business.timer"
-      register: tier_timer_unit
-
     - name: Assert the business tier timer is enabled on this host
       assert:
         that:
-          - tier_timer_unit.stat.exists
           - tier_enabled_link.stat.exists and tier_enabled_link.stat.islnk
+          # A TEMPLATE unit: the instance file db-backup@business.timer never
+          # exists on disk — enabling it writes a symlink to db-backup@.timer.
+          # Asserting on a file of the instance name can never pass.
+          - (tier_enabled_link.stat.lnk_target | basename) == 'db-backup@.timer'
         fail_msg: >-
-          db-backup@business.timer is not enabled (unit exists:
-          {{ tier_timer_unit.stat.exists }}, enablement symlink:
-          {{ tier_enabled_link.stat.exists | default(false) }}) — without it nothing
+          db-backup@business.timer is not enabled (symlink exists:
+          {{ tier_enabled_link.stat.exists | default(false) }}, target:
+          {{ tier_enabled_link.stat.lnk_target | default('-') }}) — without it nothing
           drives `dbops dump-due` and every dump silently ages.
         quiet: true
 
