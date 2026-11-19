@@ -1,0 +1,316 @@
+#!/bin/zsh
+# Ship the live MariaDB binary logs into ONE canonical staging directory, so the
+# `ls-binlog` restic repo can snapshot them every 5 minutes (WP-8R R5).
+#
+# WHY A STAGING DIRECTORY AT ALL
+#   The binlogs live in the jail datadir (/var/lib/mysql inside the container,
+#   root-owned 0660 there and dnsmasq:systemd-journal 0660 on the host), and
+#   restic 0.18 has no include-pattern support: `restic backup` takes paths, not
+#   "these files in that directory". Pointing a repo at the datadir would upload
+#   the whole 318 MB+ InnoDB tree every 5 minutes, and pointing it at nothing is
+#   what this repo replaces. So this script copies the binlog FILES out and the
+#   repo snapshots the copy.
+#
+#   `docker exec ... cat` (not sudo, not `docker cp`): the container's process
+#   is root, so it can read its own binlogs; the redirect is performed by the
+#   CALLING shell, so the staged file is owned by the backup user and readable by
+#   the unprivileged restic job. `docker cp` preserves uid/gid, which would leave
+#   root/unreadable files behind.
+#
+# WHY tmp + RENAME, NEVER WRITE IN PLACE
+#   restic snapshots the directory while this script may be running. Every file
+#   is written to `.incoming` and renamed into place, so a snapshot can only ever
+#   see a complete file (the previous version or the new one) — never a
+#   half-copied binlog. `.incoming*` is excluded from the repo as a second line of
+#   defence.
+#
+# WHY THE ACTIVE BINLOG IS SHIPPED TOO
+#   Shipping only closed (rotated) files would make the tail wait for a rotation
+#   that may not happen for hours — 256 MB of headroom can be weeks on a quiet
+#   database (measured 2026-11-18: the active file had been open ~12 h at 11 KB).
+#   So the active file is copied as well. It only grows, so "budget differs from
+#   the server" is a valid identity test: an unchanged size means an unchanged
+#   file, and no re-copy (and no restic re-read) happens for a quiet binlog.
+#
+# WHY THE CHECKS BELOW EXIST (and why they are not mtime checks)
+#   A 2-day binlog repo and a 2-day `expire_logs_days` are a PAIR: if the repo
+#   keeps less than the server retains, a restore of an older set references
+#   binlogs nobody shipped, and the recovery window silently shrinks — with every
+#   dashboard green, because snapshots keep landing. The checks are structural
+#   (same file set, same sizes, same retention, base set's start position still
+#   inside the shipped window) and their failure is LOUD: the script exits
+#   non-zero WITHOUT refreshing `last_ship_ok`, which makes restic's stale-source
+#   guard refuse to snapshot after 15 minutes, which crosses the repo's snapshot
+#   threshold and pages. A freshness check based on the newest binlog's mtime
+#   would be wrong: a database that is simply not being written to has an old
+#   newest binlog and nothing is broken — that is why the "did the ship run"
+#   signal is the marker file, and the "is the tail complete" signal is the
+#   file/size comparison.
+#
+# RESTORE / REPLAY RECIPE (the half this script does not do):
+#   1. restore the newest prepared set from repo `db` into a scratch mariadb of
+#      the SAME minor version (a physical set is version-bound);
+#   2. restore repo `ls-binlog` into the scratch server's datadir;
+#   3. mariadb-binlog --start-position=<pos in the set's
+#      mariadb_backup_binlog_info> --stop-datetime=<T> <binlogs from P onward>
+#      | mariadb
+#   Replay starts exactly at the recorded position, so no event is applied twice:
+#   no `--skip-gtids` (which would also hide a wrong start position by silently
+#   re-applying transactions), and no wrapping START TRANSACTION (a ROW-format
+#   stream carries its own BEGIN/COMMIT — wrapping it cannot work).
+set -euo pipefail
+
+if [ -f "/home/{{ create_user }}/.zshenv" ]; then
+    source "/home/{{ create_user }}/.zshenv"
+fi
+source "/home/{{ create_user }}/.zprezto/custom/functions/logdy"
+
+CONTAINER="{{ binlog_container }}"
+SRC="{{ binlog_src_dir }}"            # /var/lib/mysql inside the container
+STAGE="{{ binlog_stage_dir }}"
+SET_DIR="{{ ls_backup_current_dir }}" # the prepared set the replay starts from
+KEEP_DAYS={{ binlog_stage_keep_days }}   # staged files outlive the REPO's keep
+REPO_DAYS={{ binlog_repo_keep_days }}    # = ls-binlog retention = expire_logs_days
+MAX_ROUNDS=3
+
+export LOGDY_ALSO_TO_FILE="{{ binlog_log_file }}"
+logdy info "Starting binlog ship" container="$CONTAINER" stage="$STAGE"
+
+# Row images are data: keep the stage private (0750/0600) and the copies 0600.
+umask 077
+mkdir -p "$STAGE"
+chmod 0750 "$STAGE"
+
+# The marker is created BEFORE any check, so a first run that fails still ages
+# out and trips the restic stale guard: an absent marker would make `find -mmin`
+# print nothing, which the guard treats as "fresh" (fail open).
+OK="$STAGE/last_ship_ok"
+STATUS="$STAGE/ship_status.txt"
+[ -e "$OK" ] || : > "$OK"
+
+# Set by any check below. Defined before the copy loop because one check has to
+# run BEFORE a copy (see "generation" in the loop).
+fail=0
+fail_check() {
+    logdy error "$1" "${@:2}"
+    fail=1
+}
+
+# Basenames, in index order, of the binlogs the server holds RIGHT NOW.
+read_index() {
+    docker exec "$CONTAINER" cat "$SRC/binlog.index" 2>/dev/null \
+        | tr -d '\r' | sed 's#.*/##' | grep -E '^binlog\.[0-9]+$' || true
+}
+
+# name<TAB>size for every listed file, in ONE docker exec: a 5-minute job cannot
+# afford one round-trip per file (measured 2026-11-19: 28 files = ~12 s of pure
+# `docker exec` latency per run, i.e. a fifth of the cadence).
+read_sizes() {
+    docker exec "$CONTAINER" sh -c \
+        "cd $SRC && for f in \$(cat binlog.index); do b=\${f##*/}; [ -f \"\$f\" ] && printf '%s %s\n' \"\$b\" \$(stat -c %s \"\$f\"); done" 2>/dev/null \
+        | tr -d '\r' || true
+}
+
+index="$(read_index)"
+if [ -z "$index" ]; then
+    logdy error "No binlogs listed by the server - log_bin off, or binlog.index unreadable" container="$CONTAINER"
+    exit 2
+fi
+
+# 1. Ship every listed file whose staged copy is missing or a different size.
+#    Rotations can happen mid-run, so the list is re-read and the pass repeated;
+#    a file that disappears between the index read and the copy is a rotation,
+#    not an error (the next round's index will not list it).
+round=0
+while [ "$round" -lt "$MAX_ROUNDS" ]; do
+    round=$((round + 1))
+    changed=0
+    sizes="$(read_sizes)"
+    printf '%s\n' "$index" > "$STAGE/.incoming.index"
+    while IFS= read -r name; do
+        [ -n "$name" ] || continue
+        server_size="$(printf '%s\n' "$sizes" | awk -v n="$name" '$1 == n { print $2; exit }')"
+        if [ -z "$server_size" ]; then
+            logdy warn "Binlog vanished between index read and copy (rotation)" file="$name"
+            continue
+        fi
+        stage_size=""
+        # `if`, not `[ -f ] && …`: with `set -e` a failing && list aborts the run
+        # on the very first (missing) staged file.
+        if [ -f "$STAGE/$name" ]; then
+            stage_size="$(stat -c %s "$STAGE/$name")"
+        fi
+        if [ "$stage_size" = "$server_size" ]; then
+            continue
+        fi
+        # A GENERATION RESET looks exactly like a shrinking binlog: a recreated
+        # datadir or a RESET MASTER restarts the numbering at binlog.000001, so
+        # the server's 000001 is tiny while ours is a grown file from the old
+        # history (measured on this host: a datadir recreated at 11:12 left
+        # 000001-000015 of the previous generation inside the daily root
+        # snapshot, same names, different content). Overwriting would destroy
+        # the pre-reset tail SILENTLY — every check here would then compare equal
+        # and pass. Never overwrite a longer staged file; fail instead and leave
+        # both histories on disk for a human to sort out.
+        if [ -n "$stage_size" ] && [ "$server_size" -lt "$stage_size" ]; then
+            fail_check "The server's binlog is SHORTER than the shipped copy - the binlog was recreated (datadir reset or RESET MASTER), not appended to. Not overwriting the older history; PITR across the reset is impossible and someone must decide what to keep" \
+                file="$name" staged="$stage_size" server="$server_size"
+            continue
+        fi
+        docker exec "$CONTAINER" cat "$SRC/$name" > "$STAGE/.incoming"
+        mv -f "$STAGE/.incoming" "$STAGE/$name"
+        changed=$((changed + 1))
+    done < "$STAGE/.incoming.index"
+    rm -f "$STAGE/.incoming.index"
+    next_index="$(read_index)"
+    if [ "$next_index" = "$index" ]; then
+        break
+    fi
+    logdy warn "Binlog index changed while shipping (rotation); rescanning" round="$round"
+    index="$next_index"
+done
+
+# 2. Publish the ordering. `binlog.index` travels verbatim because that is what
+#    a restore wants (the server's own order, container-absolute paths);
+#    `shipped.index` lists what is actually staged, which can be a SUPERSET (the
+#    stage outlives the server's 2-day expiry so the 2-day repo window is always
+#    fully covered).
+docker exec "$CONTAINER" cat "$SRC/binlog.index" > "$STAGE/.incoming.index"
+mv -f "$STAGE/.incoming.index" "$STAGE/binlog.index"
+ls -1 "$STAGE" | grep -E '^binlog\.[0-9]+$' | sort > "$STAGE/.incoming.list"
+mv -f "$STAGE/.incoming.list" "$STAGE/shipped.index"
+
+# 3. Prune staged files the server no longer has, once they are older than
+#    KEEP_DAYS. Two constraints, both load-bearing: never prune a file the server
+#    still holds (`expire_logs_days` can be changed at any time), and keep staged
+#    files LONGER than the repo's retention — a file pruned at exactly 2 days
+#    would vanish from the newest snapshots while the older snapshots that still
+#    contained it are already being forgotten, which is precisely the silent
+#    window shrink this repo exists to prevent.
+for f in "$STAGE"/binlog.*; do
+    [ -f "$f" ] || continue
+    case "${f##*/}" in
+        binlog.[0-9]*) ;;
+        *) continue ;;
+    esac
+    base="${f##*/}"
+    # Never prune a file the server still lists: expire_logs_days can change.
+    if printf '%s\n' "$index" | grep -qxF -- "$base"; then
+        continue
+    fi
+    if [ -n "$(find "$f" -maxdepth 0 -mmin +$((KEEP_DAYS * 1440)) 2>/dev/null)" ]; then
+        rm -f -- "$f"
+        logdy info "Pruned a shipped binlog the server has expired" file="$base"
+    fi
+done
+
+# --- the checks: each one is a way a restore silently loses the tail ----------
+shipped="$(cat "$STAGE/shipped.index")"
+oldest_server="$(printf '%s\n' "$index" | head -1)"
+newest_server="$(printf '%s\n' "$index" | tail -1)"
+oldest_shipped="$(printf '%s\n' "$shipped" | head -1)"
+newest_shipped="$(printf '%s\n' "$shipped" | tail -1)"
+
+if [ -z "$shipped" ]; then
+    fail_check "Nothing is staged - a restore has no binlogs to replay" stage="$STAGE"
+fi
+
+# (a) TAIL: the newest binlog the server holds must be shipped, and the whole
+#     server set must be present with the same size. A closed binlog is
+#     immutable, so any size difference is corruption; the active one may only
+#     be shorter by what was written since we copied (bounded by the cadence).
+if [ "$newest_server" != "$newest_shipped" ]; then
+    fail_check "The newest binlog on the server is not shipped - the tail is behind" \
+        server="$newest_server" shipped="$newest_shipped"
+fi
+sizes="$(read_sizes)"
+printf '%s\n' "$index" > "$STAGE/.incoming.index"
+while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    if [ ! -f "$STAGE/$name" ]; then
+        fail_check "A binlog the server still holds is missing from the stage - a restore to any instant after it loses the tail" file="$name"
+        continue
+    fi
+    server_size="$(printf '%s\n' "$sizes" | awk -v n="$name" '$1 == n { print $2; exit }')"
+    stage_size="$(stat -c %s "$STAGE/$name")"
+    if [ -n "$server_size" ] && [ "$name" != "$newest_server" ] && [ "$stage_size" != "$server_size" ]; then
+        fail_check "A closed binlog was captured at a different size than the server's copy" \
+            file="$name" staged="$stage_size" server="$server_size"
+    fi
+done < "$STAGE/.incoming.index"
+rm -f "$STAGE/.incoming.index"
+
+# (b) WINDOW: the shipped set must start no later than the server's oldest file,
+#     otherwise the stage is missing history the server still considers
+#     replayable. (Extra, older files are fine and expected: see step 3.)
+if [[ "$oldest_shipped" > "$oldest_server" ]]; then
+    fail_check "The shipped binlogs start LATER than the server's oldest - part of the replayable window was never shipped" \
+        oldest_server="$oldest_server" oldest_shipped="$oldest_shipped"
+fi
+
+# (c) RETENTION PAIR: the repo's keep window must not be shorter than the
+#     server's own binlog retention, or a restore of a still-retained set
+#     references binlogs that were already pruned. Read the server's value
+#     rather than trusting the config that was true when this was written.
+server_retention_s="$(docker exec "$CONTAINER" sh -c \
+    'mariadb -uroot -p"$MYSQL_ROOT_PASSWORD" --skip-ssl -N -e "SELECT @@binlog_expire_logs_seconds"' 2>/dev/null | tr -d '[:space:]')"
+if [ -z "$server_retention_s" ]; then
+    fail_check "Could not read binlog_expire_logs_seconds from the server - the retention pairing is unverified"
+elif [ "$server_retention_s" -gt "$((REPO_DAYS * 86400))" ]; then
+    fail_check "The server retains binlogs longer than this repo keeps them - PITR from a set older than the repo window would find no binlogs" \
+        server_retention_seconds="$server_retention_s" repo_keep_days="$REPO_DAYS"
+elif [ "$server_retention_s" -gt "$((KEEP_DAYS * 86400))" ]; then
+    fail_check "The server retains binlogs longer than the stage keeps them - raise binlog_stage_keep_days to stay ahead of expire_logs_days" \
+        server_retention_seconds="$server_retention_s" stage_keep_days="$KEEP_DAYS"
+fi
+
+# (d) BASE SET: the prepared set's replay start position must be inside the
+#     shipped window. This is the join between the two halves (physical set +
+#     binlog tail); if `mariadb-backup` failed for days, the newest set predates
+#     the window and "PITR" is again only an hourly promise.
+set_info="$(sudo -n cat "$SET_DIR/mariadb_backup_binlog_info" 2>/dev/null | tr -d '\r' | head -1 || true)"
+if [ -z "$set_info" ]; then
+    fail_check "Could not read the prepared set's binlog position - the set/tail join is unverified" path="$SET_DIR/mariadb_backup_binlog_info"
+else
+    set_file="$(printf '%s' "$set_info" | awk '{print $1}')"
+    set_file="${set_file##*/}"
+    set_pos="$(printf '%s' "$set_info" | awk '{print $2}')"
+    if [[ ! "$shipped" == *"$set_file"* ]]; then
+        fail_check "The prepared set starts in a binlog that is not shipped - restoring it cannot be rolled forward" set_binlog="$set_file"
+    elif [[ "$set_file" < "$oldest_shipped" ]]; then
+        fail_check "The prepared set starts before the shipped window - PITR from it is impossible" set_binlog="$set_file" oldest_shipped="$oldest_shipped"
+    fi
+fi
+
+window_files="$(printf '%s\n' "$shipped" | grep -c . || true)"
+{
+    printf 'shipped_at_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf 'binlogs_shipped=%s\n' "$window_files"
+    printf 'oldest_shipped=%s\n' "$oldest_shipped"
+    printf 'newest_shipped=%s\n' "$newest_shipped"
+    printf 'newest_server=%s\n' "$newest_server"
+    printf 'base_set_binlog_info=%s\n' "${set_info:-unknown}"
+    printf 'server_retention_seconds=%s\n' "${server_retention_s:-unknown}"
+    # Informational: the active binlog always trails the server by whatever was
+    # written since the copy above. Bounded by the 5-minute cadence by design.
+    printf 'active_tail_lag_bytes=%s\n' "$(( $(printf '%s\n' "$sizes" | awk -v n="$newest_server" '$1 == n { print $2; exit }' | sed 's/^$/0/') - $(stat -c %s "$STAGE/$newest_shipped" 2>/dev/null || echo 0) ))"
+    if [ "$fail" -eq 0 ]; then
+        printf 'checks=ok\n'
+    else
+        printf 'checks=FAILED\n'
+    fi
+} > "$STAGE/.incoming.status"
+mv -f "$STAGE/.incoming.status" "$STATUS"
+
+if [ "$fail" -ne 0 ]; then
+    # Deliberately do NOT refresh the marker: the restic snapshot job's stale
+    # guard refuses to snapshot after 15 min without it, which is what makes this
+    # page instead of leaving a green repo of un-replayable files.
+    logdy error "Binlog ship CHECK FAILED - the shipped tail does not pair with the server; see $STATUS" stage="$STAGE"
+    exit 2
+fi
+
+: > "$OK"
+logdy info "Binlog ship OK" binlogs="$window_files" newest="$newest_shipped" \
+    oldest="$oldest_shipped" base_set="${set_file:-?}@${set_pos:-?}"
+

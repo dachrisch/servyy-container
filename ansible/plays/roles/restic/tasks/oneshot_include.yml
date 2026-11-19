@@ -20,6 +20,10 @@
     timer:
       description: 'Trigger for {{ service.name }}'
       schedule: '{{ service.schedule }}'
+      # Per-unit override: hourly/daily jobs keep the 5-minute spread, a
+      # 5-minute job (the binlog ship pair) must pass `'0'` or its cadence
+      # becomes 5–10 minutes and its RPO doubles.
+      randomized_delay: '{{ service.randomized_delay | default("5m") }}'
   tags:
     - restic.backup
     - restic.systemd

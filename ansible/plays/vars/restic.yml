@@ -184,6 +184,35 @@ restic:
     password: "{{ restic_password_ls_db }}"
     source_path: "/var/jail/home/leaguesphere/container/deployed/mysql-backup/current"
 
+  # WP-8R R5: the binlog TAIL — what makes "PITR" a mechanism instead of a
+  # sentence. The `db` repo above holds one prepared set per hour; this one holds
+  # the transaction stream between sets, snapshotted every 5 minutes.
+  #
+  # WHY A SEPARATE REPO, NOT MORE PATH IN `db`: two schedules (hourly vs 5-min)
+  # and two retentions (3 days of hourly sets vs 2 days of binlogs) in one repo
+  # would force one `restic forget --tag` policy over both, and restic forget is
+  # per-repo state: a 576-snapshot forget/prune would sit on the same lock as the
+  # hourly set upload.
+  #
+  # It snapshots a COPY, not the datadir: restic has no include patterns and the
+  # live binlogs are root/mysql-owned inside the jail. `binlog_ship.sh.j2` stages
+  # them (atomic renames, never a half-copied file) and this repo snapshots the
+  # staging directory. The stage is keyed under `db-dumps/`, which the `home`
+  # repo excludes, so the same bytes are never uploaded twice.
+  #
+  # The staging directory must be pruned LATER than this repo's retention (see
+  # `binlog_stage_keep_days` in the template and the check in the ship script):
+  # 2-day repo keep is only safe while the files it needs still exist.
+  'ls-binlog':
+    repository: "sftp://storagebox/{{ storagebox_credentials.share }}/{{ restic_repo_name | default(inventory_hostname) }}/restic-ls-binlog"
+    password: "{{ restic_password_ls_db }}"
+    source_path: "{{ (remote_user_home, 'db-dumps', 'leaguesphere-binlog') | path_join }}"
+    excludes:
+      # Written by binlog_ship.sh.j2 before an atomic rename. A read of the stage
+      # can never see one (the rename is atomic), but a run killed mid-copy can
+      # leave one behind and it must never enter a snapshot.
+      - '.incoming*'
+
   # Moodle — the file half (daily). `moodledata/filedir` is content-addressed
   # (SHA1 filenames), so a daily snapshot costs almost nothing after the first:
   # files are added, not modified in place.
@@ -260,6 +289,15 @@ restic:
     backup_root: 'daily'                       # Root: once per day at 00:00
     backup_ls_db: 'hourly'                     # DB: every hour at :00
     backup_ls_db_dump: '*-*-* *:40:00'        # mariadb-backup dump: :40 past every hour
+    # WP-8R R5: the binlog tail. Ship at :01/06/11/…, snapshot at :03/08/13/… —
+    # two minutes of headroom for the ship (it copies only what changed), and
+    # both units run with `randomized_delay: 0` (see backup.yml): the timer
+    # template's default 5-minute jitter would turn a 5-minute cadence into
+    # 5–10 minutes and could reorder ship and snapshot, which is exactly the
+    # silent-stall shape this repo is meant to make impossible. Do not add jitter
+    # back to these two.
+    ship_binlog: '*-*-* *:01/5:00'
+    backup_ls_binlog: '*-*-* *:03/5:00'
     # Moodle: dump at :40, snapshot at :50 (10 min after the dump — never
     # snapshot a half-written `new/`), files daily at 01:20.
     # 01:20 is deliberate: it is AFTER the 00:40 dump, so the file snapshot can
@@ -343,6 +381,10 @@ restic:
     backup_home: '/var/log/restic/backup-home.log'
     backup_root: '/var/log/restic/backup-root.log'
     backup_ls_db: '/var/log/restic/backup-ls-db.log'
+    # WP-8R R5: the ship log proves the 5-minute timer fires; the repo's snapshot
+    # age proves the data landed; the pair is what pages on a stalled tail.
+    binlog_ship: '/var/log/restic/binlog-ship.log'
+    backup_ls_binlog: '/var/log/restic/backup-ls-binlog.log'
     backup_moodle_files: '/var/log/restic/backup-moodle-files.log'
     backup_moodle_db: '/var/log/restic/backup-moodle-db.log'
     moodle_dump: '/var/log/restic/moodle-dump.log'

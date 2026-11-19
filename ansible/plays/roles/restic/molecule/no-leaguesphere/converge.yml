@@ -26,6 +26,10 @@
         backup_root: daily
         backup_ls_db: hourly
         backup_ls_db_dump: '*-*-* *:40:00'
+        # WP-8R R5: referenced by the (skipped) binlog pair; defined so the dict
+        # lookup can never be the reason a cleanup run differs from production.
+        ship_binlog: '*-*-* *:01/5:00'
+        backup_ls_binlog: '*-*-* *:03/5:00'
       logs:
         backup_home: /var/log/restic/backup-home.log
         backup_root: /var/log/restic/backup-root.log
@@ -60,6 +64,12 @@
         - /home/testuser/.config/systemd/user/restic-backup-ls-db.service
         - /home/testuser/.config/systemd/user/restic-backup-ls-db.timer
         - /home/testuser/.backup-scripts/restic-backup-ls-db.sh
+        - /home/testuser/.config/systemd/user/binlog-ship.service
+        - /home/testuser/.config/systemd/user/binlog-ship.timer
+        - /home/testuser/.backup-scripts/binlog-ship.sh
+        - /home/testuser/.config/systemd/user/restic-backup-ls-binlog.service
+        - /home/testuser/.config/systemd/user/restic-backup-ls-binlog.timer
+        - /home/testuser/.backup-scripts/restic-backup-ls-binlog.sh
         # Moodle fixtures: same "previously deployed unconditionally" shape, so
         # the moodle cleanup block is actually exercised on a non-moodle host.
         - /home/testuser/.config/systemd/user/moodle-dump.service

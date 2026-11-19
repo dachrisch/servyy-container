@@ -161,6 +161,22 @@ class NewestAcrossGroups(unittest.TestCase):
         body = self.probe.run([])
         self.assertEqual(metric(body, "restic_snapshot_age_seconds", 'repo="fixture"'), -1)
 
+    def test_a_snapshot_at_or_after_the_sample_is_clamped_to_zero(self):
+        # A snapshot stamped AFTER the probe sampled `now` yields a negative age,
+        # and the alert rules treat ANY negative age as "unverifiable" and page.
+        # The window is small, but the 5-minute binlog repo hits it 12x more often
+        # than an hourly one — measured 2026-11-19: repo="ls-binlog" reported -2
+        # on a probe run that raced the :03 snapshot. It must report 0 (the repo
+        # WAS read, the newest snapshot is simply now-or-later), while -1 stays
+        # reserved for "could not read the repo".
+        now = datetime.datetime.now(datetime.timezone.utc)
+        fixture = [
+            snapshot("dddd4444", "servy.lehel.xyz", "/home/cda",
+                     now + datetime.timedelta(seconds=60)),
+        ]
+        body = self.probe.run(fixture)
+        self.assertEqual(metric(body, "restic_snapshot_age_seconds", 'repo="fixture"'), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

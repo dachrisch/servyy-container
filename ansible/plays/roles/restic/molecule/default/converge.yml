@@ -32,6 +32,12 @@
         source_path: /
       db:
         source_path: /var/jail/home/leaguesphere/container/deployed/mysql-backup/current
+      # WP-8R R5: the binlog tail repo snapshots the staging directory written by
+      # binlog-ship.sh; the scenario carries it so the role stays testable alone.
+      'ls-binlog':
+        source_path: /home/testuser/db-dumps/leaguesphere-binlog
+        excludes:
+          - '.incoming*'
       'moodle-files':
         source_path: /home/testuser/servyy-container/moodle/data/moodledata
         excludes:
@@ -44,6 +50,8 @@
         backup_root: daily
         backup_ls_db: hourly
         backup_ls_db_dump: '*-*-* *:40:00'
+        ship_binlog: '*-*-* *:01/5:00'
+        backup_ls_binlog: '*-*-* *:03/5:00'
         backup_moodle_dump: '*-*-* *:40:00'
         backup_moodle_db: '*-*-* *:50:00'
         backup_moodle_files: '*-*-* 01:20:00'
@@ -51,6 +59,8 @@
         backup_home: /var/log/restic/backup-home.log
         backup_root: /var/log/restic/backup-root.log
         backup_ls_db: /var/log/restic/backup-ls-db.log
+        binlog_ship: /var/log/restic/binlog-ship.log
+        backup_ls_binlog: /var/log/restic/backup-ls-binlog.log
         backup_moodle_files: /var/log/restic/backup-moodle-files.log
         backup_moodle_db: /var/log/restic/backup-moodle-db.log
         moodle_dump: /var/log/restic/moodle-dump.log

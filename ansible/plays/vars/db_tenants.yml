@@ -153,6 +153,15 @@ retention_profiles:
     last: 7
     daily: 14
     weekly: 4
+  # WP-8R R5: the binlog tail (5-minute snapshots). `keep_within` is a DURATION,
+  # not a count: the meaning here is "2 days", which must equal the server's own
+  # `expire_logs_days=2` (measured: binlog_expire_logs_seconds=172800). A count
+  # (576) would silently mean a different window the moment the cadence changes,
+  # and the cadence and this number are the pair that keeps a restore inside the
+  # window. The ship script re-reads the server's value every run and FAILS when
+  # the two diverge in either direction, so this is enforced, not documented.
+  binlog_5min:
+    keep_within: 2d
 
 backup_targets:
   - name: home
@@ -202,6 +211,43 @@ backup_targets:
     log_label: restic-backup-ls-db
     log_threshold_seconds: 7200
     dump_log_key: null
+
+  # --- WP-8R R5: the binlog tail (the second half of the high tier's PITR) ----
+  # The `db` repo above is the hourly BASE: one prepared set per hour. This repo
+  # is everything that happened between two sets. Restore = newest set + replay
+  # these binlogs to the target instant, which is why the pair has to be
+  # snapshotted at different cadences and must never be pruned independently.
+  #
+  # DO NOT raise `probe_minutes` to "avoid noise" and DO NOT slow the cadence.
+  # 5 minutes IS the recovery point objective: the newest shipped binlog is the
+  # newest instant a restore can reach, so the window between the last shipped
+  # event and now is data that does not survive a disaster. 20 minutes = four
+  # consecutive misses, which is the smallest value that cannot page on a single
+  # slow run — not a tolerance for a ship that stops happening.
+  #
+  # `retention: binlog_5min` (2 d) and the server's `expire_logs_days=2` are a
+  # PAIR: binlog_ship.sh.j2 reads the server's live value every run and exits
+  # non-zero when the two diverge, because a repo that keeps less than the server
+  # retains silently shortens the window while every snapshot dashboard stays
+  # green. That failure deliberately does not refresh the stage's marker, so
+  # restic's stale guard turns it into a missing snapshot (and a page).
+  - name: ls-binlog
+    kind: db-dump
+    tenant: leaguesphere
+    enabled_by: leaguesphere
+    cadence: 'every 5 minutes'
+    dump_at: null
+    dump_format: none
+    retention: binlog_5min
+    probe_minutes: 20
+    severity: high
+    size_floor_bytes: 0
+    log_key: backup_ls_binlog
+    log_label: restic-backup-ls-binlog
+    log_threshold_seconds: 1800
+    dump_log_key: binlog_ship
+    dump_log_label: binlog-ship
+    dump_log_threshold_seconds: 1800
 
   - name: moodle-files
     kind: files
