@@ -74,6 +74,15 @@ The observability stack for servy. One compose project (`name: ${SERVICE_NAME}` 
    `db_restore_drill_probe_stale` must stay too (a dead probe freezes every age
    and would otherwise look like a healthy fleet).
 
+   One more Pushgateway trap, measured 2026-11-19: a push it **rejects** (a
+   hand-made payload without `# TYPE`, or a per-tenant path like
+   `/metrics/job/db_restore_drill/tenant/moodle`) still creates that group with
+   `push_time_seconds 0`. `time() - 0` is ~56 years, so `db_restore_drill_probe_stale`
+   fired for eight minutes against a healthy probe. The rule now filters
+   `push_time_seconds > 0`; when you test a rule by hand, push to a **separate job
+   name**, then `curl -X DELETE http://127.0.0.1:9091/metrics/job/<that-job>` and
+   confirm `count(db_restore_drill_age_seconds)` is back to 8, not 9.
+
    Two rules per class (high / not-high), because a Grafana rule has **one static
    `labels.severity`**; the split has to travel as a series. Until WP-8R R2 these were `or`
    chains of literals, so five repos with dumps, timers and snapshots ran unalerted — a

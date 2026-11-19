@@ -2819,7 +2819,14 @@ groups:
               to: 0
             datasourceUid: prometheus
             model:
-              expr: time() - push_time_seconds{job="db_restore_drill"}
+              # `push_time_seconds > 0` is a FILTER, not a test: it drops the
+              # groups Pushgateway created for a push it then rejected (measured
+              # 2026-11-19 — a malformed manual push to
+              # /metrics/job/db_restore_drill/tenant/<x> left a group whose
+              # push_time was 0, i.e. an age of ~56 years, and this rule fired for
+              # eight minutes on a probe that was healthy). A real push always
+              # stamps a real time, so nothing legitimate is filtered out.
+              expr: time() - (push_time_seconds{job="db_restore_drill"} > 0)
               intervalMs: 1000
               maxDataPoints: 43200
               refId: A
