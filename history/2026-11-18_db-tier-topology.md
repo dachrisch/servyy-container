@@ -1,7 +1,7 @@
 # Database tier topology — per-package change log
 
-Companion to `docs/plans/2026-11-17_db-tier-topology.md` (design) and
-`docs/plans/2026-11-18_db-tier-work-packages.md` (the packages). One section per
+Companion to `docs/plans/2026-11-17_db-tier-topology.md` (removed 2026-11-19, in git history) (design) and
+`docs/plans/2026-11-18_db-tier-work-packages.md` (removed 2026-11-19, in git history) (the packages). One section per
 package, appended as it lands. WP-0 and WP-1 have their own files
 (`2026-11-18_db-tier-wp0-version-fence.md`, `2026-11-18_db-tier-wp1-mongo-wipe.md`);
 WP-2…WP-4 are recorded in the plan's status table.

@@ -100,7 +100,7 @@ volume — so it costs one build per host, not one per boot.
   provision-dev sentinel.
 - `opencode/scripts/install-graphify.sh` (NEW) — the aarch64 build recipe.
 - `opencode/docker-compose.yml` (MODIFY) — `PYTHONPATH=/root/.graphify-pkgs`.
-- `docs/plans/2026-11-17-opencode-derived-image.md` (NEW) — Part 2 plan.
+- `docs/plans/2026-11-17-opencode-derived-image.md` (removed 2026-11-19, in git history) (NEW) — Part 2 plan.
 
 **Commits:** `d6acffb` (Part 1), `0cb32cd` (aarch64 graphify), `b7ec9f3`
 (x86_64 uses the volume too), `a23562d` (Part 2 plan).

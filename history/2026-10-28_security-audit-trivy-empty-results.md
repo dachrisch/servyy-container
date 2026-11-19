@@ -107,7 +107,7 @@ useless for host-built images).
 - `ansible/plays/roles/system/tests/test_security_audit_trivy.sh` — new harness: renders the
   template with jinja2, stubs `docker`/`trivy`, and asserts on the produced JSON, stats and
   SUMMARY (23 checks; run on a host with bash, e.g. servy)
-- `docs/plans/2026-10-28-trivy-store-agnostic-scan.md`
+- `docs/plans/2026-10-28-trivy-store-agnostic-scan.md` (removed 2026-11-19, in git history)
 
 Two reporting bugs fixed on the way: `Trivy: N CRITICAL, 0\n0 HIGH` (`grep -c` exits 1 on
 zero matches, and `|| echo 0` appended a second 0) and `Tools Run` always reading `0` for the

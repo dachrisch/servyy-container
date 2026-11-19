@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-19
 **Branch:** `db-tier/wp12-wp13-r10`
-**Plan:** [docs/plans/2026-11-19_searxng-drop-valkey.md](../docs/plans/2026-11-19_searxng-drop-valkey.md)
+**Plan:** `docs/plans/2026-11-19_searxng-drop-valkey.md` (removed 2026-11-19, in git history)
 
 ## What was removed
 

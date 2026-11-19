@@ -30,7 +30,7 @@ Written: 2026-10-27 22:5x (Europe/Berlin)
   (217 MB, 21 GB free on `/`). The 100 GB Hetzner volume was detached, deleted and removed from fstab
   the same day (no new spend before the import is measured). Volume support stays dormant behind
   `moodle_volume_device`.
-- **container** — `docs/plans/2026-10-27-moodle-offd-hosting.md` (plan + verified status + six
+- **container** — `history/2026-10-27_moodle-offd-blank-instance.md` (plan + verified status + six
   gotchas), `history/2026-10-27_moodle-offd-blank-instance.md` and
   `history/2026-10-27_moodle-proxy-alias-outage.md`.
 - **Incident fixed (`e807aff`, `2c4d32c`)** — the service was named `app`, which hijacked the `app`

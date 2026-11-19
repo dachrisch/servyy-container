@@ -1,6 +1,6 @@
 # 2026-11-18 — a routine deploy can no longer wipe shared.mongo
 
-WP-1 of `docs/plans/2026-11-18_db-tier-work-packages.md` (plan: Phase 1 step 0). No data,
+WP-1 of `docs/plans/2026-11-18_db-tier-work-packages.md` (removed 2026-11-19, in git history) (plan: Phase 1 step 0). No data,
 config or topology moved; the point of the change is that one post_task stops being able to
 delete all three mongo tenants.
 

@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-13
 **Status:** ✅ Live — import verified, cutover done, `offd.de` serves with a Let's Encrypt cert, LeagueSphere follows
-**Relates to:** [docs/plans/2026-11-13-moodle-final-drop-release.md](../docs/plans/2026-11-13-moodle-final-drop-release.md),
+**Relates to:** `docs/plans/2026-11-13-moodle-final-drop-release.md` (moved to `moodle/release-runbook.md` on 2026-11-19),
 [history/2026-11-10_moodle-waitlist-plugin-and-release-tooling.md](2026-11-10_moodle-waitlist-plugin-and-release-tooling.md),
 [history/2026-11-04_moodle-moodledata-ingested.md](2026-11-04_moodle-moodledata-ingested.md)
 

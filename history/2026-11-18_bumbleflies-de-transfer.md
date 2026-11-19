@@ -33,7 +33,7 @@ promised 48 h.
 
 ### 1. Before the transfer (recon)
 
-Read-only, nothing charged. Recorded in `docs/plans/2026-11-17_bumbleflies-de-transfer.md`,
+Read-only, nothing charged. Recorded in `docs/plans/2026-11-17_bumbleflies-de-transfer.md` (removed 2026-11-19, in git history),
 which this entry supersedes.
 
 | Fact | Value |

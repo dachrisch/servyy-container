@@ -1,6 +1,6 @@
 ---
 # Tunnel accounts, the provisioner behind the db-access sidecar, and the reaper
-# that ends access on a clock. See docs/plans/2026-10-25-prod-db-temp-credentials.md.
+# that ends access on a clock. See history/2026-10-26_temporary-prod-db-access.md.
 - name: Validate tunnel definitions
   assert:
     that:

@@ -1,7 +1,7 @@
 ---
 # Post-deploy database PATCH drift (D8, second half) — a `post_task` of
 # plays/user.yml, after every service role has run.
-# Plan: docs/plans/2026-11-17_db-tier-topology.md (D8, D15, Phase 0.6)
+# See history/2026-11-19_db-tier-programme-close.md (D8, D15, Phase 0.6)
 #
 # WHY IT NEVER FAILS: a watchtower patch pull replaces one server at a time, so
 # the ACTIVE servers of an engine legitimately run different image IDs for a few

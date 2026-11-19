@@ -30,7 +30,7 @@ tests in `league_manager/tests/test_health_check.py` pass against current `origi
 **This session's task:** verify on stage that the fix actually works end-to-end — i.e. that
 Grafana would correctly pick up a real `maintenance_scope` change via the probe pipeline — per
 the two-half testing strategy already documented in
-`container/docs/superpowers/specs/2026-08-11-leaguesphere-maintenance-probe-design.md`.
+`container/docs/superpowers/specs/2026-08-11-leaguesphere-maintenance-probe-design.md` (removed 2026-11-19, in git history).
 
 ## What was tested
 

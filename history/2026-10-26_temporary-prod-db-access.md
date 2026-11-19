@@ -30,7 +30,7 @@ sidecar container, and ended by a host-side timer:
 
 This supersedes the per-person SSH account design in rev. 2 of the plan. The reasoning, the
 probes and the PITR/audit context are in
-`docs/plans/2026-10-25-prod-db-temp-credentials.md`.
+`docs/plans/2026-10-25-prod-db-temp-credentials.md` (removed 2026-11-19, in git history).
 
 ## Why this shape
 

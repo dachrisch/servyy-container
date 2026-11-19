@@ -63,7 +63,7 @@ cd {service} && docker-compose up --build --no-start
 - **Test-First Development**: Always write Molecule tests before implementing new Ansible features
 - **Security First**: Never commit unencrypted secrets or credentials
 - **Idempotency**: All Ansible tasks must be idempotent
-- **Documentation**: Update history/YYYY-MM-DD_description.md for major changes
+- **Documentation**: Update history/YYYY-MM-DD_description.md for major changes; plans are deleted when the job is done (rules: [history/AGENTS.md](history/AGENTS.md))
 
 ### Ansible Style
 ```yaml

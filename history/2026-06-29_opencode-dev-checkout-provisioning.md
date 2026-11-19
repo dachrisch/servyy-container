@@ -3,7 +3,7 @@
 **Date:** 2026-06-29
 **Status:** ✅ Deployed to production (lehel.xyz)
 **Branch:** `claude/opencode-dev-provisioning` → merged to `master` (b534871)
-**Plan:** `docs/superpowers/plans/2026-06-27-opencode-dev-checkout-provisioning.md`
+**Plan:** `docs/superpowers/plans/2026-06-27-opencode-dev-checkout-provisioning.md` (removed 2026-11-19, in git history)
 
 ## Problem
 

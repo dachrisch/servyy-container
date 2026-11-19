@@ -35,7 +35,7 @@ Two questions had no answer before this change:
 | "Who ran it?" | nothing — no binlog, no audit, no general log | `server_audit.log`: user, host, timestamp, statement |
 
 It also matters for the rev. 3 temporary-access design
-(`docs/plans/2026-10-25-prod-db-temp-credentials.md`), where the web app's `dbaccess_event` table
+(`docs/plans/2026-10-25-prod-db-temp-credentials.md` (removed 2026-11-19, in git history)), where the web app's `dbaccess_event` table
 was the *only* record of who held access. A record the app can rewrite is a weak control; a
 binlog that has already been snapshotted is not.
 
@@ -108,11 +108,11 @@ suite; without the entry the always-on `scope-coverage` job fails the PR.
 
 ### `servyy-container` — documentation
 
-- `docs/plans/2026-10-26-mariadb-binlog-and-audit.md` — the plan, the PITR drill, the rollout.
+- `docs/plans/2026-10-26-mariadb-binlog-and-audit.md` (removed 2026-11-19, in git history) — the plan, the PITR drill, the rollout.
 - `docs/leaguesphere-environments.md` — "Reading the DB audit trail", "Point-in-time recovery",
   the backup-design bullet, the DR warning that `current/` now contains binlogs, and the note
   that both restic repos now carry user data.
-- `docs/plans/2026-10-25-prod-db-temp-credentials.md` — baseline row corrected: the "no SQL
+- `docs/plans/2026-10-25-prod-db-temp-credentials.md` (removed 2026-11-19, in git history) — baseline row corrected: the "no SQL
   audit / no PITR" fact is now annotated as being closed by this work.
 
 ## Verification performed (no prod change)

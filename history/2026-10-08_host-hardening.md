@@ -44,7 +44,7 @@ Added a `system.hardening` task file to the `system` role that deploys, driven b
 - `ansible/plays/roles/system/templates/security-audit.sh.j2` — `--profile`
 - `ansible/plays/roles/system/templates/{sysctl-hardening.conf,sshd-hardening.conf,issue,modprobe-disable-protocols.conf,lynis-custom.prf,aide-check.service,aide-check.timer}.j2`
 - `ansible/plays/roles/system/molecule/core/{converge,verify}.yml` — coverage
-- `docs/plans/2026-10-08-host-hardening-p6.md` — plan
+- `docs/plans/2026-10-08-host-hardening-p6.md` (removed 2026-11-19, in git history) — plan
 
 ## Verification
 

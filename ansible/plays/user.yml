@@ -683,7 +683,7 @@
       tags: [user.docker, user.docker.waggle]
 
     # Moodle (OFFD / Flag Academy) — the referee-training platform that replaces
-    # Christoph's FTP-only shared hosting. Plan: docs/plans/2026-10-27-moodle-offd-hosting.md
+    # Christoph's FTP-only shared hosting. See history/2026-10-27_moodle-offd-blank-instance.md
     #
     # `service_host` is not cosmetic: it is rendered into the Traefik router AND
     # into SITE_URL ($CFG->wwwroot) for the container. Moving the site from the

@@ -1,7 +1,7 @@
 # Moodle (OFFD) — blank instance on servy, `m.leaguesphere.app`
 
 **Date:** 2026-10-27
-**Plan:** [docs/plans/2026-10-27-moodle-offd-hosting.md](../docs/plans/2026-10-27-moodle-offd-hosting.md)
+**Plan:** `docs/plans/2026-10-27-moodle-offd-hosting.md` (removed 2026-11-19, in git history)
 **Branch:** `feat/moodle-offd` (fast-forwarded onto `master`)
 
 ## What this is

@@ -25,9 +25,9 @@ container now publishes. A nightly systemd-timer-driven script keeps stage's dat
 from prod. Both this new key and the existing LeagueSphere deploy key are backed up to
 Vaultwarden via a new shared role generalized from `restic`'s existing mechanism.
 
-Full design: `docs/superpowers/specs/2026-08-07-leaguesphere-stage-dbeaver-access-design.md`
+Full design: `docs/superpowers/specs/2026-08-07-leaguesphere-stage-dbeaver-access-design.md` (removed 2026-11-19, in git history)
 Full plan (with the complete history of every bug found and fixed along the way):
-`docs/superpowers/plans/2026-08-07-leaguesphere-stage-dbeaver-access.md`
+`docs/superpowers/plans/2026-08-07-leaguesphere-stage-dbeaver-access.md` (removed 2026-11-19, in git history)
 
 ## Files changed
 

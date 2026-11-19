@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-06
 **Status:** ✅ Accepted — deployed to `servy.lehel.xyz` and `servyy-test.lxd`
-**Relates to:** [docs/plans/2026-10-27-moodle-offd-hosting.md](../docs/plans/2026-10-27-moodle-offd-hosting.md)
+**Relates to:** `docs/plans/2026-10-27-moodle-offd-hosting.md` (removed 2026-11-19, in git history)
 Task 7, [history/2026-11-04_moodle-moodledata-ingested.md](2026-11-04_moodle-moodledata-ingested.md),
 [history/2026-10-08_restic-ls-db-stale-lock-recovery-and-snapshot-monitoring.md](2026-10-08_restic-ls-db-stale-lock-recovery-and-snapshot-monitoring.md)
 

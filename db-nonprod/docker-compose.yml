@@ -7,7 +7,7 @@
 #       external: true
 # and reach mariadb:3306 on `db-nonprod.mariadb`.
 #
-# Plan: docs/plans/2026-11-17_db-tier-topology.md, Phase 3.
+# See history/2026-11-19_db-tier-programme-close.md, Phase 3.
 # The tenants (LS stage, LS demo) keep their existing database names and app
 # users; they move here in WP-4b, not in this file.
 name: ${SERVICE_NAME}

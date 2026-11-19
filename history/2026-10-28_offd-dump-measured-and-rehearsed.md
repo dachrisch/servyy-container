@@ -1,7 +1,7 @@
 # OFFD dump arrived — measured, and the DB half of the migration rehearsed
 
 **Date:** 2026-10-28
-**Plan:** [docs/plans/2026-10-27-moodle-offd-hosting.md](../docs/plans/2026-10-27-moodle-offd-hosting.md) (Task 4 / Task 5)
+**Plan:** `docs/plans/2026-10-27-moodle-offd-hosting.md` (removed 2026-11-19, in git history) (Task 4 / Task 5)
 
 ## The dump
 

@@ -33,7 +33,7 @@ Evidence gathered before changing anything:
 | `apk info -e bash` | rc=1 (not installed) |
 | `GET /api/config/shell` | only `/bin/sh` and `/bin/ash`, both `acceptable: true` |
 | tool names in recent sessions | `shell` (1274 calls) — V2 has no `bash` tool, so "bash is inactive" was both a name and a binary problem |
-| V1-era tool list in `docs/plans/2026-10-21-opencode-v2-upgrade.md` | still contained `bash`, hence the stale expectation |
+| V1-era tool list in `docs/plans/2026-10-21-opencode-v2-upgrade.md` (removed 2026-11-19, in git history) | still contained `bash`, hence the stale expectation |
 
 So nothing was disabled by configuration: the binary simply did not exist, and OpenCode V2 names the
 tool `shell`.

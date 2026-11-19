@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-05
 **Status:** ✅ Rolled back to `2.1.2`, pinned, sessions verified intact (75 sessions / 10 413 messages)
-**Relates to:** `2026-11-05_sshole-musl-sshd-audit.md`, `docs/plans/2026-10-25-prod-db-temp-credentials.md`
+**Relates to:** `2026-11-05_sshole-musl-sshd-audit.md`, `docs/plans/2026-10-25-prod-db-temp-credentials.md` (removed 2026-11-19, in git history)
 
 ## Context
 

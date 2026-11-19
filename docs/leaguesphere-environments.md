@@ -384,7 +384,7 @@ ssh lehel.xyz "docker rm -f pitr && sudo rm -rf /tmp/pitr"
 Lift the rows you need out of the scratch instance with `mysqldump --where` and import them into
 prod. **Never** copy-back a replayed datadir over the live one. The full drill, including how to
 verify the position arithmetic on the test host first, is in
-`docs/plans/2026-10-26-mariadb-binlog-and-audit.md`.
+`history/2026-10-26_mariadb-binlog-and-audit.md`.
 
 ---
 

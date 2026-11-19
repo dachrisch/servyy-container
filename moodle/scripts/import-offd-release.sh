@@ -30,8 +30,7 @@
 #
 # This does NOT touch DNS, SITE_URL or the Traefik router: the site keeps serving
 # whatever host it served before, which is what makes it safe to run before the
-# cutover. Cutover is an inventory change + deploy (docs/plans/
-# 2026-11-13-moodle-final-drop-release.md).
+# cutover. Cutover is an inventory change + deploy (moodle/release-runbook.md).
 
 set -euo pipefail
 
@@ -209,4 +208,4 @@ printf '\nfiledir on disk : %s\n' "$FILES"
 
 printf '\n\033[32mimport complete\033[0m — site now serves %s\n' "$TARGET_URL"
 printf 'Next: check https://%s/ , then follow the cutover section of\n' "${TARGET_URL#https://}"
-printf 'docs/plans/2026-11-13-moodle-final-drop-release.md\n'
+printf 'moodle/release-runbook.md\n'

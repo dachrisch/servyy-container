@@ -3,7 +3,7 @@
 **Date:** 2026-10-22
 **Status:** Accepted
 **Branch:** `opencode-v2-upgrade` (merged to `master`)
-**Plan:** `docs/plans/2026-10-21-opencode-v2-upgrade.md`
+**Plan:** `docs/plans/2026-10-21-opencode-v2-upgrade.md` (removed 2026-11-19, in git history)
 
 ## Context
 
