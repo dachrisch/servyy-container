@@ -54,15 +54,19 @@
     - name: Create the second tenant and a table in each database
       community.docker.docker_container_exec:
         container: db-tier-test.mariadb
-        command: >-
-          sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" --skip-ssl -e "
+        command: sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" --skip-ssl'
+        # SQL on STDIN, never inside a single-quoted `sh -c` string. The first CI
+        # run failed 1064 near the password here: inside single quotes a doubled
+        # '' collapses to nothing, so 'tenant_b'@'localhost' reached MariaDB as
+        # tenant_b@localhost. tasks/server.yml already passes SQL this way.
+        stdin: |
           CREATE DATABASE IF NOT EXISTS tenant_b CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-          CREATE USER IF NOT EXISTS ''tenant_b''@''localhost'' IDENTIFIED BY ''molecule-tenant-b'';
-          GRANT ALL PRIVILEGES ON tenant_b.* TO ''tenant_b''@''localhost'';
+          CREATE USER IF NOT EXISTS 'tenant_b'@'localhost' IDENTIFIED BY 'molecule-tenant-b';
+          GRANT ALL PRIVILEGES ON tenant_b.* TO 'tenant_b'@'localhost';
           CREATE TABLE IF NOT EXISTS tenant_a.widgets (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(32));
           CREATE TABLE IF NOT EXISTS tenant_b.widgets (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(32));
-          INSERT INTO tenant_a.widgets (name) VALUES (''a1''), (''a2'');
-          INSERT INTO tenant_b.widgets (name) VALUES (''b1'');"'
+          INSERT INTO tenant_a.widgets (name) VALUES ('a1'), ('a2');
+          INSERT INTO tenant_b.widgets (name) VALUES ('b1');
 
     # --- WP-9: a mongod for the mongo side of the role ----------------------
     # Stands in for db-private.mongo. The role creates the users; this step only

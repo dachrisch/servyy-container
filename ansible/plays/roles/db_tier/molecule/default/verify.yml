@@ -69,8 +69,11 @@
     - name: The backup user CANNOT write (dump identity, not an app identity)
       community.docker.docker_container_exec:
         container: "{{dbtest}}"
-        command: >-
-          sh -c 'mariadb --skip-ssl -udbops_backup_business -pmolecule-backup-pw -e "INSERT INTO tenant_a.widgets (name) VALUES (''nope'')"'
+        command: sh -c 'exec mariadb --skip-ssl -udbops_backup_business -pmolecule-backup-pw tenant_a'
+        # STDIN, not a single-quoted one-liner: the doubled '' used to collapse to
+        # nothing, so this INSERT failed on the column reference `nope` rather than
+        # on the missing grant — a passing assertion for the wrong reason.
+        stdin: "INSERT INTO widgets (name) VALUES ('nope');\n"
       register: backup_write
       failed_when: false
       changed_when: false
@@ -85,10 +88,10 @@
     - name: The D12 limits are in force for the tenant users
       community.docker.docker_container_exec:
         container: "{{dbtest}}"
-        command: >-
-          sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" --skip-ssl --batch --skip-column-names
-          -e "SELECT User, Max_user_connections, Max_statement_time FROM mysql.user
-          WHERE User IN (''tenant_a'',''tenant_b'') ORDER BY User"'
+        command: sh -c 'exec mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" --skip-ssl --batch --skip-column-names'
+        stdin: |
+          SELECT User, Max_user_connections, Max_statement_time FROM mysql.user
+          WHERE User IN ('tenant_a','tenant_b') ORDER BY User;
       register: limits
       changed_when: false
 
