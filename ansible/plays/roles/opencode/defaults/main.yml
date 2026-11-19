@@ -23,6 +23,9 @@ opencode_server_shared_skills:
   - gh-stack
   - release-please
   - session-messaging
+  # What runs where, domain -> service -> database tier, plus the invariants.
+  # Same content the dev homes get from setup-home's user.agent_config.
+  - servyy-architecture
 # Skills dropped from opencode_server_shared_skills; the server copies are not
 # pruned by the copy tasks, so delete them explicitly on the next deploy.
 opencode_server_retired_skills:
