@@ -91,7 +91,15 @@ jobs:
           python-version: '3.14'
 
       - name: Install linting tools
-        run: pip install flake8 pylint
+        run: pip install flake8 pylint pyyaml
+
+      # The map itself is git-crypt encrypted, so CI cannot read it (and must not
+      # be given the key). What CI CAN prove is that the derivation still parses
+      # every compose file — the part that breaks silently when a service is added
+      # or a label changes shape. Drift against the map is checked where the key
+      # lives: `python3 architecture/render.py --verify --verify-host …`.
+      - name: Architecture renderer self-test
+        run: python3 architecture/render.py --selftest
 
       - name: Flake8
         run: |
