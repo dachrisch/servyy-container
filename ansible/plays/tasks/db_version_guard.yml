@@ -68,6 +68,7 @@
   # them outright, so keep this task FIRST and keep the list complete when a new
   # accumulator is added.
   ansible.builtin.set_fact:
+    db_version_guard_servers: []
     db_version_guard_intended: {}
     db_version_guard_resolved: []
     db_version_guard_checked: []
@@ -120,6 +121,18 @@
   loop: "{{ db_tenants | map(attribute='server') | unique | list }}"
   loop_control:
     label: "{{ item }}"
+  tags:
+    - always
+
+- name: Add retired servers that are still startable (WP-9)
+  # `db_tenants` only describes servers that hold a tenant. A server that was
+  # retired but kept for rollback (shared.mongo for a week after WP-9) still
+  # belongs in the comparison: it is stopped, not gone, and `docker start` is the
+  # documented rollback. `db_retired_servers` is the explicit list for exactly
+  # that window; an entry is removed together with its container/volume.
+  ansible.builtin.set_fact:
+    db_version_guard_servers: >-
+      {{ (db_version_guard_servers | default([])) + (db_retired_servers | default([])) }}
   tags:
     - always
 

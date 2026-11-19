@@ -20,6 +20,19 @@
   no_log: true
   when: db_tier_compose_exists | default([]) | length > 0
 
+# WP-9: the same idiom for the tier's mongod. Rendered only for a tier that
+# actually owns a mongo tenant — a MariaDB-only tier must not sprout a mongo
+# env file (or the compose would start a mongod no tenant asked for).
+- name: Render the tier's mongo server env file ({{ db_tier_name }})
+  ansible.builtin.template:
+    src: mongo.env.j2
+    dest: "{{ (docker.remote_dir, db_tier_service_dir, 'mongo.env') | path_join }}"
+    mode: '0600'
+  no_log: true
+  when:
+    - db_tier_compose_exists | default([]) | length > 0
+    - db_tier_tenants | selectattr('engine', 'equalto', 'mongo') | list | length > 0
+
 - name: Render dbops
   ansible.builtin.template:
     src: dbops.sh.j2

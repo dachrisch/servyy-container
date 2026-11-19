@@ -58,3 +58,43 @@
           CREATE TABLE IF NOT EXISTS tenant_b.widgets (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(32));
           INSERT INTO tenant_a.widgets (name) VALUES (''a1''), (''a2'');
           INSERT INTO tenant_b.widgets (name) VALUES (''b1'');"'
+
+    # --- WP-9: a mongod for the mongo side of the role ----------------------
+    # Stands in for db-private.mongo. The role creates the users; this step only
+    # provides the server and one document per tenant so a cross-database read
+    # has something to leak if the roles were not scoped.
+    - name: Start the tier's mongod (stands in for db-<tier>.mongo)
+      community.docker.docker_container:
+        name: db-tier-test.mongo
+        image: mongo:9.0
+        state: started
+        env:
+          MONGO_INITDB_ROOT_USERNAME: private_admin
+          MONGO_INITDB_ROOT_PASSWORD: molecule-mongo-root
+        healthcheck:
+          test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+          interval: 5s
+          timeout: 3s
+          retries: 20
+          start_period: 15s
+
+    - name: Wait for the mongod to accept authenticated work
+      community.docker.docker_container_exec:
+        container: db-tier-test.mongo
+        command: >-
+          sh -c 'exec mongosh admin --quiet -u "$MONGO_INITDB_ROOT_USERNAME"
+          -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin
+          --eval "db.runCommand({ping:1}).ok"'
+      register: mongo_up
+      until: mongo_up.stdout | default('') | trim == '1'
+      retries: 30
+      delay: 3
+
+    - name: Seed one document in each mongo tenant's database
+      community.docker.docker_container_exec:
+        container: db-tier-test.mongo
+        command: >-
+          sh -c 'exec mongosh admin --quiet -u "$MONGO_INITDB_ROOT_USERNAME"
+          -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval
+          "db.getSiblingDB(\"tenant_c\").widgets.insertOne({name:\"c1\"});
+           db.getSiblingDB(\"tenant_d\").widgets.insertOne({name:\"d1\"});"'

@@ -156,3 +156,27 @@ Full log: `/home/cda/.restore-drills/logs/photoprism-20261119T090908Z.log`
 
 ---
 
+## 2026-11-19T10:07:47Z · leagues_finance (business, mongo)
+
+**Result:** ok **(monthly cadence)**
+
+| | |
+|---|---|
+| Snapshot | `3879bca09ab56fcdb774cb16bd777d171f78a85dcd2a6f6165a347ad9c238f02` from repo `db-lf`, taken 2026-11-19T11:05:59.317330677+01:00 |
+| Scratch target | `drill-leagues_finance-20261119T100729Z` (mongo:9.0, network `none`) → removed |
+| Restore wall-clock (RTO) | **19.6 s** (restic 2.1 s · target up 7.9 s · import 4.4 s · verify 3.9 s) |
+| Counts compared | compared 11 collections, live 186 documents / restored 186 documents (restore is 0 documents behind live) |
+| Mismatch | none |
+
+Verify output (`dbops verify leagues_finance --against drill-leagues_finance-20261119T100729Z --drill`):
+
+```text
+dbops: verify leagues_finance  live(db-business.mongo) vs live(drill-leagues_finance-20261119T100729Z)
+  compared 11 collections, live 186 documents / restored 186 documents (restore is 0 documents behind live)
+dbops: ok  drill check: collection set identical, no populated collection empty in the restore
+```
+
+Full log: `/home/cda/.restore-drills/logs/leagues_finance-20261119T100727Z.log`
+
+---
+

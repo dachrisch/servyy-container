@@ -459,6 +459,14 @@ leagues-finance and queen may go to business or high, whichever needs fewer data
 give two mongos; business reuses `db-business` and needs no replica set, keyfile or oplog
 dumps, high would need a new `db-high` project.)
 
+> **Done 2026-11-19 (WP-9, branch `db-tier/wp9-mongo-tiers`).** `db-business.mongo` and
+> `db-private.mongo` exist with their own `mongo:9.0` service, 384m, `0.25` cache, bind
+> datadir and `db` watchtower scope; each tenant has a db-scoped user created by
+> `roles/db_tier` from the inventory; the three apps were cut over after an exact
+> per-collection/index copy proof; `shared.mongo` is stopped (volume kept as the rollback) and
+> `shared/docker-compose.yml` no longer defines it. Measurements:
+> `history/2026-11-19_db-tier-wp9-mongo-tiers.md`.
+
 1. Mongo adapter for `dbops` (`mongodump`/`mongorestore` per database, same `.partial`
    rename and verify-by-counts).
 2. **`db-business.mongo`:** add a `mongo:` service (`mongo:9.0`, 384m,

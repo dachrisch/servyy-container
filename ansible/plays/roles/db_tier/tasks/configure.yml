@@ -1,13 +1,17 @@
 ---
-# Pass 2: users, limits and the backup account on the tier's server.
+# Pass 2: users, limits and the backup account on the tier's servers.
 #
-# Which server? The tier's OWN server when its container runs (db-<tier>.mariadb
-# — the case after WP-4a created it), otherwise the servers the tenants still
-# run on (the pre-move state of WP-3b). The tier server wins as soon as it
-# exists: from then on the old servers are frozen for rollback and must not be
-# reconfigured.
+# Which server? The tier's OWN MariaDB server when its container runs
+# (db-<tier>.mariadb — the case after WP-4a created it), otherwise the servers
+# the tenants still run on (the pre-move state of WP-3b). The tier server wins as
+# soon as it exists: from then on the old servers are frozen for rollback and
+# must not be reconfigured.
+#
+# WP-9 splits this by ENGINE: a MariaDB tenant never reaches the mongod and a
+# mongo tenant never reaches the MariaDB server, even when both live on the same
+# tier (db-business has both since WP-9). tasks/mongo.yml owns the mongod side.
 
-- name: Inspect the tier's own server
+- name: Inspect the tier's own MariaDB server
   ansible.builtin.command:
     argv: [docker, inspect, --format, "{{ '{{.State.Running}}' }}", "{{ db_tier_server_name }}"]
   register: db_tier_own_server
@@ -18,49 +22,64 @@
 - name: Load the tenants' existing app credentials (they move in unchanged)
   ansible.builtin.include_tasks: tenant_passwords.yml
 
+# Engine split, used by every target calculation below. Keeping ONE list with
+# both engines and filtering at the point of use is what let the pre-WP-9 role
+# try to create MariaDB accounts for mongo tenants.
+- name: Split the tier's tenants by engine
+  ansible.builtin.set_fact:
+    db_tier_mariadb_tenants: "{{ db_tier_tenants | selectattr('engine', 'equalto', 'mariadb') | list }}"
+    db_tier_mongo_tenants: "{{ db_tier_tenants | selectattr('engine', 'equalto', 'mongo') | list }}"
+
 - name: Start with an empty target list
   ansible.builtin.set_fact:
     db_tier_targets: []
 
-# Whose accounts must exist on the tier's OWN server?
+# Whose accounts must exist on the tier's OWN MariaDB server?
 #
-#   * tenants the inventory already places there (row `server` == this server) —
-#     the post-cutover state, and
-#   * tenants this run is explicitly creating (supplied in db_tier_user_passwords)
-#     — the pre-cutover state, where the row still names the old server.
+#   * MariaDB tenants the inventory already places there (row `server` == this
+#     server) — the post-cutover state, and
+#   * MariaDB tenants this run is explicitly creating (supplied in
+#     db_tier_user_passwords) — the pre-cutover state, where the row still names
+#     the old server.
 #
 # A tenant of this tier that still lives on its old server and is not supplied is
 # deliberately NOT included. That is the transition state between a tier server
 # being built (WP-4a, WP-5a) and its tenants moving (WP-4b, WP-5b): the business
-# tier has four tenants (bnb + Moodle + two mongo), and only bnb is placed here
-# in WP-5a. Including the rest would demand credentials the apps have not adopted
-# yet (and would create MariaDB accounts for mongo tenants — the mongo adapter is
-# Phase 8). The assert in server.yml keeps its teeth: a tenant that IS placed
+# tier has MariaDB and mongo tenants, and only the supplied/placed ones may be
+# touched. The assert in server.yml keeps its teeth: a tenant that IS placed
 # here, or IS supplied, must end up with an account.
 - name: Work out whose account must exist on the tier's own server
   ansible.builtin.set_fact:
     db_tier_server_tenants: >-
-      {{ (db_tier_tenants | selectattr('server', 'equalto', db_tier_server_name) | list
-          + db_tier_tenants | selectattr('tenant', 'in', db_tier_user_passwords.keys() | list) | list)
+      {{ (db_tier_mariadb_tenants | selectattr('server', 'equalto', db_tier_server_name) | list
+          + db_tier_mariadb_tenants | selectattr('tenant', 'in', db_tier_user_passwords.keys() | list) | list)
          | unique(attribute='tenant') | list }}
 
 # One entry per server: {server, tenants}. On the tier's own server the tenants
-# are db_tier_server_tenants (above); on any other server it is the rows that live
-# there.
-- name: Build the list of servers to configure
+# are db_tier_server_tenants (above); on any other server it is the MariaDB rows
+# that live there.
+- name: Build the list of MariaDB servers to configure
   ansible.builtin.set_fact:
     db_tier_targets: >-
       {{ db_tier_targets + [{'server': item,
                              'tenants': (db_tier_server_tenants if item == db_tier_server_name
-                                         else db_tier_tenants | selectattr('server', 'equalto', item) | list)}] }}
+                                         else db_tier_mariadb_tenants | selectattr('server', 'equalto', item) | list)}] }}
   loop: "{{ [db_tier_server_name] if (db_tier_own_server.stdout | default('')) == 'true'
-            else (db_tier_tenants | map(attribute='server') | unique | list) }}"
+            else (db_tier_mariadb_tenants | map(attribute='server') | unique | list) }}"
   loop_control:
     label: "{{ item }}"
 
-- name: Configure each server
+- name: Configure each MariaDB server
   ansible.builtin.include_tasks: server.yml
-  loop: "{{ db_tier_targets }}"
+  loop: "{{ db_tier_targets | rejectattr('tenants', 'equalto', []) | list }}"
   loop_control:
     loop_var: db_tier_target
     label: "{{ db_tier_target.server }} ({{ db_tier_target.tenants | length }} tenants)"
+
+# The mongo side has its own container name convention (db-<tier>.mongo) and its
+# own user model (db-scoped users on a mongod, not MariaDB accounts). It runs
+# even before the rows move, so the copy target already has the credential the
+# app will present at cutover.
+- name: Configure the tier's mongo users
+  ansible.builtin.include_tasks: mongo.yml
+  when: db_tier_mongo_tenants | length > 0

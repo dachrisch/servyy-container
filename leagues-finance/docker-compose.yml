@@ -14,6 +14,9 @@ services:
     networks:
       - proxy
       - leaguesphere_database
+      # Mongo: db-business.mongo (WP-9). Redis stays in `shared` on
+      # shared_backend (Bull is not a database of record and is not tiered).
+      - db_business_backend
       - shared_backend
     labels:
       - traefik.enable=true
@@ -28,7 +31,11 @@ networks:
     external: true
   leaguesphere_database:
     external: true
-  # Owned by the shared project — deploy shared FIRST.
+  # Owned by the business DB tier (WP-9). Deploy db-business FIRST.
+  db_business_backend:
+    name: db_business_backend
+    external: true
+  # Owned by the shared project (redis only for this app now) — deploy shared FIRST.
   shared_backend:
     name: shared_backend
     external: true

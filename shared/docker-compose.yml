@@ -1,76 +1,21 @@
 # Shared data layer (consolidated home for stateful services).
 # Owns NO app traffic: backend-only, no Traefik labels.
-# Consumers (leagues-finance, finance/queen) attach via:
+# Consumers attach via:
 #   networks:
 #     shared_backend:
 #       name: shared_backend
 #       external: true
-# and reach hosts shared.mongo / shared.redis / shared.db.
-# Deploy FIRST: the external network and volumes must exist before consumers start.
+# and reach hosts shared.redis / shared.db.
+#
+# WP-9 (2026-11-19): `shared.mongo` is retired. Its three tenants moved to
+# db-business.mongo / db-private.mongo and the container is STOPPED (not
+# removed) with `shared_mongo_data` intact as the rollback for one week. The
+# service block is deliberately gone, so a deploy of this project can no longer
+# start it; `docker start shared.mongo` is the rollback. What remains here is
+# redis (permanent) and postgres (until WP-10 retires it).
 name: ${SERVICE_NAME}
 
 services:
-  mongo:
-    # Tag names the MINOR and floats the patch (D1/D15): patches are delivered by
-    # the `db` watchtower scope, a major/minor step is a reviewed Renovate PR.
-    # The exact patch pin that was here (`9.0.8`) is what `9.0` resolves to today
-    # (same digest, verified 2026-11-18 before the change); it is not repeated
-    # because a pinned patch tag can never receive a fix.
-    #
-    # mongo 9 is not optional: Linux >= 6.19 (servy runs 7.0) breaks the
-    # TCMalloc/rseq use of mongo 8.x, and current 8.x builds refuse to start on it
-    # (SERVER-121912), so `mongo:8` crash-looped and watchtower rolled back every
-    # 2 h. 9.0 cannot open FCV 8.2 data, so the switch was a dump/restore onto a
-    # NEW volume (pre_tasks in plays/user.yml).
-    # See history/2026-11-03_shared-mongo9-kernel7.md.
-    image: mongo:9.0
-    container_name: ${COMPOSE_PROJECT_NAME}.mongo
-    restart: unless-stopped
-    # 512m: ~285M resident + ~88M in swap measured 2026-10-29. The cap stops the
-    # kernel from pushing the WiredTiger cache to swap under host pressure.
-    mem_limit: 512m
-    # No `command: ["--auth"]`: with a flag as the first arg the official
-    # entrypoint skips its initdb block, so MONGO_INITDB_ROOT_* would never be
-    # created on a fresh volume. The entrypoint adds --auth itself whenever
-    # the root credentials are set.
-    env_file:
-      - shared.env
-    volumes:
-      # mongo 9 data. The pre-9 volume leagues-finance_mongo_data is no longer
-      # mounted but kept untouched as the rollback copy.
-      - mongo_data:/data/db
-    networks:
-      - backend
-    labels:
-      - traefik.enable=false
-      # Database server: `db` watchtower scope, daily 06:00 patch window,
-      # health-gated (D15). Not `prod` — that poller runs every 2 h.
-      - com.centurylinklabs.watchtower.scope=db
-    # Healthcheck interval 30s, not 10s (as are all checks in this repo): every
-    # check is a `docker exec`, this host runs ~2.8 of them per second, and each
-    # one spawns dockerd+containerd+shim+runc and a burst of runnable tasks on a
-    # 4-core box that is queue-bound rather than CPU-bound — that churn is part
-    # of why node_load5 sits at ~2x the core count. The cost is detection speed:
-    # with `retries: 5` a dead mongo is now marked unhealthy after 2.5min
-    # instead of 50s, which no consumer of this check (probe, watchtower) needs.
-    # See history/2026-10-30_load-alert-tuning.md.
-    #
-    # start_interval/start_period: `interval: 30s` alone means a container that
-    # was just recreated sits in `starting` for up to ~30 s before its first
-    # check runs, and plays/user.yml waits only 30 s (15 x 2 s) for `healthy`
-    # after a deploy. That mismatch used to fail the wait on a perfectly healthy
-    # mongo. The play now fails loudly instead of deleting the volume
-    # (history/2026-11-18_db-tier-wp1-mongo-wipe.md), but a spurious failure
-    # is still wrong: probe every 2 s while starting and give mongod 30 s of grace
-    # before failures count. Docker Engine >= 25 for start_interval (servy: 29.1.3).
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-      start_interval: 2s
-      start_period: 30s
-
   redis:
     # Floats patches inside 9-alpine (the digest pin froze even patch fixes).
     # Ephemeral job-queue store: a restart loses pending Bull jobs (they retry).
@@ -122,6 +67,12 @@ networks:
 
 volumes:
   mongo_data:
-    # Explicit name: the migration pre_tasks in plays/user.yml key off it
-    # (absent = not migrated yet).
+    # Kept ONLY as the rollback copy after WP-9: the `shared.mongo` container is
+    # stopped and this volume still holds leagues_finance, queen and dontforget
+    # exactly as they were at cutover. Nothing mounts it any more. Delete this
+    # declaration, the container and the volume together one week after the move
+    # (step 6 in history/2026-11-19_db-tier-wp9-mongo-tiers.md) — and only after
+    # a restic snapshot of the three tenants is verified restorable.
+    #
+    # Explicit name on purpose: it is the name the operator types.
     name: shared_mongo_data

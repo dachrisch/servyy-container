@@ -10,7 +10,11 @@
 #   * a tier whose inventory rows have no mongo tenant renders no mongo service:
 #     covered structurally, because the role never renders compose files at all
 #     (D6) — the tier's service set comes from db-<tier>/docker-compose.yml, which
-#     WP-4..6 own. The scenario therefore asserts the role creates no container.
+#     WP-4..6/9 own. The scenario therefore asserts the role creates no container,
+#     and (WP-9) that the MariaDB-only play created no mongo users on a mongod
+#     that exists in the same scenario.
+#   * WP-9: a mongo tier creates one db-scoped user per tenant on its mongod,
+#     each can read only its own database, and no user holds an admin/root role.
 #
 # Networking note: the real cross-TIER isolation (a tenant of one tier cannot
 # reach another tier's network) needs two tier projects with their own

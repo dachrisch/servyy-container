@@ -2,10 +2,11 @@ name: dontforget
 
 services:
   # The app container only (API + built frontend from one image). Its database
-  # is shared.mongo since 2026-11-17: the app's own mongo container is gone, the
-  # `dontforget` db and a dedicated user (dontforget_app, scoped to that db)
-  # live in the shared project, reached cross-project as shared.mongo.
-  # history/2026-11-17_dontforget-shared-mongo.md.
+  # is the private tier's mongod since WP-9: the `dontforget` db and a dedicated
+  # user (dontforget_app, scoped to that db) live on db-private.mongo, reached
+  # over the tier's internal network. The app's own mongo container was retired
+  # on 2026-11-17 (history/2026-11-17_dontforget-shared-mongo.md), and the shared
+  # project stopped being its host on 2026-11-19 (WP-9).
   web:
     image: dachrisch/dontforget:latest
     container_name: ${COMPOSE_PROJECT_NAME}.web
@@ -23,12 +24,12 @@ services:
       NODE_ENV: production
       PORT: "3000"
     # No `depends_on`: compose cannot depend on a service of another project.
-    # Ordering is the deploy's job — the shared role runs before this one, so
-    # shared.mongo is already healthy when this container starts. On host boot
-    # the two restart in arbitrary order, and the app retries its connection
-    # (restart: unless-stopped) until mongo answers.
+    # Ordering is the deploy's job — the db-private role runs before this one, so
+    # db-private.mongo is already healthy when this container starts. On host
+    # boot the two restart in arbitrary order, and the app retries its
+    # connection (restart: unless-stopped) until mongo answers.
     networks:
-      - shared_backend
+      - db_private_backend
       - proxy
     labels:
       - traefik.enable=true
@@ -86,10 +87,11 @@ services:
       - traefik.http.routers.${SERVICE_NAME}-bf-http.middlewares=${SERVICE_NAME}-https-redirect
 
 networks:
-  # Owned by the shared project — deploy shared FIRST. The old per-service
-  # `internal` network went away with its mongo container.
-  shared_backend:
-    name: shared_backend
+  # Owned by the private DB tier (WP-9) — deploy db-private FIRST. The old
+  # per-service `internal` network went away with its mongo container, and the
+  # shared project stopped hosting this app's database on 2026-11-19.
+  db_private_backend:
+    name: db_private_backend
     external: true
   proxy:
     external: true

@@ -53,6 +53,8 @@ graphify-out/
 db-*/data/
 # Rendered by roles/db_tier (0600, holds the tier root password)
 db-*/mariadb.env
+# Rendered by roles/db_tier (0600, holds the tier mongod root password, WP-9)
+db-*/mongo.env
 # Rendered by roles/ls_dbeaver_access (0600, the stack's DB provisioner
 # password). Its only correct home is next to the APP stack's compose file
 # INSIDE the jail, never in the repo. Added after WP-4b3, where a tier pin made

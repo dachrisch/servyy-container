@@ -5,20 +5,25 @@
 # WHAT THIS ROLE DOES
 #   * resolves the tier's tenants from plays/vars/db_tenants.yml (the single
 #     source of truth),
-#   * creates/refreshes the tier's BACKUP user on each server that holds the
-#     tier's databases (SELECT, SHOW VIEW, TRIGGER, EVENT, LOCK TABLES — never a
-#     tenant user, never root from an app container),
+#   * creates/refreshes the tier's BACKUP user on each MariaDB server that holds
+#     the tier's databases (SELECT, SHOW VIEW, TRIGGER, EVENT, LOCK TABLES — never
+#     a tenant user, never root from an app container),
 #   * enforces the D12 limits (MAX_USER_CONNECTIONS, MAX_STATEMENT_TIME) on the
-#     existing per-tenant users,
-#   * renders `dbops` (the dump/restore/verify tool) and the tier's credential
-#     file (0600).
+#     existing per-tenant MariaDB users,
+#   * creates/refreshes each MONGO tenant's own db-scoped user on the tier's
+#     mongod (WP-9: this role absorbed `shared_mongo_users`),
+#   * renders `dbops` (the dump/restore/verify tool), the tier's MariaDB
+#     credential file and (since WP-9) the mongo root env file (0600), all
+#     driven by the inventory.
 #
 # WHAT IT DOES NOT DO
 #   * It does NOT render compose files: `db-<tier>/docker-compose.yml` is
 #     committed like shared/docker-compose.yml so Renovate sees the image tag
-#     (D1). Those files arrive with WP-4..6.
-#   * It does NOT absorb `shared_mongo_users`. That happens in WP-9 (Phase 8),
-#     when the mongo tenants move into db-business/db-private.
+#     (D1). Those files arrive with WP-4..6 and carry the tier's `mongo:`
+#     service from WP-9 on.
+#   * It no longer has to absorb `shared_mongo_users`: that happened in WP-9
+#     (Phase 8), when the mongo tenants moved into db-business/db-private. The
+#     old role is kept for one rollback week only; nothing invokes it.
 #
 # The profile below is the single place the tier's runtime shape is described;
 # WP-4..6 read the numbers from here when they write the compose files, so the
@@ -55,6 +60,10 @@ db_tier_profiles:
     dump: logical
     restic_scope: db
     probe_tier_label: business
+    # WP-9: the mongo profile (D3). One mongod, no replica set, WiredTiger's
+    # cache capped so the cgroup limit is not reached by cache growth.
+    mongo_mem_limit: 384m
+    mongo_cache_gb: 0.25
   private:
     mem_limit: 512m
     innodb_buffer_pool: 128M
@@ -64,6 +73,8 @@ db_tier_profiles:
     dump: logical
     restic_scope: db
     probe_tier_label: private
+    mongo_mem_limit: 384m
+    mongo_cache_gb: 0.25
 
 # Where the rendered, versioned tool + its credentials live (per tier).
 db_tier_env_dir: "{{ remote_user_home }}/.dbops"
@@ -74,6 +85,31 @@ db_tier_env_path: "{{ db_tier_env_dir }}/{{ db_tier_name }}.env"
 # Same regenerable-seed idiom as the backup user below; one key per tier, added
 # to secrets.yml when that tier's server exists.
 db_tier_root_password: "{{ lookup('vars', 'db_tier_root_password_' ~ db_tier_name) }}"
+
+# --- Mongo (WP-9, Phase 8) ---------------------------------------------------
+# The tier's mongod container and its root account. The name is the convention
+# the committed compose uses (container_name `${COMPOSE_PROJECT_NAME}.mongo`).
+# One root pair PER TIER, from secrets.yml: the tenants' users are db-scoped,
+# but the server accounts must also not be shared, or "a user from one tier
+# cannot authenticate against the other" would be false for the admin account
+# and a single leaked pair would open both tiers.
+db_tier_mongo_server_name: "db-{{ db_tier_name }}.mongo"
+db_tier_mongo_root_username: "{{ db_tier_name }}_admin"
+# Regenerable only on a FRESH datadir. On an existing one the env is not
+# authoritative: rotate with db.changeUserPassword inside the container and
+# update the seed in the same sitting (the WP-2 lesson, applied per tier).
+db_tier_mongo_root_password: "{{ lookup('vars', 'db_tier_mongo_root_password_' ~ db_tier_name) }}"
+
+# Tenants that must be created on this tier's mongod: same shape as
+# db_tier_user_passwords (tenant -> {name, password, database, roles}), filled
+# by tasks/tenant_passwords.yml from the secrets the apps already use so a move
+# is a hostname change and nothing else. Only members of `mongod_tenants` are
+# ever touched (see tasks/mongo.yml).
+db_tier_mongo_user_passwords: {}
+# Re-apply the vault password on an existing mongo user. Off by default: the
+# stored hash cannot be compared with the vault value, so re-applying it would
+# report `changed` forever (same rule as the retired shared_mongo_users role).
+db_tier_mongo_rotate_passwords: false
 
 # Pass 1 of the role: render the files the tier's compose needs before it can
 # start, and stop. plays/user.yml runs it once before `docker_service` and once

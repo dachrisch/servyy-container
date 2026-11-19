@@ -1,0 +1,116 @@
+---
+# One tenant of plays/mongo_tier_copy.yml. `mongo_copy_tenant` is the loop var.
+- name: Resolve {{ mongo_copy_tenant }} in the inventory
+  ansible.builtin.set_fact:
+    mongo_copy_row: "{{ db_tenants | selectattr('tenant', 'equalto', mongo_copy_tenant) | first }}"
+
+- name: Dump {{ mongo_copy_tenant }} from {{ mongo_copy_source }}
+  ansible.builtin.command:
+    argv: ["{{ mongo_copy_dbops }}", dump, "{{ mongo_copy_tenant }}"]
+  environment:
+    DBOPS_SERVER: "{{ mongo_copy_source }}"
+  register: mongo_copy_dump
+  changed_when: true
+
+- name: Take the dump path from dbops' own output
+  ansible.builtin.set_fact:
+    mongo_copy_file: "{{ mongo_copy_dump.stdout_lines | last | split() | last }}"
+
+- name: Assert the dump exists and is not empty
+  ansible.builtin.stat:
+    path: "{{ mongo_copy_file }}"
+  register: mongo_copy_file_stat
+
+- name: Refuse an empty or missing dump
+  ansible.builtin.assert:
+    that:
+      - mongo_copy_file_stat.stat.exists
+      - mongo_copy_file_stat.stat.size > 0
+    fail_msg: >-
+      dbops wrote no usable dump for {{ mongo_copy_tenant }} ({{ mongo_copy_file }}).
+      Nothing was restored; the source is untouched.
+    quiet: true
+
+- name: Restore {{ mongo_copy_tenant }} into {{ mongo_copy_target }}
+  ansible.builtin.command:
+    argv:
+      - "{{ mongo_copy_dbops }}"
+      - restore
+      - "{{ mongo_copy_tenant }}"
+      - "{{ mongo_copy_file }}"
+      - --force
+  environment:
+    DBOPS_SERVER: "{{ mongo_copy_target }}"
+  register: mongo_copy_restore
+  changed_when: true
+
+# Source-vs-target proof. dbops compares per-collection document counts; exact
+# for a quiesced cutover, drill policy (structure + no lost collection) for a
+# rehearsal where the apps kept writing.
+- name: "Verify {{ mongo_copy_tenant }}: {{ mongo_copy_source }} vs {{ mongo_copy_target }}"
+  ansible.builtin.command:
+    argv: "{{ mongo_copy_verify_argv }}"
+  vars:
+    mongo_copy_verify_argv: >-
+      {{ [mongo_copy_dbops, 'verify', mongo_copy_tenant, '--against', mongo_copy_target]
+         + ([] if mongo_copy_require_exact | bool else ['--drill']) }}
+  environment:
+    DBOPS_SERVER: "{{ mongo_copy_source }}"
+  changed_when: false
+  register: mongo_copy_verify
+  failed_when: false
+
+- name: Report the count comparison
+  ansible.builtin.debug:
+    msg: "{{ mongo_copy_verify.stdout_lines | default([]) }}"
+
+- name: Fail when the copy is not proven
+  ansible.builtin.assert:
+    that:
+      - mongo_copy_verify.rc | default(1) | int == 0
+    fail_msg: >-
+      dbops verify {{ mongo_copy_tenant }} exited {{ mongo_copy_verify.rc }}.
+      Source {{ mongo_copy_source }}, target {{ mongo_copy_target }}, dump
+      {{ mongo_copy_file }}. See the comparison above; the source is untouched.
+    quiet: true
+
+# Counts can agree while an index is missing (a query would then table-scan, or
+# a unique constraint would no longer hold). Compare index NAMES per collection
+# on both sides — mongodump restores indexes with the data, so a difference is a
+# broken copy, not drift.
+- name: Read the index names on both servers ({{ mongo_copy_tenant }})
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ item }}"
+      - sh
+      - -c
+      - >-
+        exec mongosh --quiet
+        "mongodb://$MONGO_INITDB_ROOT_USERNAME:$MONGO_INITDB_ROOT_PASSWORD@127.0.0.1:27017/$1?authSource=admin"
+        --eval 'var f=c=>db.getCollection(c);db.getCollectionNames().sort().forEach(c=>print(c+":"+f(c).getIndexes().map(i=>i.name).sort().join(",")))'
+      - dbops
+      - "{{ mongo_copy_row.db }}"
+  loop: "{{ [mongo_copy_source, mongo_copy_target] }}"
+  register: mongo_copy_indexes
+  changed_when: false
+
+- name: Assert the index sets are identical
+  ansible.builtin.assert:
+    that:
+      - (mongo_copy_indexes.results[0].stdout | default('')).splitlines()
+        == (mongo_copy_indexes.results[1].stdout | default('')).splitlines()
+    fail_msg: >-
+      The index sets differ for {{ mongo_copy_tenant }}:
+      source={{ mongo_copy_indexes.results[0].stdout | default('') }}
+      target={{ mongo_copy_indexes.results[1].stdout | default('') }}
+    quiet: true
+
+- name: Record the proven copy
+  ansible.builtin.debug:
+    msg: >-
+      {{ mongo_copy_tenant }}: {{ mongo_copy_row.db }} copied
+      {{ mongo_copy_source }} -> {{ mongo_copy_target }}; counts
+      {{ 'EXACT' if mongo_copy_require_exact | bool else 'drill policy (source may be ahead)' }};
+      indexes identical; dump {{ mongo_copy_file }}.

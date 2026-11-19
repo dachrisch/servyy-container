@@ -1,11 +1,13 @@
-# business database tier — bnb office today, Moodle in WP-7 (D3/D6).
-# Backend-only project (like `shared` and `db-nonprod`): owns NO app traffic,
-# publishes no port. Consumers attach with:
+# business database tier — bnb office + Moodle (MariaDB), leagues-finance +
+# queen (Mongo since WP-9) (D3/D6).
+# Backend-only project (like `shared`, `db-nonprod`, `db-private`): owns NO app
+# traffic, publishes no port. Consumers attach with:
 #   networks:
 #     backend:
 #       name: db_business_backend
 #       external: true
-# and reach mariadb:3306 on `db-business.mariadb`.
+# and reach mariadb:3306 on `db-business.mariadb` / mongo:27017 on
+# `db-business.mongo`.
 #
 # Plan: docs/plans/2026-11-17_db-tier-topology.md, Phase 4 (server now) and
 # Phase 6 (Moodle joins it). WP-5a creates the server and copies bnb's data;
@@ -77,6 +79,57 @@ services:
       retries: 5
       start_interval: 2s
       start_period: 60s
+
+  # --- Mongo (WP-9, Phase 8) ------------------------------------------------
+  # leagues-finance and queen moved here off `shared.mongo`. Both keep their
+  # own database name and their own db-scoped user (never root — D4); the
+  # users are created by roles/db_tier from the inventory, not by an
+  # initdb script (the datadir is not fresh forever).
+  #
+  # No replica set: neither app needs transactions (`MONGODB_DISABLE_TRANSACTIONS`
+  # is true in both envs), so there is no keyfile, no oplog and no election to
+  # operate. The plan chose business over high for exactly this reason.
+  mongo:
+    image: mongo:9.0
+    container_name: ${COMPOSE_PROJECT_NAME}.mongo
+    restart: unless-stopped
+    # 384m: the tier profile in roles/db_tier/defaults/main.yml. The cache cap
+    # is what keeps WiredTiger from growing into the cgroup limit and getting
+    # OOM-killed under host pressure (the old shared.mongo ran 512m without
+    # one). Both tenants together are ~2 MB of data.
+    mem_limit: 384m
+    command:
+      - --wiredTigerCacheSizeGB
+      - "0.25"
+    # Rendered by roles/db_tier (0600): MONGO_INITDB_ROOT_USERNAME/PASSWORD for
+    # THIS tier only. No app ever holds this pair; dbops and the restore drills
+    # read it from the container env, exactly as they did on shared.mongo.
+    env_file:
+      - mongo.env
+    volumes:
+      # D13: bind mount on `/`, never a named volume. The pre-WP-9 copy
+      # (`shared_mongo_data`, a docker volume on /mnt) is NOT mounted here; it
+      # is the rollback copy and is deleted a week after the cutover.
+      - ./data/mongo:/data/db
+    networks:
+      - backend
+    labels:
+      - traefik.enable=false
+      # Database server: the `db` watchtower scope (D15), daily 06:00 patch
+      # window, health-gated with rollback. A mongo minor/major step stays a
+      # reviewed PR (D1).
+      - com.centurylinklabs.watchtower.scope=db
+    # 30s like every other check in this repo (each one is a docker exec and the
+    # host is queue-bound: history/2026-10-30_load-alert-tuning.md). The ping
+    # needs no authentication, so it cannot fail because of a user problem.
+    # start_interval/start_period cover a fresh datadir's first boot.
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_interval: 2s
+      start_period: 30s
 
 networks:
   backend:

@@ -1,0 +1,97 @@
+---
+# Mongo tenants for one tier (WP-9, Phase 8).
+#
+# The tier's mongod holds one database per tenant, each with its OWN db-scoped
+# user (readWrite + dbAdmin on `<db>` only — never admin, never root, D4). The
+# credential is the one the app ALREADY uses, so the cutover is a hostname
+# change and nothing else; it is loaded in tasks/tenant_passwords.yml from the
+# same secrets file the app's role renders from.
+#
+# This is the role that used to be `shared_mongo_users`, moved to the tier that
+# owns the data. It runs against db-<tier>.mongo once that container exists; the
+# cross-project shared.mongo is never touched from here (it is the rollback).
+
+- name: Work out the mongo users this tier must own
+  # ONLY the rows of THIS tier. A `set_fact` survives across the tier role
+  # invocations inside one play, so the business tier's map is still visible
+  # when the private tier runs; taking the whole map would create leagues_finance
+  # and queen accounts on db-private.mongo (measured on the WP-9 cutover run,
+  # 2026-11-19). The inventory row is the authority.
+  ansible.builtin.set_fact:
+    db_tier_mongo_users: >-
+      {{ db_tier_mongo_tenants | map(attribute='tenant') | map('extract', db_tier_mongo_user_passwords) | list }}
+
+- name: Refuse a mongo tenant without a credential
+  ansible.builtin.assert:
+    that:
+      - item.tenant in db_tier_mongo_user_passwords
+    fail_msg: >-
+      Tenant '{{ item.tenant }}' runs on mongo in tier '{{ db_tier_name }}' but
+      plays/vars/secrets.yml has no entry for it in
+      db_tier_mongo_user_passwords (tasks/tenant_passwords.yml). Creating the
+      account with a new password would break the running app at cutover.
+    quiet: true
+  loop: "{{ db_tier_mongo_tenants }}"
+  loop_control:
+    label: "{{ item.tenant }}"
+
+- name: Inspect the tier's mongod
+  ansible.builtin.command:
+    argv: [docker, inspect, --format, "{{ '{{.State.Running}}' }}", "{{ db_tier_mongo_server_name }}"]
+  register: db_tier_mongo_state
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Say so when the tier's mongod is not running
+  ansible.builtin.debug:
+    msg: >-
+      {{ db_tier_mongo_server_name }} is not running on {{ inventory_hostname }};
+      the mongo tenants of tier '{{ db_tier_name }}'
+      ({{ db_tier_mongo_tenants | map(attribute='tenant') | join(', ') }}) keep
+      their current server until the tier's compose is deployed.
+  when: db_tier_mongo_state.stdout | default('') != 'true'
+
+- name: Ensure the tier's mongo users
+  when: db_tier_mongo_state.stdout | default('') == 'true'
+  block:
+    # The datadir is fresh on a new tier, so the entrypoint creates the root
+    # account from mongo.env and then opens the port; until that finishes every
+    # exec answers "connection refused". Waiting on the healthcheck is the same
+    # gate the consumer roles use.
+    - name: Wait for {{ db_tier_mongo_server_name }} to become healthy
+      community.docker.docker_container_info:
+        name: "{{ db_tier_mongo_server_name }}"
+      register: db_tier_mongo_info
+      until: >-
+        db_tier_mongo_info.container is not none and
+        (db_tier_mongo_info.container.State.Health.Status | default('')) == 'healthy'
+      retries: 30
+      delay: 5
+      changed_when: false
+
+    # Root comes from the CONTAINER's env, not from argv: the password never
+    # appears in a host process list. The JS goes through --eval (like the old
+    # shared_mongo_users role): mongosh reading stdin emits "admin> " prompts,
+    # which is not parseable JSON.
+    - name: Create or repair the tier's mongo tenant users
+      community.docker.docker_container_exec:
+        container: "{{ db_tier_mongo_server_name }}"
+        argv:
+          - sh
+          - -c
+          - >-
+            exec mongosh admin --quiet -u "$MONGO_INITDB_ROOT_USERNAME"
+            -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "$1"
+          - dbops
+          - "{{ lookup('ansible.builtin.template', 'mongo_users.js.j2') }}"
+      register: db_tier_mongo_users_result
+      no_log: true
+      changed_when: (db_tier_mongo_users_result.stdout | trim) != '[]'
+
+    - name: Report the mongo user changes
+      ansible.builtin.debug:
+        msg: >-
+          {{ db_tier_mongo_server_name }} users:
+          {{ db_tier_mongo_users_result.stdout | from_json }}
+      when: (db_tier_mongo_users_result.stdout | trim) != '[]'

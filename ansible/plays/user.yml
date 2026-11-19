@@ -215,155 +215,16 @@
         - user.docker.shared
         - user.docker
 
-    # One-time MongoDB auth migration for leagues-finance (DBS-1820 fix).
-    # Must run before the docker_service role below recreates the container
-    # with `command: ["--auth"]` — MONGO_INITDB_ROOT_USERNAME only creates the
-    # user on an empty /data/db, so an already-populated volume needs the user
-    # created here first, against the still-unauthenticated running container.
-    - name: Check current leagues-finance mongo container
-      community.docker.docker_container_info:
-        name: leagues-finance.mongo
-      register: lf_mongo_pre_auth_info
-      when: "'leagues-finance' in (services | default([]))"
-      tags:
-        - user.docker.leagues-finance
-        - user.docker
-
-    - name: Ensure leagues-finance MongoDB root user exists before auth is enforced
-      community.docker.docker_container_exec:
-        container: leagues-finance.mongo
-        argv:
-          - mongosh
-          - admin
-          - --quiet
-          - --eval
-          - >-
-            db.createUser({user: "{{ leagues_finance.mongo_root_username }}",
-            pwd: "{{ leagues_finance.mongo_root_password }}",
-            roles: [{role: "root", db: "admin"}]})
-      register: lf_mongo_user_create
-      changed_when: lf_mongo_user_create.rc == 0
-      failed_when: >-
-        lf_mongo_user_create.rc != 0 and
-        'already exists' not in (lf_mongo_user_create.stdout | default('') ~ lf_mongo_user_create.stderr | default('')) and
-        'requires authentication' not in (lf_mongo_user_create.stdout | default('') ~ lf_mongo_user_create.stderr | default('')) and
-        'not authorized' not in (lf_mongo_user_create.stdout | default('') ~ lf_mongo_user_create.stderr | default(''))
-      when:
-        - "'leagues-finance' in (services | default([]))"
-        - lf_mongo_pre_auth_info.container is defined
-        - lf_mongo_pre_auth_info.container is not none
-      tags:
-        - user.docker.leagues-finance
-        - user.docker
-
-    # One-time MongoDB 7 -> 8 upgrade prep (shares the mongo:8 image with dontforget).
-    # Runs only while the container is still on a mongo:7 image: assert FCV is 7.0
-    # (mongod 8 refuses to start on older FCV data) and dump into <service>/.backup/
-    # (gitignored, covered by the restic home backup) before compose swaps the image.
-    # The FCV bump to 8.0 happens in post_tasks once mongo:8 is healthy.
-    - name: Timestamp for mongo 7 -> 8 pre-upgrade dumps
-      ansible.builtin.set_fact:
-        mongo8_dump_ts: "{{ now(utc=true).strftime('%Y%m%dT%H%M%SZ') }}"
-      tags:
-        - user.docker.leagues-finance
-        - user.docker
-
-    - name: Detect leagues-finance mongo still on mongo 7
-      ansible.builtin.set_fact:
-        lf_mongo_upgrading: "{{ lf_mongo_pre_auth_info.container.Config.Image is match('^(docker.io/)?(library/)?mongo:7') }}"
-      when:
-        - "'leagues-finance' in (services | default([]))"
-        - lf_mongo_pre_auth_info.container is defined
-        - lf_mongo_pre_auth_info.container is not none
-      tags:
-        - user.docker.leagues-finance
-        - user.docker
-
-    - name: Read leagues-finance mongo featureCompatibilityVersion
-      community.docker.docker_container_exec:
-        container: leagues-finance.mongo
-        argv:
-          - mongosh
-          - admin
-          - --quiet
-          - -u
-          - "{{ leagues_finance.mongo_root_username }}"
-          - -p
-          - "{{ leagues_finance.mongo_root_password }}"
-          - --eval
-          - 'db.adminCommand({getParameter: 1, featureCompatibilityVersion: 1}).featureCompatibilityVersion.version'
-      register: lf_mongo_pre_fcv
-      changed_when: false
-      when: lf_mongo_upgrading | default(false)
-      tags:
-        - user.docker.leagues-finance
-        - user.docker
-
-    - name: Assert leagues-finance mongo FCV is 7.0 before switching to mongo 8
-      ansible.builtin.assert:
-        that: lf_mongo_pre_fcv.stdout | trim == '7.0'
-        fail_msg: >-
-          leagues-finance.mongo FCV is '{{ lf_mongo_pre_fcv.stdout | trim }}', mongo 8 needs 7.0.
-          Run setFeatureCompatibilityVersion "7.0" first.
-      when: lf_mongo_upgrading | default(false)
-      tags:
-        - user.docker.leagues-finance
-        - user.docker
-
-    - name: Dump leagues-finance mongo before 7 -> 8 upgrade
-      community.docker.docker_container_exec:
-        container: leagues-finance.mongo
-        argv:
-          - mongodump
-          - -u
-          - "{{ leagues_finance.mongo_root_username }}"
-          - -p
-          - "{{ leagues_finance.mongo_root_password }}"
-          - --authenticationDatabase
-          - admin
-          - --gzip
-          - --archive=/tmp/pre-mongo8.archive.gz
-      when: lf_mongo_upgrading | default(false)
-      tags:
-        - user.docker.leagues-finance
-        - user.docker
-
-    - name: Copy leagues-finance pre-upgrade dump to host
-      ansible.builtin.shell: >-
-        mkdir -p {{ (docker.remote_dir, 'leagues-finance', '.backup') | path_join | quote }} &&
-        docker cp leagues-finance.mongo:/tmp/pre-mongo8.archive.gz
-        {{ (docker.remote_dir, 'leagues-finance', '.backup', 'mongo7-' ~ mongo8_dump_ts ~ '.archive.gz') | path_join | quote }}
-      when: lf_mongo_upgrading | default(false)
-      tags:
-        - user.docker.leagues-finance
-        - user.docker
-
-    # mongo 8.x -> 9.0 (kernel >= 6.19 incompatibility), see
-    # tasks/mongo9_migrate.yml. Last pre_tasks on purpose: each dump/restore must
-    # finish before the service and consumer roles run. Each import is a no-op
-    # once its new volume exists.
-    - name: Migrate shared mongo 8 -> 9 (dump/restore onto a new volume)
-      ansible.builtin.import_tasks: tasks/mongo9_migrate.yml
-      vars:
-        mongo9_name: shared
-        mongo9_project: shared
-        mongo9_container: shared.mongo
-        mongo9_legacy_volume: leagues-finance_mongo_data
-        mongo9_new_volume: shared_mongo_data
-        mongo9_consumers: [leagues-finance.finance-api, finance.queen]
-        mongo9_user: "{{ leagues_finance.mongo_root_username }}"
-        mongo9_password: "{{ leagues_finance.mongo_root_password }}"
-      when: "'shared' in (services | default([]))"
-      tags:
-        - user.docker.shared
-        - user.docker
-
-    - name: Move the dontforget db into shared mongo
-      ansible.builtin.import_tasks: tasks/dontforget_mongo_migrate.yml
-      when: "'dontforget' in (services | default([]))"
-      tags:
-        - user.docker.dontforget
-        - user.docker
+  # WP-9 (2026-11-19): the pre_tasks that used to live here are gone with
+  # `shared.mongo`. They were one-time migrations (leagues-finance's root
+  # account, mongo 7 -> 8, mongo 8 -> 9, dontforget's move into shared) and
+  # every one of them would now touch a container that is deliberately STOPPED
+  # as the rollback. The data lives on db-business.mongo / db-private.mongo
+  # and their users are created by roles/db_tier (tasks/mongo.yml).
+  #
+  # Rollback for that move: `docker start shared.mongo`, point the three
+  # MONGO_URI/DATABASE_URL values back at it, redeploy. See
+  # history/2026-11-19_db-tier-wp9-mongo-tiers.md.
 
   roles:
     # Simple services — generic .env only
@@ -663,61 +524,16 @@
       when: "'private' in (db_tiers | default([]))"
       tags: [user.docker, user.docker.db-private]
 
-    # Dedicated, db-scoped users in shared.mongo. Runs directly after the shared
-    # role (so shared.mongo is up) and before every consumer role, so a consumer
-    # never starts against a user that does not exist yet.
-    # dontforget moved its db into shared.mongo on 2026-11-17 and holds no root
-    # grant: history/2026-11-17_dontforget-shared-mongo.md.
-    - role: shared_mongo_users
-      vars:
-        shared_mongo_users:
-          - name: "{{ vault_dontforget_mongo_username }}"
-            password: "{{ vault_dontforget_mongo_password }}"
-            database: dontforget
-            # readWrite: the app owns its collections and indexes.
-            # dbAdmin: collMod / index management for its schema migrations.
-            # Both are scoped to the `dontforget` db only.
-            roles: [readWrite, dbAdmin]
-      when:
-        - "'shared' in (services | default([]))"
-        - "'dontforget' in (services | default([]))"
-      tags: [user.docker, user.docker.shared, user.docker.dontforget]
-
-    # leagues-finance and queen, same pattern: db-scoped users in shared.mongo,
-    # created before their service roles below so a deploy never starts an app
-    # against a user that does not exist yet. Their MONGO_URI uses these pairs
-    # with authSource=<own db>; neither app holds shared's root credential any
-    # more (Phase 1 step 2 of docs/plans/2026-11-17_db-tier-topology.md).
+    # WP-9: mongo user provisioning moved into `db_tier` (tasks/mongo.yml) —
+    # a tenant's database and its credential are properties of the TIER that
+    # owns them, not of the shared project. The three db-scoped users are now
+    # created on db-business.mongo / db-private.mongo, before this play reaches
+    # the consumer roles below.
     #
-    # Separate invocations rather than one list: each consumer's tag-scoped
-    # deploy must be able to provision its own user, and the `when` of the
-    # dontforget block does not cover these apps.
-    - role: shared_mongo_users
-      vars:
-        shared_mongo_users:
-          - name: "{{ vault_leagues_finance_mongo_username }}"
-            password: "{{ vault_leagues_finance_mongo_password }}"
-            database: leagues_finance
-            # readWrite: the app owns its collections and indexes.
-            # dbAdmin: collMod / index management for its schema migrations.
-            roles: [readWrite, dbAdmin]
-      when:
-        - "'shared' in (services | default([]))"
-        - "'leagues-finance' in (services | default([]))"
-      tags: [user.docker, user.docker.shared, user.docker.leagues-finance]
-
-    - role: shared_mongo_users
-      vars:
-        shared_mongo_users:
-          - name: "{{ vault_queen_mongo_username }}"
-            password: "{{ vault_queen_mongo_password }}"
-            database: queen
-            roles: [readWrite, dbAdmin]
-      when:
-        - "'shared' in (services | default([]))"
-        - "'finance' in (services | default([]))"
-        - "'queen' in (finance_services | default([]))"
-      tags: [user.docker, user.docker.shared, user.docker.finance]
+    # A tag-scoped app deploy (`--tags user.docker.leagues-finance`) therefore
+    # assumes its tier is deployed and its user exists — the same contract as
+    # every MariaDB tier since WP-4. The cutover deploy includes
+    # `user.docker.db-business` / `user.docker.db-private`.
 
     - role: docker_service
       vars:
@@ -977,135 +793,13 @@
       tags: [user.docker, user.docker.monitor]
 
   post_tasks:
-    - name: Wait for shared mongo to become healthy
-      community.docker.docker_container_info:
-        name: "shared.mongo"
-      register: lf_mongo_info
-      until: >
-        lf_mongo_info.container is not none and
-        lf_mongo_info.container.State.Health.Status is defined and
-        lf_mongo_info.container.State.Health.Status == 'healthy'
-      retries: 15
-      delay: 2
-      failed_when: false
-      when: "'shared' in (services | default([]))"
-      tags:
-        - user.docker.leagues-finance
-        - user.docker.shared
-        - user.docker
-
-    # An unhealthy shared.mongo is a fault to investigate, NEVER a corrupt volume:
-    # the previous version of this task removed the whole `shared` project and the
-    # `shared_mongo_data` volume — all three tenants (leagues_finance, queen,
-    # dontforget) — whenever the wait above expired, and it expired routinely
-    # because a recreated container sat in `starting` for up to ~30 s. The volume
-    # is now never deleted by a play; this fails and names the container instead.
-    # See history/2026-11-18_db-tier-wp1-mongo-wipe.md.
-    #
-    # The two guards are kept from the wipe era for their intent only: an upgrade
-    # run (lf_mongo_upgrading) and the mongo 9 migration run
-    # (shared_mongo9_migrating) bring mongo up themselves, with their own waits
-    # further down this file, so this check does not second-guess them.
-    - name: Fail the deploy if shared mongo is not healthy
-      vars:
-        lf_mongo_health_status: >-
-          {{ ((lf_mongo_info.container.State.Health | default({})).Status
-              | default('present, no health status'))
-             if (lf_mongo_info.container | default(none, true)) else 'container absent' }}
-      ansible.builtin.fail:
-        msg: >-
-          shared.mongo is not healthy after waiting 30 s (retries: 15, delay: 2):
-          State.Health.Status={{ lf_mongo_health_status }}.
-          NOTHING WAS DELETED: the shared_mongo_data volume holds leagues_finance,
-          queen and dontforget and was left untouched. Inspect it with
-          `docker logs shared.mongo` and `docker inspect shared.mongo` before
-          deciding what to do; a manual recovery from
-          shared/.backup/mongo-all-*.archive.gz is the last resort, not a deploy
-          step.
-      when: >
-        'shared' in (services | default([])) and
-        not (lf_mongo_upgrading | default(false)) and
-        not (shared_mongo9_migrating | default(false)) and (
-        lf_mongo_info.container is none or
-        ((lf_mongo_info.container.State.Health | default({})).Status
-         | default('no health status')) != 'healthy')
-      tags:
-        - user.docker.leagues-finance
-        - user.docker.shared
-        - user.docker
-
-    - name: Wait for leagues-finance mongo after 7 -> 8 upgrade
-      community.docker.docker_container_info:
-        name: "leagues-finance.mongo"
-      register: lf_mongo_upgraded_info
-      until: >
-        lf_mongo_upgraded_info.container is not none and
-        lf_mongo_upgraded_info.container.State.Health.Status is defined and
-        lf_mongo_upgraded_info.container.State.Health.Status == 'healthy'
-      retries: 30
-      delay: 5
-      when: lf_mongo_upgrading | default(false)
-      tags:
-        - user.docker.leagues-finance
-        - user.docker
-
-    # Idempotent: also finishes an upgrade whose FCV bump was interrupted on a previous run.
-    # Skipped once consolidated: the legacy leagues-finance.mongo container is gone.
-    - name: Read leagues-finance mongo featureCompatibilityVersion
-      community.docker.docker_container_exec:
-        container: leagues-finance.mongo
-        argv:
-          - mongosh
-          - admin
-          - --quiet
-          - -u
-          - "{{ leagues_finance.mongo_root_username }}"
-          - -p
-          - "{{ leagues_finance.mongo_root_password }}"
-          - --eval
-          - 'db.adminCommand({getParameter: 1, featureCompatibilityVersion: 1}).featureCompatibilityVersion.version'
-      register: lf_mongo_post_fcv
-      changed_when: false
-      when:
-        - "'leagues-finance' in (services | default([]))"
-        # Legacy 7->8 upgrade path only (false once consolidated).
-        - lf_mongo_upgrading | default(false)
-      tags:
-        - user.docker.leagues-finance
-        - user.docker
-
-    - name: Detect leagues-finance mongo on mongo 8 image
-      ansible.builtin.set_fact:
-        lf_mongo_is_v8: "{{ (lf_mongo_container.Config.Image | default('')) is match('^(docker.io/)?(library/)?mongo:8') }}"
-      vars:
-        lf_mongo_container: >-
-          {{ ((lf_mongo_upgraded_info | default({})).container | default(none, true))
-          or ((lf_mongo_info | default({})).container | default(none, true)) or {} }}
-      when: "'leagues-finance' in (services | default([]))"
-      tags:
-        - user.docker.leagues-finance
-        - user.docker
-
-    - name: Set leagues-finance mongo featureCompatibilityVersion to 8.0
-      community.docker.docker_container_exec:
-        container: leagues-finance.mongo
-        argv:
-          - mongosh
-          - admin
-          - --quiet
-          - -u
-          - "{{ leagues_finance.mongo_root_username }}"
-          - -p
-          - "{{ leagues_finance.mongo_root_password }}"
-          - --eval
-          - 'db.adminCommand({setFeatureCompatibilityVersion: "8.0", confirm: true})'
-      when:
-        - "'leagues-finance' in (services | default([]))"
-        - lf_mongo_post_fcv.stdout | default('') | trim == '7.0'
-        - lf_mongo_is_v8 | default(false)
-      tags:
-        - user.docker.leagues-finance
-        - user.docker
+    # WP-9: nothing here waits on `shared.mongo` any more. The mongo servers now
+    # have the same healthcheck contract as every other database container (the
+    # `db` watchtower scope health-gates its patch window, and the consumer apps
+    # retry their connection), and a stopped shared.mongo is the ROLLBACK, not a
+    # fault. The old wait/fail pair would have made every full deploy fail during
+    # the rollback week; its failure text and the wipe it replaced are recorded
+    # in history/2026-11-18_db-tier-wp1-mongo-wipe.md.
 
     # Opt-in (-e prune_legacy_datastore_images=true) once every service has moved to
     # valkey:9-alpine / mongo:8. Docker refuses to remove an image still used by a container.
