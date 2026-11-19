@@ -131,6 +131,27 @@
         # filesystem and fail for the wrong reason. Stat the target instead.
         quiet: true
 
+    # WP-8R follow-up: a tenant's dump root holds `new/` and `current/` and
+    # nothing else. Both halves of the rule live in the rendered tool: a bare
+    # `dbops dump` stages into <dump_dir>/new (never the root, which no snapshot
+    # and no probe sees), and `dbops verify` reads <dump_dir>/current.
+    - name: Read the rendered dbops
+      slurp:
+        src: "{{remote_user_home}}/.dbops/dbops"
+      register: dbops_body
+
+    - name: Assert dbops stages into new/ and reads current/
+      ansible.builtin.assert:
+        that:
+          - "'/new' in (dbops_body.content | b64decode)"
+          - "'dump_write_dir' in (dbops_body.content | b64decode)"
+          - "'dump_read_dir' in (dbops_body.content | b64decode)"
+        fail_msg: >-
+          the rendered dbops has no dump_write_dir/dump_read_dir layout rule:
+          a dump must land in <dump_dir>/new (staging) and be read back from
+          <dump_dir>/current. See roles/db_tier/templates/dbops.sh.j2.
+        quiet: true
+
     - name: Look for a container the role might have created (it never renders compose — D6)
       ansible.builtin.command:
         argv: [docker, ps, -a, --filter, "name=^db-business.mariadb$", --format, "{{ '{{.Names}}' }}"]

@@ -46,6 +46,19 @@
 # ----------------------------------------------------------------------------
 # These tasks always run to ensure data is "re-hydrated" on fresh hosts.
 # The decision matrix inside restore.yml ensures they SKIP on healthy hosts.
+#
+# PhotoPrism: there is deliberately NO database restore here any more
+# (WP-8R follow-up, 2026-11-19). PhotoPrism's data has lived on
+# db-private.mariadb since WP-6, so the old include that restored
+# `servyy-container/photoprism/database` from `home` restored nothing: that
+# datadir is the STOPPED pre-cutover engine, it is excluded from `home`
+# (vars/restic.yml), and restoring it would resurrect a dead database next to a
+# live one. PhotoPrism's restorable copy is the tenant dump in
+# /home/cda/db-dumps/photoprism/current (repo `db-private`, `drill: monthly`) —
+# `restore-drill.sh --tenant photoprism` and `dbops restore photoprism <file>`
+# are the documented paths. One entry was worse than none: it would be believed
+# during an incident. Re-add it only together with a datadir that is actually
+# backed up.
 
 - name: Restore Gitea Data
   include_tasks: restore.yml
@@ -53,17 +66,6 @@
     restore_path: "{{ (docker.remote_dir, 'git', 'repos') | path_join }}"
     backup_name: "{{ (inventory_hostname == 'servyy-test.lxd') | ternary('test', 'home') }}"
     owner: "root"
-  when: (with_containers | default(false)) | bool
-  tags:
-    - restic
-    - restic.restore
-
-- name: Restore PhotoPrism Database
-  include_tasks: restore.yml
-  vars:
-    restore_path: "{{ (docker.remote_dir, 'photoprism', 'database') | path_join }}"
-    backup_name: "{{ (inventory_hostname == 'servyy-test.lxd') | ternary('test', 'home') }}"
-    owner: "{{ create_user }}"
   when: (with_containers | default(false)) | bool
   tags:
     - restic

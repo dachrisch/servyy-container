@@ -39,6 +39,12 @@
 # the size measured on 2026-11-18 (see the history entry) but far above what an
 # empty database produces, so an empty schema or a dump of the wrong database
 # fails instead of replacing a good one.
+#
+# THE ROOT INVARIANT: <dump_dir> holds `new/` and `current/` and nothing else.
+# `dbops dump` stages into `new/` by default (never the root), and the LAST check
+# in this script fails the run if an entry appears in the root — because such a
+# file is in no snapshot and no probe: a 107 MB PhotoPrism dump sat in a tenant
+# root for a day, invisible, exactly that way (WP-8R follow-up, 2026-11-19).
 set -euo pipefail
 
 if [ -f "/home/{{ create_user }}/.zshenv" ]; then
@@ -112,6 +118,23 @@ rm -rf "$CUR.old"
 SWAPPED_BYTES=$(stat -c %s "$CUR/$FILE" 2>/dev/null || echo 0)
 if [ "$SWAPPED_BYTES" -ne "$BYTES" ]; then
     logdy error "Swap did not take effect" expected_bytes=$BYTES actual_bytes=$SWAPPED_BYTES target="$CUR/$FILE"
+    exit 1
+fi
+
+# THE LAYOUT ENFORCES ITSELF (WP-8R follow-up, 2026-11-19). The dump root has
+# exactly two children while a run is in flight — `new/` (staging) and `current/`
+# (the prepared set, the only thing the repo snapshots) — and exactly ONE after
+# it: `current/`. Anything else in the ROOT is in no snapshot and no probe sees
+# it: a 107 MB PhotoPrism dump sat there for a day exactly that way, next to a
+# healthy `current/`. `dbops dump` now writes into `new/` by default, and this is
+# the check that makes the invariant impossible to violate quietly — it runs on
+# every scheduled dump, AFTER the swap, so a fresh `current/` is already in place.
+# Failing (not merely logging) is deliberate: a warning is what gets ignored. An
+# operator fixes it by moving the file out of the tenant root; nothing of record
+# is deleted here.
+STRAYS=$(find "$ROOT" -mindepth 1 -maxdepth 1 ! -name new ! -name current -printf '%f ')
+if [ -n "$STRAYS" ]; then
+    logdy error "dump root holds entries outside new/ and current/" root="$ROOT" entries="$STRAYS"
     exit 1
 fi
 

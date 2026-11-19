@@ -290,3 +290,26 @@
         that:
           - tenant_dump_script.stat.exists
           - tenant_dump_script.stat.executable
+
+    # WP-8R follow-up: the tenant dump root must hold `new/` + `current/` and
+    # nothing else — a loose file there is in no snapshot and no probe sees it
+    # (a 107 MB PhotoPrism dump sat invisible that way for a day). Two halves of
+    # that rule are observable in the rendered script: the run stages through
+    # DBOPS_DUMP_DIR=$NEW, and the last check FAILS the run when the root holds
+    # anything else. Without the guard the layout can drift back silently.
+    - name: Read the rendered per-tenant dump script
+      slurp:
+        src: "{{ script_dir }}/dump-bnb_office.sh"
+      register: tenant_dump_body
+
+    - name: Assert the dump script stages into new/ and enforces the root layout
+      assert:
+        that:
+          - "'DBOPS_DUMP_DIR=\"$NEW\"' in (tenant_dump_body.content | b64decode)"
+          - "'! -name new ! -name current' in (tenant_dump_body.content | b64decode)"
+          - "'dump root holds entries outside new/ and current/' in (tenant_dump_body.content | b64decode)"
+        fail_msg: >-
+          dump-bnb_office.sh does not enforce the dump-root layout: it must stage
+          into new/ (DBOPS_DUMP_DIR=$NEW) and fail when <dump_dir> holds anything
+          besides new/ and current/. See roles/restic/templates/dbops_dump.sh.j2.
+        quiet: true
