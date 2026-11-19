@@ -82,6 +82,45 @@
       loop_control:
         label: "{{ item.name }}"
 
+    - name: Fail when a dump log key is declared without the rest of its probe row
+      ansible.builtin.assert:
+        that:
+          - (item.dump_log_key | default(none)) is none
+            or (item.dump_log_label | default('') | length > 0
+                and (item.dump_log_threshold_seconds | default(0) | int) > 0)
+        fail_msg: >-
+          backup_targets '{{ item.name }}': it declares dump_log_key
+          '{{ item.dump_log_key | default('-') }}' but not both dump_log_label and
+          dump_log_threshold_seconds. plays/tasks/restic_wiring.yml renders the
+          log-freshness probe from those three fields together, so a missing
+          label publishes `system_log_freshness_seconds{log=""}` — a series no
+          alert can name — and a missing threshold falls back to 7200 s, which is
+          silently wrong for a 5-minute job like the binlog ship.
+        quiet: true
+      loop: "{{ backup_targets }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # A repo's probe is its only "did this actually happen" signal, and an
+    # unreadable threshold/severity publishes nothing at all. Cheap to check,
+    # and it is the difference between a quiet repo and a green dashboard over
+    # a stopped job.
+    - name: Fail when a backup target's probe fields are not usable numbers
+      ansible.builtin.assert:
+        that:
+          - (item.log_threshold_seconds | default(0) | int) > 0
+          - (item.probe_minutes | default(0) | int) >= 0
+        fail_msg: >-
+          backup_targets '{{ item.name }}': log_threshold_seconds
+          '{{ item.log_threshold_seconds | default('-') }}' must be > 0 and
+          probe_minutes '{{ item.probe_minutes | default('-') }}' must be >= 0
+          (0 means "no snapshot-age series", which is only correct for a repo
+          nothing snapshots).
+        quiet: true
+      loop: "{{ backup_targets }}"
+      loop_control:
+        label: "{{ item.name }}"
+
     - name: Fail when a tenant points at a repo that is not a backup target
       ansible.builtin.assert:
         that:

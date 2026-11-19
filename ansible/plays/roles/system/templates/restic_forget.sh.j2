@@ -41,9 +41,8 @@ apply_retention() {
 FAILED=0
 {% for t in restic_targets_enabled %}{% if t.comment is defined %}{{ t.comment | trim }}
 {% endif %}apply_retention "/etc/restic/env.{{ t.name }}" "{{ t.name }}" \
-{% for flag, count in retention_profiles[t.retention].items() %}{% if flag == 'keep_tag' %}    --keep-tag {{ count }} \
-{% elif loop.last %}    --keep-{{ flag }} {{ count }} || FAILED=1
-{% else %}    --keep-{{ flag }} {{ count }} \
+{% for flag, count in retention_profiles[t.retention].items() %}{% set keep_flag = 'keep-tag' if flag == 'keep_tag' else ('keep-within' if flag == 'keep_within' else 'keep-' ~ flag) %}    --{{ keep_flag }} {{ count }}{% if loop.last %} || FAILED=1
+{% else %} \
 {% endif %}{% endfor %}{% endfor %}
 if [ $FAILED -eq 0 ]; then
     logdy info "All repositories processed successfully"

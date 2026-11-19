@@ -14,6 +14,8 @@
         - restic-backup-root
         - restic-backup-ls-db
         - mariadb-backup-ls
+        - binlog-ship
+        - restic-backup-ls-binlog
         - moodle-dump
         - restic-backup-moodle-db
         - restic-backup-moodle-files
@@ -35,6 +37,8 @@
         - restic-backup-root
         - restic-backup-ls-db
         - mariadb-backup-ls
+        - binlog-ship
+        - restic-backup-ls-binlog
         - moodle-dump
         - restic-backup-moodle-db
         - restic-backup-moodle-files
@@ -126,3 +130,47 @@
       assert:
         that:
           - "'Source data is stale' in (moodle_scripts.results[1].content | b64decode)"
+
+    # WP-8R R5: the binlog pair is a 5-MINUTE cadence. The shared timer template
+    # defaults to RandomizedDelaySec=5m, which turns such a timer into 5-10
+    # minutes (double the stated RPO) and can put the snapshot before the ship.
+    # Assert the override actually reached the rendered unit, and that the hourly
+    # jobs kept their jitter.
+    - name: Read the rendered binlog timers
+      slurp:
+        src: "{{ unit_dir }}/{{ item }}.timer"
+      loop:
+        - binlog-ship
+        - restic-backup-ls-binlog
+      register: binlog_timers
+
+    - name: Assert the binlog timers carry no random delay
+      assert:
+        that:
+          - "'RandomizedDelaySec=0' in (item.content | b64decode)"
+          - "'OnCalendar=*-*-* *:0' in (item.content | b64decode)"
+      loop: "{{ binlog_timers.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Read the hourly db timer
+      slurp:
+        src: "{{ unit_dir }}/restic-backup-ls-db.timer"
+      register: db_timer
+
+    - name: Assert the hourly job kept its 5-minute jitter
+      assert:
+        that:
+          - "'RandomizedDelaySec=5m' in (db_timer.content | b64decode)"
+
+    - name: Read the rendered binlog ship script
+      slurp:
+        src: "{{ script_dir }}/binlog-ship.sh"
+      register: ship_script
+
+    - name: Assert the ship script carries the retention pairing constants
+      assert:
+        that:
+          - "'KEEP_DAYS=3' in (ship_script.content | b64decode)"
+          - "'REPO_DAYS=2' in (ship_script.content | b64decode)"
+          - "'last_ship_ok' in (ship_script.content | b64decode)"

@@ -73,6 +73,17 @@ print(max(times).isoformat() if times else "")
       snap_epoch=$(date -d "$snap_time" +%s 2>/dev/null) || snap_epoch=""
       if [ -n "$snap_epoch" ]; then
         age=$(( now - snap_epoch ))
+        # A snapshot created AFTER `now` was sampled yields a negative age, and
+        # the alert rules treat any negative age as "unverifiable" and page
+        # (`(age < bool 0) > 0`). The window is tiny but not zero, and a
+        # 5-minute cadence (the binlog tail) makes hitting it 12x likelier than
+        # an hourly one: measured on 2026-11-19, `repo="ls-binlog"` reported -2
+        # seconds on a probe run that raced the :03 snapshot. Clamp to 0 — the
+        # repo WAS read and the newest snapshot is simply at/after the sample.
+        # -1 stays reserved for "could not read the repo at all".
+        if [ "$age" -lt 0 ]; then
+          age=0
+        fi
         printf 'restic_snapshot_age_seconds{repo="%s"} %s\n' "$name" "$age"
         return 0
       fi

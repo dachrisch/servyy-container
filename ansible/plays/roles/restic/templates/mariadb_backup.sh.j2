@@ -1,5 +1,34 @@
 #!/bin/zsh
 # mariadb-backup for leaguesphere prod db -> prepared 'current' set
+#
+# `--binlog` IS PASSED, AND ON THIS SERVER IT IS A NO-OP — measured, not assumed.
+# MariaDB 13.0's own help text for the flag:
+#
+#   --binlog  Backup the server binary logs. Only applies to server configured
+#             with --binlog-storage-engine, old-style binlog is not backed up.
+#             Enabled by default, specify --skip-binlog to not backup the
+#             binlog files.
+#
+# This server uses the OLD-STYLE file binlog (`log_bin_basename=/var/lib/mysql/
+# binlog`, `binlog_storage_engine` empty), so a prepared set contains
+# `mariadb_backup_binlog_info` (file + position + GTID — the replay START point)
+# and NO binlog files, no matter what the flag says. Measured on 13.0.2 on
+# 2026-11-18: `--binlog` on, set contains 0 `binlog.*` and `--prepare` succeeds.
+#
+# That is why the flag stays: it is the documented intent, it becomes functional
+# the day the server moves to engine-backed binlogs, and the guard below fails
+# the job if that ever happens and the set STILL comes back without binlogs.
+# Until then the *replay source* is the `ls-binlog` repo (see binlog_ship.sh.j2),
+# which ships every binlog file the server holds every 5 minutes; the set only
+# supplies the position to start replaying from. The ship script checks that
+# position is inside the shipped window on every run, so the pair cannot drift
+# apart silently.
+#
+# Do NOT "fix" the empty set by copying binlogs in by hand here: the set is
+# version-bound and rotated hourly, the tail is a 5-minute stream with its own
+# retention, and two copies of the same binlogs in two repos with two forget
+# policies is precisely the "restore disagrees with itself" shape this design
+# avoids.
 set -euo pipefail
 source "/home/{{ create_user }}/.zprezto/custom/functions/logdy" 2>/dev/null || true
 
@@ -11,11 +40,41 @@ CUR="$BACKUP_ROOT/current"
 sudo rm -rf "$NEW"
 docker exec "$CONTAINER" sh -c 'rm -rf /backup/new && mkdir -p /backup/new'
 docker exec "$CONTAINER" mariadb-backup --backup --target-dir=/backup/new \
+  --binlog \
   --user='{{ ls_backup_user }}' --password='{{ ls_backup_password }}'
+
+# The set must be rollable forward: it has to name a start position. A set with
+# an empty/missing binlog_info cannot be used for PITR at all — the replay would
+# have no anchor — so that IS a hard failure, unlike the (expected) absence of
+# binlog files.
+binlog_info=$(docker exec "$CONTAINER" cat /backup/new/mariadb_backup_binlog_info 2>/dev/null || true)
+if [ -z "$binlog_info" ]; then
+  echo "mariadb-backup produced no mariadb_backup_binlog_info in $NEW - this set cannot be rolled forward; refusing to swap it into place" >&2
+  exit 1
+fi
+
+# Forward-compat regression guard: only once the server uses engine-backed
+# binlogs is the tool supposed to copy them into the set. If it ever should and
+# does not, fail loudly instead of promoting a set whose PITR story silently
+# changed shape.
+binlog_engine=$(docker exec "$CONTAINER" sh -c \
+  'mariadb -uroot -p"$MYSQL_ROOT_PASSWORD" --skip-ssl --batch --skip-column-names -e "SELECT IFNULL(@@binlog_storage_engine,\"\")"' 2>/dev/null | tr -d '[:space:]' || true)
+binlog_count=$(docker exec "$CONTAINER" sh -c 'ls -1 /backup/new/binlog.[0-9]* 2>/dev/null | wc -l' | tr -d '[:space:]')
+if [ -n "$binlog_engine" ] && [ "$binlog_count" -eq 0 ]; then
+  echo "server uses binlog_storage_engine='$binlog_engine' but the set has no binlog files - refusing to swap it into place" >&2
+  exit 1
+fi
+
 docker exec "$CONTAINER" mariadb-backup --prepare --target-dir=/backup/new
 # atomic-ish swap on host (paths are bind-mounted, same fs)
 sudo rm -rf "$CUR.old" 2>/dev/null || true
-[ -d "$CUR" ] && sudo mv "$CUR" "$CUR.old"
+# `if`, not `[ -d ] && mv`: with `set -e` the && list aborts the script when
+# there is no previous set to move aside (a fresh host), which would leave the
+# new set stranded in new/ and the repo without a set at all.
+if [ -d "$CUR" ]; then
+  sudo mv "$CUR" "$CUR.old"
+fi
 sudo mv "$NEW" "$CUR"
 sudo rm -rf "$CUR.old"
-echo "mariadb-backup current set refreshed at $CUR"
+echo "mariadb-backup current set refreshed at $CUR (binlogs in set: $binlog_count, storage engine: '${binlog_engine:-old-style}')"
+echo "replay start position: $binlog_info"

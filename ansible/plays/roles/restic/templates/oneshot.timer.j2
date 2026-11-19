@@ -3,7 +3,7 @@ Description={{ timer.description }}
 
 [Timer]
 OnCalendar={{ timer.schedule }}
-RandomizedDelaySec=5m
+RandomizedDelaySec={{ timer.randomized_delay | default('5m') }}
 Persistent=true
 
 [Install]
