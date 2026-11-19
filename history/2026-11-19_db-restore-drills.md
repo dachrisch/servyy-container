@@ -126,3 +126,33 @@ Full log: `/home/cda/.restore-drills/logs/leagues_finance-20261119T084801Z.log`
 
 ---
 
+## 2026-11-19T09:10:58Z · photoprism (private, mariadb)
+
+**Result:** ok **(monthly cadence)**
+
+| | |
+|---|---|
+| Snapshot | `daa5e628844bf48587af746ba7f61a5780f1ceb0badc16fc1f0bfa4aadbcaf5b` from repo `db-private`, taken 2026-11-19T00:58:49.34953204+01:00 |
+| Scratch target | `drill-photoprism-20261119T090911Z` (mariadb:13.0, network `none`) → removed |
+| Restore wall-clock (RTO) | **109.7 s** (restic 2.9 s · target up 11.6 s · import 46.7 s · verify 46.5 s) |
+| Counts compared | compared 41 tables, live 580358 rows / restored 580349 rows (restore is 9 rows behind live) |
+| Mismatch | none |
+
+Verify output (`dbops verify photoprism --against drill-photoprism-20261119T090911Z --drill`):
+
+```text
+dbops: verify photoprism  live(db-private.mariadb) vs live(drill-photoprism-20261119T090911Z)
+  -- db-private.mariadb / photoprism
+  -- drill-photoprism-20261119T090911Z / photoprism
+  structure: 41 objects identical (tables, views, routines, triggers, events)
+  compared 41 tables, live 580358 rows / restored 580349 rows (restore is 9 rows behind live)
+  per-table differences (drift is expected; EMPTY_IN_RESTORE/MISSING/CHECKSUM is not):
+    errors live=35809 restored=35801
+    versions live=331 restored=330
+dbops: ok  drill check: structure identical, no populated table empty in the restore, equal-count tables checksum-identical
+```
+
+Full log: `/home/cda/.restore-drills/logs/photoprism-20261119T090908Z.log`
+
+---
+
