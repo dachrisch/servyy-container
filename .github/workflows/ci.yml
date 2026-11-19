@@ -28,7 +28,7 @@ jobs:
       - name: Build yamllint ignore for git-crypt encrypted files
         run: |
           : > /tmp/yamllint-encrypted.txt
-          for f in $(git ls-files | grep -E '^ansible/plays/.*\.ya?ml$'); do
+          for f in $(git ls-files | grep -E '\.ya?ml$'); do
             a=$(git check-attr filter -- "$f" 2>/dev/null | awk '{print $3}' || true)
             if [ "$a" = "git-crypt" ]; then
               echo "$f" >> /tmp/yamllint-encrypted.txt

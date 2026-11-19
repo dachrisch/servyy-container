@@ -45,3 +45,7 @@ ignore: |
   ansible/plays/roles/user/defaults/main.yaml
   ansible/plays/vars/secret_leaguesphere.yaml
   ansible/plays/vars/ssh_jail.yaml
+  # The service landscape map is git-crypt encrypted too, and it lives OUTSIDE
+  # ansible/plays — which is all the CI job's dynamic glob looked at, so without
+  # this line `yamllint architecture/` tries to parse ciphertext.
+  architecture/landscape.yaml
