@@ -24,10 +24,11 @@
 #
 # Design rules:
 #   * Engines: mariadb (mariadb-dump/mariadb) and mongo (mongodump/mongorestore).
-#     postgres is recognised and refused with a clear message: it is a
-#     short-lived tenant (firefly) whose interim `pg_dump` lives in
-#     roles/restic/templates/firefly_dump.sh.j2 and is deleted with `shared.db`
-#     in WP-10 — an adapter here would be thrown away with it.
+#     postgres is recognised and refused with a clear message: it was a
+#     short-lived tenant (firefly) whose interim `pg_dump` lived in
+#     roles/restic/templates/firefly_dump.sh.j2. WP-10 moved firefly to MariaDB,
+#     so no postgres tenant remains; the template is kept only for the rollback
+#     month and deleted with `shared.db`.
 #   * Every statement runs INSIDE the tenant's server container via `docker exec`,
 #     so no database port is published or opened and Ansible never interpolates a
 #     database credential.
@@ -110,7 +111,7 @@ resolve_tenant() {
   case "$T_ENGINE" in
     mariadb) ;;
     mongo) [ "$DBOPS_MONGO_ADAPTER" = "1" ] || die "tenant '$1' runs on 'mongo': this build has the MariaDB adapter only" 2 ;;
-    *) die "tenant '$1' runs on '$T_ENGINE': only mariadb and mongo are implemented (postgres arrives with WP-10)" 2 ;;
+    *) die "tenant '$1' runs on '$T_ENGINE': only mariadb and mongo are implemented (postgres was retired in WP-10)" 2 ;;
   esac
   # A move writes to the NEW server while the inventory still names the old one.
   # Every path (dump/restore/verify/shell) goes through here, so the override

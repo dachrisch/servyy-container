@@ -5,7 +5,7 @@
 # Seeded (2026-11-18) with the CURRENT placement, so nothing moves: an entry here
 # describes where a tenant runs today, not where it will end up. Later phases
 # only edit rows (WP-4..WP-9 move `server`, WP-9 retires `shared.mongo`, WP-10
-# removes `firefly`).
+# moves `firefly` to MariaDB and retires `shared.db`).
 #
 # Schema — one row per TENANT, not per server (several tenants share a server):
 #   tenant                stable id, never renamed (history and dumps key off it)

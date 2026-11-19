@@ -300,9 +300,10 @@
     - restic.backup
 
 # --- WP-8R R3/R4/R6: the dump-backed repos (servy only) --------------------
-# Five tenants get their first real protection here: PhotoPrism (private),
+# Five tenants got their first real protection here: PhotoPrism (private),
 # leagues_finance + queen (business), dontforget (private mongo) and firefly
-# (private postgres, INTERIM until WP-10 deletes it with shared.db).
+# (now private MariaDB; its interim postgres dump was replaced by `dbops` in
+# WP-10, in the same repo/directory).
 #
 # Each target is one dump job + one restic snapshot job, both rendered from the
 # SAME `backup_targets` row, because the only thing that differs per tenant is
