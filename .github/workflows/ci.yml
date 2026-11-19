@@ -278,6 +278,25 @@ jobs:
           cd ansible/tests/dbops_dump_due
           python -m unittest -v test_dump_due
 
+      # WP-8R follow-up: the dump root holds `new/` + `current/` and nothing
+      # else, because a loose file there is in no snapshot and no probe (a 107 MB
+      # PhotoPrism dump sat invisible for a day). Proves `dbops dump` stages into
+      # new/ and that `dbops verify` reads current/, from the rendered script.
+      - name: Run dbops dump-layout tests
+        run: |
+          cd ansible/tests/dbops_dump_layout
+          python -m unittest -v test_dump_layout
+
+      # WP-8R follow-up: the MariaDB scratch readiness must not accept the
+      # TEMPORARY init server ("ready for connections", @@port = 0) as ready —
+      # measured: the firefly drill's readiness returned, the temp server stopped
+      # immediately after, and the import died with ERROR 2002. Replays the real
+      # startup timeline against the rendered drill script.
+      - name: Run restore-drill readiness race test
+        run: |
+          cd ansible/tests/restore_drill_ready
+          python -m unittest -v test_ready
+
   molecule-test:
     name: Molecule Test (${{ matrix.role }}/${{ matrix.scenario }})
     needs: [lint-yaml, lint-ansible, lint-python, syntax-check]
