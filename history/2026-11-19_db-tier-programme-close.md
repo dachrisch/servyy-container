@@ -86,6 +86,14 @@ Two policies came out of these and are now enforced:
    fails the deploy with the server untouched; the deploy-key guard refuses to overwrite a
    differing host key; the drill guard fails a drill that leaves a volume behind.
 
+## The three folded-in packages
+
+| WP | Outcome |
+|---|---|
+| **WP-12** | **done** — `moodle.moodle` carries `io.portainer.accesscontrol.teams=leaguesphere`; verified through Portainer's own API (`ResourceControl` + `TeamAccesses`, the same shape `leaguesphere.app` has). The recreate cost ~6 minutes of `offd.de` downtime, not seconds, because a fresh worktree regenerated the app seeds — the incident that produced the seed guard above |
+| **WP-13** | **done** — the `searxng.valkey` sidecar, its volume and network removed after confirming `dbsize=0` and nothing else attached; `search.lehel.xyz` 200, caches SQLite as they always were |
+| **WP-14** | **not started** — its own plan requires a quiet tree and warns against staging unrelated work; it is the last thing on this list for exactly that reason |
+
 ## Deliberately not done
 
 | Item | Why | When to revisit |
