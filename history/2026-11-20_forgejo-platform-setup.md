@@ -178,3 +178,25 @@ Fix: `repo_checkout: false` on runny.
   restic-forget/check timers.
 
 Tested by the molecule scenario `user/no-checkout`.
+
+## Probe token, Vaultwarden copy, DB path (2026-11-20)
+
+- **Probe token:** `forgejo_admin_api_token` is a `read:admin` token named
+  `runner-probe` for user cda. It was generated on servy and written straight
+  into secrets.yml.
+- **What the API actually returns:** the admin runners endpoint returns
+  `status` (idle / active / offline), not an `online` boolean, and has no
+  last-seen field. The probe now takes:
+  - online state from the API;
+  - `last_online` and job counts from SQLite. Job status codes are 5 = waiting
+    and 6 = running, not 1/2 (those are success and failure).
+- **Live DB path:** the database is `ci/data/data/gitea.db` in WAL mode, not
+  `ci/data/gitea/forgejo.db`. That meant:
+  - the restic exclude never matched, so the live DB was in servy's home
+    backup;
+  - the probe's `immutable=1` read would have ignored the WAL.
+
+  The excludes now cover gitea.db plus its -wal/-shm, sessions and
+  repo-archive. The probe reads with WAL visibility, as the probe's uid.
+- **Vaultwarden:** `plays/forgejo_vaultwarden.yml` (`--tags ci.vaultwarden`)
+  pushes the admin password as "forgejo - admin (ci.lehel.xyz)".

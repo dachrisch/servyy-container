@@ -3,7 +3,7 @@
 # ci.forgejo container and writes the SQL-only dump into the bind-mounted
 # ./data/backup directory, keeping the last N. The dump (and the bare repos)
 # are the backup of record: restic's home job snapshots ./data/backup while the
-# live ./data/gitea/forgejo.db and ./data/packages stay excluded.
+# live ./data/data/gitea.db and ./data/packages stay excluded.
 #
 # `forgejo dump --database sqlite3` produces a SQL dump of the database inside a
 # tar.gz; everything regenerable is skipped so the dump is small and stable.
