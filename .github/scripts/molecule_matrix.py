@@ -229,16 +229,20 @@ def main(argv: list[str] | None = None) -> int:
     entries = load_manifest(args.manifest)
     changes = None if args.all else parse_changes(args.changed_files_json)
     matrix = plan(entries, args.repo_root, changes, args.ci_changed.strip().lower() == "true")
-    payload = json.dumps(matrix)
 
     print(f"molecule plan: {len(matrix['include'])} scenario(s)")
     for entry in matrix["include"]:
         print(f"  - {entry['role']}/{entry['scenario']}")
+
+    # `include=` must hold the ARRAY itself: the workflow assigns it to
+    # `strategy.matrix.include`, and a wrapped {"include": [...]} object there is
+    # a fatal matrix error. stdout keeps the full object for humans.
+    payload = json.dumps(matrix["include"])
     if args.github_output:
         with args.github_output.open("a", encoding="utf-8") as fh:
             fh.write(f"include={payload}\n")
     else:
-        print(payload)
+        print(json.dumps(matrix))
     return 0
 
 

@@ -18,6 +18,7 @@ expression error in GitHub Actions, not a skip.
 """
 
 import importlib.util
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -232,6 +233,37 @@ class ParseChangesTest(unittest.TestCase):
         with self.assertRaises(SystemExit) as ctx:
             mm.parse_changes("true")
         self.assertIn("true", str(ctx.exception))
+
+
+class GithubOutputTest(unittest.TestCase):
+    """The `include=` output is assigned straight to strategy.matrix.include."""
+
+    def test_output_is_a_bare_array_not_a_wrapped_object(self):
+        import contextlib
+        import io
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "github_output"
+            out.write_text("", encoding="utf-8")
+            argv = [
+                "--manifest", str(MANIFEST),
+                "--repo-root", str(REPO),
+                "--changed-files-json",
+                '["ansible/plays/roles/restic/tasks/main.yml"]',
+                "--github-output", str(out),
+            ]
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(mm.main(argv), 0)
+            text = out.read_text(encoding="utf-8")
+        key, _, value = text.strip().partition("=")
+        self.assertEqual(key, "include")
+        parsed = json.loads(value)
+        # a dict here becomes matrix.include = {"include": [...]} and the job
+        # never starts; that is exactly how this wiring failed the first time
+        self.assertIsInstance(parsed, list)
+        self.assertIn({"role": "restic", "scenario": "default"}, parsed)
+        self.assertIn({"role": "system", "scenario": "default"}, parsed)
+        self.assertNotIn({"role": "db_tier", "scenario": "default"}, parsed)
 
 
 class RepositoryManifestTest(unittest.TestCase):

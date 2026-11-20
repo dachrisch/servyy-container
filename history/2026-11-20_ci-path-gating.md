@@ -123,11 +123,20 @@ full suite — the self-test):
 | `CI Gate` | green, table of 9 results |
 | molecule matrix | 16/16 |
 
-First run failed and is kept here because the fix is a trap worth remembering:
-`list-files: json` publishes the list to `<filter>_files`, while the filter's
-own output remains the boolean. The job read `ansible` (value `true`) and the
-planner rejected it with `must be a JSON array, got 'true'` — `8aaaa8b` renames
-the filter and makes that error name the value it received.
+First run failed and is kept here because both fixes are traps worth
+remembering:
+
+1. `list-files: json` publishes the list to `<filter>_files`, while the filter's
+   own output remains the boolean. The job read `ansible` (value `true`) and the
+   planner rejected it with `must be a JSON array, got 'true'`. Fixed by naming
+   the filter `ansible` and reading `ansible_files`, and by making that error
+   name the value it received.
+2. The `include=` job output is assigned straight to `strategy.matrix.include`,
+   so it must be the **array**. Emitting the wrapped `{"include": [...]}` object
+   made `matrix.include` an object, and GitHub never created the matrix job at
+   all — `molecule-test` appeared as `failure` with no jobs under it, which the
+   gate then reported correctly (`CI Gate: FAILED - molecule-test=failure`).
+   That is the gate doing its job: nothing silently went green.
 
 After merge: ruleset `21452638` required `CI Gate` only; a docs-only PR reported
 `Validate git-crypt Encryption` + `CI Gate` and was mergeable without a single
