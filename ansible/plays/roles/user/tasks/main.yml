@@ -148,7 +148,11 @@
 - import_tasks: dns.yml
   tags:
     - user.dns
-  when: with_containers | default(false)
+  # Writes the Pi-hole host list INTO the deploy checkout; hosts without one
+  # (repo_checkout: false) would get ~/servyy-container recreated by it.
+  when:
+    - with_containers | default(false)
+    - repo_checkout | default(true) | bool
 
 - import_tasks: host_ping.yml
   tags:
