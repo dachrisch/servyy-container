@@ -38,3 +38,20 @@ runny runs a `node-exporter` (the only monitoring piece on that 1 GB host),
 scraped by servy's Prometheus. See the history entry and
 `monitor/provisioning/dashboards/infrastructure/forgejo-ci.json` for the runner
 liveness / host-metric dashboards.
+
+## runny.lehel.xyz holds no repo and no secrets (2026-11-20)
+
+The amd64 runner host has `repo_checkout: false`. CI jobs there use the host
+Docker socket, so anything on its disk is readable by any workflow.
+- **What the host does not get:** the deploy checkout, which would be
+  git-crypt unlocked with `secrets.yml` in plaintext. Also no GitHub deploy
+  key, no `git.lehel.xyz` login, and no opencode keys.
+  `roles/user/tasks/no_checkout.yml` removes them if an earlier run left them.
+- **Where the runner lives:** it is rendered to `/home/cda/runny`
+  (`forgejo_runner_service_dir`), outside any checkout. Its only secret is its
+  own registration in `data/.runner`.
+- **No restic:** `restic_skip: true` ends the restic and restore-drill plays,
+  and removes the maintenance timers.
+- **This directory in the repo** documents the runner. On codey the runner
+  still deploys from the checkout, using the dind backend, so jobs never see
+  codey's host.

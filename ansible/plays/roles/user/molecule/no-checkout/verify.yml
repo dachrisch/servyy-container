@@ -1,0 +1,33 @@
+---
+- name: Verify (User no-checkout cleanup)
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Stat what must be gone
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /home/testuser/servyy-container
+        - /home/testuser/.ssh/id_servyy_container_deploy
+      register: gone
+
+    - name: Assert the checkout and deploy key are removed
+      ansible.builtin.assert:
+        that: gone.results | selectattr('stat.exists') | list | length == 0
+
+    - name: Read ssh config and git credentials
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - /home/testuser/.ssh/config
+        - /home/testuser/.git-credentials
+      register: kept
+
+    - name: Assert only the managed entries were removed
+      ansible.builtin.assert:
+        that:
+          - "'keep.example' in (kept.results[0].content | b64decode)"
+          - "'id_servyy_container_deploy' not in (kept.results[0].content | b64decode)"
+          - "'example.org' in (kept.results[1].content | b64decode)"
+          - "'git.lehel.xyz' not in (kept.results[1].content | b64decode)"

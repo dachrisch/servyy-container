@@ -92,6 +92,16 @@
     - system.restic
     - system.restic.maintenance
     - system.maintenance
+  when: not (restic_skip | default(false) | bool)
+
+# Hosts that are never backed up (restic_skip): remove the maintenance timers
+# an earlier run may have installed.
+- import_tasks: restic_maintenance_absent.yml
+  tags:
+    - system.restic
+    - system.restic.maintenance
+    - system.maintenance
+  when: restic_skip | default(false) | bool
 
 - import_tasks: hardening.yml
   when: hardening.enabled | default(true)

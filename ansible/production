@@ -226,6 +226,12 @@ prod:
         skip_storagebox: true
         # Never backed up: ends plays/restic.yml and plays/restore_drill.yml.
         restic_skip: true
+        # No deploy checkout: CI jobs can reach this host, and the checkout is
+        # git-crypt unlocked (secrets.yml in plaintext). No deploy key, no
+        # git.lehel.xyz login, no opencode keys either. The runner is rendered
+        # outside the checkout (forgejo_runner_service_dir below).
+        repo_checkout: false
+        forgejo_runner_service_dir: /home/cda/runny
         # Light system play on 1 GB (see ansible/production header): the Loki
         # blocklist is the one fail2ban piece this host skips (it has no Loki
         # query route and no room); portainer-agent and promtail are simply not

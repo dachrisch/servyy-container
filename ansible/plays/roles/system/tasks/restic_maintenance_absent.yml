@@ -1,0 +1,23 @@
+---
+- name: Stop and disable the restic maintenance timers
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop:
+    - restic-forget.timer
+    - restic-check.timer
+  failed_when: false
+
+- name: Remove the restic maintenance units and scripts
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/restic-forget.timer
+    - /etc/systemd/system/restic-forget.service
+    - /etc/systemd/system/restic-check.timer
+    - /etc/systemd/system/restic-check.service
+    - /usr/local/bin/restic-forget.sh
+    - /usr/local/bin/restic-check.sh
+  notify: reload systemd

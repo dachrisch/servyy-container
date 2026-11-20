@@ -1,0 +1,32 @@
+---
+# Runs only where repo_checkout is false. Everything here is the cleanup of
+# what the normal user role would otherwise install; on a fresh host it is a
+# no-op. The checkout is git-crypt UNLOCKED once deployed (secrets.yml in
+# plaintext), so it must not exist on a host whose CI jobs can reach the disk.
+
+- name: Remove the deploy checkout (unlocked secrets)
+  ansible.builtin.file:
+    path: "{{ docker.remote_dir }}"
+    state: absent
+
+- name: Remove the servyy-container GitHub deploy key
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - ~/.ssh/id_servyy_container_deploy
+    - ~/.ssh/id_servyy_container_deploy.pub
+
+- name: Remove the github.com deploy-key block from ~/.ssh/config
+  ansible.builtin.blockinfile:
+    path: ~/.ssh/config
+    marker: "# {mark} ANSIBLE MANAGED - servyy-container GitHub deploy key"
+    state: absent
+  failed_when: false
+
+- name: Remove the git.lehel.xyz login
+  ansible.builtin.lineinfile:
+    path: ~/.git-credentials
+    regex: "^https://[^@]*:[^@]*@{{ servyy_git_repo.hostname }}$"
+    state: absent
+  failed_when: false
