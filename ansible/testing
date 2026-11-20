@@ -32,6 +32,12 @@ test:
       # stack runs, and rely on molecule + the servy probe for that check.
       system_probe_push_enabled: false
       services_enabled:
+        # The test host's edge is managed from this repo (as production is) so the
+        # cross-host monitor middlewares and their mounted users files are the
+        # real ones. It was left unmanaged for a while, which made a deploy of
+        # anything behind Traefik test a stale inode; enabling it recreates the
+        # edge from the same compose file production uses.
+        traefik: true
         devhub: true
         opencode: true
         leaguesphere: true
