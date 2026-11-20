@@ -35,7 +35,7 @@ container:
   network: ""
   privileged: false
   # Extra `docker create` options for every job container (memory caps etc.).
-  options: {{ forgejo_runner_container_options | default('') }}
+  options: {{ (forgejo_runner_container_options | default('') ~ ' ' ~ (forgejo_runner_extra_hosts | map('regex_replace', '^', '--add-host=') | join(' '))) | trim }}
   workdir_parent: workspace
   valid_volumes: []
   # Empty -> use the DOCKER_HOST env var the compose injects (host socket or

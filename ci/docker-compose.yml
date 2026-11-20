@@ -49,7 +49,10 @@ services:
       # Plain HTTP -> HTTPS (the ACME HTTP-01 challenge is answered by Traefik
       # itself on the `web` entrypoint, before any router matches).
       - traefik.http.routers.${SERVICE_NAME}-http.entrypoints=web
-      - traefik.http.routers.${SERVICE_NAME}-http.rule=Host(`${SERVICE_HOST}`)
+      # The redirect only exists where TLS does: servyy-test serves plain http on
+      # `web`, so there the rule falls back to a never-matching host (same
+      # pattern as moodle/docker-compose.yml).
+      - traefik.http.routers.${SERVICE_NAME}-http.rule=Host(`${TRAEFIK_HTTP_REDIRECT_HOST:-ci-http-redirect.invalid}`)
       - traefik.http.routers.${SERVICE_NAME}-http.middlewares=${SERVICE_NAME}-https
       - traefik.http.middlewares.${SERVICE_NAME}-https.redirectscheme.scheme=https
       # The service itself. DNS-01 (letsencryptdnsresolver) rather than HTTP-01:

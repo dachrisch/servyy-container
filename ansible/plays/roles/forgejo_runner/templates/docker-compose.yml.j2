@@ -33,7 +33,13 @@ services:
 {% elif forgejo_runner_docker == 'dind' %}
       - dind-certs:/certs/client
 {% endif %}
-    command: forgejo-runner daemon
+    command: forgejo-runner daemon --config /data/config.yml
+{% if forgejo_runner_extra_hosts | length > 0 %}
+    extra_hosts:
+{% for h in forgejo_runner_extra_hosts %}
+      - "{{ h }}"
+{% endfor %}
+{% endif %}
 {% if forgejo_runner_docker == 'dind' %}
     depends_on:
       - dind

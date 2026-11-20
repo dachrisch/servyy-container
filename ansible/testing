@@ -78,6 +78,7 @@ test:
       forgejo_runner_capacity: 1
       forgejo_runner_qemu: false
       forgejo_runner_docker: host
+      forgejo_runner_extra_hosts: ["ci.servyy-test.lxd:host-gateway"]
       queen_service_host: queen.servyy-test.lxd
       queen_traefik_entrypoint: web
       queen_traefik_tls: "false"

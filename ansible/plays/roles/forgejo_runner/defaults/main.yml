@@ -51,3 +51,8 @@ forgejo_runner_data_dir: "{{ (forgejo_runner_service_dir, 'data') | path_join }}
 forgejo_runner_docker_host: >-
   {{ 'tcp://dind:2376' if forgejo_runner_docker == 'dind'
      else 'unix:///var/run/docker.sock' }}
+
+# Extra host:ip mappings for the runner AND its job containers (as --add-host).
+# Only servyy-test needs it: ci.servyy-test.lxd has no DNS there, so it maps to
+# the host gateway where Traefik listens.
+forgejo_runner_extra_hosts: []
