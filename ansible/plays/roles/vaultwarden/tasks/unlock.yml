@@ -249,6 +249,16 @@
   failed_when: false
   no_log: true
 
+- name: DEBUG unlock (temporary)
+  ansible.builtin.debug:
+    msg:
+      rc: "{{ bw_unlock.rc }}"
+      stdout_len: "{{ bw_unlock.stdout | length }}"
+      trim_len: "{{ bw_unlock.stdout | trim | length }}"
+      stderr: "{{ bw_unlock.stderr | default('') | trim | truncate(200) }}"
+      master_len: "{{ vw_master_password | length }}"
+      status_after: "{{ bw_status_after | default({}) }}"
+
 # `bw unlock` exits 0 with an EMPTY stdout when BW_MASTER is unset/empty: it
 # prints "Warning: Provided passwordenv BW_MASTER is not set" on stderr and tries
 # to prompt instead. That is not a wrong password, so it gets its own class

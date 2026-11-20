@@ -115,13 +115,14 @@ full suite — the self-test):
 
 | Check | Result |
 |---|---|
-| `Detect changed paths` | 10 s, all four categories true |
-| `Plan Molecule Matrix` | 8 s, 16 scenarios |
-| `Lint Python` (incl. selftest) | 12 s |
-| `Validate git-crypt Encryption` | 14 s |
-| `Lint YAML` / syntax matrix | 11 s / 35–45 s each |
-| `CI Gate` | green, table of 9 results |
-| molecule matrix | 16/16 |
+| `Detect changed paths` | 7 s, all four categories true |
+| `Plan Molecule Matrix` | 15 s, 16 scenarios |
+| `Lint YAML` / `Lint Python` (incl. selftest) | 13 s / 17 s |
+| Ansible syntax matrix | 39–51 s each |
+| `test-custom-modules` | 46 s (8 suites, 25 planner tests) |
+| `Validate git-crypt Encryption` | 11 s |
+| molecule matrix | 16/16 green, 1 m 32 s – 4 m 15 s each |
+| `CI Gate` | green, table of nine results |
 
 First run failed and is kept here because both fixes are traps worth
 remembering:
