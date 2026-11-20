@@ -1,0 +1,31 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Check forgejo.env exists
+      ansible.builtin.stat:
+        path: /home/molecule/ci/forgejo.env
+      register: forgejo_env
+      failed_when: not forgejo_env.stat.exists
+
+    - name: Verify forgejo.env carries the FORGEJO__* private-instance settings
+      ansible.builtin.command:
+        cmd: "grep -qE 'FORGEJO__server__ROOT_URL=https://ci.lehel.xyz|FORGEJO__server__DISABLE_SSH=true|FORGEJO__service__DISABLE_REGISTRATION=true|FORGEJO__service__REQUIRE_SIGNIN_VIEW=true|FORGEJO__database__DB_TYPE=sqlite3|FORGEJO__actions__ENABLED=true|FORGEJO__actions__DEFAULT_ACTIONS_URL=https://data.forgejo.org|FORGEJO__packages__ENABLED=true|FORGEJO__mailer__ENABLED=false' /home/molecule/ci/forgejo.env"
+      changed_when: false
+
+    - name: Verify forgejo.env carries the metrics + security secrets
+      ansible.builtin.command:
+        cmd: "grep -qE 'FORGEJO__metrics__ENABLED=true|FORGEJO__metrics__TOKEN=test-metrics-token|FORGEJO__security__SECRET_KEY=test-secret-key|FORGEJO__security__INTERNAL_TOKEN=test-internal-token|FORGEJO__security__INSTALL_LOCK=true' /home/molecule/ci/forgejo.env"
+      changed_when: false
+
+    - name: Verify .env carries the DNS-01 Traefik resolver (prod default)
+      ansible.builtin.command:
+        cmd: "grep -q 'TRAEFIK_CERTRESOLVER=letsencryptdnsresolver' /home/molecule/ci/.env"
+      changed_when: false
+
+    - name: Verify forgejo.env has mode 0600
+      ansible.builtin.stat:
+        path: /home/molecule/ci/forgejo.env
+      register: forgejo_env_perms
+      failed_when: forgejo_env_perms.stat.mode != '0600'

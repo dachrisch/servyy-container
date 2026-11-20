@@ -1,0 +1,34 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    docker:
+      remote_dir: /home/molecule
+    extension_drive:
+      path: /var/lib
+    domain: lehel.xyz
+    # Secrets referenced by name (never committed real values): the ci
+    # forgejo.env template renders these into the FORGEJO__* env.
+    forgejo_secret_key: test-secret-key
+    forgejo_internal_token: test-internal-token
+    forgejo_metrics_token: test-metrics-token
+    ci_traefik_tls: "true"
+  pre_tasks:
+    - name: Create the ci service directory
+      ansible.builtin.file:
+        path: /home/molecule/ci
+        state: directory
+        mode: "0755"
+  tasks:
+    - name: Render the ci service env (forgejo.env + .env)
+      ansible.builtin.include_role:
+        name: docker_service
+        tasks_from: main.yml
+      vars:
+        service_dir: ci
+        env_templates:
+          - src: ci/docker.env.j2
+            dest: .env
+          - src: ci/forgejo.env.j2
+            dest: forgejo.env
