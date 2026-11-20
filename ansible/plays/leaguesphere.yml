@@ -66,6 +66,11 @@
         ls_vars_file: "secret_main.yaml"
         deploy_containers: true
         docker_env_file: ".env"
+        # dbaccess is live on prod: pin it here so a routine `ls.app.prod` run
+        # without `-e dbeaver_dbaccess_enabled=true` does not render
+        # DBACCESS_ENABLED=false and switch the request surface off
+        # (happened 2026-11-20, see history/2026-11-20_ls-app-prod-dbaccess-pinned.md).
+        dbeaver_dbaccess_enabled: true
       become_user: "{{ ls.user }}"
       tags:
         - ls.app
@@ -78,6 +83,8 @@
         container_dir: "{{ ('~', 'dev', ls.user) | path_join }}"
         ls_vars_file: "secret_main.yaml"
         deploy_containers: false
+        # Same as the jail entry above: keep the dev env copy in step with prod.
+        dbeaver_dbaccess_enabled: true
       remote_user: "{{ create_user }}"
       become_user: "{{ create_user }}"
       tags:
