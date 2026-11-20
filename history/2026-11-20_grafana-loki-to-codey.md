@@ -140,6 +140,19 @@ credential or raw Jinja:
    ansible/testing overrides, rather than hard-coded `lehel.xyz` names.
 6. **`--worktree` was not used** (the branch already existed in this checkout, by
    the user's instruction).
+7. **servyy-test's Traefik is now managed** (`traefik: true` in
+   `ansible/testing`). The new middlewares live in `dynamic.yaml` and their
+   users files are bind-mounted by the traefik compose file; with the service
+   disabled, a deploy updated the file on disk but never recreated the container
+   (single-file bind mount = old inode) and never created the users files.
+8. **Promtail/Prometheus/Grafana on servyy-test use the docker network**, because
+   `.lxd` names do not resolve inside containers. Production uses the routes.
+9. **`system_probe_push_enabled: false` on servyy-test** — see the test section.
+10. **Two bugs surfaced and were fixed on the branch before production**: the
+    inventory/`vars_files` precedence trap for the per-host route values, and the
+    `expand-env` handling of literal `$` in `promtail.yml`.
+11. **The probe's no-sink cleanup no longer fails on absent timers**; it aborted
+    the system play and silently skipped the fail2ban tasks behind it.
 
 ## Verification
 
@@ -163,8 +176,107 @@ Static (all green before any deploy):
 - `roles/monitor_remote_auth`: both APR1 entries re-verified against their
   plaintext with `openssl passwd -apr1 -salt …`.
 
-Environment verification (servyy-test, then production) is recorded below once
-the rollout runs: container placement, Grafana datasource health, alert-rule
-count and health, Loki freshness, `up{job="loki"}`, the fail2ban helper, the
-container-health probe, the 401/403 negative tests, a contact-point test
-notification, and the disk/swap reclaim on servy.
+### servyy-test (both profiles)
+
+```
+servyy-test.lxd : ok=235  changed=2  unreachable=0  failed=1 -> 0 (see below)
+monitor.{grafana,prometheus,promtail,loki,pushgateway,pushgateway-bridge,
+         node-exporter,cadvisor}: all Up
+grafana /api/health through the local Traefik: 200
+datasources: prometheus OK (basicAuth=true), loki OK
+alert rules: 57, rule health {"ok": 57}
+up{job="loki"} = 1 ; every other target up except k6-load-test (pre-existing)
+loki route: no auth 401 · correct auth + tenant 200
+prometheus route: no auth 401 · correct auth 200
+loki stream {job="docker",container="traefik.traefik"}: streams=4, newest 17 s old
+```
+
+Two test-only deviations were needed, both reported inline:
+
+- **Clients use the docker network on servyy-test.** A `.lxd` name does not
+  resolve inside a container (Docker's embedded DNS forwards to the host's
+  resolvers and ignores the host's `/etc/hosts`), so promtail/Prometheus/Grafana
+  connect to `loki:3100` / `prometheus:9090` there. The routes themselves are
+  still real and were verified with curl (above); production clients go through
+  them.
+- **`system_probe_push_enabled: false` on servyy-test.** The probe is generated
+  from the production `docker.services` list; enabling it would report ~40
+  containers that must not exist there as down, and test's own Grafana would
+  mail those alerts.
+
+Three bugs the test host exposed, all fixed on the branch before production:
+
+1. `vars/default.yml` beats inventory host vars, so the test-only overrides were
+   silently ignored (the test host rendered production https/websecure values).
+   The switch is now an inventory-only `monitor_local_traefik`.
+2. promtail crashed with `unable to parse config: unable to parse variable name`:
+   with `-config.expand-env=true` the expander runs on the RAW text before YAML
+   parsing, so a regex end-of-line `$` — and later a braced ellipsis in a comment
+   — were read as variables. Both removed; the file now documents the rule.
+3. The no-sink probe cleanup stopped user timers that were never created and
+   aborted the system play (`failed_when: false` added), which had silently
+   skipped the fail2ban tasks behind it.
+
+### Production
+
+```
+codey.lehel.xyz : ok=201  changed=11  failed=0
+servy.lehel.xyz : ok=296  changed=14  failed=0
+```
+
+Codey:
+
+```
+monitor.grafana  Up (healthy)   monitor.loki  Up   traefik.traefik  Up (healthy)
+grafana /api/health via codey's edge 200 (valid LE cert for monitor.lehel.xyz)
+grafana admin API with the rendered password 200
+alert rules provisioned 57
+loki route:     no auth 401 · auth from a third IP 403 · from codey 200
+prometheus route: no auth 401 · auth from a third IP 403 · from codey 200
+datasources after servy was deployed: prometheus OK, loki OK
+rule health {"ok": 57}
+```
+
+Servy:
+
+```
+monitor.grafana/loki: gone   docker volume ls | grep monitor_(grafana|loki)_data: empty
+collect containers: prometheus, promtail, pushgateway, pushgateway-bridge,
+                    node-exporter, cadvisor — all Up
+up{job="loki"} = 1   (scrapeUrl https://loki.lehel.xyz:443/metrics — DNS + LE + basicAuth + allowlist)
+loki query from servy: streams=32, newest entry 54 s old
+fail2ban helper: "Blocklist update complete. Added 0 new IPs." RC=0, installed 0700 root
+container-health probe: system_container_health_probe_success 1,
+                        no system_container_running 0, no system_container_healthy 0,
+                        container_not_running inactive/ok, container_unhealthy inactive
+check-server-status: 3 jails, monit all OK, traefik dashboard 401 (auth)
+```
+
+Contact point (Grafana 13 removed `POST /api/alert-notifications/test`; the
+current endpoint is the notifications API and takes the integration object under
+`integration`):
+
+```
+POST /apis/notifications.alerting.grafana.app/v1beta1/namespaces/default/receivers/ZW1haWwtYWRtaW4/test
+-> 200 {"status":"success","duration":"1s193ms"}
+```
+
+That is a real round trip through `smtp.gmail.com:587` from Oracle codey.
+
+Reclaim on servy, measured immediately after the cutover (the rest lands with
+Sunday's `docker system prune`):
+
+```
+before: /mnt/servy-docker-data 49G 34G 15G 71%   Mem used 4827 / available 2918
+after:  /mnt/servy-docker-data 49G 33G 17G 67%   Mem used 4061 / available 3684
+docker system df: 25.21 GB reclaimable images (grafana + loki images, now unused)
+```
+
+DNS (created through the Porkbun API on the main `dachrisch` account, after
+explicit approval for each change):
+
+```
+loki.lehel.xyz     CNAME codey.lehel.xyz   (id 605098936)
+monitor.lehel.xyz  CNAME codey.lehel.xyz   (id 605100631)
+prometheus.lehel.xyz: wildcard -> servy, unchanged
+```

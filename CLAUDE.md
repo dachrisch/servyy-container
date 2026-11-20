@@ -386,12 +386,13 @@ repo sync runs `git reset --hard` there, and any manual `git pull` bypasses the
 tasks that keep the stack startable.
 
 The monitor stack no longer depends on the checkout's content for its secrets:
-Grafana contact points (the one monitor config with a secret, the admin address)
-are rendered by Ansible into `monitor/rendered/`, an **untracked** directory that
-`monitor/docker-compose.yml` bind-mounts over the provisioning dir, and
-`monitor/promtail.yml` + `monitor/provisioning/datasources/datasources.yml` now
-carry the (non-secret) Loki tenant inline. So a repo sync can no longer revert a
-config the containers read — that was the 2026-10-30 trap, fixed on 2026-11-18.
+the contact points (the admin address) and — since 2026-11-20 — the datasources
+(the `prometheus.lehel.xyz` basic-auth credential), plus the Loki push password
+and scrape target, are rendered by Ansible into `monitor/rendered/`, an
+**untracked** directory that `monitor/docker-compose.yml` bind-mounts over the
+tracked paths. `monitor/promtail.yml` carries only the (non-secret) Loki tenant
+inline. So a repo sync can no longer revert a config the containers read — that
+was the 2026-10-30 trap, fixed on 2026-11-18 and extended on 2026-11-20.
 
 What a hand-run `git pull` still breaks: it updates files the *deploy* has not
 rendered/recreated yet (compose files, `grafana.env` consumers) without applying
@@ -401,11 +402,13 @@ instead, or `--tags user.repo.clone` if you only need the checkout.
 If a monitor file ever does hold raw `{{ ... }}` on the server (invalid YAML —
 Grafana 13 exits 1 on a provisioning error and crash-loops; promtail fails to
 parse its config at the next restart), the sanctioned repair is a redeploy:
-`./servyy.sh --limit servy.lehel.xyz --tags user.docker.repo,user.docker.monitor`.
-That path also re-asserts the resolved address, so the deploy fails loudly rather
-than provisioning a broken contact point. Full write-up:
-`history/2026-10-30_monitor-provisioning-render-trap.md` and
-`history/2026-11-18_monitor-render-out-of-checkout.md`.
+`./servyy.sh --limit servy.lehel.xyz --tags user.docker.repo,user.docker.monitor`
+(add `--limit codey.lehel.xyz` for the Grafana/Loki half). That path also
+re-asserts the resolved address and datasource credential, so the deploy fails
+loudly rather than provisioning a broken monitor. Full write-up:
+`history/2026-10-30_monitor-provisioning-render-trap.md`,
+`history/2026-11-18_monitor-render-out-of-checkout.md` and
+`history/2026-11-20_grafana-loki-to-codey.md`.
 
 ## Removing a Service Permanently
 

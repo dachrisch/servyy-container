@@ -11,8 +11,11 @@ runs, and `monitor/.env` carries it as `COMPOSE_PROFILES`:
 | `collect` | `prometheus`, `pushgateway` (+`pushgateway-bridge`), `node-exporter`, `cadvisor`, `promtail` | **servy** | Every one of them reads *servy*: `/proc`, `/sys`, the Docker socket, `/var/log`, and the probes push to `localhost:9091`. |
 
 `servyy-test.lxd` runs **both** profiles, so the cross-host routes and their auth
-are rehearsed before production. Nothing here publishes a port except the
-Pushgateway bridge on `127.0.0.1:9091` and the two authenticated routes below.
+are rehearsed before production — though there the clients connect over the docker
+network (`loki:3100`, `prometheus:9090`) because a `.lxd` name does not resolve
+inside a container; the routes are exercised with curl. Nothing here publishes a
+port except the Pushgateway bridge on `127.0.0.1:9091` and the two authenticated
+routes below.
 
 | Container | Image | Purpose | Host |
 |---|---|---|---|
@@ -54,7 +57,10 @@ taken off Traefik in 2026-09 because it had no auth; it is back only behind
   an authenticated one from a stranger is **403**.
 - TLS: production uses `MONITOR_TRAEFIK_ENTRYPOINT=websecure` +
   `letsencryptdnsresolver` (Porkbun DNS-01, main `dachrisch` account); servyy-test
-  uses plain `web`. Grafana's own router follows the same three vars.
+  uses plain `web`. Grafana's own router follows the same three vars. The
+  inventory-only `monitor_local_traefik` selects the test shape — keep it out of
+  `vars/default.yml`: play vars_files outrank inventory host vars, so a key
+  defined there can never be overridden per host.
 
 ## Load-bearing invariants — do not "clean these up"
 
