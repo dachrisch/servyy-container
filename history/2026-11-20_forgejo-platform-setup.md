@@ -118,3 +118,41 @@ forall list carries both `ci` and `runny`.
 
 Cut-over (adopt the 5 bare repos, move `git.lehel.xyz`, retire `git/`), GitHub
 migration with push-mirror, self-hosted Renovate, Git-over-SSH.
+
+## Review and servyy-test rehearsal (2026-11-20)
+
+Fixes found in review or during the test deploy, on top of the opencode implementation:
+
+- **Per-runner secrets** (`forgejo_runner_secrets[<name>]`). The offline secret
+  is the runner identity, so one shared secret would make codey and runny the
+  same runner. `forgejo-cli actions register` is idempotent per secret.
+- **Container uid:** the deploy user is uid 1000 on servy but 1001 on servyy-test.
+  Forgejo and the runner now run as `getent passwd cda`. The previous
+  `ansible_facts['user_uid'] | default(0)` rendered **0**, and Forgejo refuses
+  to run as root. A custom uid also needs `USER=git`, because the image's
+  passwd has no entry for it.
+- The **runner ignored `config.yml`** until it was started with
+  `daemon --config /data/config.yml`. Without that flag, labels and capacity
+  were silently defaults.
+- **Host-socket runner** gets the host's docker gid via `group_add`.
+- The **runny :9100 filter** is now a boot-persistent oneshot that inserts
+  v4+v6 rules above the Oracle image's INPUT REJECT.
+- Prometheus mounts `rendered/forgejo-metrics-token`.
+- The **http→https redirect router** only matches where TLS is on (moodle
+  pattern).
+- **servyy-test only:** `forgejo_runner_extra_hosts` maps `ci.servyy-test.lxd`
+  to the host gateway, for the runner and its job containers.
+
+Verified on servyy-test.lxd:
+- `/api/healthz` reports pass.
+- Anonymous `/explore/repos` returns 303 to login, and the API returns 403.
+- Admin `cda` was created.
+- Runner `test` is declared with label `ubuntu-latest`.
+- Smoke repo `cda/forgejo-smoke`: `actions/checkout@v4` from data.forgejo.org
+  plus a `run` step, and the workflow reported **success**.
+- A second deploy reported `changed=0`.
+
+Not rehearsable on servyy-test:
+- The Grafana runner alert: probes are disabled there (`system_probe_push_enabled: false`).
+- runny itself, which is not provisioned yet.
+- Phase 4: the amd64 build benchmark.
