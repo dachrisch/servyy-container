@@ -9,12 +9,21 @@
 #     it cannot be avoided. It also lets the account create '%' hosts, which is
 #     why the reaper re-checks the host pattern on every sweep.
 #   * GRANT OPTION is scoped to the application schema, so the account can hand
-#     out SELECT/UPDATE there and nothing else. Verified on 2026-10-26: it
-#     cannot grant ALL on *.*, cannot touch another schema, cannot grant itself
-#     anything, and cannot even read mysql.user.
-#   * It therefore also holds SELECT, INSERT and UPDATE on the schema - you can
-#     only grant what you hold. That is the honest cost: this credential is as
-#     powerful as the application credential, and only the sidecar has it.
+#     out what it holds there and nothing in another schema. Verified on
+#     2026-10-26: it cannot grant ALL on *.*, cannot touch another schema,
+#     cannot grant itself anything, and cannot even read mysql.user.
+#   * MariaDB records the grant option PER DATABASE, not per privilege: the
+#     single `WITH GRANT OPTION` below therefore lets the account pass on every
+#     privilege in that statement - SELECT, INSERT, UPDATE, DELETE - and not
+#     only the one written last. It is a database-scoped capability, not a
+#     per-privilege switch; there is no way to grant UPDATE "with option" and
+#     INSERT "without" in the same schema.
+#   * It therefore holds SELECT, INSERT, UPDATE and DELETE on the schema - you
+#     can only grant what you hold. That is the honest cost: this credential is
+#     as powerful as the application credential, and only the sidecar has it.
+#     DELETE was added on 2026-11-20 so a request that explicitly asks for it
+#     can be minted; the sidecar still grants it only when the approver signed
+#     for it.
 #   * CREATE on the schema is for the pre-session snapshot
 #     (`bak_<table>_<date>`), which tick.sh takes before it grants anything. The
 #     temporary account must not have CREATE, so this cannot be avoided either.
@@ -71,11 +80,15 @@
           {{ lookup('password', dbeaver_stack.password_file + ' length=32 chars=ascii_letters,digits') }}
       no_log: true
 
-    # INSERT is schema-wide, not on `dbaccess_event`: this role runs BEFORE the
-    # app deploy that migrates that table in, and MariaDB refuses a table-level
-    # grant on a table that does not exist yet (ERROR 1146), which aborted the
-    # whole run on a fresh host. It is granted without GRANT OPTION, so the
-    # sidecar still cannot hand it out.
+    # The data privileges are schema-wide, not on `dbaccess_event`: this role
+    # runs BEFORE the app deploy that migrates that table in, and MariaDB
+    # refuses a table-level grant on a table that does not exist yet (ERROR
+    # 1146), which aborted the whole run on a fresh host.
+    #
+    # The one `WITH GRANT OPTION` covers all four data privileges because
+    # MariaDB stores the option per database. It does not cover CREATE: that
+    # is a separate statement without the option, so the sidecar can take the
+    # pre-session snapshot but cannot hand CREATE to a temporary account.
     - name: Create or update the provisioner account in {{ dbeaver_stack.db_container }}
       community.docker.docker_container_exec:
         container: "{{ dbeaver_stack.db_container }}"
@@ -86,7 +99,7 @@
           ALTER USER '{{ dbeaver_provisioner_user }}'@'{{ dbeaver_stack.grant_host_pattern }}'
             IDENTIFIED BY '{{ dbeaver_provisioner_password }}';
           GRANT CREATE USER ON *.* TO '{{ dbeaver_provisioner_user }}'@'{{ dbeaver_stack.grant_host_pattern }}';
-          GRANT SELECT, INSERT, UPDATE ON `{{ dbeaver_stack.db_name }}`.*
+          GRANT SELECT, INSERT, UPDATE, DELETE ON `{{ dbeaver_stack.db_name }}`.*
             TO '{{ dbeaver_provisioner_user }}'@'{{ dbeaver_stack.grant_host_pattern }}' WITH GRANT OPTION;
           GRANT CREATE ON `{{ dbeaver_stack.db_name }}`.*
             TO '{{ dbeaver_provisioner_user }}'@'{{ dbeaver_stack.grant_host_pattern }}';
