@@ -98,7 +98,8 @@ SQL
     sql "$DB_CONTAINER" <<SQL || true
 UPDATE \`${DB}\`.\`dbaccess_request\`
    SET state='dropped', secret=NULL, dropped_at=NOW(), updated_at=NOW()
- WHERE db_user='${user_sql}' AND state <> 'dropped';
+ WHERE db_user='${user_sql}'
+   AND state IN ('approved','active','revoke_requested','expired');
 SQL
 
     sql "$DB_CONTAINER" <<SQL || true
@@ -189,6 +190,14 @@ SQL
   # killed. A request that is still `active` - or `approved` and not yet
   # activated, which is the second between CREATE USER and the row update - is
   # left alone.
+  #
+  # This must be an existence test, never a join: `db_user` is deterministic
+  # and stays on every historical row, so `LEFT JOIN ... ON r.db_user = p.user`
+  # fans a live session out into one row per past request. A single old
+  # `dropped` row then matched the kill predicate and every five-minute sweep
+  # cut the live session - measured 2026-11-20: a session opened 11:08Z was
+  # killed at 11:10Z as "no running request" while its request was `active`
+  # (the same pid logged twice; the second KILL answered 1094).
   if [ "$LEDGER" = "1" ]; then
     while IFS=$'\t' read -r pid user; do
       case "${pid:-}" in ''|*[!0-9]*) continue ;; esac
@@ -199,9 +208,12 @@ SQL
     done < <(sql "$DB_CONTAINER" <<SQL
 SELECT p.id, p.user
   FROM information_schema.processlist p
-  LEFT JOIN \`${DB}\`.\`dbaccess_request\` r ON r.db_user = p.user
  WHERE p.user LIKE 'dbeaver\\_prod\\_%'
-   AND (r.id IS NULL OR r.state IN ('revoke_requested','expired','dropped','failed'));
+   AND NOT EXISTS (
+         SELECT 1 FROM \`${DB}\`.\`dbaccess_request\` r
+          WHERE r.db_user = p.user
+            AND r.state IN ('approved','active')
+       );
 SQL
 )
   fi
