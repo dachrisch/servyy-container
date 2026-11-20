@@ -1,0 +1,42 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Check the dump script exists and is executable
+      ansible.builtin.stat:
+        path: /home/testuser/.forgejo/forgejo-dump.sh
+      register: dump_script
+      failed_when: not dump_script.stat.exists or dump_script.stat.mode != '0750'
+
+    - name: Verify the dump script runs `forgejo dump --database sqlite3` with the skip flags
+      ansible.builtin.command:
+        cmd: "grep -qE 'forgejo dump|--database sqlite3|--skip-repository|--skip-attachment-data|--skip-package-data|--type tar.gz' /home/testuser/.forgejo/forgejo-dump.sh"
+      changed_when: false
+
+    - name: Verify the dump script writes into the bind-mounted backup dir
+      ansible.builtin.command:
+        cmd: "grep -q '/var/lib/gitea/backup/forgejo-db-' /home/testuser/.forgejo/forgejo-dump.sh"
+      changed_when: false
+
+    - name: Check the systemd service exists
+      ansible.builtin.stat:
+        path: /home/testuser/.config/systemd/user/forgejo-dump.service
+      register: dump_service
+      failed_when: not dump_service.stat.exists
+
+    - name: Verify the service ExecStart points at the dump script
+      ansible.builtin.command:
+        cmd: "grep -q 'ExecStart=/home/testuser/.forgejo/forgejo-dump.sh' /home/testuser/.config/systemd/user/forgejo-dump.service"
+      changed_when: false
+
+    - name: Check the systemd timer exists
+      ansible.builtin.stat:
+        path: /home/testuser/.config/systemd/user/forgejo-dump.timer
+      register: dump_timer
+      failed_when: not dump_timer.stat.exists
+
+    - name: Verify the timer fires at 01:30
+      ansible.builtin.command:
+        cmd: "grep -q 'OnCalendar=.*01:30' /home/testuser/.config/systemd/user/forgejo-dump.timer"
+      changed_when: false

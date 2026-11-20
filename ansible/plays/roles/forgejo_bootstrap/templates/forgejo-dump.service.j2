@@ -1,0 +1,9 @@
+[Unit]
+Description=Forgejo nightly database dump
+
+[Service]
+Type=oneshot
+ExecStart={{ (forgejo_bootstrap_scripts_dir, 'forgejo-dump.sh') | path_join }}
+
+[Install]
+WantedBy=default.target

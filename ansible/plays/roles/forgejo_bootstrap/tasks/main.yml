@@ -1,0 +1,164 @@
+---
+# forgejo_bootstrap — idempotent Forgejo setup (admin user, runner
+# registration, nightly DB-dump timer). Runs on the host that deploys `ci/`
+# (servy; servyy-test in rehearsal), AFTER the docker_service role has brought
+# ci.forgejo up.
+
+- name: Wait for Forgejo to answer /api/healthz
+  ansible.builtin.uri:
+    url: "{{ forgejo_root_url }}/api/healthz"
+    status_code: [200]
+    validate_certs: false
+  register: forgejo_health
+  until: forgejo_health.status == 200
+  retries: 40
+  delay: 5
+  tags:
+    - user.docker.ci
+    - user.docker.ci.bootstrap
+    - molecule-notest
+
+# --- admin user -------------------------------------------------------------
+# `forgejo admin user create` fails if the user already exists, so check first.
+- name: List existing Forgejo users
+  ansible.builtin.command:
+    cmd: docker exec {{ forgejo_bootstrap_container }} forgejo admin user list
+  register: forgejo_users
+  changed_when: false
+  tags:
+    - user.docker.ci
+    - user.docker.ci.bootstrap
+    - molecule-notest
+
+- name: Create the Forgejo admin user
+  ansible.builtin.command:
+    cmd: >-
+      docker exec {{ forgejo_bootstrap_container }} forgejo admin user create
+      --admin
+      --username {{ forgejo_bootstrap_admin_username }}
+      --password {{ forgejo_admin_password }}
+      --email {{ forgejo_bootstrap_admin_email }}
+      --must-change-password=false
+  when: forgejo_bootstrap_admin_username not in (forgejo_users.stdout | default(''))
+  no_log: true
+  tags:
+    - user.docker.ci
+    - user.docker.ci.bootstrap
+    - molecule-notest
+
+# --- runner registration (offline shared secret, no UI step) ----------------
+# The server-side half of the shared-secret registration: the runner side runs
+# `forgejo-runner create-runner-file` (forgejo_runner role) with the same
+# `forgejo_runner_secret`. Re-running `actions register` would create a
+# duplicate runner, so the existence check below reads the admin API first.
+#
+# The admin API token (`forgejo_admin_api_token`) is created ONCE against the
+# admin user (`forgejo admin user generate-access-token --username cda
+# --token-name ansible --scopes all --raw`) and stored in secrets.yml — see the
+# history entry. Until it exists the API answers 401 and registration is
+# skipped with a warning rather than risking duplicate runners.
+- name: List registered runners via the admin API
+  ansible.builtin.uri:
+    url: "{{ forgejo_root_url }}/api/v1/admin/actions/runners"
+    headers:
+      Authorization: "token {{ forgejo_admin_api_token }}"
+    status_code: [200, 401, 404]
+    validate_certs: false
+  register: forgejo_runner_list
+  changed_when: false
+  ignore_errors: true
+  tags:
+    - user.docker.ci
+    - user.docker.ci.bootstrap
+    - molecule-notest
+
+- name: Register each missing runner (offline shared secret)
+  ansible.builtin.command:
+    cmd: >-
+      docker exec {{ forgejo_bootstrap_container }} forgejo forgejo-cli actions register
+      --secret {{ forgejo_runner_secret }} --name {{ item }}
+  loop: "{{ forgejo_runners }}"
+  when:
+    - forgejo_runner_list.status is defined
+    - forgejo_runner_list.status == 200
+    - item not in (forgejo_runner_list.content | default('') | string)
+  no_log: true
+  tags:
+    - user.docker.ci
+    - user.docker.ci.bootstrap
+    - molecule-notest
+
+- name: Warn when runner registration is skipped (no admin API token yet)
+  ansible.builtin.debug:
+    msg: >-
+      Skipping Forgejo runner registration: the admin API did not answer 200
+      (token {{ 'present' if forgejo_admin_api_token is defined else 'missing' }}).
+      Create `forgejo_admin_api_token` (forgejo admin user generate-access-token)
+      and re-run --tags user.docker.ci.bootstrap.
+  when:
+    - forgejo_runners | length > 0
+    - forgejo_runner_list.status | default(0) != 200
+  tags:
+    - user.docker.ci
+    - user.docker.ci.bootstrap
+
+# --- nightly DB dump (01:30, keep last 3) -----------------------------------
+- name: Ensure the Forgejo scripts directory exists
+  ansible.builtin.file:
+    path: "{{ forgejo_bootstrap_scripts_dir }}"
+    state: directory
+    mode: '0750'
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+  tags:
+    - user.docker.ci
+    - user.docker.ci.bootstrap
+
+- name: Deploy the Forgejo DB-dump script
+  ansible.builtin.template:
+    src: forgejo-dump.sh.j2
+    dest: "{{ (forgejo_bootstrap_scripts_dir, 'forgejo-dump.sh') | path_join }}"
+    mode: '0750'
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+  tags:
+    - user.docker.ci
+    - user.docker.ci.bootstrap
+
+- name: Ensure the systemd user unit directory exists
+  ansible.builtin.file:
+    path: "{{ remote_user_systemd }}"
+    state: directory
+    mode: '0755'
+  tags:
+    - user.docker.ci
+    - user.docker.ci.bootstrap
+
+- name: Deploy the Forgejo DB-dump systemd service
+  ansible.builtin.template:
+    src: forgejo-dump.service.j2
+    dest: "{{ (remote_user_systemd, 'forgejo-dump.service') | path_join }}"
+    mode: '0644'
+  tags:
+    - user.docker.ci
+    - user.docker.ci.bootstrap
+
+- name: Deploy the Forgejo DB-dump systemd timer
+  ansible.builtin.template:
+    src: forgejo-dump.timer.j2
+    dest: "{{ (remote_user_systemd, 'forgejo-dump.timer') | path_join }}"
+    mode: '0644'
+  tags:
+    - user.docker.ci
+    - user.docker.ci.bootstrap
+
+- name: Enable and start the Forgejo DB-dump timer
+  ansible.builtin.systemd:
+    scope: user
+    name: forgejo-dump.timer
+    state: started
+    enabled: true
+    daemon_reload: true
+  tags:
+    - user.docker.ci
+    - user.docker.ci.bootstrap

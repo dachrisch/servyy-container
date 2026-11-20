@@ -1,0 +1,26 @@
+---
+# The admin-user + runner-registration tasks need a running Forgejo (tagged
+# molecule-notest), so this scenario exercises the DB-dump half: the dump
+# script and its systemd unit/timer render with the right command, output path
+# and 01:30 schedule, and converge is idempotent.
+- name: Converge
+  hosts: all
+  become: true
+  become_user: testuser
+  vars:
+    create_user: testuser
+    remote_user_home: /home/testuser
+    remote_user_systemd: /home/testuser/.config/systemd/user
+    docker:
+      remote_dir: /home/testuser/servyy-container
+    domain: lehel.xyz
+    ci_traefik_tls: "true"
+    # Secrets referenced by name only (never committed real values).
+    forgejo_admin_password: test-admin-password
+    forgejo_runner_secret: test-runner-secret
+    forgejo_admin_api_token: test-admin-api-token
+    forgejo_runners: [codey, runny]
+  tasks:
+    - name: Run forgejo_bootstrap (DB-dump timer; docker-exec tasks skipped)
+      ansible.builtin.include_role:
+        name: forgejo_bootstrap
