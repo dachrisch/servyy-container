@@ -16,7 +16,7 @@
 
     - name: Verify the dump script writes into the bind-mounted backup dir
       ansible.builtin.command:
-        cmd: "grep -q '/var/lib/gitea/backup/forgejo-db-' /home/testuser/.forgejo/forgejo-dump.sh"
+        cmd: grep -qF 'CONTAINER_BACKUP_DIR="/var/lib/gitea/backup"' /home/testuser/.forgejo/forgejo-dump.sh
       changed_when: false
 
     - name: Check the systemd service exists
