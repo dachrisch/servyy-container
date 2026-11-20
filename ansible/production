@@ -17,6 +17,8 @@ prod:
         services_enabled:
           traefik: true
           git: true
+          # Forgejo (ci.lehel.xyz) — platform-only this round, no repo migrated.
+          ci: true
           photoprism: true
           bumbleflies: true
           achim-hoefer: true
@@ -80,6 +82,9 @@ prod:
         # still names photoprism.mariadb until the WP-6b cutover, so this only
         # creates the server, its user and the copy target).
         db_tiers: [nonprod, business, private]
+        # Forgejo runners to register server-side (offline shared secret). The
+        # runner-side half runs on codey/runny via the forgejo_runner role.
+        forgejo_runners: [codey, runny]
         # bnb-office reachable at this second host too (owner-facing stopgap
         # until the Strato DNS for ibs.bricksnbytes.de is flipped). DNS for
         # ibs.bumbleflies.de already points at servy; own Traefik router/cert.
@@ -159,6 +164,18 @@ prod:
         # collectors stay on servy; the two hosts talk over loki.lehel.xyz and
         # prometheus.lehel.xyz (basicAuth + ipAllowList).
         monitor_profiles: [ui]
+        # Forgejo Actions runner (deployed from the runny/ service dir). codey
+        # is the default runner: ubuntu-latest tests/lint, with QEMU amd64
+        # builds as fallback. `dind` backend because codey's host socket would
+        # expose the claude-hub/opencode credentials to CI jobs.
+        forgejo_runner_name: codey
+        forgejo_runner_labels:
+          - "ubuntu-latest:docker://ghcr.io/catthehacker/ubuntu:act-22.04"
+          - "docker:docker://node:20-bookworm"
+          - "arm64:host"
+        forgejo_runner_capacity: 2
+        forgejo_runner_qemu: true
+        forgejo_runner_docker: dind
         services_enabled:
           traefik: true
           monitor: true
@@ -168,11 +185,59 @@ prod:
             dns_expose: true           # Create explicit DNS entry in Porkbun
           opencode-authgate: true
           portainer-agent: true
+          # Forgejo Actions runner (dind backend, registered as runner `codey`).
+          runny: true
           # Retired 2026-11-17: dachrisch/devhub is published amd64-only and
           # cannot run on the A1's aarch64 kernel. Container and its
           # devhub_sqlite_data volume are stopped, not deleted.
           devhub: false
           claude-hub: false
+
+    # The amd64 Actions runner (Oracle E2.1.Micro). Deployed from the runny/
+    # service dir (same as codey's runner), registered as runner `runny` with the
+    # `amd64` label only. Stateless: no restic, no storagebox, no Traefik — it
+    # dials OUT to ci.lehel.xyz for jobs. `ansible_host` is the DNS name because
+    # the public IP is only known once scripts/provision-oracle-runner.sh has
+    # run; create the runny.lehel.xyz A/AAAA record via dns-master (pointing at
+    # that IP) before the first deploy.
+    runny.lehel.xyz:
+        ansible_host: runny.lehel.xyz
+        # Oracle images boot with only `ubuntu`; the system play connects as
+        # `ubuntu` (NOPASSWD sudo) and creates `cda` like everywhere else.
+        root_user: ubuntu
+        # Without IdentitiesOnly the local ssh-agent offers every key and sshd
+        # drops the connection with "Too many authentication failures".
+        ansible_ssh_common_args: '-o IdentitiesOnly=yes'
+        domain: lehel.xyz
+        with_docker: true
+        with_containers: true
+        has_extension_drive: false
+        create_swap: true
+        # 1 GB RAM on the E2.1.Micro: 4 GB swap to survive amd64 image builds.
+        swap_space_override: 4G
+        # Stateless: no Storage Box mount and no restic. A lost runner is
+        # recreated by a redeploy (re-registers from forgejo_runner_secret).
+        skip_storagebox: true
+        # Light system play on 1 GB (see ansible/production header): the Loki
+        # blocklist is the one fail2ban piece this host skips (it has no Loki
+        # query route and no room); portainer-agent and promtail are simply not
+        # enabled. The weekly Docker prune and node-exporter stay.
+        loki_blocklist_enabled: false
+        services_enabled:
+          # The runner only; no traefik, no monitor, no portainer-agent.
+          runny: true
+        # --- Forgejo runner (runny) ----------------------------------------
+        forgejo_runner_name: runny
+        forgejo_runner_labels:
+          - "amd64:docker://ghcr.io/catthehacker/ubuntu:act-22.04"
+        forgejo_runner_capacity: 1
+        forgejo_runner_qemu: false
+        # The host socket: the box holds no secrets, and this saves ~100 MB.
+        forgejo_runner_docker: host
+        # Cap job containers to ~90% of the 1 GB host; allow the 4 GB swap.
+        forgejo_runner_container_options: --memory=900m --memory-swap=4g
+        # node-exporter is the only monitoring piece on this host.
+        forgejo_runner_node_exporter: true
 
     # The retired alphavps box that used to BE codey. Kept in the inventory only
     # as a rollback/removal handle: DNS no longer points here (reachable by IP),

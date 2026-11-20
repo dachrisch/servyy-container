@@ -40,6 +40,10 @@ test:
         bumbleflies: true
         # Monitor stack (both profiles) — see the monitor_* vars above.
         monitor: true
+        # Forgejo + its runner, rehearsed before production (ci.servyy-test.lxd,
+        # runner registered as `test`).
+        ci: true
+        runny: true
         # queen consolidation: shared data services (subset, fresh volumes)
         # + queen app only (subset of the finance file, no Firefly).
         shared: true
@@ -61,6 +65,19 @@ test:
       # missing only sets up its users + dbops (and says so loudly).
       db_tiers: []
       finance_services: [queen]
+      # Forgejo rehearsal: ci.lehel.xyz has no test counterpart's TLS — plain
+      # `web` entrypoint, no cert, and the runner dials the http instance.
+      ci_traefik_entrypoint: web
+      ci_traefik_tls: "false"
+      ci_traefik_certresolver: ""
+      forgejo_runners: [test]
+      forgejo_runner_instance: http://ci.servyy-test.lxd
+      forgejo_runner_name: test
+      forgejo_runner_labels:
+        - "ubuntu-latest:docker://ghcr.io/catthehacker/ubuntu:act-22.04"
+      forgejo_runner_capacity: 1
+      forgejo_runner_qemu: false
+      forgejo_runner_docker: host
       queen_service_host: queen.servyy-test.lxd
       queen_traefik_entrypoint: web
       queen_traefik_tls: "false"

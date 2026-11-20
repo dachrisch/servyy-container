@@ -304,6 +304,23 @@
         - user.docker.env
         - user.docker.env.monitor
 
+    # Forgejo [metrics] bearer token (2026-11-20): the scrape job in
+    # monitor/prometheus.yml reads it from /etc/prometheus/rendered/ (same
+    # pattern as loki-password). Prometheus runs as uid 65534, so 0644.
+    - name: Render the Forgejo metrics token for Prometheus
+      ansible.builtin.copy:
+        content: "{{ forgejo_metrics_token }}\n"
+        dest: "{{ docker.remote_dir }}/monitor/rendered/forgejo-metrics-token"
+        mode: "0644"
+      when:
+        - "'ci' in (services | default([]))"
+        - "'collect' in (monitor_profiles | default([]))"
+      no_log: true
+      tags:
+        - user.docker.ci
+        - user.docker.env
+        - user.docker.env.ci
+
     # Consolidation (shared project): data containers moved out of the
     # leagues-finance / finance projects. Remove the ORPHANED originals
     # (containers only — volumes and bind mounts stay) BEFORE the shared role
@@ -390,6 +407,35 @@
         service_dir: git
       when: "'git' in (services | default([]))"
       tags: [user.docker, user.docker.git]
+
+    # Forgejo (ci.lehel.xyz) — the future home of git.lehel.xyz. Platform-only
+    # this round: no repo is migrated, and git/ stays untouched. Two env files:
+    # .env (compose interpolation + Traefik knobs) and forgejo.env (the
+    # FORGEJO__* container env, from secrets.yml — nothing secret in the
+    # plaintext compose).
+    - role: docker_service
+      vars:
+        service_dir: ci
+        env_templates:
+          - src: ci/docker.env.j2
+            dest: .env
+          - src: ci/forgejo.env.j2
+            dest: forgejo.env
+      when: "'ci' in (services | default([]))"
+      tags: [user.docker, user.docker.ci]
+
+    # Idempotent Forgejo setup, AFTER docker_service has brought ci.forgejo up:
+    # admin user, offline runner registration (shared secret), nightly DB dump
+    # timer (01:30, keep 3).
+    - role: forgejo_bootstrap
+      when: "'ci' in (services | default([]))"
+      tags: [user.docker, user.docker.ci]
+
+    # Forgejo Actions runner (codey = dind, runny = host socket). Not in
+    # docker.services[]: the runners never run on servy.
+    - role: forgejo_runner
+      when: "'runny' in (services | default([]))"
+      tags: [user.docker, user.docker.runny]
 
     - role: docker_service
       vars:
