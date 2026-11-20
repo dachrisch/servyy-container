@@ -80,10 +80,22 @@ payload_file=$(mktemp)
 {% for item in probe_services %}
 {%   set project = item.dir %}
 {%   set services = (lookup('file', (system_probe_docker_local_dir, item.dir, 'docker-compose.yml') | path_join ) | from_yaml)['services'] %}
+{# Compose profiles: monitor is split across two hosts (2026-11-20) and its
+   compose file carries profiles, but only one half runs per host. Compose
+   refuses to start a service whose profile is not enabled, so probing the whole
+   file on each host would report the other host's containers as down forever
+   (monitor.grafana/loki on servy, the collectors on codey). Filter by the host's
+   active profiles for that dir; a service without `profiles:` is always probed.
+   `monitor_profiles` is the only profiled service today — a second one needs its
+   own host var (and a line here) rather than a guessed default. #}
+{%   set active_profiles = (monitor_profiles | default([])) if project == 'monitor' else [] %}
 {%   for svc in services | dict2items %}
-{%     set raw_name = svc.value.container_name | default(project + '.' + svc.key) %}
-{%     set container_name = raw_name | replace('${COMPOSE_PROJECT_NAME}', project) %}
+{%     set svc_profiles = svc.value.profiles | default([]) %}
+{%     if svc_profiles | length == 0 or (svc_profiles | intersect(active_profiles) | length > 0) %}
+{%       set raw_name = svc.value.container_name | default(project + '.' + svc.key) %}
+{%       set container_name = raw_name | replace('${COMPOSE_PROJECT_NAME}', project) %}
   check_container "{{ container_name }}" "{{ project }}" "{{ item.tier }}"
+{%     endif %}
 {%   endfor %}
 {% endfor %}
   echo "# TYPE system_container_health_probe_success gauge"

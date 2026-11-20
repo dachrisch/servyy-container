@@ -25,10 +25,11 @@ ssh -o ConnectTimeout=8 "$HOST" '
 # exercises the real public DNS + TLS path instead of internal routing.
 case "$HOST" in
   servy.lehel.xyz|lehel.xyz)
-    URLS="https://traefik.lehel.xyz https://monitor.lehel.xyz"
+    URLS="https://traefik.lehel.xyz"
     ;;
   codey.lehel.xyz|code.lehel.xyz)
-    URLS="https://code.lehel.xyz"
+    # monitor.lehel.xyz moved to codey with Grafana on 2026-11-20.
+    URLS="https://code.lehel.xyz https://monitor.lehel.xyz"
     ;;
   *)
     URLS=""

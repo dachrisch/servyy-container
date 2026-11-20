@@ -1,0 +1,76 @@
+---
+# HTTP basic-auth users files for the two authenticated cross-host monitor
+# routes (2026-11-20: Grafana + Loki on codey, Prometheus on servy).
+#
+# Same technique as roles/traefik_dashboard_auth: the plaintext credential lives
+# in plays/vars/secrets.yml (monitor_remote_auth), is turned into an APR1
+# htpasswd line here with a salt derived from the secret itself, and consumed by
+# traefik/dynamic.yaml (`monitor-loki-auth` / `monitor-prometheus-auth`) from a
+# mounted usersFile. Deriving the salt from the secret keeps the rendered files
+# byte-identical across routine deploys (no churn, no needless file-provider
+# reload) while a rotated secret yields a new salt and hash.
+#
+# Deliberately NOT a lookup('password', 'vars/.…') seed (CLAUDE.md rule 6): a
+# seed file exists only on the controller that first rendered it, so a deploy
+# from a fresh checkout would silently rotate the credential away from every
+# consumer's rendered copy.
+#
+# The plaintext passwords are also consumed directly by:
+#   monitor/rendered/loki-password        (promtail + Prometheus)
+#   monitor/rendered/datasources.yml      (Grafana, via secureJsonData)
+#   roles/system fail2ban helper          (curl -u, mode 0700 root)
+
+- name: Assert the monitor cross-host credentials are usable
+  ansible.builtin.assert:
+    that:
+      # Alphanumeric only, on purpose: the same literal is rendered into an
+      # htpasswd line, a YAML scalar (datasources.yml), a password_file and a
+      # shell assignment (fail2ban). Restricting the alphabet removes every
+      # quoting/escaping hazard at once — regenerate with
+      # `openssl rand -base64 40 | tr -dc 'A-Za-z0-9' | cut -c1-28`.
+      - monitor_remote_auth.loki_password | default('') is match('^[A-Za-z0-9]{16,}$')
+      - monitor_remote_auth.prometheus_password | default('') is match('^[A-Za-z0-9]{16,}$')
+    fail_msg: >-
+      ansible/plays/vars/secrets.yml has no usable monitor_remote_auth
+      ({loki_password, prometheus_password}). Both routes are the only auth in
+      front of Loki (no tenant isolation on /metrics, /api/v1/query) and of
+      Prometheus' query API, so the deploy stops here instead of publishing them
+      without a password. Values must be 16+ chars of [A-Za-z0-9].
+    quiet: true
+  no_log: true
+
+- name: Derive the APR1 salts from the secrets (deterministic)
+  ansible.builtin.set_fact:
+    monitor_loki_auth_salt: "{{ (monitor_remote_auth.loki_password | hash('sha256'))[:8] }}"
+    monitor_prometheus_auth_salt: "{{ (monitor_remote_auth.prometheus_password | hash('sha256'))[:8] }}"
+  no_log: true
+
+- name: Compute the Loki htpasswd entry (APR1)
+  ansible.builtin.command:
+    cmd: "openssl passwd -apr1 -salt {{ monitor_loki_auth_salt }} -stdin"
+    stdin: "{{ monitor_remote_auth.loki_password }}"
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  register: monitor_loki_hash_result
+  changed_when: false
+  no_log: true
+
+- name: Compute the Prometheus htpasswd entry (APR1)
+  ansible.builtin.command:
+    cmd: "openssl passwd -apr1 -salt {{ monitor_prometheus_auth_salt }} -stdin"
+    stdin: "{{ monitor_remote_auth.prometheus_password }}"
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  register: monitor_prometheus_hash_result
+  changed_when: false
+  no_log: true
+
+- name: Expose the htpasswd entries for the traefik env templates
+  ansible.builtin.set_fact:
+    monitor_loki_auth_users: >-
+      {{ monitor_loki_auth_username }}:{{ monitor_loki_hash_result.stdout | trim }}
+    monitor_prometheus_auth_users: >-
+      {{ monitor_prometheus_auth_username }}:{{ monitor_prometheus_hash_result.stdout | trim }}
+  no_log: true

@@ -1,0 +1,98 @@
+---
+# Verify: both halves recorded their OWN fingerprint, and each fingerprint really
+# covers the rendered files added on 2026-11-20 (loki-target/loki-password for
+# Prometheus, datasources for Grafana). A missing file in the fingerprint is the
+# silent no-op this role exists to prevent: rendered content would change and the
+# container would keep running the old config.
+- name: Verify
+  hosts: all
+  become: true
+  vars:
+    monitor_reload_service_dir: /home/molecule/monitor
+    monitor_reload_state_dir: /home/molecule/.deploy-state/monitor
+    prometheus_fp_cmd: >-
+      for f in prometheus.yml rules/*.yml rendered/loki-target.json
+      rendered/loki-password;
+      do [ -f "$f" ] && { printf "%s\n" "$f"; cat "$f"; };
+      done | sha256sum | cut -d" " -f1
+    grafana_fp_cmd: >-
+      for f in provisioning/alerting/*.yml rendered/contact-points.yml
+      rendered/datasources.yml;
+      do [ -f "$f" ] && { printf "%s\n" "$f"; cat "$f"; };
+      done | sha256sum | cut -d" " -f1
+
+  tasks:
+    - name: Read both recorded state files
+      ansible.builtin.slurp:
+        src: "{{ (monitor_reload_state_dir, item) | path_join }}"
+      loop:
+        - prometheus.state
+        - grafana.state
+      register: reload_states
+
+    - name: Both halves recorded a state (each ran, neither leaked into the other)
+      ansible.builtin.assert:
+        that:
+          - reload_states.results | length == 2
+          - reload_states.results[0].content | b64decode is match('^[0-9a-f]{64}')
+          - reload_states.results[1].content | b64decode is match('^[0-9a-f]{64}')
+        fail_msg: "a gated half did not record its own state file"
+
+    - name: The two halves have different fingerprints (different file sets)
+      ansible.builtin.assert:
+        that:
+          - (reload_states.results[0].content | b64decode | trim).split(' ')[0]
+            != (reload_states.results[1].content | b64decode | trim).split(' ')[0]
+
+    - name: Recompute each half's fingerprint over the same files
+      ansible.builtin.command:
+        argv: [sh, -c, "{{ item }}"]
+        chdir: "{{ monitor_reload_service_dir }}"
+      loop:
+        - "{{ prometheus_fp_cmd }}"
+        - "{{ grafana_fp_cmd }}"
+      register: fresh_fps
+      changed_when: false
+
+    - name: Each stored fingerprint is exactly the fingerprint of its own file set
+      ansible.builtin.assert:
+        that:
+          - (reload_states.results[0].content | b64decode | trim).split(' ')[0] == fresh_fps.results[0].stdout | trim
+          - (reload_states.results[1].content | b64decode | trim).split(' ')[0] == fresh_fps.results[1].stdout | trim
+        fail_msg: >-
+          a stored fingerprint no longer matches its file set — the role compares
+          against the wrong files and would silently skip a needed restart.
+
+    - name: Copy the fixture aside for a mutation test
+      ansible.builtin.command:
+        cmd: cp -a /home/molecule/monitor /home/molecule/monitor-mutated
+      changed_when: false
+
+    - name: Mutate the rendered files the fingerprints must cover
+      ansible.builtin.copy:
+        content: "mutated\n"
+        dest: "/home/molecule/monitor-mutated/{{ item }}"
+        mode: "0644"
+      loop:
+        - rendered/loki-target.json
+        - rendered/datasources.yml
+
+    - name: Recompute the fingerprints against the mutated copy
+      ansible.builtin.command:
+        argv: [sh, -c, "{{ item }}"]
+        chdir: /home/molecule/monitor-mutated
+      loop:
+        - "{{ prometheus_fp_cmd }}"
+        - "{{ grafana_fp_cmd }}"
+      register: mutated_fps
+      changed_when: false
+
+    - name: The rendered files are part of the fingerprints (a change is detected)
+      ansible.builtin.assert:
+        that:
+          - mutated_fps.results[0].stdout | trim != fresh_fps.results[0].stdout | trim
+          - mutated_fps.results[1].stdout | trim != fresh_fps.results[1].stdout | trim
+        fail_msg: >-
+          changing rendered/loki-target.json and rendered/datasources.yml did not
+          change a fingerprint — the container would keep the old startup config
+          without any restart, which is the exact failure this role prevents.

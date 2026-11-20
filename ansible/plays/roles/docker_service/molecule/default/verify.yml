@@ -319,6 +319,33 @@
         cmd: grep -q '^GF_SMTP_FROM_ADDRESS=monitor-test@example.org$' /home/molecule/monitor/grafana.env
       changed_when: false
 
+    # Compose profiles (2026-11-20): monitor is one compose project split across
+    # two hosts. The .env must carry the host's half — a missing/empty
+    # COMPOSE_PROFILES makes `docker compose up` on servy start Grafana/Loki again,
+    # and one on codey start the collectors that cannot work there.
+    - name: Read the rendered monitor .env
+      ansible.builtin.slurp:
+        src: /home/molecule/monitor/.env
+      register: monitor_dotenv
+
+    - name: Verify the monitor .env selects both profiles and the push URL
+      ansible.builtin.assert:
+        that:
+          - "'COMPOSE_PROFILES=collect,ui' in monitor_dotenv.content | b64decode"
+          # The client URL always carries the port (prod :443, an http route :80),
+          # because the same var feeds Prometheus' file_sd target.
+          - "'LOKI_PUSH_URL=http://loki.servyy-test.lxd:80/loki/api/v1/push' in monitor_dotenv.content | b64decode"
+          - "'MONITOR_LOKI_ALLOW=10.0.0.0/8' in monitor_dotenv.content | b64decode"
+          - "'MONITOR_TRAEFIK_ENTRYPOINT=web' in monitor_dotenv.content | b64decode"
+        fail_msg: "monitor/.env is missing the profile/push-route wiring (see the monitor block in docker.env.j2)"
+
+    - name: Verify a non-monitor service .env does NOT carry COMPOSE_PROFILES
+      ansible.builtin.command:
+        cmd: grep -q '^COMPOSE_PROFILES=' /home/molecule/simple-svc/.env
+      register: simple_profiles
+      changed_when: false
+      failed_when: simple_profiles.rc == 0
+
     # Moodle: a silently emptied PLUGINS= is invisible until the image boots and
     # the 35 waitlist enrolment instances lose their method — or, with a bad
     # archive, the container refuses to start at all.

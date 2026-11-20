@@ -15,6 +15,24 @@
     vault_gmail_smtp_password: test-gmail-smtp-pw
     vault_monitor_grafana_admin_password: test-grafana-admin-pw
     monitor_admin_email: monitor-test@example.org
+    # Monitor is split across two hosts with compose profiles (2026-11-20). This
+    # scenario runs BOTH halves' env rendering, so the values mirror servyy-test.
+    monitor_profiles: [collect, ui]
+    monitor_loki_host: loki.servyy-test.lxd
+    monitor_prometheus_host: prometheus.servyy-test.lxd
+    monitor_loki_url: http://loki.servyy-test.lxd
+    monitor_prometheus_url: http://prometheus.servyy-test.lxd
+    # Client URLs are separate vars (production routes vs the single-host test
+    # stack, where `.lxd` names do not resolve inside containers).
+    monitor_loki_client: "loki.servyy-test.lxd:80"
+    monitor_prometheus_client: "prometheus.servyy-test.lxd:80"
+    monitor_loki_client_scheme: http
+    monitor_prometheus_client_scheme: http
+    monitor_loki_allow: ["10.0.0.0/8"]
+    monitor_prometheus_allow: ["10.0.0.0/8"]
+    monitor_traefik_entrypoint: web
+    monitor_traefik_tls: "false"
+    monitor_traefik_certresolver: ""
     opencode:
       server_password: test-opencode-pass
       api_key: test-opencode-api-key
@@ -191,7 +209,7 @@
           - src: claude-hub/.env.j2
             dest: claude-hub.env
 
-    - name: Deploy monitor service env (grafana secrets, no compose)
+    - name: Deploy monitor service env (grafana secrets + compose profiles, no compose)
       ansible.builtin.include_role:
         name: docker_service
         tasks_from: main.yml

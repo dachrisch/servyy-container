@@ -85,3 +85,9 @@
         # extra_hosts instead.
         - [{dir: 'opencode'}, '']
         - [{dir: 'opencode'}, '.lxd']
+        # The monitor split (2026-11-20) adds two hostnames that are NOT compose
+        # service dirs: the authenticated loki/prometheus routes. On servyy-test
+        # both halves reach each other through the local Traefik by name, so the
+        # auth path is exercised with a real DNS lookup before production.
+        - [{dir: 'loki'}, '.lxd']
+        - [{dir: 'prometheus'}, '.lxd']

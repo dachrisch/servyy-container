@@ -14,10 +14,10 @@
 #     left it evaluating 47 of 49 rules until it was restarted by hand.
 #
 # WHAT IT COMPARES: a sha256 over the bytes each container reads at startup —
-# Prometheus: prometheus.yml + rules/*.yml; Grafana: provisioning/alerting/*.yml
-# + the rendered contact-points file — stored per container in
-# ~/.deploy-state/monitor/ (outside the checkout: a clone cannot reset it and it
-# never shows up in `git status`).
+# Prometheus: prometheus.yml + rules/*.yml + the rendered Loki scrape target and
+# password; Grafana: provisioning/alerting/*.yml + the rendered contact points
+# and datasources — stored per container in ~/.deploy-state/monitor/ (outside the
+# checkout: a clone cannot reset it and it never shows up in `git status`).
 #
 # NO SPURIOUS RESTARTS: the stored value records the container's StartedAt
 # together with the fingerprint.
@@ -29,7 +29,10 @@
 #                                               do not restart
 #
 # The two containers are deliberately independent: a rules edit must not bounce
-# Grafana, a provisioning edit must not bounce Prometheus.
+# Grafana, a provisioning edit must not bounce Prometheus. Since 2026-11-20 they
+# also live on DIFFERENT HOSTS (grafana on codey, prometheus on servy), so each
+# half is additionally gated on the host running that profile — inspecting or
+# restarting a container this host does not run would fail the deploy.
 #
 # In `--check` mode the fingerprint and inspect commands still run (read-only),
 # the restart is replaced by a message, and the state write reports what it
@@ -41,175 +44,10 @@
     state: directory
     mode: '0700'
 
-# --- Prometheus: prometheus.yml + rules/*.yml ---------------------------------
-- name: Compute the Prometheus startup-config fingerprint
-  ansible.builtin.command:
-    argv:
-      - sh
-      - -c
-      - 'for f in prometheus.yml rules/*.yml; do [ -f "$f" ] && { printf "%s\n" "$f"; cat "$f"; }; done | sha256sum | cut -d" " -f1'
-    chdir: "{{ monitor_reload_service_dir }}"
-  register: monitor_prometheus_fp
-  changed_when: false
-  check_mode: false
+- name: Reload Prometheus (collect profile)
+  ansible.builtin.import_tasks: prometheus.yml
+  when: monitor_reload_prometheus_enabled | bool
 
-- name: Read when Prometheus last started
-  ansible.builtin.command:
-    argv: [docker, inspect, --format, "{{ '{{.State.StartedAt}}' }}", "{{ monitor_reload_prometheus_container }}"]
-  register: monitor_prometheus_started
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
-- name: Read the last applied Prometheus state
-  ansible.builtin.slurp:
-    src: "{{ (monitor_reload_state_dir, 'prometheus.state') | path_join }}"
-  register: monitor_prometheus_state
-  failed_when: false
-  no_log: true
-
-- name: Split the last applied Prometheus state
-  ansible.builtin.set_fact:
-    monitor_prometheus_prev_fp: "{{ (monitor_prometheus_state.content | b64decode | trim).split(' ') | first | default('', true) }}"
-    monitor_prometheus_prev_started: "{{ (monitor_prometheus_state.content | b64decode | trim).split(' ') | last | default('', true) }}"
-  when: monitor_prometheus_state.content is defined
-  no_log: true
-
-- name: Restart Prometheus because prometheus.yml or rules/ changed
-  ansible.builtin.command:
-    argv: [docker, restart, "{{ monitor_reload_prometheus_container }}"]
-  register: monitor_prometheus_restart
-  when:
-    - not ansible_check_mode
-    - monitor_prometheus_prev_fp | default('') | length > 0
-    - monitor_prometheus_prev_fp != (monitor_prometheus_fp.stdout | trim)
-    - monitor_prometheus_prev_started == (monitor_prometheus_started.stdout | trim)
-  # `docker restart` fails on a non-zero exit, which aborts this host's play
-  # BEFORE the state is recorded - so a failed restart can never leave the state
-  # claiming content that is not loaded. The next run sees the same difference
-  # and retries.
-  changed_when: true
-
-# The StartedAt read above was taken BEFORE our own restart. Recording that one
-# would be wrong in a way that hides the next change: the state would say
-# "fingerprint X loaded at T0" while the live container started at T1, and the
-# next content change would read "StartedAt changed too" - the branch that means
-# "compose already recreated it, do not restart" - and skip the restart. That is
-# exactly the silent no-op this role exists to prevent (found live 2026-11-18:
-# change -> restart -> revert -> nothing happened).
-- name: Read when Prometheus started AFTER our own restart
-  ansible.builtin.command:
-    argv: [docker, inspect, --format, "{{ '{{.State.StartedAt}}' }}", "{{ monitor_reload_prometheus_container }}"]
-  register: monitor_prometheus_started_after
-  when: monitor_prometheus_restart.changed | default(false)
-  changed_when: false
-  check_mode: false
-
-- name: Decide which StartedAt to record for Prometheus
-  ansible.builtin.set_fact:
-    monitor_prometheus_record_started: >-
-      {{ (monitor_prometheus_started_after.stdout
-          if (monitor_prometheus_restart.changed | default(false))
-          else monitor_prometheus_started.stdout) | trim }}
-  no_log: true
-
-- name: Report the pending Prometheus restart (check mode)
-  ansible.builtin.debug:
-    msg: >-
-      would restart {{ monitor_reload_prometheus_container }}: prometheus.yml or rules/ changed
-      (fingerprint {{ monitor_prometheus_prev_fp | default('-') | truncate(12, true, '') }} ->
-      {{ monitor_prometheus_fp.stdout | trim | truncate(12, true, '') }})
-  when:
-    - ansible_check_mode
-    - monitor_prometheus_prev_fp | default('') | length > 0
-    - monitor_prometheus_prev_fp != (monitor_prometheus_fp.stdout | trim)
-    - monitor_prometheus_prev_started == (monitor_prometheus_started.stdout | trim)
-
-- name: Record the applied Prometheus state
-  ansible.builtin.copy:
-    content: "{{ monitor_prometheus_fp.stdout | trim }} {{ monitor_prometheus_record_started }}\n"
-    dest: "{{ (monitor_reload_state_dir, 'prometheus.state') | path_join }}"
-    mode: '0600'
-  no_log: true
-
-# --- Grafana: provisioning/alerting/ + rendered contact points ---------------
-- name: Compute the Grafana startup-config fingerprint
-  ansible.builtin.command:
-    argv:
-      - sh
-      - -c
-      - 'for f in provisioning/alerting/*.yml rendered/contact-points.yml; do [ -f "$f" ] && { printf "%s\n" "$f"; cat "$f"; }; done | sha256sum | cut -d" " -f1'
-    chdir: "{{ monitor_reload_service_dir }}"
-  register: monitor_grafana_fp
-  changed_when: false
-  check_mode: false
-
-- name: Read when Grafana last started
-  ansible.builtin.command:
-    argv: [docker, inspect, --format, "{{ '{{.State.StartedAt}}' }}", "{{ monitor_reload_grafana_container }}"]
-  register: monitor_grafana_started
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
-- name: Read the last applied Grafana state
-  ansible.builtin.slurp:
-    src: "{{ (monitor_reload_state_dir, 'grafana.state') | path_join }}"
-  register: monitor_grafana_state
-  failed_when: false
-  no_log: true
-
-- name: Split the last applied Grafana state
-  ansible.builtin.set_fact:
-    monitor_grafana_prev_fp: "{{ (monitor_grafana_state.content | b64decode | trim).split(' ') | first | default('', true) }}"
-    monitor_grafana_prev_started: "{{ (monitor_grafana_state.content | b64decode | trim).split(' ') | last | default('', true) }}"
-  when: monitor_grafana_state.content is defined
-  no_log: true
-
-- name: Restart Grafana because provisioning/alerting/ changed
-  ansible.builtin.command:
-    argv: [docker, restart, "{{ monitor_reload_grafana_container }}"]
-  register: monitor_grafana_restart
-  when:
-    - not ansible_check_mode
-    - monitor_grafana_prev_fp | default('') | length > 0
-    - monitor_grafana_prev_fp != (monitor_grafana_fp.stdout | trim)
-    - monitor_grafana_prev_started == (monitor_grafana_started.stdout | trim)
-  # Non-zero exit aborts the play before the state is recorded (see the
-  # Prometheus note above): a failed restart never marks content as loaded.
-  changed_when: true
-
-- name: Read when Grafana started AFTER our own restart
-  ansible.builtin.command:
-    argv: [docker, inspect, --format, "{{ '{{.State.StartedAt}}' }}", "{{ monitor_reload_grafana_container }}"]
-  register: monitor_grafana_started_after
-  when: monitor_grafana_restart.changed | default(false)
-  changed_when: false
-  check_mode: false
-
-- name: Decide which StartedAt to record for Grafana
-  ansible.builtin.set_fact:
-    monitor_grafana_record_started: >-
-      {{ (monitor_grafana_started_after.stdout
-          if (monitor_grafana_restart.changed | default(false))
-          else monitor_grafana_started.stdout) | trim }}
-  no_log: true
-
-- name: Report the pending Grafana restart (check mode)
-  ansible.builtin.debug:
-    msg: >-
-      would restart {{ monitor_reload_grafana_container }}: provisioning/alerting/ changed
-      (fingerprint {{ monitor_grafana_prev_fp | default('-') | truncate(12, true, '') }} ->
-      {{ monitor_grafana_fp.stdout | trim | truncate(12, true, '') }})
-  when:
-    - ansible_check_mode
-    - monitor_grafana_prev_fp | default('') | length > 0
-    - monitor_grafana_prev_fp != (monitor_grafana_fp.stdout | trim)
-    - monitor_grafana_prev_started == (monitor_grafana_started.stdout | trim)
-
-- name: Record the applied Grafana state
-  ansible.builtin.copy:
-    content: "{{ monitor_grafana_fp.stdout | trim }} {{ monitor_grafana_record_started }}\n"
-    dest: "{{ (monitor_reload_state_dir, 'grafana.state') | path_join }}"
-    mode: '0600'
-  no_log: true
+- name: Reload Grafana (ui profile)
+  ansible.builtin.import_tasks: grafana.yml
+  when: monitor_reload_grafana_enabled | bool

@@ -1,0 +1,17 @@
+services:
+  # Monitor is the only service with compose profiles (split across servy/codey,
+  # 2026-11-20). The probe must emit only the half the host runs: `collect` here,
+  # because this scenario sets monitor_profiles: [collect].
+  prometheus:
+    container_name: monitor.prometheus
+    profiles: ["collect"]
+    image: example/prometheus:latest
+  grafana:
+    container_name: monitor.grafana
+    profiles: ["ui"]
+    image: example/grafana:latest
+  # No profile: always part of the project, so it must always be probed.
+  # (Real-world equivalent would be a service that stayed on both hosts.)
+  always:
+    container_name: monitor.always
+    image: example/always:latest

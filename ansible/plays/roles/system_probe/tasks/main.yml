@@ -242,7 +242,12 @@
         state: stopped
         enabled: no
       become_user: "{{ create_user }}"
-      ignore_errors: true
+      # Cleanup, not a state assertion: a host that never ran the probe (e.g. the
+      # test host, where the sink is absent by inventory) has no such unit, and
+      # "systemd: Could not find the requested service" is success here. Without
+      # `failed_when: false` this aborted the whole system play on 2026-11-20 and
+      # silently skipped the fail2ban tasks queued behind it.
+      failed_when: false
       loop:
         - system-log-freshness
         - system-restic-snapshots

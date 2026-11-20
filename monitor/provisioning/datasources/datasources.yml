@@ -1,3 +1,18 @@
+# Jinja source for the Grafana datasources. NOT read by Grafana as-is: Ansible
+# renders it into monitor/rendered/datasources.yml (untracked) and
+# monitor/docker-compose.yml bind-mounts that over this path, exactly like
+# contact-points.yml. Do not add it to world_readable_paths by this path — the
+# rendered copy is the one the container opens.
+#
+# Why it is a template since 2026-11-20: Grafana moved to codey while Prometheus
+# stayed on servy, so this datasource now crosses the internet through the
+# authenticated https://prometheus.lehel.xyz route (basicAuth + ipAllowList) and
+# the file carries a credential. The `uid`s are load-bearing — every alert rule
+# names `prometheus` and the Loki datasource `loki` — keep them.
+#
+# The Loki datasource is unchanged: Loki runs in this same compose project on
+# codey, so Grafana reaches it over the internal `backend` network. Its tenant
+# header is the public tenant id (see plays/vars/default.yml), not a secret.
 apiVersion: 1
 
 datasources:
@@ -5,9 +20,15 @@ datasources:
     type: prometheus
     uid: prometheus
     access: proxy
-    url: http://prometheus:9090
+    url: {{ monitor_prometheus_client_scheme }}://{{ monitor_prometheus_client }}
+    basicAuth: true
+    basicAuthUser: {{ monitor_prometheus_auth_username }}
     isDefault: true
     editable: false
+    jsonData:
+      timeInterval: 15s
+    secureJsonData:
+      basicAuthPassword: "{{ monitor_remote_auth.prometheus_password }}"
 
   - name: Loki
     type: loki
@@ -19,8 +40,4 @@ datasources:
       maxLines: 1000
       httpHeaderName1: X-Scope-OrgID
     secureJsonData:
-      # Plaintext on purpose: the Loki tenant id is not a secret (see the note in
-      # monitor/promtail.yml). Committing it keeps this file out of the Ansible
-      # render, so a checkout of the deploy dir cannot revert it to invalid Jinja
-      # YAML — which would make Grafana 13 exit 1 on a provisioning error.
-      httpHeaderValue1: servyy-logs-k8x9m2p4q7
+      httpHeaderValue1: {{ monitor.loki_tenant }}

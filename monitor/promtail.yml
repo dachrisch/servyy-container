@@ -1,3 +1,11 @@
+# NOTE: `-config.expand-env=true` (docker-compose command) expands every
+# dollar-prefixed token in this file, and it does so on the RAW TEXT — before
+# YAML parsing, comments included. A stray dollar sign or a braced token with a
+# non-identifier inside is therefore a config error ("unable to parse variable
+# name") and a crash loop, measured on servyy-test 2026-11-20 twice: once from a
+# regex end-of-line anchor, once from a braced ellipsis in a comment. Keep
+# literal dollar signs out of this file; the end-of-line anchor bought nothing
+# because `.*` already stops at the line end.
 server:
   http_listen_port: 9080
   grpc_listen_port: 0
@@ -6,7 +14,19 @@ positions:
   filename: /var/lib/promtail/positions.yaml
 
 clients:
-  - url: http://loki:3100/loki/api/v1/push
+  # LOKI_PUSH_URL comes from monitor/.env (prod: https://loki.lehel.xyz/loki/api/v1/push;
+  # servyy-test: its own loki host through local Traefik, so the authenticated
+  # path is exercised before production). `-config.expand-env=true` in the compose
+  # command is what expands the placeholder below; without it promtail treats the
+  # literal braced name as a URL and pushes nowhere.
+  - url: ${LOKI_PUSH_URL}
+    # Authenticated cross-host route (2026-11-20): Loki now runs on codey, and its
+    # Traefik router enforces basicAuth + ipAllowList. The password is rendered by
+    # Ansible into monitor/rendered/loki-password (never tracked) and mounted here.
+    # Same user as Prometheus' Loki scrape and fail2ban's query helper.
+    basic_auth:
+      username: promtail
+      password_file: /etc/promtail/loki-password
     # Plaintext on purpose: the Loki tenant id is not a secret (it is documented
     # in plays/vars/default.yml and recoverable from Loki's chunk directory
     # names). Committing it here keeps this file out of the Ansible render, so a
@@ -79,7 +99,7 @@ scrape_configs:
       - drop:
           older_than: 4h
       - regex:
-          expression: '^(?P<timestamp>\w+\s+\d+\s+\d+:\d+:\d+)\s+(?P<host>\S+)\s+(?P<program>[^\[:]+)(?:\[(?P<pid>\d+)\])?:\s+(?P<message>.*)$'
+          expression: '^(?P<timestamp>\w+\s+\d+\s+\d+:\d+:\d+)\s+(?P<host>\S+)\s+(?P<program>[^\[:]+)(?:\[(?P<pid>\d+)\])?:\s+(?P<message>.*)'
       - labels:
           host:
           program:

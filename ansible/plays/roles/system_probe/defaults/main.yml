@@ -20,10 +20,17 @@
 system_probe_scripts_dir: "{{ remote_user_home }}/.system-probes"
 system_probe_pushgateway_url: "http://localhost:9091"
 
-# True only on hosts running the monitor stack (Pushgateway sink present).
+# True only on hosts running the monitor stack's Pushgateway sink present).
 # Handles both inventory shapes: bare `monitor: true` and `monitor: {enabled: true}`.
+# Also requires the `collect` profile: since 2026-11-20 monitor is enabled on BOTH
+# hosts, but only the host that runs the collectors (and therefore the local
+# Pushgateway bridge) may run the timers — codey runs the `ui` half and has no
+# sink, so a push there would fail into the void.
 # NOTE: renders as a string; ALWAYS consume with `| bool`.
-system_probe_push_enabled: "{{ (services_enabled.monitor | default(false) == true) or (services_enabled.monitor.enabled | default(false) | bool) }}"
+system_probe_push_enabled: >-
+  {{ ((services_enabled.monitor | default(false) == true)
+      or (services_enabled.monitor.enabled | default(false) | bool))
+     and ('collect' in (monitor_profiles | default([]))) }}
 
 # --- Log-freshness probe -----------------------------------------------------
 # Each entry: name (metric label), path (log file), threshold_seconds.

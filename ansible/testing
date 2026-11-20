@@ -11,12 +11,35 @@ test:
       with_containers: true
       with_docker: false
       skip_storagebox: true
+      # Rehearses the split stack: BOTH halves run here (collect + ui), so the
+      # cross-host routes and their auth are exercised against the local Traefik
+      # before any production deploy. Production values live in vars/default.yml;
+      # this switch makes those defaults resolve to: plain `web`, no ACME
+      # resolver, http URLs, and private source ranges. It must stay an
+      # inventory-only var (see the note in vars/default.yml).
+      monitor_local_traefik: true
+      monitor_profiles: [collect, ui]
+      # The container-health probe is generated from the PRODUCTION docker.services
+      # list, so on this host every container that is not supposed to exist here
+      # would be reported as down — and test's own Grafana (ui profile) evaluates
+      # the same alert rules with a live mail contact point. The probe was never
+      # deployed here before (monitor was disabled); keep it off now that the
+      # stack runs, and rely on molecule + the servy probe for that check.
+      system_probe_push_enabled: false
       services_enabled:
+        # The test host's edge is managed from this repo (as production is) so the
+        # cross-host monitor middlewares and their mounted users files are the
+        # real ones. It was left unmanaged for a while, which made a deploy of
+        # anything behind Traefik test a stale inode; enabling it recreates the
+        # edge from the same compose file production uses.
+        traefik: true
         devhub: true
         opencode: true
         leaguesphere: true
         claude-hub: true
         bumbleflies: true
+        # Monitor stack (both profiles) — see the monitor_* vars above.
+        monitor: true
         # queen consolidation: shared data services (subset, fresh volumes)
         # + queen app only (subset of the finance file, no Firefly).
         shared: true

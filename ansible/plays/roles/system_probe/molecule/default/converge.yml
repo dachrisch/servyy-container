@@ -25,6 +25,10 @@
     docker:
       services:
         - dir: probetest
+        # Monitor carries compose profiles; this host runs only `collect`.
+        - dir: monitor
+    # Profile-aware probe: the `ui` half (grafana) must not be expected here.
+    monitor_profiles: [collect]
     # Backend-only services: watched by the probe, never exposed via DNS/ping.
     docker_backend_services:
       - dir: backendtest

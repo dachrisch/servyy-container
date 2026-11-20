@@ -41,6 +41,13 @@ services:
       # role. Writable file + file provider watch:true means password rotations
       # take effect on Traefik's next reload — no container restart.
       - ./dashboard-auth.htpasswd:/etc/traefik/dashboard-auth.htpasswd:ro
+      # Cross-host monitor routes (2026-11-20): basicAuth users files for
+      # loki.lehel.xyz and prometheus.lehel.xyz, rendered from
+      # plays/vars/secrets.yml (monitor_remote_auth) by roles/monitor_remote_auth.
+      # Referenced by the `monitor-loki-auth`/`monitor-prometheus-auth`
+      # middlewares in dynamic.yaml.
+      - ./monitor-loki-auth.htpasswd:/etc/traefik/monitor-loki-auth.htpasswd:ro
+      - ./monitor-prometheus-auth.htpasswd:/etc/traefik/monitor-prometheus-auth.htpasswd:ro
     networks:
       - proxy
     # Porkbun API keys for the DNS-01 ACME resolver live in traefik.env

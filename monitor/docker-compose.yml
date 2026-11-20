@@ -3,9 +3,21 @@
 # `docker system prune -a -f` then deletes the stopped container and its image, so the
 # whole stack silently disappears. That is what happened on 2026-10-29
 # (history/2026-10-29_monitor-restart-policy.md).
+#
+# SPLIT ACROSS TWO HOSTS (2026-11-20). Compose `profiles` select one half per host;
+# COMPOSE_PROFILES comes from monitor/.env (rendered per host) and is also passed to
+# the compose module, so a hand-run `docker compose up -d` selects the same half.
+#   ui      → grafana, loki                     (codey)
+#   collect → prometheus, pushgateway, pushgateway-bridge, node-exporter,
+#             cadvisor, promtail                (servy; they read its /proc, docker
+#                                                socket and logs)
+# servyy-test enables both. Cross-profile `depends_on` is impossible (compose
+# refuses a dependency on a service whose profile is not active), which is why
+# grafana depends only on loki and promtail depends on nothing.
 services:
   grafana:
     image: grafana/grafana:latest
+    profiles: ["ui"]
     restart: unless-stopped
     # 512m: 273-302M working set right after a restart with plugins loaded
     # (measured 2026-10-29, ~79 % of a 384m cap - too little headroom for the
@@ -16,9 +28,14 @@ services:
       - grafana.env # rendered by ansible (docker_service monitor template) from vault; never committed
     labels:
       - traefik.enable=true
-      - traefik.http.routers.${SERVICE_NAME}.tls=true
       - traefik.http.routers.${SERVICE_NAME}.rule=Host(`${SERVICE_HOST}`)
-      - traefik.http.routers.${SERVICE_NAME}.tls.certresolver=letsencryptdnsresolver
+      # Follows the same entrypoint/TLS knobs as the two cross-host routes: on
+      # production this is websecure + the Porkbun DNS-01 resolver (as before);
+      # on servyy-test it is plain `web`, because that Traefik has no ACME
+      # resolver and no public DNS for the lxd name.
+      - traefik.http.routers.${SERVICE_NAME}.entrypoints=${MONITOR_TRAEFIK_ENTRYPOINT}
+      - traefik.http.routers.${SERVICE_NAME}.tls=${MONITOR_TRAEFIK_TLS}
+      - traefik.http.routers.${SERVICE_NAME}.tls.certresolver=${MONITOR_TRAEFIK_CERTRESOLVER}
       - traefik.http.routers.${SERVICE_NAME}.service=grafana
       - traefik.http.services.grafana.loadbalancer.server.port=3000
       - traefik.http.routers.${SERVICE_NAME}_local_qualified.rule=Host(`${SERVICE_NAME}.${LOCAL_HOSTNAME}`)
@@ -35,6 +52,12 @@ services:
       # a tracked path broke idempotency and left Grafana one restart away from
       # a provisioning crash-loop.
       - ./rendered/contact-points.yml:/etc/grafana/provisioning/alerting/contact-points.yml:ro
+      # Datasources are rendered for the same reason (2026-11-20): the Prometheus
+      # datasource now points at https://prometheus.lehel.xyz with HTTP basic
+      # auth, so the file holds a credential. The tracked
+      # provisioning/datasources/datasources.yml is the Jinja SOURCE; this mount
+      # shadows it with the resolved copy, exactly like contact-points.yml above.
+      - ./rendered/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       # Identity + mail secrets come from grafana.env (vault-rendered). Kept here
@@ -47,8 +70,10 @@ services:
       - GF_FEATURE_TOGGLES_ENABLE=provisioning,kubernetesDashboards
       # Enable unified alerting
       - GF_UNIFIED_ALERTING_ENABLED=true
-      # Server URL configuration for email notifications
-      - GF_SERVER_ROOT_URL=https://${SERVICE_HOST}
+      # Server URL configuration for email notifications. Scheme follows the
+      # host's entrypoint (https in production, http on servyy-test) so the test
+      # host's verification is not redirected to a listener it does not have.
+      - GF_SERVER_ROOT_URL=${MONITOR_PUBLIC_URL}
       - GF_SERVER_DOMAIN=${SERVICE_HOST}
     networks:
       - backend
@@ -56,24 +81,33 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
     depends_on:
-      - prometheus
       - loki
 
   loki:
     image: grafana/loki:latest
+    profiles: ["ui"]
     restart: unless-stopped
     # 512m: ~184-362M resident while indexing; the cap bounds a jammed
     # ingestion backlog instead of letting it displace app pages.
     mem_limit: 512m
     container_name: ${COMPOSE_PROJECT_NAME}.loki
     labels:
-      # Deliberately NOT routed through Traefik any more. Loki was published at
-      # `monitor.lehel.xyz/loki` (TLS router with certresolver) even though Grafana
-      # queries it over the docker network (`http://loki:3100`), and Traefik's
-      # per-entrypoint router split also produced a `web-loki` router on the public
-      # :80. Since Loki has no real auth (only the tenant header), that was pure
-      # exposure surface. Prometheus scrapes `loki:3100` over the network too.
-      - traefik.enable=false
+      # Re-exposed on 2026-11-20 because servy's promtail/fail2ban/Prometheus now
+      # live on the other host. Unlike the 2026-09 attempt this route carries
+      # real auth: `monitor-loki-auth@file` (basicAuth usersFile rendered from
+      # secrets.yml) plus an ipAllowList of the two trusted hosts. websecure only
+      # — no `web` router, so plaintext :80 falls through to the catchall 404.
+      # Order matters: auth first, allow second, so an unauthenticated request is
+      # 401 and an authenticated one from a stranger is 403.
+      - traefik.enable=true
+      - traefik.http.routers.monitor-loki.rule=Host(`${MONITOR_LOKI_HOST}`)
+      - traefik.http.routers.monitor-loki.entrypoints=${MONITOR_TRAEFIK_ENTRYPOINT}
+      - traefik.http.routers.monitor-loki.tls=${MONITOR_TRAEFIK_TLS}
+      - traefik.http.routers.monitor-loki.tls.certresolver=${MONITOR_TRAEFIK_CERTRESOLVER}
+      - traefik.http.routers.monitor-loki.middlewares=monitor-loki-auth@file,monitor-loki-allow@docker
+      - traefik.http.routers.monitor-loki.service=monitor-loki
+      - traefik.http.services.monitor-loki.loadbalancer.server.port=3100
+      - traefik.http.middlewares.monitor-loki-allow.ipallowlist.sourcerange=${MONITOR_LOKI_ALLOW}
       - com.centurylinklabs.watchtower.scope=prod
     volumes:
       - ./loki.yml:/etc/loki/local-config.yaml
@@ -87,6 +121,7 @@ services:
 
   promtail:
     image: grafana/promtail:latest
+    profiles: ["collect"]
     restart: unless-stopped
     container_name: ${COMPOSE_PROJECT_NAME}.promtail
     labels:
@@ -94,29 +129,63 @@ services:
       - com.centurylinklabs.watchtower.scope=prod
     volumes:
       - ./promtail.yml:/etc/promtail/config.yml
+      # Rendered from plays/vars/secrets.yml by user.yml (mode 0644; promtail runs
+      # as root but the file is a host-side secret rendered out of the checkout).
+      # The client config references it by path, so the secret never lands in the
+      # container's environment or in `docker inspect`.
+      - ./rendered/loki-password:/etc/promtail/loki-password:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/log:/var/log:ro
       - promtail_data:/var/lib/promtail
-    command: -config.file=/etc/promtail/config.yml
+    environment:
+      # Interpolated by compose from monitor/.env; promtail expands ${LOKI_PUSH_URL}
+      # in promtail.yml (`-config.expand-env=true` below). Points at the
+      # authenticated loki.lehel.xyz route on production and at the local Traefik
+      # on servyy-test, so the auth path is exercised before the prod deploy.
+      - LOKI_PUSH_URL=${LOKI_PUSH_URL}
+    command: -config.file=/etc/promtail/config.yml -config.expand-env=true
     networks:
+      # `backend` is internal: true (no route off the host). Since 2026-11-20
+      # promtail pushes to Loki on codey through the public authenticated route,
+      # so it needs an external network too — `proxy` is the existing one.
       - backend
-    depends_on:
-      - loki
+      - proxy
 
   prometheus:
     image: prom/prometheus:latest
+    profiles: ["collect"]
     restart: unless-stopped
     # 768m: ~192M resident + 21M swap while the 2.25G TSDB is idle;
     # a heavy range query on the 45-container dashboards needs the headroom.
     mem_limit: 768m
     container_name: ${COMPOSE_PROJECT_NAME}.prometheus
     labels:
+      # Query API for the Grafana datasource on codey (2026-11-20). Prometheus has
+      # no auth of its own, so this route is basicAuth + ipAllowList and, like
+      # Loki's, websecure only. The `/metrics` endpoint answers to authenticated
+      # scraping, but the only scrape of it is `prometheus` scraping itself over
+      # localhost, so nothing else depends on the route.
+      - traefik.enable=true
+      - traefik.http.routers.monitor-prometheus.rule=Host(`${MONITOR_PROMETHEUS_HOST}`)
+      - traefik.http.routers.monitor-prometheus.entrypoints=${MONITOR_TRAEFIK_ENTRYPOINT}
+      - traefik.http.routers.monitor-prometheus.tls=${MONITOR_TRAEFIK_TLS}
+      - traefik.http.routers.monitor-prometheus.tls.certresolver=${MONITOR_TRAEFIK_CERTRESOLVER}
+      - traefik.http.routers.monitor-prometheus.middlewares=monitor-prometheus-auth@file,monitor-prometheus-allow@docker
+      - traefik.http.routers.monitor-prometheus.service=monitor-prometheus
+      - traefik.http.services.monitor-prometheus.loadbalancer.server.port=9090
+      - traefik.http.middlewares.monitor-prometheus-allow.ipallowlist.sourcerange=${MONITOR_PROMETHEUS_ALLOW}
       - com.centurylinklabs.watchtower.scope=prod
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       # Recording rules (container_memory_near_limit and future ones). Read-only:
       # they are repo artefacts, never written by the server.
       - ./rules:/etc/prometheus/rules:ro
+      # Rendered by user.yml from the cross-host credential: the Loki scrape
+      # target (host + scheme per environment) and the basic-auth password the
+      # scrape sends. Prometheus runs as uid 65534 — see
+      # world_readable_paths_by_service.monitor in plays/vars/default.yml.
+      - ./rendered/loki-target.json:/etc/prometheus/rendered/loki-target.json:ro
+      - ./rendered/loki-password:/etc/prometheus/rendered/loki-password:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -135,6 +204,7 @@ services:
     # re-pulls the tag a container already has). Prometheus images publish no
     # `vX.Y` tag, so `latest` is the only float available.
     image: prom/pushgateway:latest
+    profiles: ["collect"]
     restart: unless-stopped
     container_name: ${COMPOSE_PROJECT_NAME}.pushgateway
     labels:
@@ -151,6 +221,7 @@ services:
 
   pushgateway-bridge:
     image: alpine/socat:latest
+    profiles: ["collect"]
     restart: unless-stopped
     container_name: ${COMPOSE_PROJECT_NAME}.pushgateway-bridge
     depends_on:
@@ -164,6 +235,7 @@ services:
 
   node-exporter:
     image: prom/node-exporter:latest
+    profiles: ["collect"]
     restart: unless-stopped
     container_name: ${COMPOSE_PROJECT_NAME}.node-exporter
     labels:
@@ -187,6 +259,7 @@ services:
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
+    profiles: ["collect"]
     restart: unless-stopped
     container_name: ${COMPOSE_PROJECT_NAME}.cadvisor
     labels:

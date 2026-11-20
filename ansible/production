@@ -11,6 +11,9 @@ prod:
         # 6G keeps ~2x headroom over observed peak while returning ~6.6G.
         # The swap role removes the superseded files itself (see swap.yml).
         swap_space_override: 6G
+        # Which half of monitor/docker-compose.yml this host runs (compose
+        # profiles, 2026-11-20). servy = collectors only; codey = ui only.
+        monitor_profiles: [collect]
         services_enabled:
           traefik: true
           git: true
@@ -43,6 +46,11 @@ prod:
           dns: false
           me: false
           monitor: true
+          # Grafana + Loki moved to codey on 2026-11-20; servy keeps Prometheus,
+          # the exporters and promtail (they read THIS host's /proc, docker socket
+          # and logs) and pushes its logs to the authenticated loki.lehel.xyz
+          # route on codey. See monitor/AGENTS.md and
+          # docs/plans/2026-11-20_grafana-to-codey.md.
           leaguesphere: true
           # Moodle (OFFD / Flag Academy) — Christoph's referee-training platform.
           # Serves the rehearsal hostname m.leaguesphere.app until the offd.de A
@@ -147,8 +155,13 @@ prod:
         create_swap: true
         # No Hetzner Storage Box *mount* here (restic reaches it over SFTP).
         skip_storagebox: true
+        # Monitor's ui half (grafana + loki) lives here since 2026-11-20. The
+        # collectors stay on servy; the two hosts talk over loki.lehel.xyz and
+        # prometheus.lehel.xyz (basicAuth + ipAllowList).
+        monitor_profiles: [ui]
         services_enabled:
           traefik: true
+          monitor: true
           opencode:
             enabled: true
             dns_short_name: "code"     # Public-facing name (code.lehel.xyz)
