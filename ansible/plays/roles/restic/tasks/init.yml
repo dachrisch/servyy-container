@@ -246,6 +246,12 @@
       echo "repository already initialized"
     fi
   loop: "{{ restic_repos_enabled }}"
+  # The loop item carries `password`, and without a label Ansible prints the
+  # whole item dict on every deploy — which put BOTH repository passwords in
+  # plaintext into every deploy log (seen in codey's 2026-11-20 upgrade runs).
+  # The verify task below already did this; keep the two consistent.
+  loop_control:
+    label: "{{ item.repository }}"
   register: restic_init
   # Deliberately NOT gated on `restic_env_files.changed or sftp_mkdir.changed`
   # any more (WP-8R, 2026-11-18). That gate made initialisation depend on an
