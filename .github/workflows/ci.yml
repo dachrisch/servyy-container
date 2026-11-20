@@ -35,6 +35,7 @@ jobs:
       python: ${{ steps.changed.outputs.python }}
       compose: ${{ steps.changed.outputs.compose }}
       ci: ${{ steps.changed.outputs.ci }}
+      yamllint: ${{ steps.changed.outputs.yamllint }}
       ansible_files: ${{ steps.files.outputs.ansible_files }}
     steps:
       - uses: actions/checkout@v7
@@ -47,18 +48,26 @@ jobs:
         id: changed
         uses: dorny/paths-filter@v3
         with:
+          # The default quantifier is `some`, under which a leading `!` means "a
+          # file that is NOT this" and therefore matches every non-markdown
+          # file's opposite - measured 2026-11-20: a lone
+          # .github/workflows/README.md returned ansible=true and ci=true and
+          # ran the whole suite. `every` requires ONE file to satisfy every
+          # pattern, which is the "code path and not a doc" semantics meant here.
+          predicate-quantifier: every
           filters: |
             ansible:
               - 'ansible/**'
-              - '!ansible/**/*.md'
-              - '.yamllint.yml'
+              - '!**/*.md'
             python:
               - '**/*.py'
             compose:
               - '**/docker-compose*.yml'
             ci:
               - '.github/**'
-              - '!.github/**/*.md'
+              - '!**/*.md'
+            yamllint:
+              - '.yamllint.yml'
 
       # Second pass, list mode: the molecule planner needs the actual paths under
       # ansible/, not a boolean. dorny/paths-filter publishes the list to
@@ -77,7 +86,9 @@ jobs:
   lint-yaml:
     name: Lint YAML
     needs: [changes]
-    if: needs.changes.outputs.ansible == 'true' || needs.changes.outputs.ci == 'true'
+    if: >-
+      needs.changes.outputs.ansible == 'true' || needs.changes.outputs.ci == 'true' ||
+      needs.changes.outputs.yamllint == 'true'
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7

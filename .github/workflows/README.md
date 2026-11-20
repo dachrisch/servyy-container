@@ -45,10 +45,18 @@ Category paths:
 
 | Category | Paths |
 |---|---|
-| `ansible` | `ansible/**` (minus `*.md`), `.yamllint.yml` |
+| `ansible` | `ansible/**`, and not `*.md` |
 | `python` | `**/*.py` |
 | `compose` | `**/docker-compose*.yml` |
-| `ci` | `.github/**` (minus `*.md`) |
+| `ci` | `.github/**`, and not `*.md` |
+| `yamllint` | `.yamllint.yml` |
+
+The classifier runs with `predicate-quantifier: every`. That is load-bearing: under
+the default `some`, a leading `!` means "a file that is **not** this", so
+`!**/*.md` matched every non-markdown file and a lone
+`.github/workflows/README.md` returned `ansible=true` and `ci=true` and ran the
+whole suite. With `every`, one file must satisfy every pattern — "under this
+path and not a doc" — which is the intended rule.
 
 `compose` is in `lint-python`'s condition on purpose: the architecture selftest
 parses every `*/docker-compose.yml`, and that is the only CI coverage a compose
