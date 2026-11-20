@@ -29,7 +29,7 @@
 
     - name: Verify the dind compose has the dind sidecar
       ansible.builtin.command:
-        cmd: "grep -q 'image: docker:dind' /home/testuser/runny-dind/docker-compose.yml"
+        cmd: "grep -q 'image: docker:29-dind' /home/testuser/runny-dind/docker-compose.yml"
       changed_when: false
 
     - name: Verify the dind compose sets DOCKER_HOST to the sidecar
@@ -56,7 +56,7 @@
 
     - name: Verify the host compose has no dind sidecar
       ansible.builtin.command:
-        cmd: "grep -q 'image: docker:dind' /home/testuser/runny-host/docker-compose.yml"
+        cmd: "grep -q 'image: docker:29-dind' /home/testuser/runny-host/docker-compose.yml"
       register: host_dind
       changed_when: false
       failed_when: host_dind.rc == 0
