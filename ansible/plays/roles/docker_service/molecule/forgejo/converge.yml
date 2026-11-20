@@ -3,6 +3,7 @@
   hosts: all
   become: true
   vars:
+    create_user: testuser
     docker:
       remote_dir: /home/molecule
     extension_drive:
@@ -15,6 +16,12 @@
     forgejo_metrics_token: test-metrics-token
     ci_traefik_tls: "true"
   pre_tasks:
+    # ci/docker.env.j2 renders UID/GID from this lookup (docker_extras.yml in
+    # the real play).
+    - name: Look up the deploy user
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ create_user }}"
     - name: Create the ci service directory
       ansible.builtin.file:
         path: /home/molecule/ci
