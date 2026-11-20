@@ -352,25 +352,35 @@ molecule destroy   # Clean up
 ## CI/CD Infrastructure
 
 ### GitHub Actions Pipeline
-Located in `.github/workflows/ci.yml`
+Located in `.github/workflows/ci.yml`; which scenarios exist is listed in
+`.github/molecule-matrix.yml`.
 
 **What it does:**
-1. Runs Molecule tests for all scenarios in parallel
-2. Validates Ansible syntax
-3. Runs linting (ansible-lint)
-4. Reports results back to PR
+1. Classifies the diff and skips the jobs the change cannot affect
+2. Runs lints and syntax checks for ansible changes
+3. Runs Molecule for the eight baseline scenarios plus the changed role's own
+4. Reports through `CI Gate`, the single required status check
 
 **Test Matrix:**
-- Each role can have multiple scenarios
-- Scenarios run in parallel for speed
-- CI only accepts PRs with passing tests
+- Each role can have several scenarios, all registered in the manifest
+- Baseline scenarios run on every ansible change; the rest only when their role
+  directory changed
+- `CI Gate` passes when each job succeeded **or was skipped for these paths**
+
+> A skipped job publishes no check run. Never make an individual job or matrix
+> entry the required check — a docs-only PR would wait forever. Add the job to
+> `gate`'s `needs` list instead.
 
 ### Adding Role to CI
-Edit `.github/workflows/ci.yml` matrix:
+Create the `molecule/<scenario>/` directory, then register it once:
+
 ```yaml
-roles:
-  - { name: "service", scenarios: ["default", "staging"] }
+# .github/molecule-matrix.yml
+- {role: service, scenario: staging, baseline: false}
 ```
+
+CI fails when a molecule directory has no manifest entry, or an entry has no
+directory. Locally: `python3 .github/scripts/molecule_matrix.py --all`.
 
 ## servyy-test vs Production
 

@@ -1,0 +1,53 @@
+---
+# Every molecule scenario in this repository, in one place.
+#
+# This list used to live inline in .github/workflows/ci.yml, and the master
+# ruleset required eight of its entries BY NAME. It drifted both ways: sixteen
+# scenarios ran while only eight were required, and portainer_rbac/default
+# existed on disk without ever running at all.
+#
+# `plan-matrix` now reads this file:
+#   * baseline: true   runs on EVERY ansible/** change, whichever role changed.
+#                      These are exactly the eight contexts the ruleset used to
+#                      require, so the core roles (system, user, testing,
+#                      docker_service) can never lose coverage to path gating.
+#   * baseline: false  runs only when that role's own directory changed.
+#   * enabled: false   never runs in CI; `reason` is mandatory, so the decision
+#                      is written down instead of implied by absence.
+#
+# `.yml`, not `.yaml`: `.gitattributes` encrypts every `*.yaml`, and CI cannot
+# read a git-crypt blob. Renaming this file to `.yaml` makes the plan job fail.
+#
+# ansible/tests/ci_matrix/test_molecule_matrix.py (run by CI) fails when a
+# molecule/<scenario>/ directory exists without an entry here, or an entry here
+# has no directory on disk. Add the role to this file and the matrix follows.
+
+scenarios:
+  # --- baseline: every ansible change --------------------------------------
+  - {role: system, scenario: minimal, baseline: true}
+  - {role: system, scenario: core, baseline: true}
+  - {role: system, scenario: with-docker, baseline: true}
+  - {role: system, scenario: default, baseline: true}
+  - {role: testing, scenario: default, baseline: true}
+  - {role: user, scenario: default, baseline: true}
+  - {role: user, scenario: docker-only, baseline: true}
+  - {role: docker_service, scenario: default, baseline: true}
+
+  # --- scoped: only when that role changed ---------------------------------
+  - {role: docker_service, scenario: gh-wrapper, baseline: false}
+  - {role: monitor_reload, scenario: default, baseline: false}
+  - {role: db_tier, scenario: default, baseline: false}
+  - {role: traefik_dashboard_auth, scenario: default, baseline: false}
+  - {role: system_probe, scenario: default, baseline: false}
+  - {role: system_probe, scenario: no-sink, baseline: false}
+  - {role: restic, scenario: default, baseline: false}
+  - {role: restic, scenario: no-leaguesphere, baseline: false}
+
+  - role: portainer_rbac
+    scenario: default
+    baseline: false
+    enabled: false
+    reason: >-
+      prepare.yml stands up a real Portainer inside the container and talks to
+      its API. This scenario was never part of the CI matrix; it stays a manual
+      step on servyy-test. Flip enabled to true if it earns its CI minutes.

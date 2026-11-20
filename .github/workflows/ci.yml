@@ -9,10 +9,74 @@ on:
     branches:
       - master
 
+# A new push to a PR supersedes the previous run; cancel it instead of paying
+# for two suites. Pushes to master are never cancelled.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  # Fast-fail checks (run in parallel)
+  # Every heavy job below is conditional on the paths a change touches, and a
+  # SKIPPED job creates no check run at all - which is why the single required
+  # status check is the always-running `gate` at the bottom, never an individual
+  # job or a matrix entry. Never add `paths:` to the workflow trigger either: the
+  # workflow would then not report at all on a docs-only PR and the required
+  # check would wait forever instead of passing.
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-26.04
+    permissions:
+      # job-level permissions replace the workflow defaults, so `contents` must
+      # be granted explicitly or checkout has no token
+      contents: read
+      pull-requests: read
+    outputs:
+      ansible: ${{ steps.changed.outputs.ansible }}
+      python: ${{ steps.changed.outputs.python }}
+      compose: ${{ steps.changed.outputs.compose }}
+      ci: ${{ steps.changed.outputs.ci }}
+      ansible_files: ${{ steps.files.outputs.ansible_files }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Push events diff `github.event.before`..`after`; both commits have to
+          # be in the clone or the detector sees no change on master.
+          fetch-depth: 0
+
+      - name: Classify the change
+        id: changed
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            ansible:
+              - 'ansible/**'
+              - '!ansible/**/*.md'
+              - '.yamllint.yml'
+            python:
+              - '**/*.py'
+            compose:
+              - '**/docker-compose*.yml'
+            ci:
+              - '.github/**'
+              - '!.github/**/*.md'
+
+      # Second pass, list mode: the molecule planner needs the actual paths under
+      # ansible/, not a boolean.
+      - name: List changed ansible paths
+        id: files
+        uses: dorny/paths-filter@v3
+        with:
+          list-files: json
+          filters: |
+            ansible_files:
+              - 'ansible/**'
+
+  # The lints read ansible/ (yamllint only ever looks at ansible/plays), so they
+  # are meaningless - and skipped - for a compose or docs change.
   lint-yaml:
     name: Lint YAML
+    needs: [changes]
+    if: needs.changes.outputs.ansible == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
@@ -55,6 +119,8 @@ jobs:
 
   lint-ansible:
     name: Ansible Lint
+    needs: [changes]
+    if: needs.changes.outputs.ansible == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
@@ -81,6 +147,12 @@ jobs:
 
   lint-python:
     name: Lint Python (Custom Modules)
+    needs: [changes]
+    # `compose` belongs here: the architecture selftest below parses every
+    # */docker-compose.yml, and it is the ONLY CI coverage a compose edit has.
+    if: >-
+      needs.changes.outputs.ansible == 'true' || needs.changes.outputs.python == 'true' ||
+      needs.changes.outputs.compose == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
@@ -119,6 +191,8 @@ jobs:
 
   syntax-check:
     name: Ansible Syntax Check
+    needs: [changes]
+    if: needs.changes.outputs.ansible == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-26.04
     strategy:
       matrix:
@@ -236,6 +310,9 @@ jobs:
           cd ansible
           ansible-playbook ${{ matrix.playbook }} --syntax-check -i testing
 
+  # Deliberately unconditional: it is ~20s, and a docs-only PR is exactly how
+  # a secret ends up committed inside a .md file. The one job that must never be
+  # path-gated is the one that watches the plaintext.
   git-crypt-validation:
     name: Validate git-crypt Encryption
     runs-on: ubuntu-26.04
@@ -250,6 +327,10 @@ jobs:
 
   test-custom-modules:
     name: Test Custom Modules
+    needs: [changes]
+    if: >-
+      needs.changes.outputs.ansible == 'true' || needs.changes.outputs.python == 'true' ||
+      needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
@@ -315,46 +396,65 @@ jobs:
           cd ansible/tests/dbaccess_reap
           python -m unittest -v test_reap_verdict
 
+      # Path gating is only safe if the matrix it selects is trustworthy. These
+      # pin that the baseline scenarios run on every ansible change, that shared
+      # or unattributable paths widen to the full matrix, and that this
+      # repository's manifest and its molecule/ directories agree in both
+      # directions - a scenario without an entry used to mean it silently never
+      # ran (portainer_rbac/default).
+      - name: Run molecule matrix planner tests
+        run: |
+          cd ansible/tests/ci_matrix
+          python -m unittest -v test_molecule_matrix
+
+  # Turns "which files changed" into the molecule matrix. The eight `baseline`
+  # entries - exactly the contexts the master ruleset used to require by name -
+  # run on every ansible change; the rest join only when their own role changed.
+  # Shared ansible paths, a .github/ change, an unknown role, or any drift
+  # between the manifest and the roles on disk widen it to everything.
+  molecule-plan:
+    name: Plan Molecule Matrix
+    needs: [changes]
+    if: needs.changes.outputs.ansible == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-26.04
+    outputs:
+      include: ${{ steps.plan.outputs.include }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Plan the matrix
+        id: plan
+        env:
+          ANSIBLE_FILES: ${{ needs.changes.outputs.ansible_files }}
+          CI_CHANGED: ${{ needs.changes.outputs.ci }}
+        run: >-
+          python3 .github/scripts/molecule_matrix.py
+          --manifest .github/molecule-matrix.yml
+          --changed-files-json "$ANSIBLE_FILES"
+          --ci-changed "$CI_CHANGED"
+          --github-output "$GITHUB_OUTPUT"
+
   molecule-test:
     name: Molecule Test (${{ matrix.role }}/${{ matrix.scenario }})
-    needs: [lint-yaml, lint-ansible, lint-python, syntax-check]
+    needs: [changes, molecule-plan, lint-yaml, lint-ansible, lint-python, syntax-check]
+    if: needs.changes.outputs.ansible == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
+      # A skipped `molecule-plan` publishes no outputs, and `fromJSON('')` is a
+      # fatal expression error, so fall back to a one-entry sentinel that the
+      # `if` above never lets run. The planner itself never emits an empty list
+      # (the baseline guarantees >= 8 entries).
       matrix:
-        include:
-          - role: system
-            scenario: minimal
-          - role: system
-            scenario: core
-          - role: system
-            scenario: with-docker
-          - role: system
-            scenario: default
-          - role: testing
-            scenario: default
-          - role: user
-            scenario: default
-          - role: user
-            scenario: docker-only
-          - role: docker_service
-            scenario: default
-          - role: docker_service
-            scenario: gh-wrapper
-          - role: monitor_reload
-            scenario: default
-          - role: db_tier
-            scenario: default
-          - role: traefik_dashboard_auth
-            scenario: default
-          - role: system_probe
-            scenario: default
-          - role: system_probe
-            scenario: no-sink
-          - role: restic
-            scenario: default
-          - role: restic
-            scenario: no-leaguesphere
+        include: ${{ fromJSON(needs.molecule-plan.outputs.include || '[{"role":"skip","scenario":"skip"}]') }}
     steps:
       - uses: actions/checkout@v7
 
@@ -474,3 +574,56 @@ jobs:
           PY_COLORS: '1'
           ANSIBLE_FORCE_COLOR: '1'
           ANSIBLE_LIBRARY: ${{ github.workspace }}/ansible/library
+
+  # The single required status check ("CI Gate" on the master ruleset).
+  #
+  # Every job above is path-conditional and a skipped job publishes no check run,
+  # so requiring jobs by name means requiring checks that will never appear on a
+  # docs-only PR - the "Expected - waiting for status" deadlock. This job always
+  # runs, reads the real results of the jobs it needs, and reports one verdict:
+  # success/skipped pass, failure/cancelled fail. It also means adding or
+  # renaming a job no longer needs a ruleset edit, which is how the old ruleset
+  # came to require 8 of 16 molecule entries.
+  gate:
+    name: CI Gate
+    if: always()
+    needs:
+      - changes
+      - lint-yaml
+      - lint-ansible
+      - lint-python
+      - syntax-check
+      - git-crypt-validation
+      - test-custom-modules
+      - molecule-plan
+      - molecule-test
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Aggregate results
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          needs = json.loads(os.environ["NEEDS"])
+          if not needs:
+              print("CI Gate: no upstream job results were reported", file=sys.stderr)
+              sys.exit(1)
+
+          width = max(len(job) for job in needs)
+          bad = {}
+          for job in sorted(needs):
+              result = needs[job].get("result", "unknown")
+              print(f"{job:<{width}}  {result}")
+              if result not in ("success", "skipped"):
+                  bad[job] = result
+
+          if bad:
+              summary = ", ".join(f"{job}={res}" for job, res in sorted(bad.items()))
+              print(f"\nCI Gate: FAILED - {summary}", file=sys.stderr)
+              sys.exit(1)
+          print("\nCI Gate: every needed job succeeded or was not required for these paths")
+          PY

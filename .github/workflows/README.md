@@ -11,6 +11,8 @@ The CI pipeline provides automated testing for Ansible playbooks, roles, and cus
 - **Unit tests**: Custom Ansible module tests
 - **Integration tests**: Molecule tests for critical roles
 - **Security**: git-crypt encryption validation
+- **Path-aware**: each job runs only when the paths a change touches can affect it
+- **One required check**: `CI Gate` aggregates the rest (see [Path gating](#path-gating))
 
 ## Workflows
 
@@ -22,69 +24,84 @@ Runs on:
 
 #### Jobs
 
-**Fast-fail checks (run in parallel):**
+Every job except `changes`, `git-crypt-validation` and `gate` is skipped unless the
+change touches a path that can affect it. `changes` classifies the diff with
+`dorny/paths-filter` and every other job reads its outputs.
 
-1. **lint-yaml** - YAML syntax and formatting
-   - Tool: yamllint
-   - Config: `.yamllint.yml`
-   - Duration: ~30 seconds
+| Job | Runs when | What it does |
+|---|---|---|
+| `changes` | always | Classifies the diff; produces the booleans and the changed `ansible/**` path list |
+| `lint-yaml` | `ansible` or `ci` | yamllint over `ansible/plays` (`.yamllint.yml`) |
+| `lint-ansible` | `ansible` or `ci` | ansible-lint, production profile |
+| `lint-python` | `ansible`, `python`, `compose` or `ci` | flake8 + pylint on `ansible/library`, **and** `architecture/render.py --selftest` |
+| `syntax-check` | `ansible` or `ci` | 5 playbooks, mock encrypted files |
+| `git-crypt-validation` | **always** | no plaintext blob, no encrypted empty file |
+| `test-custom-modules` | `ansible`, `python` or `ci` | 8 `unittest` suites incl. the matrix-planner tests |
+| `molecule-plan` | `ansible` or `ci` | Computes this PR's molecule matrix |
+| `molecule-test` | `ansible` or `ci` | The computed matrix (baseline 8 + the changed roles) |
+| `gate` | **always** | `CI Gate` — the only required check |
 
-2. **lint-ansible** - Ansible best practices
-   - Tool: ansible-lint
-   - Config: `ansible/.ansible-lint`
-   - Profile: production
-   - Duration: ~1 minute
+Category paths:
 
-3. **lint-python** - Python code quality
-   - Tools: flake8, pylint
-   - Config: `ansible/.flake8`, `ansible/.pylintrc`
-   - Target: `library/`, `plugins/`
-   - Duration: ~30 seconds
+| Category | Paths |
+|---|---|
+| `ansible` | `ansible/**` (minus `*.md`), `.yamllint.yml` |
+| `python` | `**/*.py` |
+| `compose` | `**/docker-compose*.yml` |
+| `ci` | `.github/**` (minus `*.md`) |
 
-4. **syntax-check** - Ansible syntax validation
-   - Matrix: 5 playbooks tested in parallel
-   - Creates mock encrypted files for testing
-   - Duration: ~45 seconds per playbook
+`compose` is in `lint-python`'s condition on purpose: the architecture selftest
+parses every `*/docker-compose.yml`, and that is the only CI coverage a compose
+edit has. Everything else (service `.env`s, `docs/`, `history/`, `*.md`, dotfile
+directories) runs no heavy job — a README-only PR costs ~25 seconds.
 
-5. **git-crypt-validation** - Encryption integrity
-   - Script: `.github/scripts/validate-git-crypt.sh`
-   - Verifies files tracked by git-crypt remain encrypted
-   - Duration: ~20 seconds
+#### Molecule matrix selection
 
-6. **test-custom-modules** - Unit tests
-   - Tests: `ansible/library/tests/test_json_patch.py`
-   - Framework: Python unittest
-   - Duration: ~30 seconds
+`.github/molecule-matrix.yml` is the single source of truth for which scenarios
+exist. Each entry is `baseline: true` (runs on **every** ansible change) or
+`baseline: false` (runs only when its own role directory changed).
 
-**Integration tests (run after lints pass):**
+The baseline is exactly the eight contexts the master ruleset used to require by
+name (`system/{minimal,core,with-docker,default}`, `testing/default`,
+`user/{default,docker-only}`, `docker_service/default`), so core coverage never
+depends on which files a PR happens to touch, and their check-run names are
+unchanged.
 
-7. **molecule-test** - Role integration testing
-   - Matrix: 6 role/scenario combinations
-   - Driver: Docker
-   - Runs in parallel
-   - Duration: ~3-5 minutes per scenario
-   - Uses caching for pip and Galaxy roles
+`.github/scripts/molecule_matrix.py` widens to the **whole** matrix when a change
+cannot be attributed to one role: shared playbooks, `ansible/plays/vars/**`,
+`ansible/library/**`, `ansible/tests/**`, `ansible/requirements*.yml`, a `.github/`
+change, or a role the manifest has never heard of. It also fails the build when
+the manifest and `ansible/plays/roles/*/molecule/*/` disagree in either
+direction — a new `molecule/<scenario>/` directory without an entry is an error,
+not a scenario that silently never runs.
 
-## Test Matrix
+#### Path gating
 
-### Molecule Scenarios
+Why the gate exists: a skipped job publishes **no check run**. If the ruleset
+required individual jobs, a docs-only PR would sit at "Expected — waiting for
+status" forever and could never be auto-merged. `CI Gate` always runs, reads the
+real results of the jobs it needs, and passes when each is `success` or
+`skipped` (fails on `failure`/`cancelled`, and prints a job→result table).
 
-| Role | Scenario | Description |
-|------|----------|-------------|
-| system | default | Full system setup (packages, user, journald) |
-| system | minimal | Basic user and journald only |
-| system | with-docker | Docker + kernel cleanup tasks |
-| user | default | Shell setup (zprezto) |
-| user | docker-only | Docker network creation |
-| testing | default | LXD test environment setup |
+Two rules follow from that:
 
-### Excluded from CI
+- **Never** put `paths:` on the `on:` trigger. The workflow would then not report
+  at all for a docs-only PR and the required check would hang instead of passing.
+- **Never** make an individual job or matrix entry the required check. Add the
+  job to `gate`'s `needs` list instead; the ruleset needs no edit, and it no
+  longer drifts (it used to require 8 of 16 molecule entries).
+
+#### Excluded from CI
 
 **LeagueSphere roles** (`ls_setup`, `ls_app`, `ls_access`, `ls_db_sync`) are tested manually on `servyy-test.lxd`:
 - Require encrypted production secrets
 - Need SSH chroot jail setup
 - Depend on real git.lehel.xyz infrastructure
 - Include manual operations tagged with `never`
+
+**`portainer_rbac/default`** is registered in the manifest with `enabled: false`
+(it stands up a real Portainer in `prepare.yml`). The `reason` is mandatory, so
+an excluded scenario is always explained rather than merely absent.
 
 ## Running Tests Locally
 
@@ -232,10 +249,18 @@ molecule --debug test
 
 ## Performance Expectations
 
-- **Lint jobs**: ~30-60 seconds each (parallel)
-- **Syntax checks**: ~45 seconds per playbook (parallel)
-- **Molecule tests**: ~3-5 minutes per role/scenario (parallel)
-- **Total CI time**: ~8-12 minutes (with caching)
+Path gating means the cost follows the change, not the repository:
+
+| Change touches | Jobs | Wall clock |
+|---|---|---|
+| `*.md`, `docs/`, `history/`, dotfiles | `git-crypt-validation`, `gate` | ~25 s |
+| a `*/docker-compose.yml` | + `lint-python` (selftest) | ~45 s |
+| one role under `ansible/plays/roles/` | + lints, syntax, tests, baseline + that role's molecule | ~6-8 min |
+| shared ansible paths, `.github/**`, `ansible/library/**` | everything (all 16 scenarios) | ~8-12 min |
+
+`molecule-test` uses `fail-fast: false`, so one broken scenario does not hide the
+rest of the matrix. Concurrency group `ci-<PR or ref>` cancels a superseded PR run
+instead of running both.
 
 ## CI vs Manual Testing
 
@@ -255,13 +280,29 @@ CI adds quality gates but cannot test:
 
 ## Maintenance
 
-### Adding New Roles
+### Adding a molecule scenario
 
-When adding a new role:
+1. Create `ansible/plays/roles/<role>/molecule/<scenario>/` with `molecule.yml`,
+   `prepare.yml`, `converge.yml` and `verify.yml`
+2. Add **one line** to `.github/molecule-matrix.yml`:
 
-1. Create `molecule/default/` directory structure
-2. Add `molecule.yml`, `prepare.yml`, `converge.yml`, `verify.yml`
-3. Add role to matrix in `.github/workflows/ci.yml`
+   ```yaml
+   - {role: <role>, scenario: <scenario>, baseline: false}
+   ```
+
+   Use `baseline: true` only if the scenario must run on every ansible change.
+   Add `enabled: false` plus a `reason` to register a scenario CI must not run.
+3. Nothing else — `ci.yml` reads the manifest, there is no matrix to edit.
+
+CI fails when the directory and the manifest disagree (either direction), so a
+forgotten line cannot turn into a scenario that silently never runs. Locally:
+
+```bash
+cd ansible/tests/ci_matrix && python -m unittest -v test_molecule_matrix
+python3 .github/scripts/molecule_matrix.py --all        # the full matrix
+python3 .github/scripts/molecule_matrix.py \
+  --changed-files-json '["ansible/plays/roles/restic/tasks/main.yml"]'
+```
 
 ### Updating Dependencies
 
