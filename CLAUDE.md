@@ -575,7 +575,8 @@ cd ansible && ./servyy.sh --limit servy.lehel.xyz
 
 **Reference documentation**:
 - `history/2026-01-05_molecule-testing-validation.md` - Complete validation report
-- `.github/workflows/ci.yml` - CI matrix configuration
+- `.github/molecule-matrix.yml` - which scenarios exist and which run on every ansible change
+- `.github/workflows/README.md` - CI jobs, path gating and the `CI Gate` required check
 
 **Testing is not optional** - if you modify a role, update or add tests. The CI will reject PRs without test coverage.
 

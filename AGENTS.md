@@ -226,6 +226,7 @@ cd ansible && ./servyy.sh --limit servy.lehel.xyz
 
 ### Testing Requirements
 - **Molecule tests required** for all new Ansible features
+- **Register every molecule scenario** in `.github/molecule-matrix.yml` — CI fails if the scenarios on disk and the manifest disagree. Jobs are path-gated; `CI Gate` is the single required check, so never add a `paths:` trigger or require an individual job by name (see [.github/workflows/README.md](.github/workflows/README.md#path-gating))
 - **Unit tests required** for all custom Python modules
 - **Integration tests** for complex service deployments
 - **Test on servyy-test.lxd** before production deployment
