@@ -72,3 +72,6 @@ volumes:
     #
     # Explicit name on purpose: it is the name the operator types.
     name: shared_mongo_data
+
+# verification-only comment (PR closed unmerged): proves a compose edit runs
+# the architecture selftest, the only CI coverage a compose file has.
