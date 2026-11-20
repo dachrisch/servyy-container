@@ -49,7 +49,7 @@ forgejo_runner_data_dir: "{{ (forgejo_runner_service_dir, 'data') | path_join }}
 
 # The Docker host the runner daemon talks to (per backend).
 forgejo_runner_docker_host: >-
-  {{ 'tcp://dind:2376' if forgejo_runner_docker == 'dind'
+  {{ 'unix:///var/run/dind/docker.sock' if forgejo_runner_docker == 'dind'
      else 'unix:///var/run/docker.sock' }}
 
 # Extra host:ip mappings for the runner AND its job containers (as --add-host).

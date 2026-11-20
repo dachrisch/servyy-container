@@ -17,7 +17,7 @@
 
     - name: Verify the dind compose mounts the TLS certs, not the host socket
       ansible.builtin.command:
-        cmd: "grep -q 'dind-certs:/certs/client' /home/testuser/runny-dind/docker-compose.yml"
+        cmd: "grep -q 'dind-sock:/var/run/dind' /home/testuser/runny-dind/docker-compose.yml"
       changed_when: false
 
     - name: Verify the dind compose has no host-socket mount
@@ -34,7 +34,7 @@
 
     - name: Verify the dind compose sets DOCKER_HOST to the sidecar
       ansible.builtin.command:
-        cmd: "grep -q 'DOCKER_HOST=tcp://dind:2376' /home/testuser/runny-dind/docker-compose.yml"
+        cmd: "grep -q 'DOCKER_HOST=unix:///var/run/dind/docker.sock' /home/testuser/runny-dind/docker-compose.yml"
       changed_when: false
 
     # --- host variant (runny) ---------------------------------------------

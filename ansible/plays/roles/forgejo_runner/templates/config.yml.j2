@@ -38,6 +38,8 @@ container:
   options: {{ (forgejo_runner_container_options | default('') ~ ' ' ~ (forgejo_runner_extra_hosts | map('regex_replace', '^', '--add-host=') | join(' '))) | trim }}
   workdir_parent: workspace
   valid_volumes: []
-  # Empty -> use the DOCKER_HOST env var the compose injects (host socket or
-  # the dind sidecar), so the backend choice stays in the compose, not here.
-  docker_host: ""
+  # host backend: empty -> the runner finds /var/run/docker.sock itself and
+  # mounts it into job containers. dind backend: the shared dind socket, which
+  # the runner likewise mounts into job containers (the path exists inside the
+  # dind daemon, which resolves the bind), so `docker build` works in jobs.
+  docker_host: "{{ forgejo_runner_docker_host if forgejo_runner_docker == 'dind' else '' }}"

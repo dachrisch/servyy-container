@@ -20,10 +20,6 @@ services:
 {% endif %}
     environment:
       - DOCKER_HOST={{ forgejo_runner_docker_host }}
-{% if forgejo_runner_docker == 'dind' %}
-      - DOCKER_TLS_VERIFY=1
-      - DOCKER_CERT_PATH=/certs/client
-{% endif %}
     volumes:
       - ./data:/data
 {% if forgejo_runner_docker == 'host' %}
@@ -31,7 +27,9 @@ services:
       # dind sidecar's ~100 MB.
       - /var/run/docker.sock:/var/run/docker.sock
 {% elif forgejo_runner_docker == 'dind' %}
-      - dind-certs:/certs/client
+      # dind's unix socket, shared through a volume. Same path in both
+      # containers, so config.yml's docker_host can hand it on to job containers.
+      - dind-sock:/var/run/dind
 {% endif %}
     command: forgejo-runner daemon --config /data/config.yml
 {% if forgejo_runner_extra_hosts | length > 0 %}
@@ -46,17 +44,26 @@ services:
 {% endif %}
 
 {% if forgejo_runner_docker == 'dind' %}
-  # Docker-in-Docker. The runner talks to it over TLS (DOCKER_HOST + the certs
-  # above); jobs run inside this nested daemon, never on codey's host socket.
+  # Docker-in-Docker: jobs run inside this nested daemon, never on codey's host
+  # socket. No TCP listener and no TLS (2026-11-20: the cert volume layout made
+  # the runner crash-loop) -- the daemon only serves a unix socket on the shared
+  # dind-sock volume, group-owned by the deploy user's gid so the runner (which
+  # runs as that uid:gid) can use it.
   dind:
-    image: docker:dind
+    image: docker:29-dind
     container_name: ${COMPOSE_PROJECT_NAME}.dind
     restart: unless-stopped
     privileged: true
     environment:
-      DOCKER_TLS_CERTDIR: /certs
+      DOCKER_TLS_CERTDIR: ""
+    command:
+      - "--host=unix:///var/run/dind/docker.sock"
+      - "--group={{ ansible_facts.getent_passwd[create_user][2] }}"
     volumes:
-      - dind-certs:/certs
+      - dind-sock:/var/run/dind
+      # Image/build cache survives restarts. A docker volume, so restic's home
+      # backup never sees it.
+      - dind-data:/var/lib/docker
 {% endif %}
 
 {% if forgejo_runner_node_exporter | default(false) | bool %}
@@ -84,5 +91,6 @@ services:
 
 {% if forgejo_runner_docker == 'dind' %}
 volumes:
-  dind-certs: {}
+  dind-sock: {}
+  dind-data: {}
 {% endif %}
