@@ -46,7 +46,7 @@ jobs:
 
       - name: Classify the change
         id: changed
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           # The default quantifier is `some`, under which a leading `!` means "a
           # file that is NOT this" and therefore matches every non-markdown
@@ -74,7 +74,7 @@ jobs:
       # `<filter>_files` (so `ansible_files`), while `ansible` stays the boolean.
       - name: List changed ansible paths
         id: files
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           list-files: json
           filters: |
