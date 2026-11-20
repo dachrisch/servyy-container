@@ -16,7 +16,7 @@
 #}
 [
   {
-    "targets": ["{{ monitor_loki_host }}:{{ '443' if monitor_loki_scheme == 'https' else '80' }}"],
-    "labels": {"loki_scheme": "{{ monitor_loki_scheme }}"}
+    "targets": ["{{ monitor_loki_client }}"],
+    "labels": {"loki_scheme": "{{ monitor_loki_client_scheme }}"}
   }
 ]

@@ -22,6 +22,12 @@
     monitor_prometheus_host: prometheus.servyy-test.lxd
     monitor_loki_url: http://loki.servyy-test.lxd
     monitor_prometheus_url: http://prometheus.servyy-test.lxd
+    # Client URLs are separate vars (production routes vs the single-host test
+    # stack, where `.lxd` names do not resolve inside containers).
+    monitor_loki_client: "loki.servyy-test.lxd:80"
+    monitor_prometheus_client: "prometheus.servyy-test.lxd:80"
+    monitor_loki_client_scheme: http
+    monitor_prometheus_client_scheme: http
     monitor_loki_allow: ["10.0.0.0/8"]
     monitor_prometheus_allow: ["10.0.0.0/8"]
     monitor_traefik_entrypoint: web

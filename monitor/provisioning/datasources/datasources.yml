@@ -20,7 +20,7 @@ datasources:
     type: prometheus
     uid: prometheus
     access: proxy
-    url: {{ monitor_prometheus_url }}
+    url: {{ monitor_prometheus_client_scheme }}://{{ monitor_prometheus_client }}
     basicAuth: true
     basicAuthUser: {{ monitor_prometheus_auth_username }}
     isDefault: true

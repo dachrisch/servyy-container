@@ -317,8 +317,24 @@ monitor_loki_host: "loki.{{ domain | default('lehel.xyz') }}"
 monitor_prometheus_host: "prometheus.{{ domain | default('lehel.xyz') }}"
 monitor_loki_scheme: "{{ 'http' if monitor_local_traefik | default(false) | bool else 'https' }}"
 monitor_prometheus_scheme: "{{ 'http' if monitor_local_traefik | default(false) | bool else 'https' }}"
+# The ROUTE urls (what Traefik serves; used from the host, e.g. by fail2ban).
 monitor_loki_url: "{{ monitor_loki_scheme }}://{{ monitor_loki_host }}"
 monitor_prometheus_url: "{{ monitor_prometheus_scheme }}://{{ monitor_prometheus_host }}"
+# The CLIENT urls (what promtail, Prometheus and Grafana connect to). Production
+# goes through the authenticated routes. On servyy-test the clients use the
+# docker network instead: they CAN reach that host's Traefik, but `.lxd` names do
+# not resolve from inside a container (Docker's embedded DNS forwards to the
+# host's resolvers and ignores the host's /etc/hosts), so a route URL would fail
+# with "lookup loki.servyy-test.lxd: no such host". The route itself — middleware,
+# users file, allowlist — is still exercised there with curl and fail2ban.
+monitor_loki_client: >-
+  {{ 'loki:3100' if monitor_local_traefik | default(false) | bool
+     else monitor_loki_host ~ (':443' if monitor_loki_scheme == 'https' else ':80') }}
+monitor_prometheus_client: >-
+  {{ 'prometheus:9090' if monitor_local_traefik | default(false) | bool
+     else monitor_prometheus_host ~ (':443' if monitor_prometheus_scheme == 'https' else ':80') }}
+monitor_loki_client_scheme: "{{ 'http' if monitor_local_traefik | default(false) | bool else monitor_loki_scheme }}"
+monitor_prometheus_client_scheme: "{{ 'http' if monitor_local_traefik | default(false) | bool else monitor_prometheus_scheme }}"
 # Traefik entrypoint/TLS of the two cross-host routers (see monitor/.env).
 monitor_traefik_entrypoint: "{{ 'web' if monitor_local_traefik | default(false) | bool else 'websecure' }}"
 monitor_traefik_tls: "{{ 'false' if monitor_local_traefik | default(false) | bool else 'true' }}"
