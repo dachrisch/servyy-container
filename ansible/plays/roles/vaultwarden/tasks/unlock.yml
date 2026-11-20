@@ -81,26 +81,6 @@
   become: false
   when: bw_version.rc != 0
 
-# API-key (`client_credentials`) logins get an access token with a 1 h TTL and
-# NO usable refresh token: Vaultwarden answers any refresh with
-# `invalid_grant` (400), verified 2026-11-20 with `bw sync --force` on a
-# just-logged-in state. `bw login --apikey` therefore does nothing useful when
-# the CLI is already logged in ("already logged in", rc=1) - the token stays
-# expired and the first server call that needs it (`bw sync`) fails, which used
-# to abort whole deploys. Log out first so the login below always mints a new
-# token. Safe here: the plays that push (opencode_authgate, monitor_vaultwarden,
-# restic) are `strategy: linear`, and the `strategy: free` plays (system, user)
-# never call bw.
-- name: Drop the stale bw CLI login state (an API-key token cannot be refreshed)
-  ansible.builtin.command:
-    cmd: bw logout
-  delegate_to: localhost
-  run_once: true
-  become: false
-  changed_when: false
-  failed_when: false
-  no_log: true
-
 - name: Check bw authentication status
   ansible.builtin.command:
     cmd: bw status
@@ -248,16 +228,6 @@
   # 2026-11-18.
   failed_when: false
   no_log: true
-
-- name: DEBUG unlock (temporary)
-  ansible.builtin.debug:
-    msg:
-      rc: "{{ bw_unlock.rc }}"
-      stdout_len: "{{ bw_unlock.stdout | length }}"
-      trim_len: "{{ bw_unlock.stdout | trim | length }}"
-      stderr: "{{ bw_unlock.stderr | default('') | trim | truncate(200) }}"
-      master_len: "{{ vw_master_password | length }}"
-      status_after: "{{ bw_status_after | default({}) }}"
 
 # `bw unlock` exits 0 with an EMPTY stdout when BW_MASTER is unset/empty: it
 # prints "Warning: Provided passwordenv BW_MASTER is not set" on stderr and tries
@@ -415,13 +385,6 @@
   become: false
   no_log: true
 
-# Not fatal: every push in this role writes to the server directly, so a failed
-# cache refresh cannot lose data - it only leaves `bw list items` reading the
-# previous sync. Failing here aborted whole deploys on 2026-11-20 (the API-key
-# access token expires after an hour and the refresh is rejected with
-# `invalid_grant`), which is not a reason to fail a deploy. The logout+login
-# above mints a fresh token every run, so this should not trigger at all; the
-# retry and the warning are the safety net.
 - name: Sync vault
   ansible.builtin.command:
     cmd: bw sync
@@ -430,34 +393,5 @@
   delegate_to: localhost
   run_once: true
   become: false
-  register: bw_sync
   changed_when: false
-  failed_when: false
   no_log: true
-
-- name: Retry the vault sync once (transient CLI or network failure)
-  ansible.builtin.command:
-    cmd: bw sync
-  environment:
-    BW_SESSION: "{{ bw_session }}"
-  delegate_to: localhost
-  run_once: true
-  become: false
-  register: bw_sync_retry
-  changed_when: false
-  failed_when: false
-  when: bw_sync.rc != 0
-  no_log: true
-
-- name: Report a vault cache refresh that failed (the pushes themselves succeeded)
-  ansible.builtin.debug:
-    msg: >-
-      `bw sync` failed on the controller (rc={{ bw_sync.rc }}{{ ', retry rc=' ~ bw_sync_retry.rc
-      if (bw_sync_retry.rc is defined) else '' }}). The items this run pushed are already
-      on {{ vw_server }}; only the local CLI cache is stale and the next run re-syncs.
-      `invalid_grant` means the access token expired and the API-key login cannot refresh
-      it - `bw logout` and re-run to mint a new one.
-  delegate_to: localhost
-  run_once: true
-  become: false
-  when: bw_sync.rc != 0 and (bw_sync_retry.rc | default(1)) != 0
