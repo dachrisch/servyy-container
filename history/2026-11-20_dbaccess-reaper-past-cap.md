@@ -84,14 +84,36 @@ prod and stage stacks passes.
 
 Run: `cd ansible/tests/dbaccess_reap && python -m unittest -v test_reap_verdict`.
 
-## Rollout
+## Rehearsal against the deployed script (stage)
+
+`db-nonprod.mariadb` / `leaguesphere_stage`, 2026-11-20 10:15Z, after the play ran. Two
+ledger rows for one handle: a `dropped` row created **200 h ago** (the poison) and an `active`
+row created now; account `dbeaver_prod_rehearsal@192.168.16.%` created by hand.
+
+```text
+=== sweep 1: live row fresh, poison row 200 h old ===
+no drop logged
+after sweep 1: account=1 state=active
+
+=== sweep 2: live row aged to 9 h ===
+ls-db-access-reap[leaguesphere_stage]: dropping dbeaver_prod_rehearsal@192.168.16.% (past-cap)
+after sweep 2: account=0 state=dropped
+```
+
+The old query drops sweep 1 as `past-cap` (that is the bug); the deployed one keeps the
+session and still ends it at the cap. Rehearsal rows and the account were removed afterwards
+(`rehearsal_rows_left 0`, `rehearsal_account_left 0`).
+
+## Rollout — done
 
 ```bash
 cd ansible && ./servyy.sh --limit servy.lehel.xyz --tags ls.dbeaver.reap
 ssh cda@lehel.xyz 'sudo systemctl start ls-db-access-reap.service; sudo journalctl -u ls-db-access-reap -n 20'
 ```
 
-Rollback is the previous revision of the same template — the role only copies one file.
+`changed=1` (the reap script only; service/timer already current). Subsequent 5-minute sweeps
+(11:00-11:14Z) finished clean, `mysql.user` holds no `dbeaver_prod_*` account, and no drop was
+logged. Rollback is the previous revision of the same template — the role copies one file.
 
 ## Do not undo
 
