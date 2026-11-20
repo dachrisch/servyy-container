@@ -128,3 +128,5 @@
   tags:
     - user.docker.ci
     - user.docker.ci.bootstrap
+    # No systemd user bus in the molecule container.
+    - molecule-notest
