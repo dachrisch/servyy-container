@@ -1,7 +1,8 @@
 # Grafana + Loki moved from servy to codey (one project, two compose profiles)
 
 **Date:** 2026-11-20
-**Plan:** [`docs/plans/2026-11-20_grafana-to-codey.md`](../docs/plans/2026-11-20_grafana-to-codey.md)
+**Plan:** `docs/plans/2026-11-20_grafana-to-codey.md` (removed 2026-11-20, in git
+history — this entry is the durable record)
 **Relates to:** [`2026-11-18_monitor-render-out-of-checkout.md`](2026-11-18_monitor-render-out-of-checkout.md)
 (the render-into-`rendered/` pattern this change extends),
 [`2026-09-…` Loki off Traefik](../monitor/docker-compose.yml) (the exposure decision

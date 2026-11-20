@@ -50,7 +50,7 @@ prod:
           # the exporters and promtail (they read THIS host's /proc, docker socket
           # and logs) and pushes its logs to the authenticated loki.lehel.xyz
           # route on codey. See monitor/AGENTS.md and
-          # docs/plans/2026-11-20_grafana-to-codey.md.
+          # history/2026-11-20_grafana-loki-to-codey.md.
           leaguesphere: true
           # Moodle (OFFD / Flag Academy) — Christoph's referee-training platform.
           # Serves the rehearsal hostname m.leaguesphere.app until the offd.de A
