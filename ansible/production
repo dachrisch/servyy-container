@@ -208,6 +208,12 @@ prod:
         # Without IdentitiesOnly the local ssh-agent offers every key and sshd
         # drops the connection with "Too many authentication failures".
         ansible_ssh_common_args: '-o IdentitiesOnly=yes'
+        # Static IPv6 like codey (accept_ra=0 once Docker enables forwarding, so
+        # the RA address would expire). Same VCN, so the same router link-local.
+        # Provisioned 2026-11-20 by scripts/provision-oracle-runner.sh:
+        # 92.5.160.254 / this address, AD-3.
+        ipv6_address: 2603:c020:802e:5f02:0:2406:9caf:b6a3
+        ipv6_gateway: fe80::200:17ff:fecf:724
         domain: lehel.xyz
         with_docker: true
         with_containers: true

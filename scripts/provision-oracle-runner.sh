@@ -35,7 +35,7 @@ SSH_PUB=${SSH_PUB:-$HOME/.ssh/id_rsa.pub}
 SERVY_V4=${SERVY_V4:-49.13.6.173}
 SERVY_V6=${SERVY_V6:-2a01:4f8:c013:f6f4::1}
 
-# Ubuntu 24.04 minimal amd64. Empty by default: resolved at runtime from the
+# Ubuntu minimal amd64 (UBUNTU_VERSION, default 26.04 like codey). Empty by default: resolved at runtime from the
 # image catalogue. Pin it (like codey pins 26.04) once the OCID is known.
 IMAGE=${IMAGE:-}
 
@@ -83,12 +83,15 @@ public_ip() {
     jq -r '.data[0]."public-ip" // empty'
 }
 
-# Latest amd64 Ubuntu 24.04 minimal image published by Canonical.
+# Latest Ubuntu ${UBUNTU_VERSION} minimal image that is compatible with the
+# (amd64) shape. Filtering by --shape excludes the aarch64 builds.
+UBUNTU_VERSION=${UBUNTU_VERSION:-26.04}
 image_id() {
   oci_cli compute image list --compartment-id "$TENANCY" \
-    --operating-system "Canonical Ubuntu" --sort-by TIMECREATED \
-    --sort-order DESC --output json | jq -r '
-      [.data[] | select(.display-name | test("Ubuntu-24\\.04.*[Mm]inimal"))][0].id // empty'
+    --operating-system "Canonical Ubuntu" \
+    --shape "$SHAPE" --sort-by TIMECREATED --sort-order DESC --all --output json |
+    jq -r --arg v "$UBUNTU_VERSION" \
+      '[.data[] | select(."display-name" | startswith("Canonical-Ubuntu-" + $v + "-Minimal-"))][0].id // empty'
 }
 
 status() {
@@ -122,9 +125,16 @@ if [[ ! -f "$SSH_PUB" ]]; then
   exit 1
 fi
 
-AD=$(oci_cli iam availability-domain list --output json |
-  jq -r '.data[0].name')
-[[ -z "$AD" ]] && { echo "FATAL: could not resolve an availability domain" >&2; exit 1; }
+# The Always Free Micro is only offered in one availability domain per
+# tenancy, so pick the first AD whose shape list contains it.
+AD=""
+for ad in $(oci_cli iam availability-domain list --output json | jq -r '.data[].name'); do
+  if oci_cli compute shape list --compartment-id "$TENANCY" --availability-domain "$ad" \
+       --all --output json | jq -e --arg s "$SHAPE" 'any(.data[]; .shape == $s)' >/dev/null; then
+    AD=$ad; break
+  fi
+done
+[[ -z "$AD" ]] && { echo "FATAL: no availability domain offers $SHAPE" >&2; exit 1; }
 
 # ---------------------------------------------------------------- network
 
@@ -180,29 +190,52 @@ RT_RULES=$(oci_cli network route-table get --rt-id "$RT" --output json | jq -c -
      | select(.destination != "0.0.0.0/0" and .destination != "::/0")]
   + [{destination:"0.0.0.0/0", destinationType:"CIDR_BLOCK", networkEntityId:$igw},
      {destination:"::/0",        destinationType:"CIDR_BLOCK", networkEntityId:$igw}]')
-oci_cli network route-table update --rt-id "$RT" --force \
-  --route-rules "$RT_RULES" --wait-for-state AVAILABLE >/dev/null
+# The route table is shared with codey: only write it when a default route is
+# actually missing, never rewrite it on a re-run.
+if oci_cli network route-table get --rt-id "$RT" --output json | jq -e --arg igw "$IGW" '
+     [(.data."route-rules" // [])[] | select(."network-entity-id" == $igw) | .destination]
+     | (index("0.0.0.0/0") != null) and (index("::/0") != null)' >/dev/null; then
+  log "route table already routes 0.0.0.0/0 and ::/0 to the igw"
+else
+  oci_cli network route-table update --rt-id "$RT" --force \
+    --route-rules "$RT_RULES" --wait-for-state AVAILABLE >/dev/null
+fi
 
 # The runner only dials OUT, so its security list is SSH-only — plus a
 # source-scoped :9100 for servy's Prometheus to scrape node-exporter. No
 # 80/443 (runny has no Traefik). ICMPv6 (protocol 58) stays for neighbour and
 # path-MTU discovery.
+#
+# A DEDICATED security list, attached only to the runner subnet. Never touch
+# the VCN's default list: codey's subnet uses it, and rewriting it to SSH-only
+# would drop 80/443 for code.lehel.xyz, monitor.lehel.xyz and loki.lehel.xyz.
+SL_NAME=${SL_NAME:-oracle-runner-sl}
 SL=$(oci_cli network security-list list --compartment-id "$TENANCY" \
-  --vcn-id "$VCN" --output json | jq -r '.data[0].id // empty')
-log "ensuring security list: SSH only + 9100 from servy, ICMPv6, egress all"
-oci_cli network security-list update --security-list-id "$SL" --force \
-  --ingress-security-rules '[
+  --vcn-id "$VCN" --display-name "$SL_NAME" --lifecycle-state AVAILABLE \
+  --output json | jq -r '.data[0].id // empty')
+SL_INGRESS='[
     {"protocol":"6","source":"0.0.0.0/0","sourceType":"CIDR_BLOCK","isStateless":false,"tcpOptions":{"destinationPortRange":{"min":22,"max":22}}},
     {"protocol":"6","source":"::/0","sourceType":"CIDR_BLOCK","isStateless":false,"tcpOptions":{"destinationPortRange":{"min":22,"max":22}}},
     {"protocol":"6","source":"'$SERVY_V4'/32","sourceType":"CIDR_BLOCK","isStateless":false,"tcpOptions":{"destinationPortRange":{"min":9100,"max":9100}}},
     {"protocol":"6","source":"'$SERVY_V6'/128","sourceType":"CIDR_BLOCK","isStateless":false,"tcpOptions":{"destinationPortRange":{"min":9100,"max":9100}}},
     {"protocol":"58","source":"::/0","sourceType":"CIDR_BLOCK","isStateless":false},
     {"protocol":"1","source":"0.0.0.0/0","sourceType":"CIDR_BLOCK","isStateless":false}
-  ]' \
-  --egress-security-rules '[
+  ]'
+SL_EGRESS='[
     {"protocol":"all","destination":"0.0.0.0/0","destinationType":"CIDR_BLOCK","isStateless":false},
     {"protocol":"all","destination":"::/0","destinationType":"CIDR_BLOCK","isStateless":false}
-  ]' >/dev/null
+  ]'
+if [[ -z "$SL" ]]; then
+  log "creating dedicated security list $SL_NAME (SSH + 9100 from servy)"
+  SL=$(oci_cli network security-list create --compartment-id "$TENANCY" \
+    --vcn-id "$VCN" --display-name "$SL_NAME" \
+    --ingress-security-rules "$SL_INGRESS" --egress-security-rules "$SL_EGRESS" \
+    --wait-for-state AVAILABLE --output json | jq -r '.data.id')
+else
+  log "ensuring rules on $SL_NAME"
+  oci_cli network security-list update --security-list-id "$SL" --force \
+    --ingress-security-rules "$SL_INGRESS" --egress-security-rules "$SL_EGRESS" >/dev/null
+fi
 
 SUBNET=$(subnet_id "$VCN")
 if [[ -z "$SUBNET" ]]; then
@@ -229,7 +262,7 @@ if [[ -z "$IMAGE" ]]; then
   IMAGE=$(image_id)
 fi
 if [[ -z "$IMAGE" ]]; then
-  echo "FATAL: could not resolve an Ubuntu 24.04 minimal amd64 image; set IMAGE=…" >&2
+  echo "FATAL: could not resolve an Ubuntu $UBUNTU_VERSION minimal image for $SHAPE; set IMAGE=…" >&2
   exit 1
 fi
 log "image $IMAGE"
