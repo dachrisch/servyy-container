@@ -27,6 +27,11 @@ services:
     user: "${UID}:${GID}"
     restart: unless-stopped
     env_file: forgejo.env
+    environment:
+      # A custom uid has no /etc/passwd entry in the image, so Forgejo's
+      # current-user lookup comes back empty and fails RUN_USER=git; it falls
+      # back to $USER for the name.
+      USER: git
     volumes:
       # Git repositories, the SQLite DB, LFS objects, avatars and the indexers.
       # The live SQLite file itself is excluded from restic (a snapshot of a
