@@ -247,11 +247,24 @@ add_ips() {
 main() {
     log "Starting blocklist update from Loki (mode: $MODE)..."
 
-    # Check if Loki is reachable
-    if ! curl -sf -u "$LOKI_USER:$LOKI_PASSWORD" -H "X-Scope-OrgID: $LOKI_TENANT_ID" "$LOKI_URL/ready" >/dev/null 2>&1; then
-        log "ERROR: Loki is not reachable at $LOKI_URL (or rejected the blocklist credential)"
-        exit 1
-    fi
+    # Check if Loki is reachable - with retries. This unit starts as soon as
+    # fail2ban is up, while on the hosts that run the monitoring UI Loki is a
+    # CONTAINER behind local Traefik: docker.service being active does not mean
+    # the container answers. One probe therefore marked the unit `failed` on
+    # every reboot (codey, 2026-11-20). 12 x 5 s covers container start-up (and
+    # the remote-Loki case on servy, where docker ordering proves nothing), and
+    # still fails the unit when Loki is genuinely down or the credential is
+    # rejected - just a minute later.
+    local attempt=1
+    until curl -sf -u "$LOKI_USER:$LOKI_PASSWORD" -H "X-Scope-OrgID: $LOKI_TENANT_ID" "$LOKI_URL/ready" >/dev/null 2>&1; do
+        if (( attempt >= 12 )); then
+            log "ERROR: Loki is not reachable at $LOKI_URL after $attempt attempts (or rejected the blocklist credential)"
+            exit 1
+        fi
+        log "Loki not ready at $LOKI_URL yet (attempt $attempt/12); retrying in 5s"
+        sleep 5
+        attempt=$((attempt + 1))
+    done
 
     BANNED_IPS=$(get_banned_ips)
 

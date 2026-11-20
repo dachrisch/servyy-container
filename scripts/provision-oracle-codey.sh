@@ -30,8 +30,11 @@ MEMORY_GB=${MEMORY_GB:-12}
 BOOT_GB=${BOOT_GB:-100}
 SSH_PUB=${SSH_PUB:-$HOME/.ssh/id_rsa.pub}
 
-# Canonical Ubuntu 24.04 aarch64. Resolved per region; override if it rotates.
-IMAGE=${IMAGE:-ocid1.image.oc1.eu-frankfurt-1.aaaaaaaast7orcavt5xwy6jkkebtl4o2il34umu5gomppawzlabv6ejgom7a}
+# Canonical Ubuntu 26.04 aarch64 (Canonical-Ubuntu-26.04-aarch64-2026.11.05-0).
+# Resolved per region; override if it rotates. Was the 24.04 image until the
+# host was upgraded in place on 2026-11-20 (history/2026-11-20_codey-ubuntu-26-04-upgrade.md);
+# a rebuild after that date must not silently provision the old release.
+IMAGE=${IMAGE:-ocid1.image.oc1.eu-frankfurt-1.aaaaaaaahl2jtz24uqnqntt5vliczqo6ewnkqoy5oct24t72sdzkolyd3dea}
 
 log() { printf '\n=== %s\n' "$*"; }
 
