@@ -1,8 +1,11 @@
 # NOTE: `-config.expand-env=true` (docker-compose command) expands every
-# `$name` / `${name}` in this file. A literal `$` is therefore a config error —
-# "Unable to parse config: unable to parse variable name" and a crash loop
-# (measured on servyy-test 2026-11-20, from the regex anchor below). Do not add
-# one: `.*` already stops at the line end, so the anchor bought nothing.
+# dollar-prefixed token in this file, and it does so on the RAW TEXT — before
+# YAML parsing, comments included. A stray dollar sign or a braced token with a
+# non-identifier inside is therefore a config error ("unable to parse variable
+# name") and a crash loop, measured on servyy-test 2026-11-20 twice: once from a
+# regex end-of-line anchor, once from a braced ellipsis in a comment. Keep
+# literal dollar signs out of this file; the end-of-line anchor bought nothing
+# because `.*` already stops at the line end.
 server:
   http_listen_port: 9080
   grpc_listen_port: 0
@@ -14,8 +17,8 @@ clients:
   # LOKI_PUSH_URL comes from monitor/.env (prod: https://loki.lehel.xyz/loki/api/v1/push;
   # servyy-test: its own loki host through local Traefik, so the authenticated
   # path is exercised before production). `-config.expand-env=true` in the compose
-  # command is what makes ${…} expand; without it promtail treats the literal
-  # "${LOKI_PUSH_URL}" as a URL and pushes nowhere.
+  # command is what expands the placeholder below; without it promtail treats the
+  # literal braced name as a URL and pushes nowhere.
   - url: ${LOKI_PUSH_URL}
     # Authenticated cross-host route (2026-11-20): Loki now runs on codey, and its
     # Traefik router enforces basicAuth + ipAllowList. The password is rendered by
