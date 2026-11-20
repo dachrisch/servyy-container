@@ -206,6 +206,17 @@ This allows syntax checking without exposing real secrets.
 
 ## Troubleshooting
 
+### `CI Gate` is red
+
+Read the job→result table it prints: it names the job that failed. `skipped` is
+a pass — it means the paths you touched cannot affect that job, which is the
+point of path gating.
+
+A `cancelled` result is not a real failure: a newer push to the same PR cancels
+the previous run (`concurrency`), so re-run the workflow or push again. If a job
+is missing from the list entirely, its `if:` or its matrix is broken — that is
+what `Plan Molecule Matrix` and the planner tests are for.
+
 ### Linting Failures
 
 **Issue:** ansible-lint errors
