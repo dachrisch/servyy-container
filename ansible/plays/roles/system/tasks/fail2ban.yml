@@ -115,6 +115,7 @@
     group: root
     mode: '0644'
   notify: restart fail2ban
+  when: loki_blocklist_enabled | default(true)
   tags:
     - system.fail2ban.config
 
@@ -154,6 +155,7 @@
     # route) rendered into it. Only root's timer executes it, so no other user has
     # any reason to read it.
     mode: '0700'
+  when: loki_blocklist_enabled | default(true)
   tags:
     - system.fail2ban.scripts
 
@@ -165,6 +167,7 @@
     group: root
     mode: '0644'
   notify: reload systemd
+  when: loki_blocklist_enabled | default(true)
   tags:
     - system.fail2ban.timer
 
@@ -176,6 +179,7 @@
     group: root
     mode: '0644'
   notify: reload systemd
+  when: loki_blocklist_enabled | default(true)
   tags:
     - system.fail2ban.timer
 
@@ -184,6 +188,7 @@
     name: update-blocklist.timer
     enabled: yes
     state: started
+  when: loki_blocklist_enabled | default(true)
   tags:
     - system.fail2ban.timer
 
@@ -198,6 +203,7 @@
     group: root
     mode: '0644'
   notify: reload systemd
+  when: loki_blocklist_enabled | default(true)
   tags:
     - system.fail2ban.timer
     - system.fail2ban.timer.quick
@@ -210,6 +216,7 @@
     group: root
     mode: '0644'
   notify: reload systemd
+  when: loki_blocklist_enabled | default(true)
   tags:
     - system.fail2ban.timer
     - system.fail2ban.timer.quick
@@ -219,6 +226,7 @@
     name: update-blocklist-quick.timer
     enabled: yes
     state: started
+  when: loki_blocklist_enabled | default(true)
   tags:
     - system.fail2ban.timer
     - system.fail2ban.timer.quick

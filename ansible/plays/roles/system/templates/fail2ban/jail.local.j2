@@ -127,7 +127,7 @@ findtime = 600
 # first chain of the FORWARD path, ahead of Docker's own accept rules.
 # See history/2026-11-10_fail2ban-web-tier-chain-fix.md.
 [loki-blocklist]
-enabled = true
+enabled = {{ 'true' if (loki_blocklist_enabled | default(true) | bool) else 'false' }}
 port = http,https
 filter = loki-blocklist
 # This jail uses IPs from Loki queries

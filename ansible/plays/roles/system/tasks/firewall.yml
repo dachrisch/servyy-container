@@ -45,3 +45,35 @@
   tags:
     - system.firewall
     - system.firewall.edge
+
+# runny runs node-exporter on the host network (the one monitoring piece on the
+# 1 GB box); servy's Prometheus scrapes :9100 over the public internet. The edge
+# filter above only guards DOCKER-USER (container FORWARD traffic), so a host
+# process like node-exporter needs its own INPUT rule: allow :9100 from servy
+# only, drop it from everywhere else. The Oracle security list (provider) also
+# restricts 9100 to servy — this is host-level defence in depth.
+- name: Allow node-exporter scrapes from servy's Prometheus only
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    destination_port: "9100"
+    source: "{{ item }}"
+    jump: ACCEPT
+  loop: "{{ forgejo_runner_node_exporter_sources | default([]) }}"
+  become: true
+  when: forgejo_runner_node_exporter | default(false) | bool
+  tags:
+    - system.firewall
+    - system.firewall.node-exporter
+
+- name: Drop node-exporter scrapes from anywhere else
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    destination_port: "9100"
+    jump: DROP
+  become: true
+  when: forgejo_runner_node_exporter | default(false) | bool
+  tags:
+    - system.firewall
+    - system.firewall.node-exporter
