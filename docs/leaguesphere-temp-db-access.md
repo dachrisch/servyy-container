@@ -14,8 +14,10 @@ person needs live data
         │
         ├─ a SECOND staff user with `dbaccess.approve_requests`: approve or deny
         │                                      → state: approved | rejected
-        │                                        (approving your own request is refused
-        │                                         by a database constraint, not a view)
+        │                                        (the same permission holder may approve
+        │                                         their own request: written reason, event
+        │                                         `self-approved`, empty approver — the
+        │                                         constraint refuses the requester's name)
         │
         ├─ db-access sidecar, ≤ 15 s: re-validates, snapshots bak_<table>_<date>,
         │                             CREATE USER dbeaver_prod_<person>@'172.25.%',
@@ -42,7 +44,10 @@ that currently backs the account, plus a constant it holds itself. It never read
    real person.
 2. They open `/dbaccess/requests/new/`, filter and pick the tables from the curated list, choose a
    TTL, and give the purpose and a ticket reference.
-3. A second staff user approves. **This cannot be the person who asked.**
+3. A second staff user approves. Whoever may approve (`dbaccess.approve_requests` or a
+   superuser) can also approve **their own** request: that needs a written reason and is recorded
+   as `self-approved`, with the row's `approver` left empty so the missing second signature stays
+   visible.
 4. Within about fifteen seconds the request page offers **Show password**. That is the only
    place the credential appears; every reveal is recorded.
 5. DBeaver. The tunnel account is transport only — the identity is the minted MySQL user:
@@ -280,7 +285,8 @@ SELECT person, state, db_user, grant_host, created_at, activated_at
 
 ## Deliberate absences
 
-No self-service: a second person is the control, and the constraint enforces it. No per-person
+No silent self-approval: a second person is still the control, and a self-approval exists only as
+a recorded exception (written reason, `self-approved` event, no approver in the row). No per-person
 SSH account: the tunnel is transport, the database account is identity, and attribution lives in
 `dbaccess_event` + `server_audit.log`. No extension: a second day is a new request, a new account
 and a new password.
