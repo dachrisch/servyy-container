@@ -1,6 +1,13 @@
 [Unit]
 Description=Fast fail2ban blocklist update from Loki (short windows)
-After=network.target fail2ban.service
+After=network.target fail2ban.service docker.service
+Wants=docker.service
+# Ordering note (2026-11-20): on hosts that run the monitoring UI, Loki is a
+# CONTAINER behind local Traefik, so `fail2ban.service` alone starts this unit
+# before the container can answer and the single readiness probe marked the unit
+# failed on every reboot. Order after docker here; the script also retries the
+# probe for up to a minute, which is what covers container readiness (and the
+# remote Loki case on servy, where docker ordering proves nothing).
 # Runs every 2 minutes: its queries only look at the last 1-2 minutes, so this
 # is what bans a flooding client while the flood is still going. The hourly
 # update-blocklist.service keeps the 24h queries (SSH brute force, scanner UAs,
