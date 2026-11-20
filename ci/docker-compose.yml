@@ -22,7 +22,9 @@ services:
   forgejo:
     image: codeberg.org/forgejo/forgejo:15.0.12-rootless
     container_name: ${COMPOSE_PROJECT_NAME}.forgejo
-    user: "1000:1000"
+    # The deploy user (cda) owns ./data and ./conf; its uid differs per host
+    # (1000 on servy, 1001 on servyy-test), so take it from the rendered .env.
+    user: "${UID}:${GID}"
     restart: unless-stopped
     env_file: forgejo.env
     volumes:

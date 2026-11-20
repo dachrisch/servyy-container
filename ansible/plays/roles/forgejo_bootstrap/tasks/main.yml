@@ -5,14 +5,15 @@
 # ci.forgejo up.
 
 - name: Wait for Forgejo to answer /api/healthz
-  ansible.builtin.uri:
-    url: "{{ forgejo_root_url }}/api/healthz"
-    status_code: [200]
-    validate_certs: false
+  # Checked inside the container: the deploy host does not necessarily resolve
+  # its own public name (servyy-test has no DNS for ci.servyy-test.lxd).
+  ansible.builtin.command:
+    cmd: docker exec {{ forgejo_bootstrap_container }} wget -qO- http://localhost:3000/api/healthz
   register: forgejo_health
-  until: forgejo_health.status == 200
+  until: forgejo_health.rc == 0
   retries: 40
   delay: 5
+  changed_when: false
   tags:
     - user.docker.ci
     - user.docker.ci.bootstrap
