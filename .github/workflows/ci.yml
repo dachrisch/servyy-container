@@ -305,6 +305,16 @@ jobs:
           cd ansible/tests/restore_drill_ready
           python -m unittest -v test_ready
 
+      # The db-access reaper judged a person's whole ledger history: MIN(created_at)
+      # over every row with the same deterministic db_user, so a session minted
+      # today was 'past-cap' because a row from a week ago was still there
+      # (measured 2026-11-20: dropped 3m50s after activation). Renders the real
+      # template and pins the cap to the rows that back the account.
+      - name: Run db-access reap verdict tests
+        run: |
+          cd ansible/tests/dbaccess_reap
+          python -m unittest -v test_reap_verdict
+
   molecule-test:
     name: Molecule Test (${{ matrix.role }}/${{ matrix.scenario }})
     needs: [lint-yaml, lint-ansible, lint-python, syntax-check]

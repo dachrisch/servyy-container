@@ -153,15 +153,23 @@ SQL
       continue
     fi
 
+    # Only the row that currently backs the account may judge it. `db_user` is
+    # deterministic (`dbeaver_prod_<person>`) and stays on dropped rows, so the
+    # ledger keeps one person's whole history under that key. Reading
+    # MIN(created_at) over ALL of those rows measured the oldest session they
+    # ever had: measured 2026-11-20, a session created 08:00Z was dropped as
+    # 'past-cap' at 08:55Z - 3m50s after activation - because a 13.11. row was
+    # still in the table. 'approved' is live here too: it is the window between
+    # CREATE USER and the row update, which the session-kill pass below spares.
     verdict=$(sql "$DB_CONTAINER" <<SQL
 SELECT CASE
          WHEN COUNT(*) = 0 THEN 'no-request-row'
-         WHEN SUM(state IN ('active','revoke_requested','expired')) = 0 THEN 'not-active'
          WHEN MIN(created_at) < NOW() - INTERVAL ${CAP_H} HOUR THEN 'past-cap'
          ELSE 'ok'
        END
   FROM \`${DB}\`.\`dbaccess_request\`
- WHERE db_user='${user}';
+ WHERE db_user='${user}'
+   AND state IN ('approved','active','revoke_requested','expired');
 SQL
 )
 
