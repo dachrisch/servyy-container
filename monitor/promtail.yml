@@ -1,3 +1,8 @@
+# NOTE: `-config.expand-env=true` (docker-compose command) expands every
+# `$name` / `${name}` in this file. A literal `$` is therefore a config error —
+# "Unable to parse config: unable to parse variable name" and a crash loop
+# (measured on servyy-test 2026-11-20, from the regex anchor below). Do not add
+# one: `.*` already stops at the line end, so the anchor bought nothing.
 server:
   http_listen_port: 9080
   grpc_listen_port: 0
@@ -91,7 +96,7 @@ scrape_configs:
       - drop:
           older_than: 4h
       - regex:
-          expression: '^(?P<timestamp>\w+\s+\d+\s+\d+:\d+:\d+)\s+(?P<host>\S+)\s+(?P<program>[^\[:]+)(?:\[(?P<pid>\d+)\])?:\s+(?P<message>.*)$'
+          expression: '^(?P<timestamp>\w+\s+\d+\s+\d+:\d+:\d+)\s+(?P<host>\S+)\s+(?P<program>[^\[:]+)(?:\[(?P<pid>\d+)\])?:\s+(?P<message>.*)'
       - labels:
           host:
           program:

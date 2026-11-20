@@ -14,16 +14,11 @@ test:
       # Rehearses the split stack: BOTH halves run here (collect + ui), so the
       # cross-host routes and their auth are exercised against the local Traefik
       # before any production deploy. Production values live in vars/default.yml;
-      # the overrides below exist because this host has no public DNS and no
-      # Let's Encrypt, and reaches itself from a private address.
+      # this switch makes those defaults resolve to: plain `web`, no ACME
+      # resolver, http URLs, and private source ranges. It must stay an
+      # inventory-only var (see the note in vars/default.yml).
+      monitor_local_traefik: true
       monitor_profiles: [collect, ui]
-      monitor_traefik_entrypoint: web
-      monitor_traefik_tls: "false"
-      monitor_traefik_certresolver: ""
-      monitor_loki_scheme: http
-      monitor_prometheus_scheme: http
-      monitor_loki_allow: ["10.0.0.0/8", "172.16.0.0/12"]
-      monitor_prometheus_allow: ["10.0.0.0/8", "172.16.0.0/12"]
       # The container-health probe is generated from the PRODUCTION docker.services
       # list, so on this host every container that is not supposed to exist here
       # would be reported as down — and test's own Grafana (ui profile) evaluates

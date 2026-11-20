@@ -306,19 +306,23 @@ monitor:
 # over exactly two authenticated Traefik routes:
 #   loki.lehel.xyz       on codey  <- servy's promtail/fail2ban, servy's Prometheus
 #   prometheus.lehel.xyz on servy  <- codey's Grafana datasource
-# Every value below is a default for PRODUCTION; ansible/testing overrides the
-# scheme/entrypoint/certresolver/allowlist because the test host has no public
-# DNS, no Let's Encrypt and reaches itself through the local Traefik.
+#
+# PRODUCTION values are the defaults here. servyy-test rides its own Traefik over
+# plain `web`, with private source ranges, because it has no public DNS and no
+# Let's Encrypt. That switch is `monitor_local_traefik` (inventory-only) — it must
+# NOT be defined in this file: play vars_files outrank inventory host vars, so an
+# ansible/testing override of a key defined here is silently ignored (measured
+# 2026-11-20: the test host rendered the production https/websecure values).
 monitor_loki_host: "loki.{{ domain | default('lehel.xyz') }}"
 monitor_prometheus_host: "prometheus.{{ domain | default('lehel.xyz') }}"
-monitor_loki_scheme: https
-monitor_prometheus_scheme: https
+monitor_loki_scheme: "{{ 'http' if monitor_local_traefik | default(false) | bool else 'https' }}"
+monitor_prometheus_scheme: "{{ 'http' if monitor_local_traefik | default(false) | bool else 'https' }}"
 monitor_loki_url: "{{ monitor_loki_scheme }}://{{ monitor_loki_host }}"
 monitor_prometheus_url: "{{ monitor_prometheus_scheme }}://{{ monitor_prometheus_host }}"
 # Traefik entrypoint/TLS of the two cross-host routers (see monitor/.env).
-monitor_traefik_entrypoint: websecure
-monitor_traefik_tls: "true"
-monitor_traefik_certresolver: letsencryptdnsresolver
+monitor_traefik_entrypoint: "{{ 'web' if monitor_local_traefik | default(false) | bool else 'websecure' }}"
+monitor_traefik_tls: "{{ 'false' if monitor_local_traefik | default(false) | bool else 'true' }}"
+monitor_traefik_certresolver: "{{ '' if monitor_local_traefik | default(false) | bool else 'letsencryptdnsresolver' }}"
 # ipAllowList source ranges — defence in depth, basicAuth is the control (a v6
 # client can be masked as 172.18.0.1 if the proxy network lacks IPv6; it does
 # carry IPv6 on both hosts since 2026-11-11). servy 49.13.6.173 /
@@ -333,3 +337,6 @@ monitor_loki_allow:
 monitor_prometheus_allow:
   - 138.2.180.191/32
   - 2603:c020:802e:5f01:0:876f:f045:3504/128
+# servyy-test: both containers reach the local Traefik from a private address.
+monitor_loki_allow_local: ["10.0.0.0/8", "172.16.0.0/12"]
+monitor_prometheus_allow_local: ["10.0.0.0/8", "172.16.0.0/12"]
