@@ -1,0 +1,43 @@
+# Forgejo Actions runner config (rendered to ./data/config.yml by the
+# forgejo_runner role). Read by `forgejo-runner daemon` from its working dir
+# (/data) alongside the .runner registration file.
+#
+# Secrets do NOT belong here: registration is the .runner file written by
+# `forgejo-runner create-runner-file` (offline shared secret from
+# `forgejo_runner_secret` in secrets.yml), and the Docker backend is selected by
+# the DOCKER_HOST env var the compose injects.
+
+log:
+  level: info
+
+runner:
+  # The .runner file in the same directory (written by create-runner-file).
+  file: .runner
+  # Max concurrent jobs.
+  capacity: {{ forgejo_runner_capacity }}
+  # Job timeout ceiling (3h, Forgejo default).
+  timeout: 3h
+  insecure: false
+  fetch_timeout: 5s
+  fetch_interval: 2s
+  # Labels advertise which jobs this runner will take. Value is `host` (run on
+  # the host) or `docker://<image>` (run in a container). Set in the inventory.
+  labels:
+{% for label in forgejo_runner_labels %}
+    - "{{ label }}"
+{% endfor %}
+
+cache:
+  enabled: true
+  dir: cache
+
+container:
+  network: ""
+  privileged: false
+  # Extra `docker create` options for every job container (memory caps etc.).
+  options: {{ forgejo_runner_container_options | default('') }}
+  workdir_parent: workspace
+  valid_volumes: []
+  # Empty -> use the DOCKER_HOST env var the compose injects (host socket or
+  # the dind sidecar), so the backend choice stays in the compose, not here.
+  docker_host: ""

@@ -1,0 +1,53 @@
+---
+# forgejo_runner — deploys the Forgejo Actions runner from the `runny/` service
+# dir to the runner hosts (codey = dind backend, runny = host-socket backend).
+#
+# The compose is TEMPLATED (not a committed static file) because the Docker
+# backend is chosen per host by `forgejo_runner_docker`:
+#   * `dind` — a privileged `docker:dind` sidecar on an internal network, used
+#     on codey (mounting codey's host socket would expose the claude-hub and
+#     opencode credentials to CI jobs);
+#   * `host` — the host socket, used on runny (saves ~100 MB; the box holds no
+#     secrets).
+# The runner image is multi-arch (`data.forgejo.org/forgejo/runner`), so the
+# same file serves both amd64 (runny) and arm64 (codey).
+
+forgejo_runner_version: "13.2.1"
+forgejo_runner_image: "data.forgejo.org/forgejo/runner:{{ forgejo_runner_version }}"
+
+# The Forgejo instance the runner registers against and polls for jobs.
+forgejo_runner_instance: "https://ci.lehel.xyz"
+
+# Registered runner NAME (labels/secret identify it on the Forgejo side).
+# codey -> "codey", runny -> "runny", servyy-test -> "test".
+forgejo_runner_name: "{{ inventory_hostname | regex_replace('\\..*$', '') }}"
+
+# Runner labels (name:value). Value is `host` (run on the host) or
+# `docker://<image>` (run in a container). Set per host in the inventory.
+forgejo_runner_labels: []
+
+# Max concurrent jobs this runner accepts.
+forgejo_runner_capacity: 1
+
+# Docker backend: `host` (host socket) or `dind` (docker-in-docker sidecar).
+forgejo_runner_docker: host
+
+# Install amd64 binfmt emulation (QEMU) so arm64 codey can build amd64 images.
+forgejo_runner_qemu: false
+
+# Extra `docker create` options applied to every job container, e.g. memory
+# caps. Rendered into config.yml's container.options.
+forgejo_runner_container_options: ""
+
+# Run node-exporter on this runner host (the only monitoring piece on runny).
+forgejo_runner_node_exporter: false
+
+# Where the service dir lives on the host. The runner's config.yml and .runner
+# both live in ./data (bind-mounted to /data, the runner's working dir).
+forgejo_runner_service_dir: "{{ (docker.remote_dir, 'runny') | path_join }}"
+forgejo_runner_data_dir: "{{ (forgejo_runner_service_dir, 'data') | path_join }}"
+
+# The Docker host the runner daemon talks to (per backend).
+forgejo_runner_docker_host: >-
+  {{ 'tcp://dind:2376' if forgejo_runner_docker == 'dind'
+     else 'unix:///var/run/docker.sock' }}
