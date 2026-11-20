@@ -40,7 +40,8 @@ services:
 {% endif %}
 {% if forgejo_runner_docker == 'dind' %}
     depends_on:
-      - dind
+      dind:
+        condition: service_healthy
 {% endif %}
 
 {% if forgejo_runner_docker == 'dind' %}
@@ -64,6 +65,13 @@ services:
       # Image/build cache survives restarts. A docker volume, so restic's home
       # backup never sees it.
       - dind-data:/var/lib/docker
+    # The runner only starts once the socket answers (otherwise its first start
+    # races dockerd and exits).
+    healthcheck:
+      test: ["CMD", "docker", "-H", "unix:///var/run/dind/docker.sock", "info"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
 {% endif %}
 
 {% if forgejo_runner_node_exporter | default(false) | bool %}
