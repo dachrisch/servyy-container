@@ -212,6 +212,22 @@
     or ((bw_status_after.get('serverUrl', '') | trim) != vw_server)
     or ((bw_status_after.get('userEmail', '') | length) == 0)
 
+# Force a *locked* start: `bw unlock` against a locally cached unlocked vault
+# exits 0 and prints NOTHING, which the role used to read as "empty password"
+# and turn into a failed deploy (2026-11-20). Locking first guarantees a real
+# decrypt, so the session key is always on stdout. Safe alongside other hosts:
+# the pushing plays are `strategy: linear`, and the `strategy: free` plays
+# (system, user) never call bw.
+- name: Lock the vault before unlocking it (a cached unlock prints nothing)
+  ansible.builtin.command:
+    cmd: bw lock
+  delegate_to: localhost
+  run_once: true
+  become: false
+  changed_when: false
+  failed_when: false
+  no_log: true
+
 - name: Unlock vault with the resolved master password
   ansible.builtin.command:
     cmd: bw unlock --passwordenv BW_MASTER --raw
@@ -222,6 +238,13 @@
   become: false
   register: bw_unlock
   changed_when: false
+  # rc=0 with EMPTY stdout has been observed intermittently (2026-11-20:
+  # the Grafana push in one full run, while the same code passed minutes later).
+  # The CLI reports success and prints nothing. A wrong password exits rc!=0,
+  # so the retry stops immediately and cannot hammer the unlock rate limit.
+  until: bw_unlock.rc != 0 or (bw_unlock.stdout | trim | length > 0)
+  retries: 3
+  delay: 2
   # Not failing here on purpose: the reason is classified and reported by the
   # visible tasks below, whereas failing inside this no_log task censors
   # everything into "the output has been hidden" - exactly what happened on
@@ -311,6 +334,22 @@
         - bw_login_retry.rc != 0
         - "'already logged in' not in bw_login_retry_text"
 
+    # Force a *locked* start: `bw unlock` against a locally cached unlocked vault
+    # exits 0 and prints NOTHING, which the role used to read as "empty password"
+    # and turn into a failed deploy (2026-11-20). Locking first guarantees a real
+    # decrypt, so the session key is always on stdout. Safe alongside other hosts:
+    # the pushing plays are `strategy: linear`, and the `strategy: free` plays
+    # (system, user) never call bw.
+    - name: Lock the vault before unlocking it (a cached unlock prints nothing)
+      ansible.builtin.command:
+        cmd: bw lock
+      delegate_to: localhost
+      run_once: true
+      become: false
+      changed_when: false
+      failed_when: false
+      no_log: true
+
     - name: Unlock vault again against the rebuilt login state
       ansible.builtin.command:
         cmd: bw unlock --passwordenv BW_MASTER --raw
@@ -318,6 +357,13 @@
         BW_MASTER: "{{ vw_master_password }}"
       register: bw_unlock_retry
       changed_when: false
+      # rc=0 with EMPTY stdout has been observed intermittently (2026-11-20:
+      # the Grafana push in one full run, while the same code passed minutes later).
+      # The CLI reports success and prints nothing. A wrong password exits rc!=0,
+      # so the retry stops immediately and cannot hammer the unlock rate limit.
+      until: bw_unlock_retry.rc != 0 or (bw_unlock_retry.stdout | trim | length > 0)
+      retries: 3
+      delay: 2
       failed_when: false
       no_log: true
 
@@ -385,6 +431,14 @@
   become: false
   no_log: true
 
+# Not fatal, and repaired reactively. The CLI's access token is a 2 h JWT and an
+# API-key login cannot refresh it: `bw login --apikey` is a no-op while a token
+# exists ("already logged in"), so once the token dies the first server call
+# (`bw sync`) fails with invalid_grant and used to abort whole deploys. Rebuild
+# the login only when that happens - doing it on every push changes the happy
+# path that has worked since August. Every push in this role writes to the
+# server directly, so a cache refresh that still fails is a warning, not a
+# deploy failure.
 - name: Sync vault
   ansible.builtin.command:
     cmd: bw sync
@@ -393,5 +447,73 @@
   delegate_to: localhost
   run_once: true
   become: false
+  register: bw_sync
   changed_when: false
+  failed_when: false
   no_log: true
+
+- name: Rebuild the bw login state when the sync shows a dead access token
+  when: bw_sync.rc != 0
+  delegate_to: localhost
+  run_once: true
+  become: false
+  block:
+    - name: Drop the expired bw login
+      ansible.builtin.command:
+        cmd: bw logout
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+    - name: Point the fresh CLI state at the self-hosted Vaultwarden
+      ansible.builtin.command:
+        cmd: "bw config server {{ vw_server }}"
+      changed_when: false
+
+    - name: Log in again with the API key
+      ansible.builtin.command:
+        cmd: bw login --apikey
+      environment:
+        BW_CLIENTID: "{{ vaultwarden_api.client_id }}"
+        BW_CLIENTSECRET: "{{ vaultwarden_api.client_secret }}"
+      register: bw_sync_login
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+    - name: Unlock again with the resolved master password
+      ansible.builtin.command:
+        cmd: bw unlock --passwordenv BW_MASTER --raw
+      environment:
+        BW_MASTER: "{{ vw_master_password }}"
+      register: bw_sync_unlock
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+    - name: Adopt the new session when one was returned
+      ansible.builtin.set_fact:
+        bw_session: "{{ bw_sync_unlock.stdout | trim }}"
+      when: (bw_sync_unlock.stdout | default('') | trim | length) > 0
+      no_log: true
+
+    - name: Sync again with the new token
+      ansible.builtin.command:
+        cmd: bw sync
+      environment:
+        BW_SESSION: "{{ bw_session }}"
+      register: bw_sync_retry
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+- name: Report a vault cache that could not be refreshed (the pushes still succeeded)
+  ansible.builtin.debug:
+    msg: >-
+      `bw sync` failed (rc={{ bw_sync.rc }}) and the login rebuild did not fix it
+      (login rc={{ bw_sync_login.rc | default('-') }}, unlock key length
+      {{ bw_sync_unlock.stdout | default('') | trim | length }},
+      retry rc={{ bw_sync_retry.rc | default('-') }}). The items this run pushed are
+      already on {{ vw_server }}; only the local CLI cache is stale.
+      `invalid_grant` means the access token expired and could not be replaced.
+  when: bw_sync.rc != 0 and (bw_sync_retry.rc | default(1)) != 0
