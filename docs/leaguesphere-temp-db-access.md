@@ -22,7 +22,8 @@ person needs live data
         ├─ db-access sidecar, ≤ 15 s: re-validates, snapshots bak_<table>_<date>,
         │                             CREATE USER dbeaver_prod_<person>@'172.25.%',
         │                             SELECT + UPDATE on the named tables only
-        │                                      → state: active, credential handed over once
+        │                                      → state: active, credential handed to the
+        │                                        requester only (nobody else may reveal)
         │
         ├─ the person works through the shared tunnel
         │
@@ -48,8 +49,10 @@ that currently backs the account, plus a constant it holds itself. It never read
    superuser) can also approve **their own** request: that needs a written reason and is recorded
    as `self-approved`, with the row's `approver` left empty so the missing second signature stays
    visible.
-4. Within about fifteen seconds the request page offers **Show password**. That is the only
-   place the credential appears; every reveal is recorded.
+4. Within about fifteen seconds the request page offers **Show password** — to the requester
+   only, whose row it is. That is the only place the credential appears; every reveal is recorded.
+   An approver or another admin can stop the session but can never read the password, and the
+   Django admin does not render the column.
 5. DBeaver. The tunnel account is transport only — the identity is the minted MySQL user:
 
    | | prod | stage |
@@ -286,7 +289,10 @@ SELECT person, state, db_user, grant_host, created_at, activated_at
 ## Deliberate absences
 
 No silent self-approval: a second person is still the control, and a self-approval exists only as
-a recorded exception (written reason, `self-approved` event, no approver in the row). No per-person
+a recorded exception (written reason, `self-approved` event, no approver in the row). No second
+reader: the password is revealable by the requester alone — an approver or a superuser can end the
+session, never read the credential, and there is no admin back door to it. If the requester is
+gone, the session is revoked and re-requested. No per-person
 SSH account: the tunnel is transport, the database account is identity, and attribution lives in
 `dbaccess_event` + `server_audit.log`. No extension: a second day is a new request, a new account
 and a new password.
