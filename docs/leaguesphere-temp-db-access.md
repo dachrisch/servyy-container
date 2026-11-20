@@ -21,7 +21,8 @@ person needs live data
         │
         ├─ db-access sidecar, ≤ 15 s: re-validates, snapshots bak_<table>_<date>,
         │                             CREATE USER dbeaver_prod_<person>@'172.25.%',
-        │                             SELECT + UPDATE on the named tables only
+        │                             SELECT + UPDATE on the named tables, plus
+        │                             INSERT/DELETE only when ticked and approved
         │                                      → state: active, credential handed to the
         │                                        requester only (nobody else may reveal)
         │
@@ -44,11 +45,15 @@ that currently backs the account, plus a constant it holds itself. It never read
    (lowercase letters and digits), so the account is `dbeaver_prod_<login>` and always names a
    real person.
 2. They open `/dbaccess/requests/new/`, filter and pick the tables from the curated list, choose a
-   TTL, and give the purpose and a ticket reference.
+   TTL, and give the purpose and a ticket reference. Two checkboxes, both off by default, widen
+   the grant on those tables: **INSERT** (create rows) and **DELETE** (remove rows). Unticked,
+   the request is read + `UPDATE`, exactly as before.
 3. A second staff user approves. Whoever may approve (`dbaccess.approve_requests` or a
    superuser) can also approve **their own** request: that needs a written reason and is recorded
    as `self-approved`, with the row's `approver` left empty so the missing second signature stays
-   visible.
+   visible. The same rule applies to INSERT and DELETE - there is no extra second-person rule for
+   write privileges. The decision surfaces show the full set ("Read + UPDATE", "+ INSERT",
+   "+ DELETE"), and DELETE is marked irreversible.
 4. Within about fifteen seconds the request page offers **Show password** — to the requester
    only, whose row it is. That is the only place the credential appears; every reveal is recorded.
    An approver or another admin can stop the session but can never read the password, and the
@@ -69,7 +74,8 @@ that currently backs the account, plus a constant it holds itself. It never read
    account's grant matches. Stage's plain publish (`127.0.0.1:33062`) delivers the host's address
    instead and answers `1045` for every minted account; it stays available for anything granted
    from the host address. The account allows 4 connections, 60 s per statement, `SELECT` on the
-   schema and `SELECT, UPDATE` on the requested tables only — no `INSERT`, `DELETE` or DDL.
+   allow-listed tables and `SELECT, UPDATE` on the requested tables, plus `INSERT` and/or `DELETE`
+   there when the request ticked them. DDL is never granted.
 
 6. When done — same day — anyone who can see the session clicks **Revoke now**. Otherwise the
    cap does it within five minutes of the eighth hour. The clock starts when the request is
@@ -80,9 +86,11 @@ that currently backs the account, plus a constant it holds itself. It never read
 | | |
 |---|---|
 | `SELECT` | every allow-listed table, granted one by one — a diagnosis needs context, but not `auth_user`, `django_session`, the OAuth2/Knox/Moodle tokens or `dbaccess_request` (which holds the plaintext credential of an unrevealed session) |
-| `UPDATE` | **only** the tables named on the request |
+| `UPDATE` | **only** the tables named on the request, always |
+| `INSERT` | **only** the tables named on the request, and only when the requester ticked it and the approver signed for it |
+| `DELETE` | **only** the tables named on the request, only when ticked and approved — and irreversible: the rows come back only from the `bak_<table>_<date>` copy by a manual `INSERT … SELECT` |
 | `CREATE` | nothing. The `bak_<table>_<date>` copies exist already, taken before the grant |
-| `INSERT` / `DELETE` / DDL | nothing |
+| DDL | nothing |
 | connections | 4 at most; one statement is killed at 60 s |
 | hosts | `172.25.%` only — the app's private network, not the finance network |
 
@@ -92,6 +100,8 @@ that currently backs the account, plus a constant it holds itself. It never read
 2. Scope the rows with a `SELECT` first, in the same transaction, and state the row count.
 3. Check the snapshot exists (`SELECT COUNT(*) FROM bak_<table>_<date>`) before the first write.
    The account has no `CREATE`, so if it is missing you must stop and ask for a new request.
+   The copy holds the rows as they were **before** the session: rows you `INSERT` are not in it,
+   and a `DELETE` is undone only by a manual `INSERT … SELECT` from it.
 4. One table per transaction; re-run the scoping `SELECT` before `COMMIT`; prefer `ROLLBACK`
    to debugging a committed mistake.
 5. Keep the statements in a `.sql` file and hand it over. That file plus the audit log
@@ -153,6 +163,12 @@ ssh servy.lehel.xyz 'docker stop portainer.watchtower-dev'
 Compose compares the image *reference*, not the image id, so after loading a new build do
 `docker rm -f leaguesphere_stage.staging-app` before the deploy or the container is not recreated.
 Restart `portainer.watchtower-dev` when the rehearsal is over.
+
+**State 2026-11-20:** the provisioner holds `DELETE` as well, and a request may ask for
+`INSERT` and/or `DELETE` on its picked tables. Both are off by default, appear in the approval
+surface and in the audit events, and a failed `DELETE` grant parks the request as `failed`
+instead of minting a half-privileged account. Sessions minted before the change keep their old
+grant until they are reaped. See `history/2026-11-20_dbaccess-insert-delete.md`.
 
 **State 2026-10-27:** **prod and stage both run it.** Prod is release `4.44.0`
 (`leaguesphere/backend:latest`), `DBACCESS_ENABLED=true`, allow-list seeded (104 grantable,
@@ -255,10 +271,14 @@ ssh servy.lehel.xyz "sudo journalctl -u ls-db-access-reap.service -n 20 --no-pag
 ```
 
 **What the provisioner account may do** (and may not): `CREATE USER` globally, and
-`SELECT, INSERT, UPDATE, CREATE` on the application schema with `GRANT OPTION`, so it can take the
-`bak_<table>_<date>` snapshot and hand out `SELECT`/`UPDATE` on named tables. It deliberately has
-**no `PROCESS`**: that is global (it would expose every session's query text and allow killing any
-connection) and MariaDB has no scoped variant.
+`SELECT, INSERT, UPDATE, DELETE, CREATE` on the application schema; the data privileges carry
+`GRANT OPTION`, so it can take the `bak_<table>_<date>` snapshot and hand out
+`SELECT`/`UPDATE`/`INSERT`/`DELETE` on named tables. MariaDB keeps the grant option **per
+database**, not per privilege: that one option also covers INSERT and DELETE, and there is no
+way to pass on UPDATE while withholding INSERT. `CREATE` is a separate statement without the
+option, so a temporary account never gets it. It deliberately has **no `PROCESS`**: that is
+global (it would expose every session's query text and allow killing any connection) and
+MariaDB has no scoped variant.
 
 Consequence for **Revoke now**: the sidecar drops the account within ~15 s, so no new connection
 can be opened, but an already-open session keeps working until the reaper's next sweep kills it —
@@ -287,6 +307,10 @@ SELECT person, state, db_user, grant_host, created_at, activated_at
 | nobody can approve | permission not granted | Django admin → users → `dbaccess.approve_requests` |
 
 ## Deliberate absences
+
+No blanket write access: `INSERT` and `DELETE` are per request and per table, and the default
+stays read + `UPDATE`. A session minted before 2026-11-20 keeps its old grant until the reaper
+drops it; a new privilege needs a new request. No DDL, ever.
 
 No silent self-approval: a second person is still the control, and a self-approval exists only as
 a recorded exception (written reason, `self-approved` event, no approver in the row). No second
