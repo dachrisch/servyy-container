@@ -138,6 +138,12 @@ remembering:
    all — `molecule-test` appeared as `failure` with no jobs under it, which the
    gate then reported correctly (`CI Gate: FAILED - molecule-test=failure`).
    That is the gate doing its job: nothing silently went green.
+3. The classifier needs `predicate-quantifier: every`. Under the default `some`,
+   a leading `!` means "a file that is not this", so `!**/*.md` matched every
+   non-markdown file's complement and a lone `.github/workflows/README.md`
+   returned `ansible=true` and `ci=true` — a docs-only PR ran the whole suite
+   (measured on PR #318 before the fix). `every` requires one file to satisfy
+   both "under `ansible/**`" and "not a doc", which is the intended rule.
 
 After merge: ruleset `21452638` required `CI Gate` only; a docs-only PR reported
 `Validate git-crypt Encryption` + `CI Gate` and was mergeable without a single
