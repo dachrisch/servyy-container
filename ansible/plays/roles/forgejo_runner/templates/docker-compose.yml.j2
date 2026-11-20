@@ -12,6 +12,8 @@ services:
     container_name: ${COMPOSE_PROJECT_NAME}.runner
     restart: unless-stopped
     working_dir: /data
+    # The deploy user owns ./data (uid differs per host).
+    user: "{{ ansible_facts.getent_passwd[create_user][1] }}:{{ ansible_facts.getent_passwd[create_user][2] }}"
 {% if forgejo_runner_docker == 'host' %}
     group_add:
       - "{{ ansible_facts.getent_group.docker[1] }}"

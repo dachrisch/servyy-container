@@ -2,6 +2,16 @@
 # forgejo_runner — deploy the Forgejo Actions runner from the runny/ service
 # dir. Runs on the runner hosts (codey, runny); skipped elsewhere.
 
+# The runner (and its one-shot registration) run as the deploy user, which owns
+# ./data. Its uid differs per host (1000 on servy/codey, 1001 on servyy-test),
+# and the image's default uid 1000 cannot write ./data where it doesn't match.
+- name: Look up the deploy user's uid/gid for the runner
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ create_user }}"
+  tags:
+    - user.docker.runny
+
 - name: Ensure the runner data directory exists
   ansible.builtin.file:
     path: "{{ forgejo_runner_data_dir }}"
@@ -63,6 +73,7 @@
   ansible.builtin.command:
     cmd: >-
       docker run --rm
+      -u {{ ansible_facts.getent_passwd[create_user][1] }}:{{ ansible_facts.getent_passwd[create_user][2] }}
       -v {{ forgejo_runner_data_dir }}:/data
       -w /data
       {{ forgejo_runner_image }}
