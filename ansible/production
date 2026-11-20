@@ -224,6 +224,8 @@ prod:
         # Stateless: no Storage Box mount and no restic. A lost runner is
         # recreated by a redeploy (re-registers from forgejo_runner_secrets[<runner>]).
         skip_storagebox: true
+        # Never backed up: ends plays/restic.yml and plays/restore_drill.yml.
+        restic_skip: true
         # Light system play on 1 GB (see ansible/production header): the Loki
         # blocklist is the one fail2ban piece this host skips (it has no Loki
         # query route and no room); portainer-agent and promtail are simply not

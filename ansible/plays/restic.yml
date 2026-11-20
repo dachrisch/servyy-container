@@ -12,6 +12,13 @@
     - vars/db_tenants.yml
     - vars/secrets.yml
   pre_tasks:
+    # Stateless hosts (the runny CI runner) are never backed up. End the play
+    # for them before any restic wiring, repo init or timer runs.
+    - name: Skip restic on hosts with restic_skip
+      ansible.builtin.meta: end_host
+      when: restic_skip | default(false) | bool
+      tags:
+        - always
     # Validate the restic inventory and build the two system_probe lists from
     # `backup_targets` (WP-8R R1). Fails the play on an unknown retention
     # profile, an unknown repo name or a log key that does not exist.
