@@ -125,6 +125,7 @@ world_readable_paths_by_service:
     - rendered/datasources.yml
     - rendered/loki-password
     - rendered/loki-target.json
+    - rendered/forgejo-metrics-token
   moodle:
     - php-fpm-limits.conf         # php-fpm runs as `nobody` in this image
     # Bind-mounted at /opt/moodle-plugins and read by the image's boot-time
@@ -363,3 +364,11 @@ monitor_prometheus_allow:
 # servyy-test: both containers reach the local Traefik from a private address.
 monitor_loki_allow_local: ["10.0.0.0/8", "172.16.0.0/12"]
 monitor_prometheus_allow_local: ["10.0.0.0/8", "172.16.0.0/12"]
+
+# runny (the amd64 Forgejo runner) runs node-exporter on the host network, and
+# servy's Prometheus scrapes it over the public internet. The host firewall
+# allows :9100 from servy only (defence in depth; the Oracle security list also
+# restricts it). Consumed by roles/system/tasks/firewall.yml.
+forgejo_runner_node_exporter_sources:
+  - 49.13.6.173/32
+  - 2a01:4f8:c013:f6f4::1/128

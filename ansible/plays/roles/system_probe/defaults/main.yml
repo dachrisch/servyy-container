@@ -143,3 +143,12 @@ system_probe_docker_local_dir: "{{ docker.local_dir }}"
 # appear in `docker.services` because that list also drives Pi-hole DNS,
 # test_host.sh URLs and servyy-test /etc/hosts. Consume it with `| default([])`
 # so hosts and molecule scenarios that do not define it keep rendering.
+
+# --- Forgejo runner liveness probe (2026-11-20) -----------------------------
+# Runs only where the `ci` service AND the Pushgateway sink both live (servy).
+# The instance URL derives from the ci TLS knob; the DB is read read-only
+# through a one-shot container only when the admin API path fails.
+forgejo_probe_instance: >-
+  {{ ('https' if (ci_traefik_tls | default('true')) == 'true' else 'http')
+     ~ '://ci.' ~ domain }}
+forgejo_probe_ci_data: "{{ (docker.remote_dir, 'ci', 'data') | path_join }}"
