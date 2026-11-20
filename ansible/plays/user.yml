@@ -112,11 +112,18 @@
         - user.docker
         - always
 
+    # Only on hosts that actually run searxng. Unguarded, this ran everywhere:
+    # on a host without the service the project has no .env, `docker compose`
+    # answered "env file ... not found", and the task failed on every deploy
+    # (ignored, but it buried real failures in the same loop — codey, 2026-11-20).
+    # ignore_errors stays: on a FIRST deploy the .env is rendered later in this
+    # play, so stopping a not-yet-rendered project is expected to fail once.
     - name: Stop searxng before config update
       community.docker.docker_compose_v2:
         project_src: "{{ docker.remote_dir }}/searxng"
         state: absent
       ignore_errors: true
+      when: "'searxng' in (services | default([]))"
       tags:
         - user.docker.searxng
         - molecule-notest
@@ -130,6 +137,7 @@
       # write as root so the deploy doesn't depend on the dir being chowned to the deploy user.
       become: true
       become_user: root
+      when: "'searxng' in (services | default([]))"
       tags:
         - user.docker.searxng
 

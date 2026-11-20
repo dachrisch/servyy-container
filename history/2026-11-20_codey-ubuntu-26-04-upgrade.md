@@ -67,6 +67,13 @@ Timeline: 11:38 start → 11:52 `EXIT=0` → 11:53 reboot → SSH back in 25 s.
 - `architecture/landscape.yaml` — codey's `os` field `24.04` → `26.04`, disk
   figure refreshed to the measured 28 %. `render.py --verify` silent before and
   after (30 services, 45 edges).
+- `ansible/plays/roles/system/templates/fail2ban/` — both blocklist service
+  units order after `docker.service`, and the script retries its Loki readiness
+  probe (finding 2).
+- `ansible/plays/user.yml` — the two `searxng` tasks are gated on the service
+  being enabled for the host (finding 3).
+- `ansible/plays/roles/restic/tasks/init.yml` — the initialise loop is labelled
+  by repository, so the passwords stop appearing in deploy logs (finding 4).
 
 ## Verification
 
@@ -96,7 +103,7 @@ Ubuntu Pro's ESM sources were rewritten to `resolute-*` by the upgrader and the
 Trivy apt repo, which do-release-upgrade disables as third-party, was re-added by
 the `system` role.
 
-## Findings made during this work (not all fixed)
+## Findings made during this work
 
 1. **`bw sync` aborted full `servyy.sh` runs — root-caused and fixed here.**
    Both full runs died at `vaultwarden : Sync vault` (`unlock.yml`, `no_log`
@@ -146,13 +153,30 @@ the `system` role.
    Verification), the push play reports `unchanged`/`created` as before, and the
    repair block stays skipped in the normal case. `bw sync --force` remains
    broken by design against this server and must never be used.
-2. **`update-blocklist-quick.service` fails once at boot** — it queries Loki
-   before `monitor.loki` is listening. Exits 0 on the next timer run; ordering,
-   not configuration.
-3. **`docker_service : Stop searxng before config update` fails on codey** and is
-   ignored: the role enumerates the `searxng` project, which exists in the
-   checkout but has no `.env` because searxng is not enabled on this host. Noise,
-   pre-existing, but it hides real failures in the same loop.
+2. **`update-blocklist-quick.service` failed once at boot — fixed.** It started
+   with `fail2ban.service` and probed Loki in its first second; on the hosts that
+   run the monitoring UI, Loki is a **container** behind local Traefik, so
+   `docker.service` being up says nothing about readiness, and the single
+   `curl …/ready` probe marked the unit `failed` on every reboot. Both blocklist
+   units now order after `docker.service` (`After=` + `Wants=`) and the script
+   retries the probe 12 × 5 s before declaring Loki down — 55 s of retries still
+   fails the unit when Loki is genuinely unreachable or the credential is
+   rejected, just a minute later. The retry matters on servy too, where Loki is
+   remote and docker ordering proves nothing.
+3. **`Stop searxng before config update` failed on codey — fixed.** The task ran
+   on every host, so on a host that does not deploy searxng `docker compose`
+   answered `env file …/searxng/.env not found` and the task failed (ignored,
+   which is worse: it buried real failures in the same loop). Both searxng tasks
+   are now gated on `'searxng' in services`; `ignore_errors` stays because on a
+   *first* deploy the `.env` is rendered later in the same play.
+4. **Both restic repository passwords were printed in every deploy log — fixed.**
+   `restic : Initialize restic repositories` loops `restic_repos_enabled`, and
+   the loop item carries `password`; without `loop_control` Ansible prints the
+   whole item dict, so every deploy wrote both passwords in plaintext (found in
+   these upgrade runs). The task now labels each item by `item.repository`, like
+   the `Verify … opens with the configured password` task always did. Any
+   operator log or CI transcript from before this change contains those two
+   passwords — rotate them if such a log was shared.
 
 ## Rollback (not needed)
 
