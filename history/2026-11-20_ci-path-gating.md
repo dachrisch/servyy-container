@@ -149,6 +149,41 @@ After merge: ruleset `21452638` required `CI Gate` only; a docs-only PR reported
 `Validate git-crypt Encryption` + `CI Gate` and was mergeable without a single
 molecule run.
 
+## After the merge — measured
+
+Ruleset `21452638`, `required_status_checks` went from nine contexts to one:
+
+```
+before: Molecule Test (docker_service/default), (system/core), (system/default),
+        (system/minimal), (system/with-docker), (testing/default), (user/default),
+        (user/docker-only), Validate git-crypt Encryption
+after:  CI Gate
+```
+
+| Verification PR | What ran | Wall clock | Merge |
+|---|---|---|---|
+| #316 — the change itself (`.github/**`, `ansible/tests/**`) | everything, 16/16 molecule | full suite | mergeable under the **old** ruleset |
+| #318 — `.github/workflows/README.md` only | `Detect changed paths`, `Validate git-crypt Encryption`, `CI Gate` | **20 s** | `CLEAN`, merged with no molecule run |
+| #320 — `shared/docker-compose.yml` only (closed unmerged) | the same plus `Lint Python` (the selftest) | ~30 s | — |
+
+On #318 the molecule and lint jobs report `skipping` and `CI Gate` still passes,
+which is the whole point: the required check exists on the PR, it just has
+nothing to say.
+
+Compose-only changes are the reason `compose` sits in `lint-python`'s condition:
+`architecture/render.py --selftest` parses every `*/docker-compose.yml`, so a
+compose edit gets the derivation proven (10 s) without the 16-scenario matrix.
+
+## One self-inflicted incident, recorded
+
+`git add -u` used while fixing the wiring staged **every** modified tracked file,
+not only the ones named in the commit, so in-flight work on the vaultwarden
+API-key unlock, the codey 26.04 image bump and a re-encrypted landscape map went
+out with the squash merge. `1aa91ac8` restored those three paths to their
+pre-branch content; the work itself was never lost (it stayed in the author's
+working tree and in the branch history). Unrelated to the pipeline, kept here
+because a bare "revert" commit on master otherwise makes no sense.
+
 ## Ordering (why this could land without blocking anything)
 
 The baseline keeps the eight formerly required check names, so the old ruleset
