@@ -32,6 +32,15 @@
     - vars/default.yml
     - vars/restic.yml
     - vars/secrets.yml
+  pre_tasks:
+    # The opencode role writes its GitHub and servy SSH keys into the deploy
+    # checkout. Hosts without a checkout (repo_checkout: false) must not get
+    # them; their checkout, keys included, is removed by the user role.
+    - name: Skip the opencode keys on hosts without a deploy checkout
+      ansible.builtin.meta: end_host
+      when: not (repo_checkout | default(true) | bool)
+      tags:
+        - always
   roles:
     - opencode
   tags:

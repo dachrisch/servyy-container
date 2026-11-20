@@ -156,3 +156,25 @@ Not rehearsable on servyy-test:
 - The Grafana runner alert: probes are disabled there (`system_probe_push_enabled: false`).
 - runny itself, which is not provisioned yet.
 - Phase 4: the amd64 build benchmark.
+
+## runny: no repo, no secrets (2026-11-20)
+
+The first full bootstrap of runny ran the plays every host gets:
+- the user role cloned and **git-crypt unlocked** the deploy checkout, so
+  `secrets.yml` was in plaintext on disk;
+- it installed the GitHub deploy key and the `git.lehel.xyz` login;
+- the opencode play wrote `id_github` and `id_servy`.
+
+The plan assumed runny "holds no secrets", and that assumption is why its runner
+uses the host Docker socket. In fact any CI job could have read all of the
+above. No job had run on runny when this was found.
+
+Fix: `repo_checkout: false` on runny.
+- The user role skips the deploy key, the git login, the clone and
+  docker_extras, and `no_checkout.yml` removes anything left from earlier runs.
+- The opencode play ends for that host.
+- The runner is rendered to `/home/cda/runny`.
+- `restic_skip` now also gates and removes the system role's
+  restic-forget/check timers.
+
+Tested by the molecule scenario `user/no-checkout`.

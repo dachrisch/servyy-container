@@ -38,6 +38,7 @@ scenarios:
   - {role: docker_service, scenario: forgejo, baseline: false}
   - {role: forgejo_runner, scenario: default, baseline: false}
   - {role: forgejo_bootstrap, scenario: default, baseline: false}
+  - {role: user, scenario: no-checkout, baseline: false}
   - {role: monitor_reload, scenario: default, baseline: false}
   - {role: db_tier, scenario: default, baseline: false}
   - {role: traefik_dashboard_auth, scenario: default, baseline: false}

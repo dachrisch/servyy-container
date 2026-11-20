@@ -25,13 +25,17 @@
     password: "{{ servyy_git_repo.password }}"
   tags:
     - user.repo.me
+  # No git.lehel.xyz login on hosts without a checkout (the runny CI runner).
+  when: repo_checkout | default(true) | bool
 
 - import_tasks: includes/github_deploy_key.yml
   tags:
     - user.docker.repo
     - user.docker
     - user.repo
-  when: with_containers | default(false)
+  when:
+    - with_containers | default(false)
+    - repo_checkout | default(true) | bool
 
 - import_tasks: includes/repository.yml
   vars:
@@ -52,7 +56,9 @@
     - user.docker.repo
     - user.docker
     - user.repo
-  when: with_containers | default(false)
+  when:
+    - with_containers | default(false)
+    - repo_checkout | default(true) | bool
 
 # Guard against a new internet-facing port. Docker writes its own FORWARD/nat
 # rules and bypasses ufw entirely, so `ports: - "8080:8080"` in any compose file is
@@ -71,7 +77,20 @@
     - user.docker.repo
     - user.docker
     - user.repo
-  when: with_containers | default(false)
+  when:
+    - with_containers | default(false)
+    - repo_checkout | default(true) | bool
+
+# Hosts that must hold no secrets (repo_checkout: false, i.e. the runny CI
+# runner, whose jobs can reach the host): no deploy checkout, no git-crypt key,
+# no deploy key, no git.lehel.xyz login. Removes them if an earlier run left
+# them behind. Their services are rendered outside the checkout by their roles.
+- import_tasks: no_checkout.yml
+  tags:
+    - user.docker.repo
+    - user.docker
+    - user.repo
+  when: not (repo_checkout | default(true) | bool)
 
 - import_tasks: docker_setup.yml
   tags:
@@ -83,7 +102,9 @@
   tags:
     - user.docker.services
     - user.docker
-  when: with_containers | default(false)
+  when:
+    - with_containers | default(false)
+    - repo_checkout | default(true) | bool
 
 # Moodle's data volume must be formatted+mounted before the moodle compose
 # project starts. Gated on the volume actually being configured for this host:
