@@ -4,7 +4,7 @@
 #
 # Secrets do NOT belong here: registration is the .runner file written by
 # `forgejo-runner create-runner-file` (offline shared secret from
-# `forgejo_runner_secret` in secrets.yml), and the Docker backend is selected by
+# `forgejo_runner_secrets[<runner>]` in secrets.yml), and the Docker backend is selected by
 # the DOCKER_HOST env var the compose injects.
 
 log:

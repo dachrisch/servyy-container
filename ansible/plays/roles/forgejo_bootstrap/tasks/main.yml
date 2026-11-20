@@ -47,60 +47,25 @@
     - molecule-notest
 
 # --- runner registration (offline shared secret, no UI step) ----------------
-# The server-side half of the shared-secret registration: the runner side runs
-# `forgejo-runner create-runner-file` (forgejo_runner role) with the same
-# `forgejo_runner_secret`. Re-running `actions register` would create a
-# duplicate runner, so the existence check below reads the admin API first.
-#
-# The admin API token (`forgejo_admin_api_token`) is created ONCE against the
-# admin user (`forgejo admin user generate-access-token --username cda
-# --token-name ansible --scopes all --raw`) and stored in secrets.yml — see the
-# history entry. Until it exists the API answers 401 and registration is
-# skipped with a warning rather than risking duplicate runners.
-- name: List registered runners via the admin API
-  ansible.builtin.uri:
-    url: "{{ forgejo_root_url }}/api/v1/admin/actions/runners"
-    headers:
-      Authorization: "token {{ forgejo_admin_api_token }}"
-    status_code: [200, 401, 404]
-    validate_certs: false
-  register: forgejo_runner_list
-  changed_when: false
-  ignore_errors: true
-  tags:
-    - user.docker.ci
-    - user.docker.ci.bootstrap
-    - molecule-notest
-
-- name: Register each missing runner (offline shared secret)
+# The server-side half of the offline registration; the runner side runs
+# `forgejo-runner create-runner-file` (forgejo_runner role) with the SAME
+# per-runner secret. The secret IS the runner identity (first 16 hex chars =
+# UUID, the rest = token), so every runner needs its own secret — one shared
+# secret would make codey and runny the same runner. `actions register` is
+# idempotent for a given secret (it updates, never duplicates), so it runs on
+# every deploy without an existence check.
+- name: Register each runner (offline, per-runner secret)
   ansible.builtin.command:
     cmd: >-
       docker exec {{ forgejo_bootstrap_container }} forgejo forgejo-cli actions register
-      --secret {{ forgejo_runner_secret }} --name {{ item }}
+      --secret {{ forgejo_runner_secrets[item] }} --name {{ item }}
   loop: "{{ forgejo_runners }}"
-  when:
-    - forgejo_runner_list.status is defined
-    - forgejo_runner_list.status == 200
-    - item not in (forgejo_runner_list.content | default('') | string)
+  changed_when: false
   no_log: true
   tags:
     - user.docker.ci
     - user.docker.ci.bootstrap
     - molecule-notest
-
-- name: Warn when runner registration is skipped (no admin API token yet)
-  ansible.builtin.debug:
-    msg: >-
-      Skipping Forgejo runner registration: the admin API did not answer 200
-      (token {{ 'present' if forgejo_admin_api_token is defined else 'missing' }}).
-      Create `forgejo_admin_api_token` (forgejo admin user generate-access-token)
-      and re-run --tags user.docker.ci.bootstrap.
-  when:
-    - forgejo_runners | length > 0
-    - forgejo_runner_list.status | default(0) != 200
-  tags:
-    - user.docker.ci
-    - user.docker.ci.bootstrap
 
 # --- nightly DB dump (01:30, keep last 3) -----------------------------------
 - name: Ensure the Forgejo scripts directory exists

@@ -23,14 +23,14 @@ compose here because the Docker backend differs per host:
 Both `config.yml` and the `.runner` registration file live in `./data`
 (bind-mounted to `/data`, the runner's working dir). `config.yml` carries
 labels / capacity / `container.options` (the memory caps); `.runner` is written
-once by `forgejo-runner create-runner-file --secret <forgejo_runner_secret>`.
+once by `forgejo-runner create-runner-file --secret <forgejo_runner_secrets[<runner>]>`.
 
 ## Runners are never backed up
 
 `servyy-container/runny` is in `restic.home.excludes`; the DinD volume is a
 docker volume the home job never sees; runny.lehel.xyz has no restic at all. A
 lost runner is recreated by a redeploy (it re-registers from
-`forgejo_runner_secret`).
+`forgejo_runner_secrets[<runner>]`).
 
 ## Monitoring
 

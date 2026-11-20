@@ -112,7 +112,7 @@ restic:
 
       # --- Forgejo runners (runny/, 2026-11-20) -------------------------------
       # Runners are never backed up: a lost runner is recreated by a redeploy
-      # (re-registers from forgejo_runner_secret). Keeps codey's home backup
+      # (re-registers from forgejo_runner_secrets[<runner>]). Keeps codey's home backup
       # from dragging the runner workspace/cache along.
       - 'servyy-container/runny'
 

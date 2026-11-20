@@ -309,11 +309,13 @@
     # pattern as loki-password). Prometheus runs as uid 65534, so 0644.
     - name: Render the Forgejo metrics token for Prometheus
       ansible.builtin.copy:
-        content: "{{ forgejo_metrics_token }}\n"
+        content: "{{ forgejo_metrics_token | default('') }}\n"
         dest: "{{ docker.remote_dir }}/monitor/rendered/forgejo-metrics-token"
         mode: "0644"
+      # Rendered on every collect host (not only where ci runs): compose
+      # bind-mounts this path, and a missing source would be created as a root
+      # directory, breaking the Prometheus container.
       when:
-        - "'ci' in (services | default([]))"
         - "'collect' in (monitor_profiles | default([]))"
       no_log: true
       tags:

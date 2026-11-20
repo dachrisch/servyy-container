@@ -17,7 +17,7 @@
     ci_traefik_tls: "true"
     # Secrets referenced by name only (never committed real values).
     forgejo_admin_password: test-admin-password
-    forgejo_runner_secret: test-runner-secret
+    forgejo_runner_secrets: {test: 0123456789abcdef0123456789abcdef01234567}
     forgejo_admin_api_token: test-admin-api-token
     forgejo_runners: [codey, runny]
   tasks:

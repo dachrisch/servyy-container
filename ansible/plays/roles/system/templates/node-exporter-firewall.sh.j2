@@ -1,0 +1,23 @@
+#!/bin/bash
+# Managed by Ansible (system role, firewall.yml). Allows node-exporter (:9100)
+# from servy's Prometheus only and drops it from everywhere else, for IPv4 and
+# IPv6. Rules are inserted at the TOP of INPUT so they win over the Oracle
+# image's catch-all REJECT. Idempotent: an existing rule is not re-added.
+set -euo pipefail
+
+ensure() { # $1 = iptables|ip6tables, rest = rule spec
+  local bin=$1; shift
+  "$bin" -C INPUT "$@" 2>/dev/null || "$bin" -I INPUT 1 "$@"
+}
+
+# DROP first, then the ACCEPTs: each -I 1 lands above the previous one, so the
+# final order is ACCEPT(s) -> DROP -> (image rules).
+ensure iptables  -p tcp --dport 9100 -j DROP
+ensure ip6tables -p tcp --dport 9100 -j DROP
+{% for src in forgejo_runner_node_exporter_sources | default([]) %}
+{% if ':' in src %}
+ensure ip6tables -p tcp --dport 9100 -s {{ src }} -j ACCEPT
+{% else %}
+ensure iptables  -p tcp --dport 9100 -s {{ src }} -j ACCEPT
+{% endif %}
+{% endfor %}

@@ -172,7 +172,7 @@ prod:
         forgejo_runner_labels:
           - "ubuntu-latest:docker://ghcr.io/catthehacker/ubuntu:act-22.04"
           - "docker:docker://node:20-bookworm"
-          - "arm64:host"
+          - "arm64:docker://ghcr.io/catthehacker/ubuntu:act-22.04"
         forgejo_runner_capacity: 2
         forgejo_runner_qemu: true
         forgejo_runner_docker: dind
@@ -216,7 +216,7 @@ prod:
         # 1 GB RAM on the E2.1.Micro: 4 GB swap to survive amd64 image builds.
         swap_space_override: 4G
         # Stateless: no Storage Box mount and no restic. A lost runner is
-        # recreated by a redeploy (re-registers from forgejo_runner_secret).
+        # recreated by a redeploy (re-registers from forgejo_runner_secrets[<runner>]).
         skip_storagebox: true
         # Light system play on 1 GB (see ansible/production header): the Loki
         # blocklist is the one fail2ban piece this host skips (it has no Loki

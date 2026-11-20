@@ -12,6 +12,10 @@ services:
     container_name: ${COMPOSE_PROJECT_NAME}.runner
     restart: unless-stopped
     working_dir: /data
+{% if forgejo_runner_docker == 'host' %}
+    group_add:
+      - "{{ ansible_facts.getent_group.docker[1] }}"
+{% endif %}
     environment:
       - DOCKER_HOST={{ forgejo_runner_docker_host }}
 {% if forgejo_runner_docker == 'dind' %}
@@ -55,7 +59,7 @@ services:
   # Prometheus ONLY (49.13.6.173 / 2a01:4f8:c013:f6f4::1) — see the system role's
   # node-exporter firewall rule, gated on the same host var.
   node-exporter:
-    image: prom/node-exporter:latest
+    image: prom/node-exporter:v1.9.1
     container_name: ${COMPOSE_PROJECT_NAME}.node-exporter
     restart: unless-stopped
     network_mode: host
@@ -66,10 +70,11 @@ services:
     command:
       - '--path.procfs=/host/proc'
       - '--path.sysfs=/host/sys'
-      - '--collector.filesystem.ignored-mount-points="^/(sys|proc|dev|host|etc)($$|/)"'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
 {% endif %}
 
-volumes:
 {% if forgejo_runner_docker == 'dind' %}
+volumes:
   dind-certs: {}
 {% endif %}

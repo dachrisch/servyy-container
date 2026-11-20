@@ -15,8 +15,8 @@
 # the published-ports guard allows only Traefik's 80/443, and SSH is disabled
 # in the app config (FORGEJO__server__DISABLE_SSH in forgejo.env).
 #
-# The image is pinned to the current Forgejo LTS line (15.x, supported until
-# 2026-07-15) and bumped by Renovate. Do not unpin to `latest`: Forgejo majors
+# The image is pinned to the current Forgejo LTS line (15.x, still receiving
+# security releases as of 2026-11) and bumped by Renovate. Do not unpin to `latest`: Forgejo majors
 # carry breaking changes and the LTS line is what the upgrade runbook targets.
 services:
   forgejo:
@@ -59,7 +59,6 @@ services:
       # Local-qualified name for the container-health probe / host ping.
       - traefik.http.routers.${SERVICE_NAME}_local_qualified.rule=Host(`${SERVICE_NAME}.${LOCAL_HOSTNAME}`)
       - traefik.http.routers.${SERVICE_NAME}_local_qualified.entrypoints=web
-      - com.centurylinklabs.watchtower.scope=prod
     healthcheck:
       # Forgejo serves /api/healthz without auth when the app is up. The
       # rootless image is Alpine-based and ships busybox wget.

@@ -76,7 +76,7 @@ untouched until a later cut-over.
 ## Secrets (all added by Claude to `plays/vars/secrets.yml`, never here)
 
 `forgejo_secret_key`, `forgejo_internal_token`, `forgejo_admin_password`,
-`forgejo_runner_secret` (40 hex), `forgejo_metrics_token`,
+`forgejo_runner_secrets[<runner>]` (40 hex), `forgejo_metrics_token`,
 `forgejo_admin_api_token`. The admin API token is created **once** against the
 admin user — `forgejo admin user generate-access-token --username cda
 --token-name ansible --scopes all --raw` — and stored in secrets.yml; the

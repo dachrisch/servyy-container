@@ -27,11 +27,11 @@ cut-over.**
 Runners register offline with a shared secret, no UI step:
 
 - Forgejo side (servy, `forgejo_bootstrap` role):
-  `forgejo forgejo-cli actions register --secret <forgejo_runner_secret> --name <runner>`
+  `forgejo forgejo-cli actions register --secret <forgejo_runner_secrets[<runner>]> --name <runner>`
 - Runner side (`forgejo_runner` role, on codey/runny):
-  `forgejo-runner create-runner-file --instance https://ci.lehel.xyz --name <runner> --secret <forgejo_runner_secret>`
+  `forgejo-runner create-runner-file --instance https://ci.lehel.xyz --name <runner> --secret <forgejo_runner_secrets[<runner>]>`
 
-Both reference `forgejo_runner_secret` from `plays/vars/secrets.yml` — never a
+Both reference `forgejo_runner_secrets[<runner>]` from `plays/vars/secrets.yml` — never a
 `lookup('password', …)` seed (CLAUDE.md rule 6).
 
 ## Monitoring

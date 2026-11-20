@@ -20,6 +20,16 @@
   tags:
     - user.docker.runny
 
+# The runner image runs as uid 1000; on the host-socket backend it needs the
+# host's docker group to talk to /var/run/docker.sock.
+- name: Look up the docker group id
+  ansible.builtin.getent:
+    database: group
+    key: docker
+  when: forgejo_runner_docker == 'host'
+  tags:
+    - user.docker.runny
+
 - name: Render the runner docker-compose.yml
   ansible.builtin.template:
     src: docker-compose.yml.j2
@@ -41,7 +51,7 @@
 
 # The .runner file is the offline shared-secret registration (write once; a
 # lost runner is recreated by a redeploy re-registering from
-# forgejo_runner_secret). Its presence is the idempotency check.
+# forgejo_runner_secrets[<runner>]). Its presence is the idempotency check.
 - name: Check whether the runner is already registered
   ansible.builtin.stat:
     path: "{{ (forgejo_runner_data_dir, '.runner') | path_join }}"
@@ -59,7 +69,7 @@
       forgejo-runner create-runner-file
       --instance {{ forgejo_runner_instance }}
       --name {{ forgejo_runner_name }}
-      --secret {{ forgejo_runner_secret }}
+      --secret {{ forgejo_runner_secrets[forgejo_runner_name] }}
   when: not forgejo_runner_registered.stat.exists
   no_log: true
   tags:

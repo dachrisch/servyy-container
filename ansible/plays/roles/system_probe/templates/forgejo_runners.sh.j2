@@ -31,8 +31,7 @@ payload_file=$(mktemp)
 # table to read. Prints rows; empty on failure.
 sqlite_query() {
   docker run --rm -v "${CI_DATA_DIR}:/data:ro" \
-    --entrypoint sh alpine:3.20 -c \
-    "apk add --no-cache sqlite >/dev/null 2>&1; sqlite3 -noheader /data/gitea/forgejo.db \"$1\"" \
+    keinos/sqlite3:3.46.1 sqlite3 -readonly -noheader "file:/data/gitea/forgejo.db?immutable=1" "$1" \
     2>/dev/null || true
 }
 
@@ -84,14 +83,22 @@ sqlite_query() {
   fi
 
   # --- job counts: waiting / running ---------------------------------------
+  # Defaults so the series exist (and alerts can evaluate) when nothing queues.
+  waiting=0; running=0
   # action_run_job.status: 1 = waiting, 2 = running (Forgejo Actions).
   sqlite_query "SELECT status, COUNT(*) FROM action_run_job WHERE status IN (1,2) GROUP BY status;" \
     | while IFS='|' read -r status count; do
         case "${status}" in
-          1) printf 'forgejo_actions_jobs{status="waiting"} %s\n' "${count}" ;;
-          2) printf 'forgejo_actions_jobs{status="running"} %s\n' "${count}" ;;
+          1) echo "waiting ${count}" ;;
+          2) echo "running ${count}" ;;
         esac
-      done
+      done > "${payload_file}.jobs"
+  while read -r k v; do
+    case "$k" in waiting) waiting=$v ;; running) running=$v ;; esac
+  done < "${payload_file}.jobs"
+  rm -f "${payload_file}.jobs"
+  printf 'forgejo_actions_jobs{status="waiting"} %s\n' "${waiting}"
+  printf 'forgejo_actions_jobs{status="running"} %s\n' "${running}"
 
   echo "forgejo_runners_probe_success ${probe_success}"
 } > "${payload_file}"
