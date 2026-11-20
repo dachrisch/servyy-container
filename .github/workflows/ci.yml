@@ -61,14 +61,15 @@ jobs:
               - '!.github/**/*.md'
 
       # Second pass, list mode: the molecule planner needs the actual paths under
-      # ansible/, not a boolean.
+      # ansible/, not a boolean. dorny/paths-filter publishes the list to
+      # `<filter>_files` (so `ansible_files`), while `ansible` stays the boolean.
       - name: List changed ansible paths
         id: files
         uses: dorny/paths-filter@v3
         with:
           list-files: json
           filters: |
-            ansible_files:
+            ansible:
               - 'ansible/**'
 
   # The lints read ansible/ (yamllint only ever looks at ansible/plays), so they

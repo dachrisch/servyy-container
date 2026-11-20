@@ -217,6 +217,23 @@ class ConsistencyTest(unittest.TestCase):
         self.assertIn("duplicate", str(ctx.exception))
 
 
+class ParseChangesTest(unittest.TestCase):
+    def test_blank_output_is_no_change(self):
+        self.assertEqual(mm.parse_changes(""), [])
+        self.assertEqual(mm.parse_changes("[]"), [])
+
+    def test_array_is_returned_verbatim(self):
+        self.assertEqual(mm.parse_changes('["ansible/a.yml","ansible/b.yml"]'),
+                         ["ansible/a.yml", "ansible/b.yml"])
+
+    def test_a_boolean_names_the_value_in_the_error(self):
+        # the wiring bug this guards: reading the filter's boolean output
+        # instead of its `<filter>_files` list
+        with self.assertRaises(SystemExit) as ctx:
+            mm.parse_changes("true")
+        self.assertIn("true", str(ctx.exception))
+
+
 class RepositoryManifestTest(unittest.TestCase):
     """The committed manifest must describe the committed roles."""
 

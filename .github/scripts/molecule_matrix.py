@@ -193,16 +193,24 @@ def plan(
 # cli
 # --------------------------------------------------------------------------- #
 def parse_changes(raw: str) -> list[str]:
-    """paths-filter emits a JSON array; tolerate a blank/absent output."""
+    """paths-filter emits a JSON array; tolerate a blank/absent output.
+
+    The error names the value it got: a wiring mistake (reading the boolean
+    `ansible` instead of `ansible_files`) then reads `got 'true'` instead of a
+    bare "must be an array", which is the difference between a 10-second fix and
+    a debugging session on the runner.
+    """
     raw = (raw or "").strip()
     if not raw:
         return []
     try:
         value = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise SystemExit(f"molecule plan: --changed-files-json is not JSON: {exc}") from exc
+        raise SystemExit(f"molecule plan: --changed-files-json is not JSON ({exc}): {raw[:120]!r}") from exc
     if not isinstance(value, list):
-        raise SystemExit("molecule plan: --changed-files-json must be a JSON array")
+        raise SystemExit(
+            f"molecule plan: --changed-files-json must be a JSON array, got {raw[:120]!r}"
+        )
     return [str(v) for v in value]
 
 
