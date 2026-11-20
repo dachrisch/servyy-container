@@ -1,0 +1,22 @@
+{#
+  Rendered by Ansible from ansible/plays/vars/default.yml + the host's monitor_*
+  vars into monitor/rendered/loki-target.json (untracked), and consumed by
+  Prometheus' `loki` scrape job (monitor/prometheus.yml, file_sd_configs).
+
+  Loki lives on codey since 2026-11-20 and is reached through the authenticated
+  loki.<domain> Traefik route. Target and scheme differ per environment:
+  production uses https://loki.lehel.xyz:443, servyy-test its own local Traefik
+  over plain http on :80. `loki_scheme` is copied onto `__scheme__` by the one
+  relabel rule in prometheus.yml — file_sd labels cannot set `__scheme__`
+  directly because Prometheus overwrites it from the scrape config first.
+
+  This file MUST stay strict JSON: Prometheus picks the file_sd parser from the
+  `.json` extension and rejects any comment, so documentation lives in this Jinja
+  comment (stripped at render time), not in the rendered file.
+#}
+[
+  {
+    "targets": ["{{ monitor_loki_host }}:{{ '443' if monitor_loki_scheme == 'https' else '80' }}"],
+    "labels": {"loki_scheme": "{{ monitor_loki_scheme }}"}
+  }
+]

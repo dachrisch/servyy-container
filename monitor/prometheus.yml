@@ -22,9 +22,24 @@ scrape_configs:
   - job_name: 'traefik'
     static_configs:
       - targets: [ 'traefik.traefik:8082' ]
+  # Loki moved to codey on 2026-11-20 and is no longer reachable over the docker
+  # network. It is scraped through the authenticated https://loki.lehel.xyz route
+  # (basicAuth + ipAllowList, see monitor/docker-compose.yml). Target and scheme
+  # differ per environment (servyy-test reaches its own Traefik over plain http),
+  # so they come from the Ansible-rendered file_sd file:
+  #   {"targets": ["<host>:<port>"], "labels": {"loki_scheme": "https"}}
+  # `__scheme__` cannot come from file_sd directly — PopulateLabels overwrites it
+  # from `scheme:` before relabeling runs — hence the one relabel rule below.
   - job_name: 'loki'
-    static_configs:
-      - targets: [ 'loki:3100' ]
+    basic_auth:
+      username: promtail
+      password_file: /etc/prometheus/rendered/loki-password
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/rendered/loki-target.json
+    relabel_configs:
+      - source_labels: [loki_scheme]
+        target_label: __scheme__
   - job_name: 'k6-load-test'
     static_configs:
       - targets: [ 'localhost:6565' ]

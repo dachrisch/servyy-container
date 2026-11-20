@@ -331,6 +331,8 @@ jobs:
             scenario: default
           - role: docker_service
             scenario: gh-wrapper
+          - role: monitor_reload
+            scenario: default
           - role: db_tier
             scenario: default
           - role: traefik_dashboard_auth

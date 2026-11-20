@@ -1,16 +1,60 @@
 # monitor/ — Prometheus, Grafana, Loki, cAdvisor, Pushgateway
 
-The observability stack for servy. One compose project (`name: ${SERVICE_NAME}` =
-`monitor`), all internal: nothing here publishes a port except the Pushgateway bridge on
-`127.0.0.1:9091`, which is how the host probes (`~/.system-probes/*.sh`) push their gauges.
+The observability stack for the fleet. **One compose project, two hosts, two
+compose profiles** (since 2026-11-20). Container names are unchanged
+(`monitor.grafana`, `monitor.loki`, …); the profile decides which half a host
+runs, and `monitor/.env` carries it as `COMPOSE_PROFILES`:
 
-| Container | Image | Purpose |
-|---|---|---|
-| `monitor.prometheus` | `prom/prometheus:latest` | scrape + recording rules; **not** published on the host |
-| `monitor.grafana` | `grafana/grafana:latest` | dashboards + alert rules (file-provisioned) |
-| `monitor.loki` / `monitor.promtail` | Grafana Loki stack | logs |
-| `monitor.cadvisor` | `cadvisor:latest` | `container_*` metrics (working set, limits, OOM events) |
-| `monitor.pushgateway` (+ `monitor.pushgateway-bridge`) | `prom/pushgateway` | probe gauges |
+| Profile | Services | Host | Why there |
+|---|---|---|---|
+| `ui` | `grafana`, `loki` | **codey** | Alerting must survive a servy outage; Loki is where servy's logs are shipped to. |
+| `collect` | `prometheus`, `pushgateway` (+`pushgateway-bridge`), `node-exporter`, `cadvisor`, `promtail` | **servy** | Every one of them reads *servy*: `/proc`, `/sys`, the Docker socket, `/var/log`, and the probes push to `localhost:9091`. |
+
+`servyy-test.lxd` runs **both** profiles, so the cross-host routes and their auth
+are rehearsed before production. Nothing here publishes a port except the
+Pushgateway bridge on `127.0.0.1:9091` and the two authenticated routes below.
+
+| Container | Image | Purpose | Host |
+|---|---|---|---|
+| `monitor.prometheus` | `prom/prometheus:latest` | scrape + recording rules; query API on `prometheus.lehel.xyz` (basicAuth) | servy |
+| `monitor.grafana` | `grafana/grafana:latest` | dashboards + alert rules (file-provisioned), `monitor.lehel.xyz` | codey |
+| `monitor.loki` | `grafana/loki:latest` | logs; ingest/query on `loki.lehel.xyz` (basicAuth) | codey |
+| `monitor.promtail` | `grafana/promtail:latest` | ships servy's container + system logs to Loki | servy |
+| `monitor.cadvisor` | `cadvisor:latest` | `container_*` metrics (working set, limits, OOM events) | servy |
+| `monitor.pushgateway` (+ `monitor.pushgateway-bridge`) | `prom/pushgateway` | probe gauges | servy |
+| `monitor.node-exporter` | `prom/node-exporter` | host CPU/mem/disk | servy |
+
+## The only network surface between the hosts — do not widen it
+
+Two Traefik routes carry all cross-host monitor traffic. Loki was deliberately
+taken off Traefik in 2026-09 because it had no auth; it is back only behind
+**basicAuth + ipAllowList**, on `websecure` only (no `web` router):
+
+| Route | Host serving it | Who calls it | Auth user |
+|---|---|---|---|
+| `loki.lehel.xyz` | codey → `monitor.loki:3100` | servy's promtail (push), servy's Prometheus (`/metrics`), fail2ban on servy **and** codey (query) | `promtail` |
+| `prometheus.lehel.xyz` | servy → `monitor.prometheus:9090` | codey's Grafana datasource | `grafana` |
+
+- The credentials are literal values in `plays/vars/secrets.yml`
+  (`monitor_remote_auth`) — **not** `lookup('password', 'vars/.…')` seeds, which
+  exist only on one controller and would silently rotate on a fresh checkout
+  (CLAUDE.md rule 6). `roles/monitor_remote_auth` hashes them into
+  `traefik/monitor-{loki,prometheus}-auth.htpasswd`; the plaintext is rendered
+  into `monitor/rendered/` (`loki-password`, `datasources.yml`) and into the
+  fail2ban helper (installed `0700 root`).
+- `ipAllowList` is defence in depth: servy `49.13.6.173` /
+  `2a01:4f8:c013:f6f4::1`, codey `138.2.180.191` /
+  `2603:c020:802e:5f01:0:876f:f045:3504`. Codey is on the Loki list because its
+  own `loki-blocklist` jail polls the same Loki. Verify the address each Traefik
+  actually logs before trusting the list (a v6 client is masked as `172.18.0.1`
+  if the proxy network lacks IPv6; it carries IPv6 on both hosts since
+  2026-11-11). Ranges are per host in `monitor/.env` (`MONITOR_*_ALLOW`) because
+  `traefik/dynamic.yaml` is shared and servyy-test reaches itself privately.
+- Middleware order is auth → allow, so an unauthenticated request is **401** and
+  an authenticated one from a stranger is **403**.
+- TLS: production uses `MONITOR_TRAEFIK_ENTRYPOINT=websecure` +
+  `letsencryptdnsresolver` (Porkbun DNS-01, main `dachrisch` account); servyy-test
+  uses plain `web`. Grafana's own router follows the same three vars.
 
 ## Load-bearing invariants — do not "clean these up"
 
@@ -23,14 +67,20 @@ The observability stack for servy. One compose project (`name: ${SERVICE_NAME}` 
      `alert-rules.yml` it keeps evaluating the previous rule set until it restarts. Measured on
      2026-11-18: a deploy left it running 47 of 49 rules.
    - The deploy now handles both: [`plays/tasks/monitor_reload.yml`](../ansible/plays/tasks/monitor_reload.yml)
-     fingerprints `prometheus.yml` + `rules/*.yml` and `provisioning/alerting/*.yml` +
-     `rendered/contact-points.yml`, compares each with the last applied value under
-     `~/.deploy-state/monitor/`, and restarts **only** the container whose startup content changed —
-     Prometheus for rules/config, Grafana for provisioning, never each other. It restarts nothing
-     when nothing changed, and nothing on the first run (compose has just handed the container the
-     new content). Do not "simplify" it to a blanket restart: the host is load-sensitive.
-   - Editing these files **by hand on the host** still requires `docker restart` — the task only runs
-     inside a `--tags user.docker.monitor` deploy.
+     fingerprints `prometheus.yml` + `rules/*.yml` + `rendered/loki-target.json` +
+     `rendered/loki-password` and `provisioning/alerting/*.yml` +
+     `rendered/contact-points.yml` + `rendered/datasources.yml`, compares each with the
+     last applied value under `~/.deploy-state/monitor/`, and restarts **only** the
+     container whose startup content changed — Prometheus for rules/config, Grafana for
+     provisioning, never each other. It restarts nothing when nothing changed, and nothing
+     on the first run (compose has just handed the container the new content). Do not
+     "simplify" it to a blanket restart: the host is load-sensitive.
+   - Since the split it also runs **only half the role per host**
+     (`monitor_reload_{prometheus,grafana}_enabled` from `monitor_profiles`): grafana is
+     not on servy and prometheus is not on codey, so inspecting/restarting the other
+     half's container would fail the deploy.
+   - Editing these files **by hand on the host** still requires `docker restart` — the task
+     only runs inside a `--tags user.docker.monitor` deploy.
 2. **A glob Prometheus cannot read matches nothing, silently.** `rule_files: [/etc/prometheus/rules/*.yml]`
    with the directory at `drwxrwx---` (the checkout's umask 007) and Prometheus running as
    `nobody` (65534) loads **zero rule groups** and logs no error — only
@@ -134,16 +184,21 @@ The observability stack for servy. One compose project (`name: ${SERVICE_NAME}` 
 # Prometheus rules loaded (must list container-memory, health=ok)
 ssh servy.lehel.xyz "docker exec monitor.prometheus wget -qO- 'http://localhost:9090/api/v1/rules?type=record'"
 
-# Grafana rule count (2026-11-18: must be 53 after a full render)
-ssh servy.lehel.xyz 'docker exec monitor.grafana sh -c "\
+# Grafana rule count — Grafana lives on codey now
+ssh codey.lehel.xyz 'docker exec monitor.grafana sh -c "\
   curl -s -u admin:\$GF_SECURITY_ADMIN_PASSWORD \
-  http://localhost:3000/api/v1/provisioning/alert-rules" | grep -c uid'
+  http://localhost:3000/api/v1/provisioning/alert-rules" | jq length'
 
 # …and that the rules are still EVALUATING (every health must be "ok",
 # every rule must carry a lastEvaluation timestamp)
-ssh servy.lehel.xyz 'docker exec monitor.grafana sh -c "\
+ssh codey.lehel.xyz 'docker exec monitor.grafana sh -c "\
   curl -s -u admin:\$GF_SECURITY_ADMIN_PASSWORD \
   http://localhost:3000/api/prometheus/grafana/api/v1/rules"'
+
+# The cross-host datasource: codey's Grafana → servy's Prometheus
+ssh codey.lehel.xyz 'docker exec monitor.grafana sh -c "\
+  curl -s -u admin:\$GF_SECURITY_ADMIN_PASSWORD \
+  http://localhost:3000/api/datasources" | jq -r ".[] | .uid + \" \" + .url"'
 ```
 
 **401 is a trap, not a wrong password.** Grafana applies
@@ -191,7 +246,21 @@ root-owned DB. Before that, the honest alternative is to leave the rule in the f
 ## Layout notes
 
 - `prometheus.yml` — scrape config + `rule_files`. `rules/` — recording rules (mounted read-only).
+- The `loki` scrape job has no `static_configs` any more: host+scheme come from the
+  Ansible-rendered `rendered/loki-target.json` (`file_sd_configs`), because production
+  scrapes `https://loki.lehel.xyz:443` and servyy-test its own Traefik over `http`.
+  `file_sd` labels cannot set `__scheme__` (Prometheus overwrites it from the scrape
+  config before relabeling), hence the one `relabel_configs` rule copying
+  `loki_scheme` → `__scheme__`. The file must stay strict JSON — the `.json`
+  extension selects Prometheus' JSON parser, which rejects comments.
 - `provisioning/alerting/alert-rules.yml` — every alert rule (one file, groups by area).
   `contact-points.yml` is rendered into `rendered/` by Ansible and mounted separately.
+- `provisioning/datasources/datasources.yml` is the **Jinja source** — Ansible renders
+  it to `rendered/datasources.yml`, and compose mounts that over the tracked path. It
+  carries the `prometheus.lehel.xyz` basic-auth password; keep the datasource `uid`s
+  (`prometheus`, `loki`) or every alert rule and dashboard breaks.
+- `promtail.yml` pushes to `${LOKI_PUSH_URL}` (from `monitor/.env`,
+  `-config.expand-env=true`) with `basic_auth.password_file`. Its `tenant_id` is the
+  public tenant literal.
 - The alert rules and dashboards are provisioned **from this directory**; edits made in the Grafana
   UI are overwritten on the next restart and must be brought back here.

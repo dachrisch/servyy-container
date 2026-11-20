@@ -15,5 +15,10 @@
     # reusing the tag already in the local store.
     pull: "{{ compose_pull | default(omit) }}"
     build: "{{ compose_build | default(omit) }}"
+    # Opt-in compose profiles (monitor runs one half of its file per host since
+    # 2026-11-20). `omit` keeps every other service's behaviour byte-identical.
+    # Kept in sync with the COMPOSE_PROFILES line in that service's .env, so a
+    # hand-run `docker compose up` on the host selects the same half.
+    profiles: "{{ compose_profiles | default(omit) }}"
     state: present
   tags: [molecule-notest]

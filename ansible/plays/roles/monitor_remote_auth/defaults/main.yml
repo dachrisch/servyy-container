@@ -1,0 +1,9 @@
+---
+# Usernames for the two cross-host monitor basic-auth routes. The passwords come
+# from plays/vars/secrets.yml (`monitor_remote_auth`), never from here.
+#
+# The usernames are also hard-coded by the CLIENT configs, so rotating one means
+# editing these AND the consumer: `promtail` is used by monitor/promtail.yml and
+# prometheus.yml's Loki scrape; `grafana` by the rendered datasource.
+monitor_loki_auth_username: promtail
+monitor_prometheus_auth_username: grafana

@@ -116,6 +116,15 @@ world_readable_paths_by_service:
     # its mode). The promtail image runs as root, but the checkout leaves it 0660
     # and every other container-consumed file here is opened the same way.
     - promtail.yml
+    # Rendered by Ansible into the untracked rendered/ dir (2026-11-20 split):
+    # datasources.yml is read by Grafana (uid 472) on codey; loki-password and
+    # loki-target.json by Prometheus (uid 65534) on servy. Their own render tasks
+    # set 0644, but a repo/spec-only run must not leave them 0660 either — and
+    # these are listed per FILE (not `rendered`) because a single host only has
+    # the files its profile renders; the permission task skips missing paths.
+    - rendered/datasources.yml
+    - rendered/loki-password
+    - rendered/loki-target.json
   moodle:
     - php-fpm-limits.conf         # php-fpm runs as `nobody` in this image
     # Bind-mounted at /opt/moodle-plugins and read by the image's boot-time
@@ -281,10 +290,46 @@ moodle_plugin_enrol_waitlist_sha256: 2266fa07d360414efc1af74e592f988a09e14af4af6
 # NOTE: the admin email lives in vars/secrets.yml as `monitor_admin_email` —
 # this file is public (not git-crypt encrypted), so no email addresses here.
 # The Loki tenant ID is already public (docs, promtail/datasource configs).
-# Since 2026-11-18 the same literal is committed in monitor/promtail.yml and
-# monitor/provisioning/datasources/datasources.yml (so those files never need an
-# Ansible render and a repo sync cannot revert them to invalid Jinja); this var
-# still feeds roles/system's fail2ban Loki helper. Rotating the tenant means
-# changing all three places, or the log pipeline silently splits per tenant.
+# Since 2026-11-18 the same literal is committed in monitor/promtail.yml; the
+# datasource file became a template on 2026-11-20 (it now carries the
+# prometheus.lehel.xyz basic-auth credential, rendered into monitor/rendered/),
+# so the tenant literal lives in monitor/provisioning/datasources/datasources.yml
+# as well. This var still feeds roles/system's fail2ban Loki helper. Rotating the
+# tenant means changing all four places, or the log pipeline silently splits per
+# tenant.
 monitor:
   loki_tenant: "servyy-logs-k8x9m2p4q7"
+
+# --- Monitor split across two hosts (2026-11-20) -----------------------------
+# Grafana + Loki moved to codey; Prometheus + the exporters + promtail stay on
+# servy (they read servy's /proc, docker socket and logs). The two hosts talk
+# over exactly two authenticated Traefik routes:
+#   loki.lehel.xyz       on codey  <- servy's promtail/fail2ban, servy's Prometheus
+#   prometheus.lehel.xyz on servy  <- codey's Grafana datasource
+# Every value below is a default for PRODUCTION; ansible/testing overrides the
+# scheme/entrypoint/certresolver/allowlist because the test host has no public
+# DNS, no Let's Encrypt and reaches itself through the local Traefik.
+monitor_loki_host: "loki.{{ domain | default('lehel.xyz') }}"
+monitor_prometheus_host: "prometheus.{{ domain | default('lehel.xyz') }}"
+monitor_loki_scheme: https
+monitor_prometheus_scheme: https
+monitor_loki_url: "{{ monitor_loki_scheme }}://{{ monitor_loki_host }}"
+monitor_prometheus_url: "{{ monitor_prometheus_scheme }}://{{ monitor_prometheus_host }}"
+# Traefik entrypoint/TLS of the two cross-host routers (see monitor/.env).
+monitor_traefik_entrypoint: websecure
+monitor_traefik_tls: "true"
+monitor_traefik_certresolver: letsencryptdnsresolver
+# ipAllowList source ranges — defence in depth, basicAuth is the control (a v6
+# client can be masked as 172.18.0.1 if the proxy network lacks IPv6; it does
+# carry IPv6 on both hosts since 2026-11-11). servy 49.13.6.173 /
+# 2a01:4f8:c013:f6f4::1 and codey 138.2.180.191 /
+# 2603:c020:802e:5f01:0:876f:f045:3504. Codey is on the Loki list because its own
+# fail2ban `loki-blocklist` jail polls the same Loki (it runs on every host).
+monitor_loki_allow:
+  - 49.13.6.173/32
+  - 2a01:4f8:c013:f6f4::1/128
+  - 138.2.180.191/32
+  - 2603:c020:802e:5f01:0:876f:f045:3504/128
+monitor_prometheus_allow:
+  - 138.2.180.191/32
+  - 2603:c020:802e:5f01:0:876f:f045:3504/128

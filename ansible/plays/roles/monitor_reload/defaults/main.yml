@@ -1,0 +1,12 @@
+---
+# Container names and per-half enablement.
+#
+# Since 2026-11-20 the stack runs as two compose profiles on two hosts: `collect`
+# (prometheus + exporters + promtail) on servy, `ui` (grafana + loki) on codey.
+# The play sets the two *_enabled flags from the host's monitor_profiles; the
+# defaults keep the role usable on a host that runs both (servyy-test) and in the
+# Molecule scenario.
+monitor_reload_prometheus_container: monitor.prometheus
+monitor_reload_grafana_container: monitor.grafana
+monitor_reload_prometheus_enabled: true
+monitor_reload_grafana_enabled: true

@@ -1,0 +1,55 @@
+---
+# Profiles split monitor_reload in two (2026-11-20): Prometheus runs the
+# `collect` half on servy, Grafana the `ui` half on codey. Each half must run
+# ONLY where its container exists — a host that inspected/restarted the other
+# half's container would fail the deploy. This scenario runs each half on its own
+# and proves (in verify.yml) that the other half's state file is never written.
+#
+# No container needs to exist: `docker inspect` is `failed_when: false` and the
+# first run has no stored fingerprint, so the role records state and never calls
+# `docker restart` (the branch that would need a real container).
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    monitor_reload_service_dir: /home/molecule/monitor
+    monitor_reload_state_dir: /home/molecule/.deploy-state/monitor
+
+  tasks:
+    - name: Create the fixture service directory tree
+      ansible.builtin.file:
+        path: "/home/molecule/monitor/{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - rules
+        - provisioning/alerting
+        - rendered
+
+    - name: Write the startup-config files the fingerprints must cover
+      ansible.builtin.copy:
+        content: "{{ item.content }}"
+        dest: "/home/molecule/monitor/{{ item.dest }}"
+        mode: "0644"
+      loop:
+        - {dest: prometheus.yml, content: "global:\n  scrape_interval: 15s\n"}
+        - {dest: rules/container-memory.yml, content: "groups: []\n"}
+        - {dest: provisioning/alerting/alert-rules.yml, content: "groups: []\n"}
+        - {dest: rendered/contact-points.yml, content: "contactPoints: []\n"}
+        - {dest: rendered/datasources.yml, content: "apiVersion: 1\n"}
+        - {dest: rendered/loki-target.json, content: '[{"targets": ["loki.example:443"]}]'}
+        - {dest: rendered/loki-password, content: "testpassword\n"}
+
+    - name: Run only the Prometheus (collect) half
+      ansible.builtin.include_role:
+        name: monitor_reload
+      vars:
+        monitor_reload_prometheus_enabled: true
+        monitor_reload_grafana_enabled: false
+
+    - name: Run only the Grafana (ui) half
+      ansible.builtin.include_role:
+        name: monitor_reload
+      vars:
+        monitor_reload_prometheus_enabled: false
+        monitor_reload_grafana_enabled: true

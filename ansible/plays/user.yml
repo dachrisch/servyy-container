@@ -205,6 +205,97 @@
         - user.docker.env
         - user.docker.env.monitor
 
+    # --- Monitor split across two hosts (2026-11-20) -------------------------
+    # Grafana + Loki moved to codey; Prometheus, promtail and the exporters stay
+    # on servy. Every secret-bearing monitor config is rendered into the untracked
+    # rendered/ dir (same rule as contact-points.yml above) and mounted over the
+    # tracked path or into a fixed path. Each render is gated on the profile that
+    # READS the file, so codey never renders the servy collector's target file and
+    # servy never renders the Grafana datasource.
+    - name: Render the Grafana datasources from the cross-host credentials
+      ansible.builtin.template:
+        src: "{{ docker.local_dir }}/monitor/provisioning/datasources/datasources.yml"
+        dest: "{{ docker.remote_dir }}/monitor/rendered/datasources.yml"
+        # Grafana runs as uid 472, and the checkout group is `docker`, not root.
+        mode: "0644"
+      when:
+        - "'monitor' in (services | default([]))"
+        - "'ui' in (monitor_profiles | default([]))"
+      tags:
+        - user.docker.monitor
+        - user.docker.env
+        - user.docker.env.monitor
+
+    - name: Read back the rendered datasources
+      ansible.builtin.slurp:
+        src: "{{ docker.remote_dir }}/monitor/rendered/datasources.yml"
+      register: monitor_datasources
+      when:
+        - "'monitor' in (services | default([]))"
+        - "'ui' in (monitor_profiles | default([]))"
+        - not ansible_check_mode
+      tags:
+        - user.docker.monitor
+        - user.docker.env
+        - user.docker.env.monitor
+
+    # Same trap as the contact points: an unresolved `{{ … }}` in datasources.yml
+    # is a FATAL Grafana provisioning error (Grafana 13 exits 1 and crash-loops),
+    # so catch it at deploy time, not at the next restart. A missing/blank
+    # password would instead provision a datasource that answers 401 on every
+    # query — Grafana stays up and every dashboard silently breaks.
+    - name: Verify the rendered datasources resolved
+      ansible.builtin.assert:
+        that:
+          - "monitor_datasources.content | b64decode is not search('\\{\\{')"
+          - "monitor_datasources.content | b64decode is search('uid: prometheus')"
+          - "monitor_datasources.content | b64decode is search('basicAuthPassword: \"[^\" ]{16,}\"')"
+          - "monitor_datasources.content | b64decode is search('url: https?://')"
+        fail_msg: >-
+          monitor/rendered/datasources.yml still holds an unresolved Jinja
+          placeholder, lost a datasource uid, or carries no basicAuthPassword /
+          url. Grafana 13 exits 1 on a provisioning error, and a datasource without
+          the cross-host credential would 401 every query — so the deploy stops
+          here.
+      when:
+        - "'monitor' in (services | default([]))"
+        - "'ui' in (monitor_profiles | default([]))"
+        - not ansible_check_mode
+      tags:
+        - user.docker.monitor
+        - user.docker.env
+        - user.docker.env.monitor
+
+    - name: Render the Loki basic-auth password for promtail and Prometheus
+      ansible.builtin.copy:
+        content: "{{ monitor_remote_auth.loki_password }}\n"
+        dest: "{{ docker.remote_dir }}/monitor/rendered/loki-password"
+        # Prometheus runs as uid 65534 and promtail reads it as root; both are
+        # outside the checkout's group (`docker`), so it must be world-readable
+        # (also listed in world_readable_paths_by_service.monitor).
+        mode: "0644"
+      when:
+        - "'monitor' in (services | default([]))"
+        - "'collect' in (monitor_profiles | default([]))"
+      no_log: true
+      tags:
+        - user.docker.monitor
+        - user.docker.env
+        - user.docker.env.monitor
+
+    - name: Render the Loki scrape target for Prometheus
+      ansible.builtin.template:
+        src: "{{ docker.local_dir }}/monitor/loki-target.json.j2"
+        dest: "{{ docker.remote_dir }}/monitor/rendered/loki-target.json"
+        mode: "0644"
+      when:
+        - "'monitor' in (services | default([]))"
+        - "'collect' in (monitor_profiles | default([]))"
+      tags:
+        - user.docker.monitor
+        - user.docker.env
+        - user.docker.env.monitor
+
     # Consolidation (shared project): data containers moved out of the
     # leagues-finance / finance projects. Remove the ORPHANED originals
     # (containers only — volumes and bind mounts stay) BEFORE the shared role
@@ -244,6 +335,13 @@
       when: "'traefik' in (services | default([]))"
       tags: [user.docker, user.docker.traefik]
 
+    # Cross-host monitor basic auth (2026-11-20). Must run before the traefik
+    # service below: the env templates render the two htpasswd users files from
+    # the facts this role computes (traefik/dynamic.yaml mounts them).
+    - role: monitor_remote_auth
+      when: "'traefik' in (services | default([]))"
+      tags: [user.docker, user.docker.traefik, user.docker.monitor]
+
     - role: docker_service
       vars:
         service_dir: traefik
@@ -263,6 +361,12 @@
           # basicAuth usersFile consumed by traefik/dynamic.yaml (`traefik-auth`).
           - src: traefik/dashboard-auth.htpasswd.j2
             dest: dashboard-auth.htpasswd
+          # basicAuth usersFiles for the two cross-host monitor routes
+          # (dynamic.yaml: monitor-loki-auth / monitor-prometheus-auth).
+          - src: traefik/monitor-loki-auth.htpasswd.j2
+            dest: monitor-loki-auth.htpasswd
+          - src: traefik/monitor-prometheus-auth.htpasswd.j2
+            dest: monitor-prometheus-auth.htpasswd
         # error-pages bind-mounts error-pages.html and runs as uid 10001. The
         # deploy checkout's umask 007 leaves tracked files at 0660, which the
         # container cannot read ("permission denied" -> restart loop, so every
@@ -772,10 +876,17 @@
       vars:
         service_dir: monitor
         env_templates:
+          # docker.env.j2 carries a monitor-only block (guarded by
+          # `service_dir == 'monitor'`) with COMPOSE_PROFILES — which half of the
+          # split stack this host runs — LOKI_PUSH_URL and the two cross-host
+          # routers' hostnames/allowlists. See the template header.
           - src: docker.env.j2
             dest: .env
           - src: monitor/grafana.env.j2
             dest: grafana.env
+        # Same value the .env carries, handed to `docker compose --profile` so the
+        # two paths cannot disagree. Empty on a host that does not run monitor.
+        compose_profiles: "{{ monitor_profiles | default([]) }}"
         # Grafana (uid 472), Prometheus (uid 65534) and Loki (uid 10001) all read
         # bind-mounted config as non-root users. The deploy checkout's umask 007
         # leaves tracked files at 0660 group `docker`, which none of them can
@@ -806,6 +917,11 @@
         # with SERVICE_NAME=monitor.
         monitor_reload_prometheus_container: monitor.prometheus
         monitor_reload_grafana_container: monitor.grafana
+        # One half of the stack now runs per host (2026-11-20). Without these the
+        # role would `docker inspect`/`docker restart` a container this host does
+        # not run: prometheus on codey, grafana on servy.
+        monitor_reload_prometheus_enabled: "{{ 'collect' in (monitor_profiles | default([])) }}"
+        monitor_reload_grafana_enabled: "{{ 'ui' in (monitor_profiles | default([])) }}"
       when: "'monitor' in (services | default([]))"
       tags: [user.docker, user.docker.monitor]
 
@@ -814,12 +930,31 @@
     # DB was rewritten by a browser password reset, the env kept the seed, and the
     # documented verification recipe 401'd). This proves the env still
     # authenticates and re-asserts it into the DB when it does not. Runs after
-    # monitor_reload so a restarted Grafana has settled.
+    # monitor_reload so a restarted Grafana has settled. Grafana only runs under
+    # the `ui` profile (codey, servyy-test).
     - role: monitor_grafana_auth
-      when: "'monitor' in (services | default([]))"
+      when:
+        - "'monitor' in (services | default([]))"
+        - "'ui' in (monitor_profiles | default([]))"
       tags: [user.docker, user.docker.monitor]
 
   post_tasks:
+    # Monitor split (2026-11-20): grafana + loki moved to codey and this host
+    # runs only the `collect` profile. Compose NEVER removes a service whose
+    # profile is inactive — `up --profile collect` simply ignores grafana/loki and
+    # leaves the existing containers running (and their restart policy keeps them
+    # alive). Without this, servy would keep running a second Grafana/Loki. The
+    # task file is idempotent and names the four objects explicitly; it must not
+    # touch any other volume.
+    - name: Remove the monitor ui containers and volumes superseded by the split
+      ansible.builtin.import_tasks: tasks/monitor_ui_cleanup.yml
+      when:
+        - "'monitor' in (services | default([]))"
+        - "'ui' not in (monitor_profiles | default([]))"
+      tags:
+        - user.docker
+        - user.docker.monitor
+
     # WP-9: nothing here waits on `shared.mongo` any more. The mongo servers now
     # have the same healthcheck contract as every other database container (the
     # `db` watchtower scope health-gates its patch window, and the consumer apps

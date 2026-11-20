@@ -6,7 +6,19 @@ positions:
   filename: /var/lib/promtail/positions.yaml
 
 clients:
-  - url: http://loki:3100/loki/api/v1/push
+  # LOKI_PUSH_URL comes from monitor/.env (prod: https://loki.lehel.xyz/loki/api/v1/push;
+  # servyy-test: its own loki host through local Traefik, so the authenticated
+  # path is exercised before production). `-config.expand-env=true` in the compose
+  # command is what makes ${…} expand; without it promtail treats the literal
+  # "${LOKI_PUSH_URL}" as a URL and pushes nowhere.
+  - url: ${LOKI_PUSH_URL}
+    # Authenticated cross-host route (2026-11-20): Loki now runs on codey, and its
+    # Traefik router enforces basicAuth + ipAllowList. The password is rendered by
+    # Ansible into monitor/rendered/loki-password (never tracked) and mounted here.
+    # Same user as Prometheus' Loki scrape and fail2ban's query helper.
+    basic_auth:
+      username: promtail
+      password_file: /etc/promtail/loki-password
     # Plaintext on purpose: the Loki tenant id is not a secret (it is documented
     # in plays/vars/default.yml and recoverable from Loki's chunk directory
     # names). Committing it here keeps this file out of the Ansible render, so a

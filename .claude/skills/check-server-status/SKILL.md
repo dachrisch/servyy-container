@@ -20,8 +20,13 @@ that Traefik is still fronting with a stale connection.
 
 | Host | Alias | Role | Enabled services (source of truth: `ansible/production`) |
 |---|---|---|---|
-| `servy.lehel.xyz` | `lehel.xyz` | Primary | traefik, git, photoprism, bumbleflies (www/bnb/edu/live — repository/archive retired 2026-09-27), achim-hoefer, portainer, pass, energy, groceries, leagues-finance, finance (firefly/importer/queen), shared (mongo/valkey/postgres — backend-only, watched by the container-health probe as tier="backend"), bnb-office, searxng, dontforget, **monitor**, leaguesphere (+ demo/stage), **moodle**, **waggle** (OpenPost → `waggle.bumbleflies.de`) — disabled: thore, platzler-heid, dns, me, job-search (retired 2026-10-27) |
-| `codey.lehel.xyz` | `code.lehel.xyz` | Secondary (opencode) | traefik, opencode, opencode-authgate, portainer-agent, devhub — disabled: claude-hub (its compose dir exists on the test host but **no container has ever run**, so a missing `claude-hub.*` is expected, not a finding) |
+| `servy.lehel.xyz` | `lehel.xyz` | Primary | traefik, git, photoprism, bumbleflies (www/bnb/edu/live — repository/archive retired 2026-09-27), achim-hoefer, portainer, pass, energy, groceries, leagues-finance, finance (firefly/importer/queen), shared (mongo/valkey/postgres — backend-only, watched by the container-health probe as tier="backend"), bnb-office, searxng, dontforget, **monitor (collect profile: prometheus, promtail, cadvisor, node-exporter, pushgateway+bridge)**, leaguesphere (+ demo/stage), **moodle**, **waggle** (OpenPost → `waggle.bumbleflies.de`) — disabled: thore, platzler-heid, dns, me, job-search (retired 2026-10-27) |
+| `codey.lehel.xyz` | `code.lehel.xyz` | Secondary (opencode) | traefik, opencode, opencode-authgate, portainer-agent, **monitor (ui profile: grafana + loki — `monitor.lehel.xyz`, `loki.lehel.xyz`)**, devhub — disabled: claude-hub (its compose dir exists on the test host but **no container has ever run**, so a missing `claude-hub.*` is expected, not a finding) |
+
+Since 2026-11-20 Grafana and Loki run on codey, not servy: a missing
+`monitor.grafana`/`monitor.loki` on servy is expected, and `monitor.lehel.xyz` is
+now checked against codey. Prometheus stayed on servy and exposes its query API
+on `prometheus.lehel.xyz` (basicAuth + ipAllowList) for codey's Grafana.
 
 Re-grep `ansible/production` (`services_enabled:` per host) before trusting
 this table — it drifts as services are added/removed.

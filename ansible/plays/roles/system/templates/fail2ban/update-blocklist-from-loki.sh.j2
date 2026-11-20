@@ -1,8 +1,7 @@
 {% raw %}#!/bin/bash
 # Dynamic blocklist update script - queries Loki for top offenders
 # Managed by Ansible - do not edit manually
-#
-# Two modes:
+## Two modes:
 #   quick  - only short-window queries (rate flood, request rate, crawler).
 #            Runs every 2 minutes from update-blocklist-quick.timer. This is what
 #            turns a flood into a ban within minutes instead of within an hour.
@@ -26,18 +25,21 @@
 set -euo pipefail
 
 # Configuration
-# Loki is accessible via Traefik at /loki path or directly via Docker network
-# Get the first IP from any network the container is on
-LOKI_DOCKER_IP=$(docker inspect -f '{{(index .NetworkSettings.Networks "proxy").IPAddress}}' monitor.loki 2>/dev/null || echo "")
-if [[ -n "$LOKI_DOCKER_IP" ]]; then
-    LOKI_URL="http://${LOKI_DOCKER_IP}:3100"
-else
-    LOKI_URL="https://monitor.lehel.xyz/loki"
-fi
+# Loki moved to codey on 2026-11-20 and is reachable only through the
+# authenticated https://loki.lehel.xyz route (basicAuth + ipAllowList): no
+# docker-network shortcut exists any more, and the old `monitor.lehel.xyz/loki`
+# fallback was already dead once Loki left Traefik. The endpoint and the
+# credential are rendered from plays/vars/secrets.yml into THIS file, which is
+# installed mode 0700 root-owned (see tasks/fail2ban.yml) — never a tracked file,
+# never on a command line in the deploy log.
 {% endraw %}
-# Centralized tenant (monitor.loki_tenant). The rest of this file stays inside
-# a raw block (see below) so Go-template / curl / jq quoting survives Jinja.
+# Centralized tenant / endpoint (monitor.loki_tenant, monitor_loki_url). The rest
+# of this file stays inside a raw block (see below) so Go-template / curl / jq
+# quoting survives Jinja.
 LOKI_TENANT_ID="{{ monitor.loki_tenant }}"
+LOKI_URL="{{ monitor_loki_url }}"
+LOKI_USER="{{ monitor_loki_auth_username }}"
+LOKI_PASSWORD="{{ monitor_remote_auth.loki_password }}"
 {% raw %}
 BLOCKLIST_LOG="/var/log/fail2ban-loki.log"
 TIME_RANGE="24h"
@@ -69,7 +71,7 @@ log() {
 }
 
 loki_query() {
-    curl -s -H "X-Scope-OrgID: $LOKI_TENANT_ID" \
+    curl -s -u "$LOKI_USER:$LOKI_PASSWORD" -H "X-Scope-OrgID: $LOKI_TENANT_ID" \
         "$LOKI_URL/loki/api/v1/query" \
         --data-urlencode "query=$1" 2>/dev/null || true
 }
@@ -246,8 +248,8 @@ main() {
     log "Starting blocklist update from Loki (mode: $MODE)..."
 
     # Check if Loki is reachable
-    if ! curl -s -H "X-Scope-OrgID: $LOKI_TENANT_ID" "$LOKI_URL/ready" >/dev/null 2>&1; then
-        log "ERROR: Loki is not reachable at $LOKI_URL"
+    if ! curl -sf -u "$LOKI_USER:$LOKI_PASSWORD" -H "X-Scope-OrgID: $LOKI_TENANT_ID" "$LOKI_URL/ready" >/dev/null 2>&1; then
+        log "ERROR: Loki is not reachable at $LOKI_URL (or rejected the blocklist credential)"
         exit 1
     fi
 

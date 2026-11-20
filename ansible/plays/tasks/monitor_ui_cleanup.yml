@@ -1,0 +1,37 @@
+---
+# One-time (but idempotent) cleanup for the grafana+loki → codey split, run on the
+# host that no longer carries the `ui` profile (servy).
+#
+# Compose does not remove a service whose profile is inactive: `up --profile
+# collect` starts the six collectors and silently leaves monitor.grafana and
+# monitor.loki running, and their `restart: unless-stopped` keeps them alive
+# across reboots. They are orphans the deploy must name.
+#
+# Scope is deliberately four objects, each named in full. NEVER use
+# `docker compose down --remove-orphans` or a wildcard here: servy holds every
+# other volume in this project (`prometheus_data` is the alerting history and
+# must survive) and a prune would take it with them.
+#
+# Removal order matters: a volume cannot be removed while a container references
+# it, so containers go first. Both tasks report `changed` only on the run that
+# actually removes something (the Docker modules inspect first), which keeps a
+# routine `--tags user.docker.monitor` deploy idempotent.
+
+- name: Remove superseded monitor ui containers (fresh Loki/Grafana live on codey)
+  community.docker.docker_container:
+    name: "{{ item }}"
+    state: absent
+    # Volumes are removed by the explicit task below, so this task cannot delete
+    # anything else even if a container unexpectedly has an anonymous volume.
+    keep_volumes: true
+  loop:
+    - monitor.grafana
+    - monitor.loki
+
+- name: Remove superseded monitor ui volumes (nothing is migrated; fresh start)
+  community.docker.docker_volume:
+    name: "{{ item }}"
+    state: absent
+  loop:
+    - monitor_grafana_data
+    - monitor_loki_data

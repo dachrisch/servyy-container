@@ -149,7 +149,11 @@
     dest: /usr/local/bin/blocklist/update-from-loki.sh
     owner: root
     group: root
-    mode: '0755'
+    # 0700, not 0755: since 2026-11-20 the script carries the cross-host Loki
+    # basic-auth password (Loki lives on codey behind an authenticated Traefik
+    # route) rendered into it. Only root's timer executes it, so no other user has
+    # any reason to read it.
+    mode: '0700'
   tags:
     - system.fail2ban.scripts
 

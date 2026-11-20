@@ -90,6 +90,21 @@
             'check_container "backendtest.mongo" "backendtest" "backend"'
             in (container_script.content | b64decode)
 
+    # Compose profiles (2026-11-20): the probe must watch the half this host runs
+    # and MUST NOT watch the other half — a profile-disabled service is never
+    # started, so probing it would report container_running 0 for ever (a permanent
+    # false alert on servy for grafana/loki, on codey for the collectors).
+    - name: Assert the probe honours the host's compose profiles
+      assert:
+        that:
+          - "'check_container \"monitor.prometheus\" \"monitor\" \"app\"' in (container_script.content | b64decode)"
+          - "'check_container \"monitor.always\" \"monitor\" \"app\"' in (container_script.content | b64decode)"
+          - "'monitor.grafana' not in (container_script.content | b64decode)"
+        fail_msg: >-
+          the container-health probe did not filter monitor's services by
+          monitor_profiles ([collect] here): the `ui` half must be absent and the
+          unprofiled service must stay.
+
     - name: Assert the health metric is declared
       assert:
         that:

@@ -1,0 +1,104 @@
+---
+# Prometheus half of monitor_reload. See main.yml for the algorithm.
+#
+# The fingerprint covers everything Prometheus reads at START: the scrape config,
+# the recording rules, and (since 2026-11-20) the two Ansible-rendered files for
+# the Loki scrape — the file_sd target (which names codey's loki route) and the
+# basic-auth password. A change to either is a changed scrape, and Prometheus only
+# picks it up on restart (file_sd DOES re-read the target file live, but the
+# password_file is read at scrape-config load, so a rotation needs the restart
+# anyway; including both keeps the rule simple and cannot under-restart).
+
+- name: Compute the Prometheus startup-config fingerprint
+  ansible.builtin.command:
+    argv:
+      - sh
+      - -c
+      - >-
+        for f in prometheus.yml rules/*.yml rendered/loki-target.json
+        rendered/loki-password;
+        do [ -f "$f" ] && { printf "%s\n" "$f"; cat "$f"; };
+        done | sha256sum | cut -d" " -f1
+    chdir: "{{ monitor_reload_service_dir }}"
+  register: monitor_prometheus_fp
+  changed_when: false
+  check_mode: false
+
+- name: Read when Prometheus last started
+  ansible.builtin.command:
+    argv: [docker, inspect, --format, "{{ '{{.State.StartedAt}}' }}", "{{ monitor_reload_prometheus_container }}"]
+  register: monitor_prometheus_started
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Read the last applied Prometheus state
+  ansible.builtin.slurp:
+    src: "{{ (monitor_reload_state_dir, 'prometheus.state') | path_join }}"
+  register: monitor_prometheus_state
+  failed_when: false
+  no_log: true
+
+- name: Split the last applied Prometheus state
+  ansible.builtin.set_fact:
+    monitor_prometheus_prev_fp: "{{ (monitor_prometheus_state.content | b64decode | trim).split(' ') | first | default('', true) }}"
+    monitor_prometheus_prev_started: "{{ (monitor_prometheus_state.content | b64decode | trim).split(' ') | last | default('', true) }}"
+  when: monitor_prometheus_state.content is defined
+  no_log: true
+
+- name: Restart Prometheus because prometheus.yml or rules/ changed
+  ansible.builtin.command:
+    argv: [docker, restart, "{{ monitor_reload_prometheus_container }}"]
+  register: monitor_prometheus_restart
+  when:
+    - not ansible_check_mode
+    - monitor_prometheus_prev_fp | default('') | length > 0
+    - monitor_prometheus_prev_fp != (monitor_prometheus_fp.stdout | trim)
+    - monitor_prometheus_prev_started == (monitor_prometheus_started.stdout | trim)
+  # `docker restart` fails on a non-zero exit, which aborts this host's play
+  # BEFORE the state is recorded - so a failed restart can never leave the state
+  # claiming content that is not loaded. The next run sees the same difference
+  # and retries.
+  changed_when: true
+
+# The StartedAt read above was taken BEFORE our own restart. Recording that one
+# would be wrong in a way that hides the next change: the state would say
+# "fingerprint X loaded at T0" while the live container started at T1, and the
+# next content change would read "StartedAt changed too" - the branch that means
+# "compose already recreated it, do not restart" - and skip the restart. That is
+# exactly the silent no-op this role exists to prevent (found live 2026-11-18:
+# change -> restart -> revert -> nothing happened).
+- name: Read when Prometheus started AFTER our own restart
+  ansible.builtin.command:
+    argv: [docker, inspect, --format, "{{ '{{.State.StartedAt}}' }}", "{{ monitor_reload_prometheus_container }}"]
+  register: monitor_prometheus_started_after
+  when: monitor_prometheus_restart.changed | default(false)
+  changed_when: false
+  check_mode: false
+
+- name: Decide which StartedAt to record for Prometheus
+  ansible.builtin.set_fact:
+    monitor_prometheus_record_started: >-
+      {{ (monitor_prometheus_started_after.stdout
+          if (monitor_prometheus_restart.changed | default(false))
+          else monitor_prometheus_started.stdout) | trim }}
+  no_log: true
+
+- name: Report the pending Prometheus restart (check mode)
+  ansible.builtin.debug:
+    msg: >-
+      would restart {{ monitor_reload_prometheus_container }}: prometheus.yml or rules/ changed
+      (fingerprint {{ monitor_prometheus_prev_fp | default('-') | truncate(12, true, '') }} ->
+      {{ monitor_prometheus_fp.stdout | trim | truncate(12, true, '') }})
+  when:
+    - ansible_check_mode
+    - monitor_prometheus_prev_fp | default('') | length > 0
+    - monitor_prometheus_prev_fp != (monitor_prometheus_fp.stdout | trim)
+    - monitor_prometheus_prev_started == (monitor_prometheus_started.stdout | trim)
+
+- name: Record the applied Prometheus state
+  ansible.builtin.copy:
+    content: "{{ monitor_prometheus_fp.stdout | trim }} {{ monitor_prometheus_record_started }}\n"
+    dest: "{{ (monitor_reload_state_dir, 'prometheus.state') | path_join }}"
+    mode: '0600'
+  no_log: true

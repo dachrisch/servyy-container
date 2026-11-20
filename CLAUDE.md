@@ -45,14 +45,23 @@ The infrastructure uses **Porkbun** for DNS management on `lehel.xyz` domain via
 lehel.xyz (root domain)
   ├─ ALIAS → servy.lehel.xyz (primary server)
   │
-  ├─ servy.lehel.xyz (primary server: 49.13.6.173)
+  ├─ servy.lehel.xyz (primary server: 49.13.6.173 / 2a01:4f8:c013:f6f4::1)
   │  └─ *.lehel.xyz → CNAME → servy.lehel.xyz
-  │     (wildcard catches all lehel services: git, photoprism, monitor, etc.)
+  │     (wildcard catches all lehel services: git, photoprism, etc.)
   │
-  └─ codey.lehel.xyz (secondary server: 217.217.227.124)
+  └─ codey.lehel.xyz (secondary server: 138.2.180.191 /
+  │  2603:c020:802e:5f01:0:876f:f045:3504 — Oracle A1)
      └─ code.lehel.xyz → CNAME → codey.lehel.xyz (public alias)
         (codey infrastructure detail is hidden from users)
 ```
+
+**Explicit names that override the wildcard:**
+
+| Name | Points at | Why |
+|---|---|---|
+| `monitor.lehel.xyz` | codey | Grafana moved there 2026-11-20 (alerting survives a servy outage). |
+| `loki.lehel.xyz` | codey | Loki's authenticated ingest/query route (basicAuth + ipAllowList; servy pushes its logs here). |
+| `prometheus.lehel.xyz` | **servy** (wildcard, no explicit record) | Prometheus stayed on servy; codey's Grafana queries it through this authenticated route. |
 
 **Key points:**
 - `codey.lehel.xyz` is the internal server name (not exposed to users)
@@ -337,14 +346,18 @@ ssh lehel.xyz "docker ps --format '{{.Names}}: {{.Label \"com.docker.compose.ser
 ### Testing Loki Queries
 
 ```bash
-# Use query_range (NOT query) for log queries
-LOKI_URL="https://monitor.lehel.xyz/loki"
+# Loki is on codey and its only door is the authenticated route
+# (basicAuth user `promtail`; password = monitor_remote_auth.loki_password in
+# ansible/plays/vars/secrets.yml, also in Vaultwarden).
+# Use query_range (NOT query) for log queries.
+LOKI_URL="https://loki.lehel.xyz"
+LOKI_AUTH="promtail:<password from secrets.yml>"
 TENANT_ID="servyy-logs-k8x9m2p4q7"
 END=$(date +%s)000000000
 START=$((END - 3600000000000))  # Last 1 hour
 
-curl -s -H "X-Scope-OrgID: $TENANT_ID" \
-  "$LOKI_URL/api/v1/query_range" \
+curl -s -u "$LOKI_AUTH" -H "X-Scope-OrgID: $TENANT_ID" \
+  "$LOKI_URL/loki/api/v1/query_range" \
   --data-urlencode 'query={job="docker",container="traefik.traefik"} | json | DownstreamStatus >= 400' \
   --data-urlencode "start=$START" \
   --data-urlencode "end=$END" | jq
@@ -696,7 +709,7 @@ When responding to requests like "deploy X" or "fix error in X":
 | Service | Container Name | URL | Purpose |
 |---------|---------------|-----|---------|
 | traefik | traefik.traefik | traefik.lehel.xyz | Reverse proxy, SSL. Dashboard is behind HTTP basic auth (`traefik-auth` file-provider middleware, credentials in Vaultwarden — see `history/2026-10-22_traefik-dashboard-password-rotation.md`) |
-| monitor | monitor.{grafana,prometheus,loki,promtail} | monitor.lehel.xyz | Observability stack |
+| monitor | `monitor.grafana` + `monitor.loki` on `codey.lehel.xyz`; `monitor.prometheus`, `monitor.promtail`, `monitor.{cadvisor,node-exporter,pushgateway}` on `servy.lehel.xyz` (one compose project, two profiles — see `monitor/AGENTS.md`) | monitor.lehel.xyz | Observability stack; the two authenticated cross-host routes are `loki.lehel.xyz` (codey) and `prometheus.lehel.xyz` (servy) |
 | photoprism | photoprism.photoprism | photoprism.lehel.xyz | Photo library |
 | git | git.gitea | git.lehel.xyz | Git hosting |
 | leaguesphere-demo | leaguesphere-demo.{www,demo-app,mysql} | demo.leaguesphere.app | LeagueSphere demo (auto-resets nightly) |
@@ -746,15 +759,16 @@ ansible/
 - Root filesystem: 04:00 UTC daily
 - PhotoPrism DB: 02:00 UTC daily
 
-**Monitoring Stack:**
-- **Prometheus:** Metrics collection (Traefik, cAdvisor, Node Exporter)
-- **Grafana:** Dashboards (HTTP Errors, Security, Services & Infra)
-- **Loki:** Log aggregation (31-day retention)
-- **Promtail:** Log collection (Docker + system logs)
+**Monitoring Stack** (split across two hosts since 2026-11-20 — see `monitor/AGENTS.md`):
+- **Prometheus:** Metrics collection (Traefik, cAdvisor, Node Exporter) — on servy
+- **Grafana:** Dashboards (HTTP Errors, Security, Services & Infra) — on codey
+- **Loki:** Log aggregation (31-day retention) — on codey
+- **Promtail:** Log collection (Docker + system logs) — on servy, pushes to `loki.lehel.xyz`
 - **monit:** System health monitoring (SSH, disk, memory)
 - **fail2ban:** Intrusion prevention
   - Loki-based: SSH brute force, scanners, Traefik rate limiting, malicious bots
   - Script: `/usr/local/bin/blocklist/update-from-loki.sh` (runs every 5min)
+  - Queries Loki through the authenticated `loki.lehel.xyz` route
 
 ## Troubleshooting
 
@@ -784,16 +798,18 @@ ssh lehel.xyz "docker logs traefik.traefik --tail 50"
 
 ### Loki Query Issues
 ```bash
+# Loki runs on codey behind basicAuth + ipAllowList (loki.lehel.xyz).
+# User: promtail, password: monitor_remote_auth.loki_password (secrets.yml).
 # List available labels
-curl -s -H "X-Scope-OrgID: servyy-logs-k8x9m2p4q7" \
-  "https://monitor.lehel.xyz/loki/api/v1/label/__name__/values"
+curl -s -u "promtail:<password>" -H "X-Scope-OrgID: servyy-logs-k8x9m2p4q7" \
+  "https://loki.lehel.xyz/loki/api/v1/label/__name__/values"
 
 # Check container labels
 ssh lehel.xyz "docker ps --format '{{.Names}}'"
 
 # Test query (use query_range for log streams)
-curl -s -H "X-Scope-OrgID: servyy-logs-k8x9m2p4q7" \
-  "https://monitor.lehel.xyz/loki/api/v1/query_range" \
+curl -s -u "promtail:<password>" -H "X-Scope-OrgID: servyy-logs-k8x9m2p4q7" \
+  "https://loki.lehel.xyz/loki/api/v1/query_range" \
   --data-urlencode 'query={job="docker"}' \
   --data-urlencode "start=$(($(date +%s)-3600))000000000" \
   --data-urlencode "end=$(date +%s)000000000"
@@ -928,7 +944,7 @@ cd ../ansible && ./servyy-test.sh
 2. **Loki query vs query_range:** Use `/api/v1/query_range` for log stream queries, NOT `/api/v1/query`
 3. **git-crypt locked files:** Run `git-crypt status` if files appear binary
 4. **Ansible changes not applied:** Check if templates are deployed to correct paths with `--check` mode
-5. **Dashboard not updating:** Restart Grafana after provisioning changes: `docker restart monitor.grafana`
+5. **Dashboard not updating:** Restart Grafana after provisioning changes — **on codey** since 2026-11-20: `ssh codey.lehel.xyz "docker restart monitor.grafana"`
 6. **DNS service conflicts:** DO NOT use "app" as a service name - causes DNS ambiguity across networks. Use descriptive names like `finance-api`, `backend`, `webserver`, etc.
 
 ## Deployment Verification Checklist
@@ -983,8 +999,9 @@ ssh {host} "docker logs traefik.traefik --tail 20 | grep -i error"
 # Check system logs for deployment issues
 ssh {host} "journalctl -u docker --no-pager -n 20"
 
-# Verify Loki is receiving logs (if monitoring deployed)
-curl -s "https://monitor.lehel.xyz/loki/api/v1/label/__name__/values" | jq length
+# Verify Loki is receiving logs (Loki + Grafana live on codey since 2026-11-20)
+curl -s -u "promtail:<password>" -H "X-Scope-OrgID: servyy-logs-k8x9m2p4q7" \
+  "https://loki.lehel.xyz/loki/api/v1/label/__name__/values" | jq length
 ```
 
 ### Environment-Specific Checks
@@ -1117,7 +1134,8 @@ curl -I https://{service}.lehel.xyz
 | `ansible/plays/roles/docker_service/templates/docker.env.j2` | Default service .env template |
 | `ansible/plays/roles/docker_service/templates/{service}/` | Per-service env templates |
 | `monitor/provisioning/dashboards/` | Grafana dashboard JSON files |
-| `monitor/provisioning/datasources/` | Grafana datasource configs |
+| `monitor/provisioning/datasources/` | Grafana datasource **Jinja source** (rendered to `monitor/rendered/datasources.yml`, which compose mounts) |
+| `monitor/rendered/` | Untracked, Ansible-rendered monitor config (`contact-points.yml`, `datasources.yml`, `loki-password`, `loki-target.json`) |
 
 ## Quick Reference
 
@@ -1131,8 +1149,9 @@ ssh lehel.xyz "docker ps"
 # Check logs
 ssh lehel.xyz "docker logs traefik.traefik --tail 20"
 
-# Restart Grafana
-ssh lehel.xyz "docker restart monitor.grafana"
+# Restart Grafana (runs on codey since 2026-11-20; Prometheus stays on servy)
+ssh codey.lehel.xyz "docker restart monitor.grafana"
+ssh servy.lehel.xyz "docker restart monitor.prometheus"
 
 # Test fail2ban
 ssh lehel.xyz "sudo bash /usr/local/bin/blocklist/update-from-loki.sh"
