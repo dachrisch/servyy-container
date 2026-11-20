@@ -332,10 +332,12 @@
       ansible.builtin.assert:
         that:
           - "'COMPOSE_PROFILES=collect,ui' in monitor_dotenv.content | b64decode"
-          - "'LOKI_PUSH_URL=http://loki.servyy-test.lxd/loki/api/v1/push' in monitor_dotenv.content | b64decode"
+          # The client URL always carries the port (prod :443, an http route :80),
+          # because the same var feeds Prometheus' file_sd target.
+          - "'LOKI_PUSH_URL=http://loki.servyy-test.lxd:80/loki/api/v1/push' in monitor_dotenv.content | b64decode"
           - "'MONITOR_LOKI_ALLOW=10.0.0.0/8' in monitor_dotenv.content | b64decode"
           - "'MONITOR_TRAEFIK_ENTRYPOINT=web' in monitor_dotenv.content | b64decode"
-        fail_msg: "monitor/.env is missing the profile/push-route wiring (see monitor/docker.env.j2)"
+        fail_msg: "monitor/.env is missing the profile/push-route wiring (see the monitor block in docker.env.j2)"
 
     - name: Verify a non-monitor service .env does NOT carry COMPOSE_PROFILES
       ansible.builtin.command:
