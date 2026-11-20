@@ -1,0 +1,18 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Install Python and Docker SDK for Ansible
+      raw: |
+        apt-get update
+        apt-get install -y python3 python3-apt python3-requests python3-docker sudo
+      changed_when: false
+
+    # The roles look the deploy user (uid/gid) and the docker group up via
+    # getent, and forgejo_bootstrap runs become_user: testuser.
+    - name: Create the deploy user and the docker group
+      raw: |
+        getent group docker >/dev/null || groupadd docker
+        id testuser >/dev/null 2>&1 || useradd -m -u 1000 -G docker testuser
+      changed_when: false

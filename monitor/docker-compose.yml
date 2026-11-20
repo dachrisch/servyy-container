@@ -186,6 +186,8 @@ services:
       # world_readable_paths_by_service.monitor in plays/vars/default.yml.
       - ./rendered/loki-target.json:/etc/prometheus/rendered/loki-target.json:ro
       - ./rendered/loki-password:/etc/prometheus/rendered/loki-password:ro
+      # Bearer token for the `forgejo` scrape job (ci.forgejo:3000/metrics).
+      - ./rendered/forgejo-metrics-token:/etc/prometheus/rendered/forgejo-metrics-token:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'

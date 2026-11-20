@@ -1,0 +1,111 @@
+#!/bin/bash
+# Forgejo runner liveness probe (runs on servy, every 5 minutes, via the
+# system_probe oneshot timer). Reports, per registered runner, whether it is
+# online and how long since it was last seen, plus the number of Actions jobs
+# waiting/running — so Grafana can distinguish "the instance is fine, the
+# runner vanished" from "the instance itself is down".
+#
+# Pushes to Pushgateway; the Grafana rules in
+# monitor/provisioning/alerting/alert-rules.yml evaluate these gauges.
+#
+# SOURCE: the Forgejo admin API (`GET /api/v1/admin/actions/runners`, bearer
+# token). The plan's "check first" note: if the pinned Forgejo does NOT expose
+# that endpoint, the fallback reads the `action_runner` / `action_run_job`
+# tables straight from the SQLite DB through a read-only sqlite3 one-shot
+# container on ci/data. Verify the endpoint (and the column names below) on
+# servyy-test's /swagger.v1.json before relying on the fallback.
+set -uo pipefail
+# Deliberately no `set -e`: each source handles its own failure so one broken
+# query cannot abort the script before it pushes anything.
+
+PUSHGATEWAY_URL="{{ system_probe_pushgateway_url }}"
+JOB_NAME="forgejo_runners"
+FORGEJO_URL="{{ forgejo_probe_instance }}"
+FORGEJO_TOKEN="{{ forgejo_admin_api_token }}"
+CI_DATA_DIR="{{ forgejo_probe_ci_data }}"
+
+probe_success=1
+payload_file=$(mktemp)
+
+# Query the SQLite DB (read-only) through a one-shot container. $1 = SQL, $2 =
+# table to read. Prints rows; empty on failure.
+sqlite_query() {
+  docker run --rm -v "${CI_DATA_DIR}:/data:ro" \
+    keinos/sqlite3:3.46.1 sqlite3 -readonly -noheader "file:/data/gitea/forgejo.db?immutable=1" "$1" \
+    2>/dev/null || true
+}
+
+{
+  echo "# TYPE forgejo_runner_online gauge"
+  echo "# TYPE forgejo_runner_last_seen_seconds gauge"
+  echo "# TYPE forgejo_actions_jobs gauge"
+  echo "# TYPE forgejo_runners_probe_success gauge"
+
+  now=$(date +%s)
+
+  # --- runners: online + last-seen -----------------------------------------
+  runners_json=$(curl -sf --max-time 15 --connect-timeout 5 \
+    -H "Authorization: token ${FORGEJO_TOKEN}" \
+    "${FORGEJO_URL}/api/v1/admin/actions/runners" 2>/dev/null) || runners_json=""
+
+  if [ -n "${runners_json}" ] && printf '%s' "${runners_json}" | jq -e 'type == "array"' >/dev/null 2>&1; then
+    # API path. Fields per runner: name, online (bool), last_online (RFC3339 or
+    # unix). The field names are the Forgejo admin-runner API shape; confirm on
+    # /swagger.v1.json (the plan's "check first").
+    printf '%s' "${runners_json}" | jq -r '.[] | [.name, (if .online then "1" else "0" end), (.last_online // .last_seen // "0")] | @tsv' \
+    | while IFS=$'\t' read -r name online last; do
+        printf 'forgejo_runner_online{runner="%s"} %s\n' "${name}" "${online}"
+        # last may be an RFC3339 timestamp or a unix epoch.
+        case "${last}" in
+          *T*|*Z*) last_epoch=$(date -d "${last}" +%s 2>/dev/null) || last_epoch=0 ;;
+          *) last_epoch="${last}" ;;
+        esac
+        if [ "${last_epoch:-0}" -gt 0 ] 2>/dev/null; then
+          printf 'forgejo_runner_last_seen_seconds{runner="%s"} %s\n' "${name}" "$(( now - last_epoch ))"
+        fi
+      done
+  else
+    # Fallback: action_runner table (columns name, last_seen as unix seconds).
+    sqlite_query "SELECT name, COALESCE(last_seen,0) FROM action_runner;" \
+      | while IFS='|' read -r name last_seen; do
+          [ -n "${name}" ] || continue
+          # A runner is online if last_seen is within the fetch interval window
+          # (Forgejo marks runners stale after ~2x fetch_interval; be generous).
+          age=$(( now - last_seen ))
+          if [ "${last_seen}" -gt 0 ] && [ "${age}" -lt 600 ]; then
+            printf 'forgejo_runner_online{runner="%s"} 1\n' "${name}"
+          else
+            printf 'forgejo_runner_online{runner="%s"} 0\n' "${name}"
+          fi
+          printf 'forgejo_runner_last_seen_seconds{runner="%s"} %s\n' "${name}" "${age}"
+        done
+    probe_success=0
+  fi
+
+  # --- job counts: waiting / running ---------------------------------------
+  # Defaults so the series exist (and alerts can evaluate) when nothing queues.
+  waiting=0; running=0
+  # action_run_job.status: 1 = waiting, 2 = running (Forgejo Actions).
+  sqlite_query "SELECT status, COUNT(*) FROM action_run_job WHERE status IN (1,2) GROUP BY status;" \
+    | while IFS='|' read -r status count; do
+        case "${status}" in
+          1) echo "waiting ${count}" ;;
+          2) echo "running ${count}" ;;
+        esac
+      done > "${payload_file}.jobs"
+  while read -r k v; do
+    case "$k" in waiting) waiting=$v ;; running) running=$v ;; esac
+  done < "${payload_file}.jobs"
+  rm -f "${payload_file}.jobs"
+  printf 'forgejo_actions_jobs{status="waiting"} %s\n' "${waiting}"
+  printf 'forgejo_actions_jobs{status="running"} %s\n' "${running}"
+
+  echo "forgejo_runners_probe_success ${probe_success}"
+} > "${payload_file}"
+
+if curl -sf -X PUT --max-time 15 --connect-timeout 5 --data-binary @"${payload_file}" "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}"; then
+  echo "forgejo-runners probe_success=${probe_success} pushed=1"
+else
+  echo "forgejo-runners probe_success=${probe_success} pushed=0 (pushgateway push failed)"
+fi
+rm -f "${payload_file}"

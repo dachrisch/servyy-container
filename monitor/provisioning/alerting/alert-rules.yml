@@ -2858,3 +2858,194 @@ groups:
         labels:
           severity: medium
         isPaused: false
+
+  # Forgejo CI (2026-11-20): instance health and runner liveness. The runner
+  # gauges come from the system_probe `forgejo-runners` job (forgejo_runners.sh),
+  # which pushes to the Pushgateway; `up{job="forgejo"}` is the Prometheus
+  # scrape of the instance's own /metrics. `noDataState: OK` is load-bearing for
+  # the runner rules: a runner that was never registered emits no series, and
+  # that must stay quiet (only a REGISTERED-but-offline runner pages).
+  - orgId: 1
+    name: forgejo-ci-alerts
+    folder: Infrastructure
+    interval: 1m
+    rules:
+      # The instance itself is unreachable (scrape down / healthz failed).
+      - uid: forgejo_down
+        title: Forgejo Down
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: up{job="forgejo"}
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: lt
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'Forgejo is down'
+          description: 'The ci.lehel.xyz /metrics scrape has been failing for 5 minutes. Check `docker ps | grep ci.forgejo` and `docker logs ci.forgejo` on servy.'
+        labels:
+          severity: critical
+        isPaused: false
+
+      # A registered runner has not been seen for 15 minutes (offline / crashed).
+      - uid: forgejo_runner_offline
+        title: Forgejo Runner Offline
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: forgejo_runner_online
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: lt
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: 'Forgejo runner {{ $labels.runner }} is offline'
+          description: 'The {{ $labels.runner }} runner has not been seen by Forgejo for 15 minutes. Check `docker ps | grep runny.runner` on the runner host and `docker logs runny.runner`.'
+        labels:
+          severity: high
+        isPaused: false
+
+      # Jobs are queued but no runner is picking them up.
+      - uid: forgejo_jobs_stuck_waiting
+        title: Forgejo Jobs Stuck Waiting
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: forgejo_actions_jobs{status="waiting"}
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 30m
+        annotations:
+          summary: 'Forgejo jobs are stuck waiting'
+          description: 'At least one Actions job has been waiting for 30 minutes, which means no runner is picking it up. Check the runner online state on the Forgejo CI dashboard.'
+        labels:
+          severity: high
+        isPaused: false
+
+      # runny (the 1 GB amd64 runner) is about to exhaust its swap.
+      - uid: runny_swap_exhausted
+        title: runny Swap Exhausted
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: (node_memory_SwapTotal_bytes{job="runny"} - node_memory_SwapFree_bytes{job="runny"}) / node_memory_SwapTotal_bytes{job="runny"}
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.9]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'runny swap usage above 90%'
+          description: 'runny.lehel.xyz has used over 90% of its swap for 5 minutes — an amd64 image build on the 1 GB box is close to OOM. Check `free -h` on runny and consider resizing codey instead (Phase 4).'
+        labels:
+          severity: high
+        isPaused: false

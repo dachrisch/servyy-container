@@ -10,6 +10,9 @@
       - dir: traefik
       - dir: git
         depends: traefik
+      - dir: ci
+        depends: traefik
+      - dir: runny
       - dir: photoprism
         depends: traefik
       - dir: bumbleflies
@@ -98,6 +101,32 @@
   # /data/db/openpost.db.
   tags:
     - user.docker.waggle
+
+# Forgejo (ci/) — same uid-1000 reasoning: the rootless image runs as uid 1000
+# (= create_user), so ./data and ./conf must exist as cda before Docker creates
+# them as root and the container can no longer write its database / read config.
+# The Forgejo container runs as the deploy user's uid/gid (ci/.env UID/GID).
+# Looked up explicitly: ansible_facts['user_uid'] reflects whoever gathered the
+# facts and renders 0 (root) in some runs, and Forgejo refuses to run as root.
+- name: Look up the deploy user's uid/gid for Forgejo
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ create_user }}"
+  tags:
+    - user.docker.ci
+
+- name: Create Forgejo data and conf directories
+  file:
+    path: "{{ (docker.remote_dir, 'ci', item) | path_join }}"
+    state: directory
+    owner: "{{ create_user }}"
+    group: "docker"
+    mode: '0775'
+  loop:
+    - data
+    - conf
+  tags:
+    - user.docker.ci
 
 # OpenPost stores media_attachments.file_path ABSOLUTE (/data/media/<id>.png) but
 # its publication-builder resolves media by joining OPENPOST_MEDIA_PATH onto that

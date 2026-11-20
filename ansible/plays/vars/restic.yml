@@ -95,6 +95,27 @@ restic:
       # dump + restic wiring (Phase 7), never the home repo.
       - 'servyy-container/db-*/data'
 
+      # --- Forgejo (ci/, 2026-11-20) ------------------------------------------
+      # Backup of record is the bare repos (ci/data/git/repositories) and the
+      # nightly DB dump (ci/data/backup/), both of which STAY in scope. The live
+      # SQLite DB and the regenerable state below are excluded: a snapshot of a
+      # live SQLite file is worthless (it is copied mid-transaction), and the
+      # rest is rebuilt by CI or on boot.
+      - 'servyy-container/ci/data/gitea/forgejo.db'
+      - 'servyy-container/ci/data/packages'
+      - 'servyy-container/ci/data/actions_artifacts'
+      - 'servyy-container/ci/data/actions_log'
+      - 'servyy-container/ci/data/tmp'
+      - 'servyy-container/ci/data/queues'
+      - 'servyy-container/ci/data/indexers'
+      - 'servyy-container/ci/data/sessions'
+
+      # --- Forgejo runners (runny/, 2026-11-20) -------------------------------
+      # Runners are never backed up: a lost runner is recreated by a redeploy
+      # (re-registers from forgejo_runner_secrets[<runner>]). Keeps codey's home backup
+      # from dragging the runner workspace/cache along.
+      - 'servyy-container/runny'
+
       # The canonical dump root (WP-8R R7). Every tenant's logical dump lands in
       # /home/cda/db-dumps/<tenant>/current and is snapshotted by ITS OWN repo
       # (db-private, db-lf, db-queen, db-bnb, db-private-mongo,

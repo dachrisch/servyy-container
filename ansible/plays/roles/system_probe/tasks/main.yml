@@ -173,6 +173,38 @@
     - system.probe
     - system.probe.container
 
+# Forgejo runner liveness (2026-11-20): online state, last-seen and job counts
+# pushed from the Forgejo admin API (SQLite fallback in the script). Every 5
+# minutes, matching the container-health cadence.
+- name: Deploy Forgejo runner liveness probe script
+  template:
+    src: forgejo_runners.sh.j2
+    dest: "{{ (system_probe_scripts_dir, 'forgejo-runners.sh') | path_join }}"
+    mode: '0750'
+  become_user: "{{ create_user }}"
+  when:
+    - services_enabled.ci | default(false) | bool
+    - system_probe_push_enabled | default(false) | bool
+  tags:
+    - system.probe
+    - system.probe.forgejo
+
+- name: Deploy Forgejo runner liveness timer
+  import_tasks: oneshot_include.yml
+  become_user: "{{ create_user }}"
+  vars:
+    service:
+      name: forgejo-runners
+      description: 'Check Forgejo runner online state and job counts'
+      schedule: '*-*-* *:0/5:00'
+      command: "{{ (system_probe_scripts_dir, 'forgejo-runners.sh') | path_join }}"
+  when:
+    - services_enabled.ci | default(false) | bool
+    - system_probe_push_enabled | default(false) | bool
+  tags:
+    - system.probe
+    - system.probe.forgejo
+
 # Clean up probes whose precondition has flipped false since a previous run
 # (mirrors the old monit.yml `state: absent` tasks for manual/missing services).
 - name: Clean up container-health probe when with_containers is false
@@ -255,6 +287,7 @@
         - system-container-health
         - system-tmp
         - system-db-dump-age
+        - forgejo-runners
       tags:
         - system.probe
     - name: Remove probe units and scripts without sink
@@ -283,6 +316,9 @@
         - "{{ (remote_user_systemd, 'system-db-dump-age.service') | path_join }}"
         - "{{ (remote_user_systemd, 'system-db-dump-age.timer') | path_join }}"
         - "{{ (system_probe_scripts_dir, 'system-db-dump-age.sh') | path_join }}"
+        - "{{ (remote_user_systemd, 'forgejo-runners.service') | path_join }}"
+        - "{{ (remote_user_systemd, 'forgejo-runners.timer') | path_join }}"
+        - "{{ (system_probe_scripts_dir, 'forgejo-runners.sh') | path_join }}"
       tags:
         - system.probe
 
@@ -316,3 +352,33 @@
       tags:
         - system.probe
         - system.probe.dump
+
+# Clean up the Forgejo runner probe when `ci` is disabled (same shape as the
+# storagebox/dump-age blocks): a timer left behind would keep pushing runner
+# state for an instance that no longer exists.
+- name: Clean up the Forgejo runner probe when ci is disabled
+  when: not (services_enabled.ci | default(false) | bool)
+  block:
+    - name: Stop the forgejo-runners timer
+      systemd:
+        scope: user
+        name: forgejo-runners.timer
+        state: stopped
+        enabled: no
+      become_user: "{{ create_user }}"
+      ignore_errors: true
+      tags:
+        - system.probe
+        - system.probe.forgejo
+    - name: Remove the forgejo-runners units and script
+      file:
+        path: "{{ item }}"
+        state: absent
+      become_user: "{{ create_user }}"
+      loop:
+        - "{{ (remote_user_systemd, 'forgejo-runners.service') | path_join }}"
+        - "{{ (remote_user_systemd, 'forgejo-runners.timer') | path_join }}"
+        - "{{ (system_probe_scripts_dir, 'forgejo-runners.sh') | path_join }}"
+      tags:
+        - system.probe
+        - system.probe.forgejo

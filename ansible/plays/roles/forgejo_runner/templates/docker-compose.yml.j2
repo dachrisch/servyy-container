@@ -1,0 +1,88 @@
+# Forgejo Actions runner — rendered by the forgejo_runner role from
+# docker-compose.yml.j2 (NOT a committed static file) because the Docker
+# backend is chosen per host by `forgejo_runner_docker`. See the role's
+# defaults and runny/AGENTS.md.
+#
+# `dind` backend (codey): a privileged docker:dind sidecar keeps CI jobs off the
+# host socket, whose claude-hub/opencode credentials they must never reach.
+# `host` backend (runny): the host socket, saving ~100 MB on the 1 GB box.
+services:
+  runner:
+    image: {{ forgejo_runner_image }}
+    container_name: ${COMPOSE_PROJECT_NAME}.runner
+    restart: unless-stopped
+    working_dir: /data
+    # The deploy user owns ./data (uid differs per host).
+    user: "{{ ansible_facts.getent_passwd[create_user][1] }}:{{ ansible_facts.getent_passwd[create_user][2] }}"
+{% if forgejo_runner_docker == 'host' %}
+    group_add:
+      - "{{ ansible_facts.getent_group.docker[1] }}"
+{% endif %}
+    environment:
+      - DOCKER_HOST={{ forgejo_runner_docker_host }}
+{% if forgejo_runner_docker == 'dind' %}
+      - DOCKER_TLS_VERIFY=1
+      - DOCKER_CERT_PATH=/certs/client
+{% endif %}
+    volumes:
+      - ./data:/data
+{% if forgejo_runner_docker == 'host' %}
+      # The host Docker socket: runny has no secrets on it, and this avoids the
+      # dind sidecar's ~100 MB.
+      - /var/run/docker.sock:/var/run/docker.sock
+{% elif forgejo_runner_docker == 'dind' %}
+      - dind-certs:/certs/client
+{% endif %}
+    command: forgejo-runner daemon --config /data/config.yml
+{% if forgejo_runner_extra_hosts | length > 0 %}
+    extra_hosts:
+{% for h in forgejo_runner_extra_hosts %}
+      - "{{ h }}"
+{% endfor %}
+{% endif %}
+{% if forgejo_runner_docker == 'dind' %}
+    depends_on:
+      - dind
+{% endif %}
+
+{% if forgejo_runner_docker == 'dind' %}
+  # Docker-in-Docker. The runner talks to it over TLS (DOCKER_HOST + the certs
+  # above); jobs run inside this nested daemon, never on codey's host socket.
+  dind:
+    image: docker:dind
+    container_name: ${COMPOSE_PROJECT_NAME}.dind
+    restart: unless-stopped
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: /certs
+    volumes:
+      - dind-certs:/certs
+{% endif %}
+
+{% if forgejo_runner_node_exporter | default(false) | bool %}
+  # node-exporter is the ONLY monitoring piece on runny (Phase 2b/3). It runs on
+  # the host network so servy's Prometheus can scrape :9100 — a `ports:` entry
+  # would be a 0.0.0.0 publish (and rejected by the port guard), and loopback is
+  # unreachable remotely. The host firewall must allow :9100 from servy's
+  # Prometheus ONLY (49.13.6.173 / 2a01:4f8:c013:f6f4::1) — see the system role's
+  # node-exporter firewall rule, gated on the same host var.
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    container_name: ${COMPOSE_PROJECT_NAME}.node-exporter
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+{% endif %}
+
+{% if forgejo_runner_docker == 'dind' %}
+volumes:
+  dind-certs: {}
+{% endif %}

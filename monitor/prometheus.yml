@@ -46,3 +46,21 @@ scrape_configs:
     scrape_interval: 5s
     scrape_timeout: 5s
     metrics_path: '/metrics'
+  # Forgejo (ci.lehel.xyz) instance metrics, served at :3000/metrics when
+  # [metrics] ENABLED=true. Scraped over the docker `proxy` network (both live
+  # on servy) with the bearer token rendered into rendered/forgejo-metrics-token.
+  - job_name: 'forgejo'
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/rendered/forgejo-metrics-token
+    static_configs:
+      - targets: [ 'ci.forgejo:3000' ]
+    metrics_path: /metrics
+  # runny.lehel.xyz (the amd64 runner host) — node-exporter only, scraped over
+  # the public internet. runny's firewall must allow :9100 from servy's
+  # Prometheus only (see the forgejo_runner role's node-exporter service and the
+  # system role's firewall rule). The target stays `down` until the host is
+  # provisioned (scripts/provision-oracle-runner.sh).
+  - job_name: 'runny'
+    static_configs:
+      - targets: [ 'runny.lehel.xyz:9100' ]

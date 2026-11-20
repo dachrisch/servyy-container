@@ -1,0 +1,39 @@
+#!/bin/bash
+# Forgejo nightly DB dump. Runs `forgejo dump --database sqlite3` inside the
+# ci.forgejo container and writes the SQL-only dump into the bind-mounted
+# ./data/backup directory, keeping the last N. The dump (and the bare repos)
+# are the backup of record: restic's home job snapshots ./data/backup while the
+# live ./data/gitea/forgejo.db and ./data/packages stay excluded.
+#
+# `forgejo dump --database sqlite3` produces a SQL dump of the database inside a
+# tar.gz; everything regenerable is skipped so the dump is small and stable.
+set -euo pipefail
+
+CONTAINER="{{ forgejo_bootstrap_container }}"
+# Host-side backup dir (= ./data/backup, the ci bind mount).
+BACKUP_DIR="{{ forgejo_bootstrap_dump_dir }}"
+# Container-side path for the same dir (./data is mounted at /var/lib/gitea).
+CONTAINER_BACKUP_DIR="{{ forgejo_bootstrap_dump_container_dir }}"
+KEEP="{{ forgejo_bootstrap_dump_keep }}"
+
+mkdir -p "${BACKUP_DIR}"
+
+STAMP="$(date +%Y%m%d-%H%M%S)"
+DEST="${CONTAINER_BACKUP_DIR}/forgejo-db-${STAMP}.tar.gz"
+
+# --skip-* leaves only the database in the dump. --skip-repository keeps the
+# (large, already-backuped) bare repos out; the others are regenerable noise.
+docker exec "${CONTAINER}" forgejo dump \
+  --database sqlite3 \
+  --skip-repository \
+  --skip-log \
+  --skip-attachment-data \
+  --skip-package-data \
+  --file "${DEST}" \
+  --type tar.gz
+
+# Keep the last N dumps; delete the rest.
+find "${BACKUP_DIR}" -maxdepth 1 -name 'forgejo-db-*.tar.gz' -printf '%T@ %p\n' \
+  | sort -rn | tail -n +"$((KEEP + 1))" | cut -d' ' -f2- | xargs -r rm -f
+
+echo "forgejo-db dump written to ${DEST} (keeping ${KEEP})"

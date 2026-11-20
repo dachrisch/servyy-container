@@ -689,10 +689,11 @@ cd ansible && ./servyy.sh --tags "docker" --limit all
 
 | Server | Role | Services |
 |--------|------|----------|
-| `servy.lehel.xyz` | Primary production | traefik, monitor, photoprism, git, leaguesphere-*, etc. |
-| `codey.lehel.xyz` | Secondary (opencode + claude-hub) | opencode, claude-hub |
+| `servy.lehel.xyz` | Primary production | traefik, monitor, photoprism, git, ci (Forgejo), leaguesphere-*, etc. |
+| `codey.lehel.xyz` | Secondary (opencode + claude-hub) | opencode, claude-hub, Forgejo runner (dind) |
 | `aqui.fritz.box` | Dev/testing | Various dev services |
 | `servyy-test.lxd` | Test environment | Mirrors production for validation |
+| `runny.lehel.xyz` | CI runner (amd64) | Forgejo runner (host socket) + node-exporter |
 
 ### Agent Responsibility: Know Your Server
 
@@ -715,7 +716,8 @@ When responding to requests like "deploy X" or "fix error in X":
 | traefik | traefik.traefik | traefik.lehel.xyz | Reverse proxy, SSL. Dashboard is behind HTTP basic auth (`traefik-auth` file-provider middleware, credentials in Vaultwarden — see `history/2026-10-22_traefik-dashboard-password-rotation.md`) |
 | monitor | `monitor.grafana` + `monitor.loki` on `codey.lehel.xyz`; `monitor.prometheus`, `monitor.promtail`, `monitor.{cadvisor,node-exporter,pushgateway}` on `servy.lehel.xyz` (one compose project, two profiles — see `monitor/AGENTS.md`) | monitor.lehel.xyz | Observability stack; the two authenticated cross-host routes are `loki.lehel.xyz` (codey) and `prometheus.lehel.xyz` (servy) |
 | photoprism | photoprism.photoprism | photoprism.lehel.xyz | Photo library |
-| git | git.gitea | git.lehel.xyz | Git hosting |
+| git | git.www | git.lehel.xyz | Git hosting (EOL nginx-git; Forgejo is its planned successor) |
+| ci | ci.forgejo | ci.lehel.xyz | Forgejo Git + Actions (SQLite, private; runners on codey + runny) |
 | leaguesphere-demo | leaguesphere-demo.{www,demo-app,mysql} | demo.leaguesphere.app | LeagueSphere demo (auto-resets nightly) |
 | claude-hub | claude-hub.hub | *(none — `traefik.enable=false`, SSH/CLI only)* | Headless Claude Code session dispatcher on `codey.lehel.xyz`; the hub session is still a foreground `tmux`-wrapped process (`docker exec -it claude-hub.hub tmux attach -t hub`), but a task session it dispatches is now a native `claude --bg --remote-control` job in its own git-worktree workspace (`spinup-repo.sh` → vendored `spinup-session.mjs`), lifecycle-managed by a vendored `session-reaper.mjs` (park/revive/close-on-request, hourly via codey's Ofelia scheduler) plus a weekly force-cleanup backstop for long-parked sessions — see `claude-hub/vendor/VENDORED.md` and `history/2026-09-26_claude-hub-worktree-dispatch-rework.md`. No public URL. Shares its `/root/dev` checkouts with `opencode` via the `codey_dev_checkouts` named volume (opencode must deploy first for the `external: true` reference to resolve — see `history/2026-09-22_claude-hub-service.md`) |
 

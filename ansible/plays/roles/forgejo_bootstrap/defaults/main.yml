@@ -1,0 +1,48 @@
+---
+# forgejo_bootstrap — one-time (idempotent) setup of the Forgejo instance,
+# run on the host that deploys `ci/` (servy; servyy-test in rehearsal).
+#
+# Three jobs, all idempotent:
+#   1. create the admin user if it does not exist;
+#   2. register the Actions runners offline with the shared secret
+#      (`forgejo forgejo-cli actions register`) for each name in
+#      `forgejo_runners`;
+#   3. install the nightly DB-dump systemd timer (01:30, keep last 3).
+#
+# The admin PASSWORD and the runner SECRET come from plays/vars/secrets.yml as
+# literals (never `lookup('password', …)` seeds — CLAUDE.md rule 6).
+
+# Admin user. `cda` is the single account on this private instance.
+forgejo_bootstrap_admin_username: cda
+forgejo_bootstrap_admin_email: "cda@lehel.xyz"
+
+# Runner names to register server-side. Overridden per host in the inventory:
+#   servy        -> [codey, runny]
+#   servyy-test  -> [test]
+# The runner SIDE (config.yml + .runner) is handled by the forgejo_runner role
+# on codey/runny; this list is the server-side half of the same shared secret.
+forgejo_runners: []
+
+# Where the Forgejo container lives (matches ci/docker-compose.yml). The
+# `forgejo` binary is the image entrypoint; subcommands run via `docker exec`.
+forgejo_bootstrap_container: ci.forgejo
+
+# Where the DB dump lands on the HOST (./data is the ci bind mount, so
+# ./data/backup maps to /var/lib/gitea/backup inside the container). This is
+# what restic's home job snapshots (the dump is NOT in the exclude list).
+forgejo_bootstrap_dump_dir: "{{ (docker.remote_dir, 'ci', 'data', 'backup') | path_join }}"
+# The same directory as seen inside the container: ./data is mounted at
+# /var/lib/gitea, so ./data/backup is /var/lib/gitea/backup.
+forgejo_bootstrap_dump_container_dir: /var/lib/gitea/backup
+forgejo_bootstrap_dump_keep: 3
+
+# Where the dump script and systemd units live (a user-level ~/.forgejo dir,
+# like system_probe's ~/.system-probes).
+forgejo_bootstrap_scripts_dir: "{{ (remote_user_home, '.forgejo') | path_join }}"
+
+# Root URL of the instance, used by the runner-registration idempotency check
+# against the admin API. `domain` is the inventory host var (lehel.xyz on servy,
+# servyy-test.lxd on the test host); the scheme follows the ci TLS knob.
+forgejo_root_url: >-
+  {{ ('https' if (ci_traefik_tls | default('true')) == 'true' else 'http')
+     ~ '://ci.' ~ domain }}

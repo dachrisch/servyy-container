@@ -45,3 +45,62 @@
   tags:
     - system.firewall
     - system.firewall.edge
+
+# runny runs node-exporter on the host network (the one monitoring piece on the
+# 1 GB box); servy's Prometheus scrapes :9100. Host traffic goes through INPUT,
+# where the Oracle Ubuntu image ships a catch-all REJECT (/etc/iptables/rules.v4),
+# so the rules must be INSERTED at the top, for both families, and re-applied at
+# boot. Same script + oneshot unit pattern as the Docker edge filter above.
+- name: Deploy the node-exporter INPUT filter script
+  ansible.builtin.template:
+    src: node-exporter-firewall.sh.j2
+    dest: /usr/local/sbin/node-exporter-firewall.sh
+    mode: '0700'
+    owner: root
+    group: root
+  become: true
+  notify: restart node-exporter filter
+  when: forgejo_runner_node_exporter | default(false) | bool
+  tags:
+    - system.firewall
+    - system.firewall.node-exporter
+
+- name: Deploy the node-exporter INPUT filter unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/node-exporter-firewall.service
+    mode: '0644'
+    owner: root
+    group: root
+    content: |
+      [Unit]
+      Description=Restrict node-exporter :9100 to servy's Prometheus
+      After=network-pre.target netfilter-persistent.service
+      Wants=network-pre.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/local/sbin/node-exporter-firewall.sh
+
+      [Install]
+      WantedBy=multi-user.target
+  become: true
+  notify: reload systemd
+  when: forgejo_runner_node_exporter | default(false) | bool
+  tags:
+    - system.firewall
+    - system.firewall.node-exporter
+
+- name: Enable and start the node-exporter INPUT filter
+  ansible.builtin.systemd:
+    name: node-exporter-firewall.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+  when:
+    - forgejo_runner_node_exporter | default(false) | bool
+    - ansible_facts['virtualization_type'] | default('') != 'docker'
+  tags:
+    - system.firewall
+    - system.firewall.node-exporter
