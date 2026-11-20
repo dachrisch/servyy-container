@@ -101,14 +101,18 @@ restic:
       # SQLite DB and the regenerable state below are excluded: a snapshot of a
       # live SQLite file is worthless (it is copied mid-transaction), and the
       # rest is rebuilt by CI or on boot.
-      - 'servyy-container/ci/data/gitea/forgejo.db'
+      # Live SQLite DB + WAL (rootless image: APP_DATA_PATH = ./data/data).
+      - 'servyy-container/ci/data/data/gitea.db'
+      - 'servyy-container/ci/data/data/gitea.db-wal'
+      - 'servyy-container/ci/data/data/gitea.db-shm'
+      - 'servyy-container/ci/data/data/sessions'
+      - 'servyy-container/ci/data/repo-archive'
       - 'servyy-container/ci/data/packages'
       - 'servyy-container/ci/data/actions_artifacts'
       - 'servyy-container/ci/data/actions_log'
       - 'servyy-container/ci/data/tmp'
       - 'servyy-container/ci/data/queues'
       - 'servyy-container/ci/data/indexers'
-      - 'servyy-container/ci/data/sessions'
 
       # --- Forgejo runners (runny/, 2026-11-20) -------------------------------
       # Runners are never backed up: a lost runner is recreated by a redeploy

@@ -15,7 +15,7 @@ cut-over.**
 - Backup of record: the bare repos (`./data/git/repositories`) ride servy's
   `home` restic repo, and a nightly DB dump (`./data/backup/forgejo-db.sql.gz`,
   `forgejo dump --database sqlite3`, keep 3) is made by a systemd timer at
-  01:30. The live `./data/gitea/forgejo.db` and the container registry
+  01:30. The live `./data/data/gitea.db` and the container registry
   (`./data/packages`) are deliberately **excluded** from backup (regenerable /
   a live-SQLite snapshot is worthless).
 - Actions runners are a separate concern: the `runny/` service dir (deployed to

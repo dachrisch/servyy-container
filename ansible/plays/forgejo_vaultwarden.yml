@@ -1,0 +1,49 @@
+---
+# Recovery copy of the Forgejo admin password (ci.lehel.xyz).
+#
+# `forgejo_admin_password` is a literal in vars/secrets.yml (the source of
+# truth, git-crypt encrypted). This play keeps a human-readable copy in
+# Vaultwarden so the admin login survives a lost controller checkout.
+# Idempotent: push_items.yml only creates the item when missing and updates it
+# when the value changed.
+#
+# Run: ansible-playbook servyy.yml -i production --limit servy.lehel.xyz \
+#        --tags ci.vaultwarden
+# The Vaultwarden master password comes from ~/.ssh/vw.key, like every other push.
+- name: Push the Forgejo admin password to Vaultwarden
+  hosts: all
+  strategy: linear
+  remote_user: "{{ create_user }}"
+  become: true
+  become_user: "{{ create_user }}"
+  vars_files:
+    - vars/default.yml
+    - vars/secrets.yml
+  tasks:
+    - name: Push the Forgejo admin password into Vaultwarden
+      ansible.builtin.include_role:
+        name: vaultwarden
+        tasks_from: push_items.yml
+        apply:
+          tags:
+            - ci.vaultwarden
+      vars:
+        vaultwarden_item_username: cda
+        vaultwarden_items:
+          - name: "forgejo - admin (ci.{{ domain }})"
+            secret: "{{ forgejo_admin_password }}"
+            notes: >-
+              Forgejo admin login for https://ci.{{ domain }} (user: cda).
+              Recovery copy of forgejo_admin_password in
+              ansible/plays/vars/secrets.yml, which stays the source of truth.
+              The forgejo_bootstrap role creates the user with this password only
+              when the user does not exist yet; a password changed in the UI is
+              NOT reverted by a deploy. Reset it with `docker exec ci.forgejo
+              forgejo admin user change-password --username cda --password <pw>`.
+      when:
+        - vw_master_password | default('') | length > 0
+        - services_enabled.ci | default(false) | bool
+      tags:
+        - ci.vaultwarden
+  tags:
+    - ci.vaultwarden

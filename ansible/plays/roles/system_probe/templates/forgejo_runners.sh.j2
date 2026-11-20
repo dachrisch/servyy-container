@@ -8,12 +8,10 @@
 # Pushes to Pushgateway; the Grafana rules in
 # monitor/provisioning/alerting/alert-rules.yml evaluate these gauges.
 #
-# SOURCE: the Forgejo admin API (`GET /api/v1/admin/actions/runners`, bearer
-# token). The plan's "check first" note: if the pinned Forgejo does NOT expose
-# that endpoint, the fallback reads the `action_runner` / `action_run_job`
-# tables straight from the SQLite DB through a read-only sqlite3 one-shot
-# container on ci/data. Verify the endpoint (and the column names below) on
-# servyy-test's /swagger.v1.json before relying on the fallback.
+# SOURCES (verified against Forgejo 15 on servy, 2026-11-20): online state from
+# the admin API (`GET /api/v1/admin/actions/runners`, `status`); last-seen and
+# job counts from the SQLite DB (`action_runner.last_online`,
+# `action_run_job.status`), which the API does not expose.
 set -uo pipefail
 # Deliberately no `set -e`: each source handles its own failure so one broken
 # query cannot abort the script before it pushes anything.
@@ -27,11 +25,14 @@ CI_DATA_DIR="{{ forgejo_probe_ci_data }}"
 probe_success=1
 payload_file=$(mktemp)
 
-# Query the SQLite DB (read-only) through a one-shot container. $1 = SQL, $2 =
-# table to read. Prints rows; empty on failure.
+# Query the live SQLite DB read-only. Forgejo runs it in WAL mode, so the
+# reader needs the -wal/-shm files: the db dir is mounted writable for that,
+# and sqlite3 -readonly guarantees no write to the database itself. (An
+# immutable=1 read would ignore the WAL and report stale values.)
+# DB path: ci/data/data/gitea.db (rootless image, APP_DATA_PATH=/var/lib/gitea/data).
 sqlite_query() {
-  docker run --rm -v "${CI_DATA_DIR}:/data:ro" \
-    keinos/sqlite3:3.46.1 sqlite3 -readonly -noheader "file:/data/gitea/forgejo.db?immutable=1" "$1" \
+  docker run --rm -u "$(id -u):$(id -g)" -v "${CI_DATA_DIR}/data:/db" \
+    keinos/sqlite3:3.46.1 sqlite3 -readonly -noheader /db/gitea.db "$1" \
     2>/dev/null || true
 }
 
@@ -43,60 +44,35 @@ sqlite_query() {
 
   now=$(date +%s)
 
-  # --- runners: online + last-seen -----------------------------------------
+  # --- online state: admin API -----------------------------------------------
+  # GET /api/v1/admin/actions/runners returns [{name, status, ...}] with
+  # status one of idle | active | offline (Forgejo 15). No last-seen field.
   runners_json=$(curl -sf --max-time 15 --connect-timeout 5 \
     -H "Authorization: token ${FORGEJO_TOKEN}" \
     "${FORGEJO_URL}/api/v1/admin/actions/runners" 2>/dev/null) || runners_json=""
 
   if [ -n "${runners_json}" ] && printf '%s' "${runners_json}" | jq -e 'type == "array"' >/dev/null 2>&1; then
-    # API path. Fields per runner: name, online (bool), last_online (RFC3339 or
-    # unix). The field names are the Forgejo admin-runner API shape; confirm on
-    # /swagger.v1.json (the plan's "check first").
-    printf '%s' "${runners_json}" | jq -r '.[] | [.name, (if .online then "1" else "0" end), (.last_online // .last_seen // "0")] | @tsv' \
-    | while IFS=$'\t' read -r name online last; do
-        printf 'forgejo_runner_online{runner="%s"} %s\n' "${name}" "${online}"
-        # last may be an RFC3339 timestamp or a unix epoch.
-        case "${last}" in
-          *T*|*Z*) last_epoch=$(date -d "${last}" +%s 2>/dev/null) || last_epoch=0 ;;
-          *) last_epoch="${last}" ;;
-        esac
-        if [ "${last_epoch:-0}" -gt 0 ] 2>/dev/null; then
-          printf 'forgejo_runner_last_seen_seconds{runner="%s"} %s\n' "${name}" "$(( now - last_epoch ))"
-        fi
-      done
+    printf '%s' "${runners_json}" | jq -r '.[] | "forgejo_runner_online{runner=\"\(.name)\"} \(if .status == "offline" then 0 else 1 end)"'
   else
-    # Fallback: action_runner table (columns name, last_seen as unix seconds).
-    sqlite_query "SELECT name, COALESCE(last_seen,0) FROM action_runner;" \
-      | while IFS='|' read -r name last_seen; do
-          [ -n "${name}" ] || continue
-          # A runner is online if last_seen is within the fetch interval window
-          # (Forgejo marks runners stale after ~2x fetch_interval; be generous).
-          age=$(( now - last_seen ))
-          if [ "${last_seen}" -gt 0 ] && [ "${age}" -lt 600 ]; then
-            printf 'forgejo_runner_online{runner="%s"} 1\n' "${name}"
-          else
-            printf 'forgejo_runner_online{runner="%s"} 0\n' "${name}"
-          fi
-          printf 'forgejo_runner_last_seen_seconds{runner="%s"} %s\n' "${name}" "${age}"
-        done
     probe_success=0
   fi
 
-  # --- job counts: waiting / running ---------------------------------------
-  # Defaults so the series exist (and alerts can evaluate) when nothing queues.
+  # --- last seen: action_runner.last_online (unix seconds) --------------------
+  sqlite_query "SELECT name, COALESCE(last_online,0) FROM action_runner WHERE deleted IS NULL OR deleted = 0;" \
+    | while IFS='|' read -r name last; do
+        [ -n "${name}" ] || continue
+        if [ "${last:-0}" -gt 0 ] 2>/dev/null; then
+          printf 'forgejo_runner_last_seen_seconds{runner="%s"} %s\n' "${name}" "$(( now - last ))"
+        fi
+      done
+
+  # --- job counts: action_run_job.status 5 = waiting, 6 = running --------------
+  # (Forgejo actions status: 1 success, 2 failure, 3 cancelled, 4 skipped,
+  # 5 waiting, 6 running, 7 blocked.) Zero defaults keep the series present.
   waiting=0; running=0
-  # action_run_job.status: 1 = waiting, 2 = running (Forgejo Actions).
-  sqlite_query "SELECT status, COUNT(*) FROM action_run_job WHERE status IN (1,2) GROUP BY status;" \
-    | while IFS='|' read -r status count; do
-        case "${status}" in
-          1) echo "waiting ${count}" ;;
-          2) echo "running ${count}" ;;
-        esac
-      done > "${payload_file}.jobs"
-  while read -r k v; do
-    case "$k" in waiting) waiting=$v ;; running) running=$v ;; esac
-  done < "${payload_file}.jobs"
-  rm -f "${payload_file}.jobs"
+  while IFS='|' read -r status count; do
+    case "${status}" in 5) waiting=${count} ;; 6) running=${count} ;; esac
+  done <<< "$(sqlite_query "SELECT status, COUNT(*) FROM action_run_job WHERE status IN (5,6) GROUP BY status;")"
   printf 'forgejo_actions_jobs{status="waiting"} %s\n' "${waiting}"
   printf 'forgejo_actions_jobs{status="running"} %s\n' "${running}"
 
