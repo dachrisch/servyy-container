@@ -31,8 +31,9 @@ person needs live data
 
 The **app owns the request and the record; it does not own the account or the clock.**
 It cannot `CREATE USER` (that is a global privilege and its own grant is schema-scoped),
-and it cannot extend a session: the reaper computes expiry from `created_at` plus a constant
-it holds itself.
+and it cannot extend a session: the reaper computes expiry from the `created_at` of the row
+that currently backs the account, plus a constant it holds itself. It never reads
+`expires_at`, and it ignores the person's already-dropped rows.
 
 ## What the person does
 
@@ -63,7 +64,8 @@ it holds itself.
    schema and `SELECT, UPDATE` on the requested tables only — no `INSERT`, `DELETE` or DDL.
 
 6. When done — same day — anyone who can see the session clicks **Revoke now**. Otherwise the
-   cap does it within five minutes of the eighth hour.
+   cap does it within five minutes of the eighth hour. The clock starts when the request is
+   filed, not when it is approved, so approval time comes out of the TTL.
 
 ## What the account can and cannot do
 
