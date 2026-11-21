@@ -51,6 +51,28 @@ A dedicated volume is supported but not used: set `moodle_volume_device` + `mood
 7. **HTTP-01, not DNS-01.** Neither `offd.de` (All-Inkl) nor `leaguesphere.app` (GoDaddy) is in
    Porkbun scope, so `letsencryptdnsresolver` cannot issue.
 
+## "Annotate PDF" depends on Ghostscript *inside the image*
+
+`assignfeedback_editpdf` is enabled on 55 assignments and shells out to `$CFG->pathtogs`
+(`/usr/bin/gs`, inherited from the shared-hosting DB). Nothing in this repo installs it —
+**the image has to ship it**. The 2026-11-12 build of `4.5.16` did not, so every conversion
+died with `Der Pfad zu Ghostscript ist nicht richtig konfiguriert … (doesnotexist)` and five
+student submissions sat in the ad-hoc queue from 2026-11-19 (0 successes, 20 failures).
+Upstream added Ghostscript in [erseco/alpine-moodle#197](https://github.com/erseco/alpine-moodle/pull/197)
+and **re-published `4.5.16` on 2026-11-20**; because upstream rebuilds published tags in
+place, the moodle deploy pulls `always` (`ansible/plays/user.yml`) — never rely on the tag
+already being in the local store.
+
+```bash
+ssh lehel.xyz "docker exec moodle.moodle gs --version"      # must print 10.08.0 or newer
+```
+
+`$CFG->preventexecpath` is set by the image, so *Site administration → Server → System paths*
+is read-only; change `pathtogs` from the CLI only
+(`php admin/cli/cfg.php --name=pathtogs --set=/usr/bin/gs`). `unoconv`/LibreOffice is still
+absent and **not needed**: every submission in use is PDF or JPG (the office-document rows
+belong to deleted assignments).
+
 ## The image rewrites site settings on every boot
 
 `02-configure-moodle.sh` runs `configure_moodle_settings` and `update_admin_user.php` on **every**
