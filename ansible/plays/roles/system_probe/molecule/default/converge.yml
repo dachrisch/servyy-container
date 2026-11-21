@@ -9,6 +9,8 @@
     remote_user_home: /home/testuser
     remote_user_systemd: /home/testuser/.config/systemd/user
     leaguesphere_enabled: true
+    # Moodle runs on servy, and the task-health probe is gated on it.
+    moodle_enabled: true
     skip_storagebox: false
     with_containers: true
     services_enabled:

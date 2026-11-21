@@ -15,6 +15,7 @@
         - system-storagebox.sh
         - system-container-health.sh
         - system-db-dump-age.sh
+        - moodle-task-failures.sh
       register: probe_scripts
 
     - name: Assert probe scripts deployed executable
@@ -190,3 +191,37 @@
           - >-
             'system_log_threshold_seconds{log="restic-backup-ls-db"} 7200'
             in (log_freshness_script.content | b64decode)
+
+    # --- Moodle task health (2026-11-21) --------------------------------------
+    # The probe is the replacement for a blind spot (cron writes to /dev/null),
+    # so losing an emission line here is a silent outage, not a cosmetic change:
+    # the alert rules compare against the threshold series, and a missing series
+    # matches nothing and reads as healthy.
+    - name: Read the Moodle task-health script
+      slurp:
+        src: "{{ probe_dir }}/moodle-task-failures.sh"
+      register: moodle_script
+
+    - name: Assert the Moodle probe publishes counts, thresholds and probe_success
+      assert:
+        that:
+          - >-
+            'moodle_task_failures{window="%s"}'
+            in (moodle_script.content | b64decode)
+          - >-
+            'moodle_task_failure_threshold{window="%s"}'
+            in (moodle_script.content | b64decode)
+          - "'moodle_task_needs_attention_threshold' in (moodle_script.content | b64decode)"
+          - "'moodle_task_probe_success' in (moodle_script.content | b64decode)"
+          # the rendered window label reaches the printf
+          - "'\"1h\" $failed' in (moodle_script.content | b64decode)"
+
+    - name: Assert the Moodle probe reads the task tables, not the logs
+      assert:
+        that:
+          - "'mdl_task_log' not in (moodle_script.content | b64decode)"  # uses {task_log}
+          - "'{task_log}' in (moodle_script.content | b64decode)"
+          - "'attemptsavailable = 0' in (moodle_script.content | b64decode)"
+          - "'faildelay > 0' in (moodle_script.content | b64decode)"
+          # -1 for "could not read Moodle" must survive as a positive alert hit
+          - "'needs_attention=-1' in (moodle_script.content | b64decode)"

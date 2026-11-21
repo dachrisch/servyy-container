@@ -3049,3 +3049,225 @@ groups:
         labels:
           severity: high
         isPaused: false
+
+  # Moodle task health (2026-11-21). Moodle's cron output goes to /dev/null in
+  # the image, so a failing task is invisible to the container-health and
+  # log-freshness rules. The probe (`moodle-task-failures.sh`, job
+  # `moodle_task_failures`) reads `mdl_task_log` plus the retry state in
+  # `mdl_task_adhoc`/`mdl_task_scheduled` and pushes the counts TOGETHER WITH the
+  # thresholds it is judged by (system_probe_moodle_* in
+  # ansible/plays/roles/system_probe/defaults/main.yml) — same rule as the restic
+  # and dump rules: no threshold and no task name may be written into this file.
+  #
+  # The `< bool 0` clauses are load-bearing: the probe reports -1 when it cannot
+  # read Moodle (container down, DB unreachable), and Grafana's threshold
+  # expression turns a raw -1 into "not met" (silence), exactly the trap noted on
+  # the dump rules.
+  - orgId: 1
+    name: moodle-alerts
+    folder: Infrastructure
+    interval: 1m
+    rules:
+      # HIGH: Moodle has given up on a task (or is failing a scheduled one).
+      # `attemptsavailable = 0` is the state behind the admin mail "Die Task …
+      # ist mehrmals fehlgeschlagen": retrying stopped, a human must look.
+      - uid: moodle_task_needs_attention
+        title: Moodle Task Needs Attention
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: >-
+                (moodle_task_needs_attention > on() moodle_task_needs_attention_threshold)
+                or ((moodle_task_needs_attention < bool 0) > 0)
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'Moodle has task(s) that failed repeatedly or are parked'
+          description: >-
+            `moodle_task_needs_attention` = parked ad-hoc tasks (`attemptsavailable = 0`)
+            plus scheduled tasks with a retry delay (`faildelay > 0`), or the probe
+            could not read Moodle (-1). On offd.de: check Site administration → Reports →
+            System status → "Task failed multiple times", `mdl_task_log` for the last
+            failure output, and `systemctl --user status system-moodle-tasks.timer` on
+            servy. A parked task keeps retrying silently until someone requeues it
+            (`faildelay=0, attemptsavailable=3, nextruntime=now`).
+        labels:
+          severity: high
+        isPaused: false
+
+      # MEDIUM: more failed runs in the hour than the probe's threshold allows
+      # (default 1, so 2+). One transient failure is what a retry is for.
+      - uid: moodle_task_failures
+        title: Moodle Tasks Failing
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: >-
+                (moodle_task_failures > on(window) moodle_task_failure_threshold)
+                or ((moodle_task_failures < bool 0) > 0)
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 30m
+        annotations:
+          summary: 'Moodle task failures above the tolerated rate'
+          description: >-
+            `moodle_task_failures{window}` exceeds `moodle_task_failure_threshold` for 30
+            minutes (or the probe cannot read Moodle). Inspect `mdl_task_log` rows with
+            `result <> 0` — the `output` column carries the exception (this is how the
+            2026-11-21 Ghostscript breakage read: "Der Pfad zu Ghostscript ist nicht
+            richtig konfiguriert").
+        labels:
+          severity: medium
+        isPaused: false
+
+      # MEDIUM: the probe itself is broken (docker exec / php / DB unreachable)
+      - uid: moodle_task_probe_failure
+        title: Moodle Task Probe Failing
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: moodle_task_probe_success
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: lt
+        noDataState: OK
+        execErrState: Error
+        for: 20m
+        annotations:
+          summary: 'Moodle task-health probe is failing'
+          description: >-
+            The probe could not read Moodle for 20 minutes (`docker exec moodle.moodle php`
+            or the DB call failed) — container down, DB unreachable, or the image changed
+            its CLI. `systemctl --user status system-moodle-tasks.service` on servy.
+        labels:
+          severity: medium
+        isPaused: false
+
+      # MEDIUM: the timer stopped running entirely
+      - uid: moodle_task_probe_stale
+        title: Moodle Task Probe Stale
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: time() - push_time_seconds{job="moodle_task_failures"}
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [1800]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: 'Moodle task-health probe has not pushed metrics recently'
+          description: >-
+            No push from system-moodle-tasks.timer in 30 minutes (the timer runs every 5) —
+            it may have stopped, or the Pushgateway is unreachable.
+        labels:
+          severity: medium
+        isPaused: false

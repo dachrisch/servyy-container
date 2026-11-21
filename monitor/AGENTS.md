@@ -184,6 +184,17 @@ taken off Traefik in 2026-09 because it had no auth; it is back only behind
    is covered instead by the `moodle-db` stale-source guard, which fails the snapshot job
    (`stale_restic_snapshot_high`). The nonprod tier emits nothing by design.
 
+   **Moodle tasks (2026-11-21).** A second kind of blind spot: Moodle's cron writes to
+   `/dev/nulll` inside the image (a typo in its runit script), so a failing task leaves nothing in
+   `docker logs`, and the container stays `healthy` throughout. `moodle-task-failures.sh`
+   (`job="moodle_task_failures"`, every 5 min, only where `moodle_enabled`) reads
+   `mdl_task_log` plus the retry state through `php` **inside the container** — no DB credentials
+   on the host — and pushes `moodle_task_failures{window}`, `moodle_task_needs_attention`
+   (parked ad-hoc + failing scheduled) and their thresholds, plus `moodle_task_probe_success`.
+   The alert group is `moodle-alerts`; the high rule is the state behind Moodle's own
+   "Die Task … ist mehrmals fehlgeschlagen" mail, the medium one catches 2+ failed runs in the
+   hour. Provenance of the design: `history/2026-11-21_moodle-task-failure-probe.md`.
+
 ## Verifying a change took effect
 
 ```bash

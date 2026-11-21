@@ -1,0 +1,111 @@
+#!/bin/bash
+# Moodle task-health probe: is anything FAILING inside Moodle's own task system,
+# and has Moodle already given up on a task?
+#
+# WHY THE DATABASE AND NOT THE LOGS: the image runs cron as
+# `cron.php > /dev/nulll` (a typo in its runit script), so a failing task leaves
+# NOTHING in `docker logs`. Moodle records two things instead, both in MariaDB:
+#
+#  - `mdl_task_log` gets a row with `result <> 0` per failed run;
+#  - `mdl_task_adhoc.faildelay` / `attemptsavailable` carry the retry state.
+#    `attemptsavailable = 0` is Moodle's "I stopped retrying, a human must look"
+#    flag — it is what the admin gets mailed about ("Die Task … ist mehrmals
+#    fehlgeschlagen"), and it is invisible to any log-based probe.
+#
+# Measured 2026-11-19..21: `assignfeedback_editpdf\task\convert_submission`
+# failed 20 times because the image shipped no Ghostscript. Five student
+# submissions sat parked with `attemptsavailable = 0`; the only observer was the
+# admins' mailbox, two days late. This probe publishes that state so Grafana can
+# page on it (`moodle_task_needs_attention`).
+#
+# WHY THE THRESHOLD IS PUSHED, NOT WRITTEN INTO THE RULE: same argument as
+# restic_snapshot_freshness.sh.j2 / db_dump_freshness.sh.j2 — the alert file is
+# static, and every literal number in it is a decision nobody revisits. The
+# script publishes the number it must be judged by, from
+# `system_probe_moodle_*` (system_probe/defaults/main.yml).
+#
+# `-1` means "could not read Moodle" (container down, DB unreachable, PHP
+# broken). It is never a huge number and never silence: the Grafana rules turn
+# `< bool 0` into a hit, because a raw -1 would compare as "below threshold".
+#
+# Follows the probe -> Pushgateway -> Grafana pattern: `set -uo pipefail`
+# WITHOUT -e, so a broken docker exec still pushes probe_success=0 instead of
+# aborting with nothing written (a Pushgateway job that stops receiving metrics
+# looks "OK" under noDataState: OK).
+set -uo pipefail
+
+PUSHGATEWAY_URL="{{ system_probe_pushgateway_url }}"
+JOB_NAME="moodle_task_failures"
+CONTAINER="{{ system_probe_moodle_container }}"
+WINDOW_SECONDS="{{ system_probe_moodle_task_window_seconds }}"
+WINDOW_LABEL="{{ system_probe_moodle_task_window }}"
+
+probe_success=1
+
+# `-i` + heredoc: php reads the script from stdin, so no temp file lands in the
+# container (whose docroot is immutable and whose runs as `nobody`).
+raw=$(docker exec -i -u 65534 -e MOODLE_PROBE_WINDOW="$WINDOW_SECONDS" "$CONTAINER" php 2>/dev/null <<'PHP'
+<?php
+define('CLI_SCRIPT', true);
+require('/var/www/html/config.php');
+global $DB;
+
+$window = max(300, (int)(getenv('MOODLE_PROBE_WINDOW') ?: 3600));
+$now = time();
+
+// Failed RUNS in the window. Includes scheduled and ad-hoc tasks; a task that
+// keeps failing therefore contributes one row per attempt (Moodle logs each).
+$failed = $DB->count_records_select('task_log', 'result <> 0 AND timestart > ?', [$now - $window]);
+
+// Moodle's own "needs attention" state:
+//  - adhoc: retrying (faildelay > 0) or parked (attemptsavailable = 0 -- NULL
+//    means "unlimited", i.e. never parked, so it must not match);
+//  - scheduled: a faildelay > 0 means the last run(s) failed (Moodle escalates
+//    the delay and finally disables the task).
+$parked = $DB->count_records_select('task_adhoc', 'faildelay > 0 OR attemptsavailable = 0');
+$scheduled = $DB->count_records_select('task_scheduled', 'faildelay > 0');
+
+printf("failed=%d\nparked=%d\nscheduled=%d\n", $failed, $parked, $scheduled);
+PHP
+)
+
+value() {
+  printf '%s\n' "$raw" | awk -F= -v key="$1" '$1 == key { print $2; exit }'
+}
+
+failed=$(value failed)
+parked=$(value parked)
+scheduled=$(value scheduled)
+
+# Anything that is not a plain non-negative integer means the read failed.
+for v in "$failed" "$parked" "$scheduled"; do
+  case "${v:-}" in
+    '' | *[!0-9]*) probe_success=0 ;;
+  esac
+done
+
+if [ "$probe_success" -eq 1 ]; then
+  needs_attention=$((parked + scheduled))
+else
+  failed=-1
+  parked=-1
+  scheduled=-1
+  needs_attention=-1
+fi
+
+{
+  echo '# TYPE moodle_task_failures gauge'
+  printf 'moodle_task_failures{window="%s"} %s\n' "$WINDOW_LABEL" "$failed"
+  echo '# TYPE moodle_task_failure_threshold gauge'
+  printf 'moodle_task_failure_threshold{window="%s"} %s\n' "$WINDOW_LABEL" "{{ system_probe_moodle_task_failed_threshold }}"
+  echo '# TYPE moodle_task_needs_attention gauge'
+  printf 'moodle_task_needs_attention %s\n' "$needs_attention"
+  echo '# TYPE moodle_task_needs_attention_threshold gauge'
+  printf 'moodle_task_needs_attention_threshold %s\n' "{{ system_probe_moodle_needs_attention_threshold }}"
+  echo '# TYPE moodle_task_probe_success gauge'
+  printf 'moodle_task_probe_success %s\n' "$probe_success"
+# PUT (not POST): replaces the whole job group, so a series retired here cannot
+# linger in the Pushgateway.
+} | curl -sf -X PUT --max-time 15 --connect-timeout 5 --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}"
+
+echo "moodle-task probe_success=${probe_success} failed_${WINDOW_LABEL}=${failed} parked=${parked} scheduled_failed=${scheduled}"
