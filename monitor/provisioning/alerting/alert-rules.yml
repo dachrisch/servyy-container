@@ -3085,6 +3085,12 @@ groups:
               expr: >-
                 (moodle_task_needs_attention > on() moodle_task_needs_attention_threshold)
                 or ((moodle_task_needs_attention < bool 0) > 0)
+              # INSTANT, not the file's usual range+reduce: this expression is
+              # EMPTY when the site is healthy, and a range query keeps returning
+              # the last positive sample for the whole lookback window after it
+              # clears, so `for:` would measure (for + 5m) and a 1-sample blip
+              # paged (measured 2026-11-21). Instant = one point, `for:` is exact.
+              instant: true
               intervalMs: 1000
               maxDataPoints: 43200
               refId: A
@@ -3140,6 +3146,9 @@ groups:
               expr: >-
                 (moodle_task_failures > on(window) moodle_task_failure_threshold)
                 or ((moodle_task_failures < bool 0) > 0)
+              # Instant for the same reason as moodle_task_needs_attention: an
+              # empty-when-healthy expression must not be reduced over a range.
+              instant: true
               intervalMs: 1000
               maxDataPoints: 43200
               refId: A

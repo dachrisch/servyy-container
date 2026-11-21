@@ -195,6 +195,16 @@ taken off Traefik in 2026-09 because it had no auth; it is back only behind
    "Die Task … ist mehrmals fehlgeschlagen" mail, the medium one catches 2+ failed runs in the
    hour. Provenance of the design: `history/2026-11-21_moodle-task-failure-probe.md`.
 
+   **Those two rules use `instant: true`, and that is load-bearing.** Nearly every other rule in
+   this file is a range query + `reduce: last`, which is right for a series that always exists
+   (an age, a freshness, a `probe_success`). A *comparison that is empty when healthy* is not:
+   after the condition clears, the range query keeps returning the last positive sample for the
+   whole `relativeTimeRange` (300 s), so the rule measures `for: + 5 min` and one failing probe
+   run is enough to page. Measured live on 2026-11-21 while testing this probe: a synthetic `1`
+   that was overwritten ~3 minutes earlier still produced `state: firing` and a notification,
+   because every evaluation reduced the same stale sample. Instant queries take one point, so a
+   cleared condition resolves on the next evaluation and `for:` means exactly itself.
+
 ## Verifying a change took effect
 
 ```bash
