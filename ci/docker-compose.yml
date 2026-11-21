@@ -20,7 +20,7 @@
 # carry breaking changes and the LTS line is what the upgrade runbook targets.
 services:
   forgejo:
-    image: codeberg.org/forgejo/forgejo:15.0.12-rootless
+    image: codeberg.org/forgejo/forgejo:17.0.2-rootless
     container_name: ${COMPOSE_PROJECT_NAME}.forgejo
     # The deploy user (cda) owns ./data and ./conf; its uid differs per host
     # (1000 on servy, 1001 on servyy-test), so take it from the rendered .env.
