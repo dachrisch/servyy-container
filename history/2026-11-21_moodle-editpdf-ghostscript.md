@@ -67,6 +67,28 @@ psql-free check: the five submissions must have pages+combined files, and
 mdl_task_adhoc must be empty while mdl_task_log shows result=0 for the class.
 ```
 
+## Deployment result (2026-11-21, 10:19 CET)
+
+- Host checkout fast-forwarded `f9a1084` → `e7d70f2` (PR #333); git-crypt healthy.
+- Deployed with the `docker_service` role's exact module
+  (`community.docker.docker_compose_v2`, `pull: always`) against
+  `/home/cda/servyy-container/moodle`: `Pulling → Pulled → Recreate → Started`.
+  New container runs **`sha256:85cd21d2…`** (the 2026-11-20 rebuild), restarts 0,
+  health `healthy`, `https://offd.de/` 200.
+- `apk info -e ghostscript` inside the new container lists the package (it comes from
+  the image now — no `apk add` drift), `gs --version` = 10.08.0,
+  `pdf::test_gs_path(true)` = `status=ok`.
+- `convert_submission`: **0 failures since 09:29**, ad-hoc queue empty, and a fresh
+  end-to-end conversion (submission 1388, queued 10:20) finished `result=0` at 10:21.
+- Note for the next operator: the full `servyy.yml` play cannot be run from the
+  opencode controller — the machine-local password seeds (`ansible/plays/vars/.moodle_*`,
+  `.restic_password_*`, …) are absent there and `secret_seed_guard` correctly refuses to
+  regenerate them (that would have written fresh credentials into `app.env`). Run the
+  whole playbook from a checkout that holds the seeds; otherwise deploy the single role
+  with its compose module as above. The seeds are on no host checkout (`find` over servy
+  and codey found none), which is worth fixing — a controller without them cannot do a
+  full deploy.
+
 Lesson: a mutable upstream tag is not a version. Any service that pins a tag whose upstream
 CI rebuilds in place needs `compose_pull: always` (precedent: `waggle`'s `latest`), otherwise
 "we deployed the tag" means "we kept whatever was pulled first".
