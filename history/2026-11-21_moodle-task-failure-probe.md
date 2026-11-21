@@ -60,5 +60,22 @@ document the probe and the requeue recipe.
   (`curl 127.0.0.1:9091/metrics | grep '^moodle_'`) and Prometheus serves
   `moodle_task_needs_attention{job="moodle_task_failures"} 0`.
 - The rules evaluate (health `ok`, no data = OK) and were proven in both directions by pushing a
-  synthetic `1` into the same job, seeing `moodle_task_needs_attention` fire, and letting the next
-  real probe run overwrite it back to `0` (PUT replaces the whole job group).
+  synthetic `1` into the same job, seeing `moodle_task_needs_attention` go `pending` (then
+  `firing`), and letting the next real probe run overwrite it back to `0` (PUT replaces the whole
+  job group).
+
+## The live test found a rule bug — instant queries, not range+reduce
+
+The "both directions" test above did not merely pass: with the file's usual
+`relativeTimeRange: 300` + `reduce: last`, the synthetic `1` was **overwritten 3 minutes before**
+the rule reported `firing`, and a notification went to the contact point. Reason: these rules
+compare a pushed counter against a pushed threshold, so their PromQL result is **empty when the
+site is healthy** — and a range query keeps returning the last positive sample for the whole
+lookback window. `for: 5m` was therefore really `for: 5m + 300 s`, and one failing probe run was
+enough to page. The file's other rules watch series that always exist (ages, freshness,
+`probe_success`), which is why the shape had never hurt before.
+
+Fixed in [#337](https://github.com/dachrisch/servyy-container/pull/337): `instant: true` on the two
+condition rules (one point per evaluation). Re-tested live — `pending` while the value was `1`,
+`inactive` on the **next** evaluation after the probe restored `0`, no notification. The trap is
+documented in `monitor/AGENTS.md` so the next empty-when-healthy rule does not copy the range shape.
