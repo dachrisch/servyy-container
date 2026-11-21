@@ -66,8 +66,11 @@ ssh lehel.xyz "grep -E '^SMTP_' /home/cda/servyy-container/moodle/app.env"
 ## Open point
 
 `servyy-test.lxd` is **not reachable from the fleet** (no LXD container on servy or codey, no DNS
-entry, and Forgejo's runner list holds only `codey` and `runny`), so the fix above is committed but
-not yet deployed to it — it runs wherever that LXD host lives (the branch-deploy skill assumes the
-laptop). Until it is redeployed there, that box still holds the production SMTP credentials and can
-send as `noreply@offd.de`; it should either be redeployed from `ansible/testing` or be shut down.
-Consider rotating the KAS mailbox password once it is gone, since a non-production host has held it.
+entry, and Forgejo's runner list holds only `codey` and `runny`): it is the **laptop's** local LXD
+container (confirmed 2026-11-21), reached only from the machine that hosts its bridge. So the fix
+above is committed but cannot be applied from the servers — the next `./servyy-test.sh` run on the
+laptop re-renders that instance's `app.env` and silences it. Until then that box still holds the
+production SMTP credentials and can send as `noreply@offd.de`; if it is not going to be redeployed,
+shut it down (or set `noemailever=1` inside it, which survives the image's boot-time rewrite of
+`smtphosts`). Consider rotating the KAS mailbox password once it is gone, since a non-production
+host has held it.
