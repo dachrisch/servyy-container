@@ -873,6 +873,16 @@
         service_dir: moodle
         service_name: moodle
         service_host: "{{ moodle_service_host | default(service_dir ~ '.' ~ domain) }}"
+        # `always`, not compose's default `missing`: upstream REBUILDS an
+        # already-published tag in place (release CI re-runs the whole matrix,
+        # 4.5.x included), so the tag being present in the local store says
+        # nothing about the image being current. That is not theoretical: on
+        # 2026-11-21 production was running the 2026-11-12 build of `4.5.16`,
+        # which predates erseco/alpine-moodle#197, while the Hub had been
+        # serving a 2026-11-20 rebuild of the SAME tag that adds Ghostscript.
+        # Without this the deploy reuses the old image forever and "Annotate
+        # PDF" stays broken (moodle/AGENTS.md).
+        compose_pull: always
         env_templates:
           - src: moodle.env.j2
             dest: .env
