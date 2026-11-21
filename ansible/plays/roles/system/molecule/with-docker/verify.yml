@@ -297,6 +297,10 @@
       set_fact:
         blocklist_script: "{{ lookup('ansible.builtin.template', playbook_dir ~ '/../../templates/fail2ban/update-blocklist-from-loki.sh.j2') }}"
       vars:
+        # The role computes this from the inventory; here the scenario supplies the
+        # shape (this host's address) so the template renders without the role.
+        blocklist_exempt_ipv4:
+          - "{{ ansible_facts['default_ipv4']['address'] }}"
         monitor:
           loki_tenant: molecule-tenant
         monitor_loki_url: https://loki.example
