@@ -57,6 +57,13 @@ test:
       moodle_traefik_entrypoint: web
       moodle_traefik_tls: "false"
       moodle_traefik_certresolver: ""
+      # The rehearsal DB is a copy of production, so its `siteadmins` are real
+      # people with real addresses. Never let this box deliver mail: it mailed
+      # nine OFFD admins "Aktualisierungen … verfügbar:
+      # http://moodle.servyy-test.lxd" on 2026-11-20, which read as production
+      # sending a broken link (moodle/AGENTS.md, "PDF annotation" section's
+      # sibling note on mail). Rendered as SMTP_HOST=127.0.0.1:25.
+      moodle_mail_disabled: true
       shared_services: [mongo, redis]
       # DB tiers this host rehearses (roles/db_tier). Same shape as
       # shared_services/finance_services: a list of tier names, each with its
