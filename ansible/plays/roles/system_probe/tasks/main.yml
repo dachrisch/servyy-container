@@ -382,3 +382,38 @@
       tags:
         - system.probe
         - system.probe.forgejo
+
+# --- Moodle task-health probe (2026-11-21) ------------------------------------
+# Only where Moodle runs AND the Pushgateway sink exists (servy). Gates on
+# `moodle_enabled`, the same switch that adds the moodle log/repo entries above.
+- name: Deploy Moodle task-health probe script
+  template:
+    src: moodle_task_failures.sh.j2
+    dest: "{{ (system_probe_scripts_dir, 'moodle-task-failures.sh') | path_join }}"
+    mode: '0750'
+  become_user: "{{ create_user }}"
+  when:
+    - moodle_enabled | default(false) | bool
+    - system_probe_push_enabled | default(false) | bool
+  tags:
+    - system.probe
+    - system.probe.moodle
+
+# Every 5 minutes: a failed task is cheap to detect (`php admin/cli` boots ~1s,
+# three COUNT queries) and Moodle escalates a failing ad-hoc task's retry delay
+# with every attempt, so waiting 30 minutes just loses signal.
+- name: Deploy Moodle task-health timer
+  import_tasks: oneshot_include.yml
+  become_user: "{{ create_user }}"
+  vars:
+    service:
+      name: system-moodle-tasks
+      description: 'Check Moodle scheduled/adhoc task failures and parked tasks'
+      schedule: '*-*-* *:0/5:00'
+      command: "{{ (system_probe_scripts_dir, 'moodle-task-failures.sh') | path_join }}"
+  when:
+    - moodle_enabled | default(false) | bool
+    - system_probe_push_enabled | default(false) | bool
+  tags:
+    - system.probe
+    - system.probe.moodle

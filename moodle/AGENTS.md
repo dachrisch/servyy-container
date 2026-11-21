@@ -149,6 +149,27 @@ ssh lehel.xyz "docker exec -u 65534 moodle.moodle php /var/www/html/admin/cli/up
 ssh lehel.xyz "docker exec -u 65534 moodle.moodle php /var/www/html/admin/cli/cron.php"
 ```
 
+**Failed tasks are alerted on** (`moodle-alerts` in Grafana, probe `moodle-task-failures.sh`,
+timer `system-moodle-tasks.timer` on servy every 5 min — see monitor/AGENTS.md). The probe reads
+what the logs cannot: `mdl_task_log` rows with `result <> 0` and the retry state in
+`mdl_task_adhoc`/`mdl_task_scheduled`. When `attemptsavailable = 0` Moodle has **given up** on an
+ad-hoc task (that is the state behind "Die Task … ist mehrmals fehlgeschlagen") and it never
+retries again — requeue it once the cause is fixed:
+
+```bash
+ssh lehel.xyz "docker exec -u 65534 moodle.moodle php -r '
+  define(\"CLI_SCRIPT\", true); require(\"/var/www/html/config.php\");
+  global \$DB;
+  foreach (\$DB->get_records_select(\"task_adhoc\", \"attemptsavailable = 0 OR faildelay > 0\") as \$t) {
+    \$DB->update_record(\"task_adhoc\", (object)[\"id\" => \$t->id, \"faildelay\" => 0,
+      \"nextruntime\" => time() - 1, \"timestarted\" => null, \"attemptsavailable\" => 3]);
+    echo \$t->id, \" \", \$t->classname, PHP_EOL;
+  }'"
+```
+
+`systemctl --user status system-moodle-tasks.timer` on servy shows the probe; the series are
+`moodle_task_failures{window="1h"}`, `moodle_task_needs_attention`, `moodle_task_probe_success`.
+
 Version bumps: change the image tag in `docker-compose.yml` (renovate opens PRs for `v4.5.x`);
 on the next deploy the container starts, notices the DB is older than the code, and runs
 `upgrade.php` automatically. Major versions (5.x) stay a **manual, rehearsed** event — Moodle 5.1+

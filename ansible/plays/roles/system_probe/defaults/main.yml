@@ -132,6 +132,32 @@ system_probe_storagebox_threshold_pct: 50
 system_probe_tmp_warn_pct: 70
 system_probe_tmp_critical_pct: 90
 
+# --- Moodle task-health probe (2026-11-21) ------------------------------------
+# Moodle's cron is the only thing that runs its scheduled/adhoc tasks, and the
+# image sends its output to /dev/null, so neither the logs nor a container
+# healthcheck can see a failing task. The probe reads `mdl_task_log` and the
+# retry state in `mdl_task_adhoc`/`mdl_task_scheduled` through `php` inside the
+# container (no DB credentials on the host) and pushes:
+#
+#   moodle_task_failures{window="1h"}      failed runs in the window
+#   moodle_task_failure_threshold{window}  how many are tolerated  (below)
+#   moodle_task_needs_attention           adhoc parked/retrying + scheduled failing
+#   moodle_task_needs_attention_threshold  how many are tolerated  (below)
+#   moodle_task_probe_success             0 = could not read Moodle
+#
+# The window label and its seconds must stay in step.
+system_probe_moodle_task_window: "1h"
+system_probe_moodle_task_window_seconds: 3600
+# 1, i.e. the alert fires at 2+ failures inside the hour: one failed run is what
+# a retry is for (`registration_cron_task` fails benignly every few weeks), two
+# in an hour is a pattern. A task Moodle has PARKED (attemptsavailable = 0) is
+# never tolerated, whatever the recent-failure count says.
+system_probe_moodle_task_failed_threshold: 1
+system_probe_moodle_needs_attention_threshold: 0
+# Container name from the compose project name (`moodle.moodle`); the compose
+# guarantees it is globally unique on the shared proxy network.
+system_probe_moodle_container: "{{ (project_name | default('moodle')) ~ '.moodle' }}"
+
 # --- Container-health probe --------------------------------------------------
 # List of docker-compose service dirs to check (mirrors monit.yml's container check,
 # which skips services tagged `manual`). Container names are resolved at deploy time
