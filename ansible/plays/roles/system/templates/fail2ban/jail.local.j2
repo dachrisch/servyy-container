@@ -118,6 +118,16 @@ findtime = 600
 # disables the jail for that source altogether and leaves the next burst
 # unbounded. Fix the scope, not the target.
 #
+# The ONE exception is our own fleet: `update-from-loki.sh` drops the public IPv4s
+# of this host and of every inventory host with a literal IPv4 `ansible_host`
+# (`blocklist_exempt_ipv4`, rendered into EXEMPT_IPS) before it writes a line, so
+# a peer can never end up in this jail at all. That is not an `ignoreip` on a
+# random offender: those hosts are the platform's clients — Grafana queries
+# Prometheus ~50k times a day and the Forgejo runners long-poll the instance —
+# and banning one cuts CI and monitoring off on that host instead of throttling a
+# scanner. Measured 2026-11-21: codey banned as "aggressive-crawler", every
+# Forgejo job there dead with "connect: connection refused" until it was unbanned.
+#
 # The rules also have to land in a chain that container traffic traverses.
 # Docker DNATs published ports in PREROUTING and forwards the packets, so INPUT
 # only ever sees host-local sockets (sshd, monit) and a ban inserted there is

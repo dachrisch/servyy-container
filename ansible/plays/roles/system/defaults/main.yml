@@ -8,3 +8,22 @@
 # Hosts without Docker have nothing to forward and keep the fail2ban default.
 # See history/2026-11-10_fail2ban-web-tier-chain-fix.md.
 fail2ban_web_tier_chain: "{{ 'DOCKER-USER' if (with_docker | default(false)) else 'INPUT' }}"
+
+# Public IPv4 addresses of OUR OWN hosts: this host plus every inventory host whose
+# `ansible_host` is a literal IPv4. The Loki blocklist script drops these before writing
+# them, because a peer host is the platform's *client* (Grafana queries Prometheus
+# ~50k times a day, Forgejo runners long-poll the instance), not an attacker — and banning
+# one takes down CI and monitoring on that host. Measured 2026-11-21: codey's egress was
+# banned as an "aggressive crawler" and every Forgejo job on that runner stopped with
+# "dial tcp 49.13.6.173:443: connect: connection refused".
+# See history/2026-11-21_loki-blocklist-fleet-exemption.md.
+blocklist_exempt_ipv4: >-
+  {{ ([ansible_facts.get('default_ipv4', {}).get('address', '')]
+      + (groups['prod'] | default([])
+         | map('extract', hostvars)
+         | map(attribute='ansible_host', default='')
+         | select('search', '^[0-9]{1,3}(\.[0-9]{1,3}){3}$')
+         | list))
+     | select
+     | unique
+     | list }}
