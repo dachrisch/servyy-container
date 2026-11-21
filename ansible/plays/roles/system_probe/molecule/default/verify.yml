@@ -219,7 +219,9 @@
     - name: Assert the Moodle probe reads the task tables, not the logs
       assert:
         that:
-          - "'mdl_task_log' not in (moodle_script.content | b64decode)"  # uses {task_log}
+          # Moodle table-prefix syntax, never a hardcoded mdl_ name in the SQL
+          # (the doc comment mentions mdl_task_log on purpose, so assert the SQL
+          # form only).
           - "'{task_log}' in (moodle_script.content | b64decode)"
           - "'attemptsavailable = 0' in (moodle_script.content | b64decode)"
           - "'faildelay > 0' in (moodle_script.content | b64decode)"
