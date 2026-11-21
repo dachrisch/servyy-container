@@ -24,6 +24,12 @@
         backup_ls_db: /var/log/restic/backup-ls-db.log
         forget: /var/log/restic/forget.log
         check: /var/log/restic/check.log
+        # moodle_enabled: the moodle log/repo entries are generated from these
+        # (system_probe/defaults/main.yml); a missing key is a Jinja attribute
+        # error at converge, not a skipped entry.
+        backup_moodle_files: /var/log/restic/backup-moodle-files.log
+        backup_moodle_db: /var/log/restic/backup-moodle-db.log
+        moodle_dump: /var/log/restic/moodle-dump.log
     docker:
       services:
         - dir: probetest
