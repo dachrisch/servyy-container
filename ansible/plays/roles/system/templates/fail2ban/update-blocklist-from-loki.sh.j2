@@ -40,6 +40,19 @@ LOKI_TENANT_ID="{{ monitor.loki_tenant }}"
 LOKI_URL="{{ monitor_loki_url }}"
 LOKI_USER="{{ monitor_loki_auth_username }}"
 LOKI_PASSWORD="{{ monitor_remote_auth.loki_password }}"
+
+# IPv4 addresses that must NEVER reach the blocklist. These are our own hosts (this
+# one plus every inventory host with a literal IPv4 `ansible_host`), and they are the
+# platform's clients: Grafana evaluates ~65 alert rules a minute against Prometheus
+# (/api/v1/query_range, ~50k requests/24h) and every Forgejo runner long-polls its
+# instance (~22k/24h) — both comfortably over the "aggressive crawler" floor below.
+# Banning one of them does not throttle an attacker; it cuts CI and monitoring off on
+# that host. Measured 2026-11-21: codey banned at 05:33 for attempts=274, and every
+# Forgejo job there died with "dial tcp 49.13.6.173:443: connect: connection refused".
+# This is an exemption at the SOURCE (never written to the log), not `ignoreip`:
+# the jail keeps working for real offenders, and a peer is still throttled by
+# Traefik's rate limiter. See history/2026-11-21_loki-blocklist-fleet-exemption.md.
+EXEMPT_IPS="{{ blocklist_exempt_ipv4 | join(' ') }}"
 {% raw %}
 BLOCKLIST_LOG="/var/log/fail2ban-loki.log"
 TIME_RANGE="24h"
@@ -235,6 +248,17 @@ add_ips() {
         if [[ "$ip" =~ ^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.) ]]; then
             continue
         fi
+
+        # Never ban one of OUR OWN public hosts (EXEMPT_IPS, rendered from the
+        # inventory). They are the platform's clients — Grafana's rule evaluation
+        # and the Forgejo runners are machine traffic that legitimately exceeds the
+        # crawler floor — so a ban here takes out CI/monitoring, not an attacker.
+        for exempt in $EXEMPT_IPS; do
+            if [[ "$ip" == "$exempt" ]]; then
+                log "skipping fleet IP $ip from $provider ($reason)"
+                continue 2
+            fi
+        done
 
         # Add to blocklist log (fail2ban will pick it up)
         echo "$(date '+%Y-%m-%d %H:%M:%S') $ip $reason" >> "$BLOCKLIST_LOG"

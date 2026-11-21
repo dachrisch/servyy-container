@@ -282,3 +282,31 @@
           loses its history mid-escalation - see
           history/2026-11-11_fail2ban-ssh-bantime-1h.md
         success_msg: "ban history is retained for a week, past the 24 h escalation cap"
+
+    # --- The blocklist must never ban our own hosts (2026-11-21) ---------------
+    # Grafana's ~65 rules/minute (query_range) and the Forgejo runners' long-poll
+    # both exceed the "aggressive crawler" floor, so a peer egress IP gets banned
+    # unless the script drops it before writing. That ban does not throttle an
+    # attacker - it cuts CI and monitoring off on the peer host. Measured on
+    # 2026-11-21 (history/2026-11-21_loki-blocklist-fleet-exemption.md).
+    - name: Read the installed blocklist script
+      slurp:
+        src: /usr/local/bin/blocklist/update-from-loki.sh
+      register: blocklist_script
+
+    - name: Assert the blocklist script carries and applies the fleet exemption
+      assert:
+        that:
+          - "'EXEMPT_IPS=' in (blocklist_script.content | b64decode)"
+          # this host's own address is rendered into the list
+          - "ansible_facts['default_ipv4']['address'] in (blocklist_script.content | b64decode).split('EXEMPT_IPS=\"')[1].split('\"')[0]"
+          - "'skipping fleet IP' in (blocklist_script.content | b64decode)"
+          # the guard sits after the private-IP skip and before the write
+          - >-
+            (blocklist_script.content | b64decode).index('skipping fleet IP')
+            < (blocklist_script.content | b64decode).index('$BLOCKLIST_LOG\"')
+        fail_msg: >-
+          update-from-loki.sh must drop the fleet's own public IPv4s (blocklist_exempt_ipv4)
+          before writing a ban line - otherwise Grafana/runner traffic bans a peer host and
+          takes its CI and monitoring down (2026-11-21).
+        success_msg: "the blocklist script exempts our own hosts before writing"
