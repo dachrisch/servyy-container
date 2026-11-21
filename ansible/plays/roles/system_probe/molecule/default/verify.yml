@@ -213,8 +213,8 @@
             in (moodle_script.content | b64decode)
           - "'moodle_task_needs_attention_threshold' in (moodle_script.content | b64decode)"
           - "'moodle_task_probe_success' in (moodle_script.content | b64decode)"
-          # the rendered window label reaches the printf
-          - "'\"1h\" $failed' in (moodle_script.content | b64decode)"
+          # the rendered label and the value are both passed to the printf
+          - "'\"$WINDOW_LABEL\" \"$failed\"' in (moodle_script.content | b64decode)"
 
     - name: Assert the Moodle probe reads the task tables, not the logs
       assert:
