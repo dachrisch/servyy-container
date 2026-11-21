@@ -94,6 +94,18 @@ image writes placeholder Gmail credentials.
 This bit us once on 2026-10-28: importing Christoph's dump silently rewrote the admin email, the
 noreply address and the mail prefix.
 
+**Every URL in an outgoing mail is `$CFG->wwwroot` at send time**, so a wrong `SITE_URL` looks
+exactly like a broken production mail. Diagnose before rebuilding anything: prod's own
+`mdl_notifications` rows carry the URL they were generated with (`eventtype='availableupdate'`,
+subject `Aktualisierungen für Moodle sind verfügbar: …`). On 2026-11-21 the "wrong server address"
+mail turned out to come from **the rehearsal instance** (`http://moodle.servyy-test.lxd`), not
+from prod: production's own notification (2026-11-18) says `https://offd.de`, and the reported
+plugin (`mod_booking`) does not exist in prod's DB at all. The rehearsal box is a copy of the
+production database — real `siteadmins`, real addresses — and until then also carried the
+production SMTP credentials, so it mailed nine real admins. `ansible/testing` now sets
+`moodle_mail_disabled: true`, which renders `SMTP_HOST=127.0.0.1:25` (connection refused, nothing
+leaves the box). Never point a non-production instance at the real relay.
+
 ## Plugins
 
 Third-party plugins live outside the image and are installed **at every boot** from `PLUGINS=`
