@@ -219,10 +219,9 @@
     - name: Assert the Moodle probe reads the task tables, not the logs
       assert:
         that:
-          # Moodle table-prefix syntax, never a hardcoded mdl_ name in the SQL
-          # (the doc comment mentions mdl_task_log on purpose, so assert the SQL
-          # form only).
-          - "'{task_log}' in (moodle_script.content | b64decode)"
+          # Reads the DB through Moodle's $DB API (which takes bare table names),
+          # not the logs: at least one count_records_select must be deployed.
+          - "'count_records_select' in (moodle_script.content | b64decode)"
           - "'attemptsavailable = 0' in (moodle_script.content | b64decode)"
           - "'faildelay > 0' in (moodle_script.content | b64decode)"
           # -1 for "could not read Moodle" must survive as a positive alert hit
