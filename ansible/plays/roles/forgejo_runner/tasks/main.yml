@@ -27,6 +27,7 @@
     src: config.yml.j2
     dest: "{{ (forgejo_runner_data_dir, 'config.yml') | path_join }}"
     mode: '0644'
+  register: forgejo_runner_config
   tags:
     - user.docker.runny
 
@@ -94,6 +95,17 @@
     files:
       - docker-compose.yml
     state: present
+  tags:
+    - user.docker.runny
+    - molecule-notest
+
+# config.yml is a bind mount, so `up -d` does not recreate the container when
+# only its content changes: the daemon keeps the config it read at start.
+- name: Restart the runner so a changed config.yml takes effect
+  ansible.builtin.command:
+    cmd: docker restart runny.runner
+  when: forgejo_runner_config is changed
+  changed_when: true
   tags:
     - user.docker.runny
     - molecule-notest
