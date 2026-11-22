@@ -39,8 +39,9 @@ The reverse proxy for every host (servy + codey). Deployed by
   `security-headers@file` sits first in the `web`/`websecure` entrypoint `middlewares`
   lists (`traefik.yaml`), so it is outermost and also covers the branded error pages. It
   sends HSTS (1y, `includeSubDomains`, TLS only — `forceSTSHeader: false`), `nosniff`,
-  `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, and strips `Server`/
-  `X-Powered-By`. The middleware's `headers` block uses `Header().Set()`, so it **replaces**
+  `X-Frame-Options: SAMEORIGIN`, and strips `Server`/
+  `X-Powered-By` (Referrer-Policy is deliberately not set — see below). The middleware's
+  `headers` block uses `Header().Set()`, so it **replaces**
   a backend's own value, not merges: a service that needs a different XFO/referrer value
   cannot have one while it is on the entrypoint — move the middleware to per-router labels
   or relax the shared value instead. CSP and Permissions-Policy are deliberately **not**
