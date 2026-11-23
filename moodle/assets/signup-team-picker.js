@@ -166,9 +166,12 @@
     var $invoiceRow = $('#fitem_id_profile_field_rechnung');
 
     /* The submitted values live in the two Moodle inputs; the picker is only a
-     * view over them (it has no name, so it is never posted). */
+     * view over them (it has no name, so it is never posted). teamid gets its
+     * whole row hidden — an input alone leaves an empty "Team-Id" box on the
+     * form once the field is on it (signup=1, visible=2 since 2026-11-23). */
     $teamName.hide();
     $teamId.hide();
+    $('#fitem_id_profile_field_teamid').hide();
     $invoiceRow.hide();
 
     /* Presented as required even though the profile field is optional
