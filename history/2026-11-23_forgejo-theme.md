@@ -74,10 +74,14 @@ Deployed with `./servyy-test.sh --tags user.docker.repo,user.docker.ci -e docker
 - Sign-in hero renders: `.lehel-hero` / `.lehel-tagline` / `.lehel-status` present.
 - Mounts: `docker inspect ci.forgejo` shows `ci/custom/{templates,public}` → `/var/lib/gitea/custom/…` (ro).
 - No console/template errors in `docker logs ci.forgejo` after restart.
-- Light + dark screenshots of `/user/login` and the dashboard taken with headless
-  Chrome (backgrounds sampled: light ≈ `#f4f6f9`, dark ≈ `#0d131b`).
+- Layout verified by bounding-box measurement, not just markup: at 1440×900 the hero
+  (x=201 w=552) and the card (x=825 w=400, inputs w=370) sit side-by-side and vertically
+  centered; at 390×844 the hero and card stack full-width (inputs w=328). Screenshots of
+  `/user/login` and the dashboard at 1440×900 and 390×844, light + dark, in the closing
+  report (backgrounds sampled: light ≈ `#f4f6f9`, dark ≈ `#0d131b`).
 
 Gotcha (documented, not a bug): the existing admin `cda` keeps their prior
 `forgejo-auto` theme — `DEFAULT_THEME` only governs anonymous/new users. To adopt
 `lehel` the account switches it in Settings → Appearance (done on servyy-test for
-the dashboard screenshots via a temporary API token, removed after).
+the dashboard screenshots via a temporary `theme-val` API token, deleted afterwards
+via `DELETE /api/v1/users/cda/tokens/theme-val`).
