@@ -61,8 +61,8 @@ a faint 24px grid page background, and automatic light/dark via
 
 ## Deployment
 
-- Test (servyy-test only): `cd ansible && ./servyy-test.sh --tags user.docker.ci -e docker_branch=claude/forgejo-theme`
-- Production: after approval, `cd ansible && ./servyy.sh --limit servy.lehel.xyz`
+- Test (servyy-test only): `cd ansible && ./servyy-test.sh --tags user.docker.repo,user.docker.ci -e docker_branch=claude/forgejo-theme`
+- Production: after approval, `cd ansible && ./servyy.sh --tags user.docker.repo,user.docker.ci --limit servy.lehel.xyz`
 
 ## Verification (servyy-test)
 

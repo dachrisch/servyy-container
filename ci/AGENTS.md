@@ -88,8 +88,9 @@ ci/custom/
 - **Keyboard shortcuts** (in `theme-lehel.js`): `/` focuses search,
   `g a` → `/admin/actions`, `g r` → `/explore/repos`.
 - **To change it**: edit `ci/custom/public/assets/css/theme-lehel.css` and
-  re-run `./servyy-test.sh --tags user.docker.ci` (test) then
-  `./servyy.sh --limit servy.lehel.xyz` (prod). Forgejo must restart to pick up
-  env/config changes; a plain `docker compose up -d` after the env render is
-  enough. Fonts are self-hosted under `custom/public/assets/fonts` (OFL) — do
-  not add Google Fonts calls.
+  re-run `./servyy-test.sh --tags user.docker.repo,user.docker.ci -e docker_branch=<branch>` (test) then
+  `./servyy.sh --tags user.docker.repo,user.docker.ci --limit servy.lehel.xyz` (prod).
+  Forgejo must restart to pick up env/config changes; a plain
+  `docker compose up -d` after the env render is enough (a template override
+  like `signin.tmpl` also needs a `docker restart`). Fonts are self-hosted
+  under `custom/public/assets/fonts` (OFL) — do not add Google Fonts calls.

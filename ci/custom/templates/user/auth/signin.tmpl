@@ -10,10 +10,8 @@
 				<div class="lehel-status-row"><span><i class="lehel-dot"></i>Instance</span><span class="lehel-mono">private &middot; sign-in required</span></div>
 			</div>
 		</div>
-		<div class="ui middle very relaxed page grid">
-			<div class="column tw-flex tw-flex-col tw-gap-4 tw-max-w-2xl tw-m-auto">
-				{{template "user/auth/signin_inner" .}}
-			</div>
+		<div class="lehel-signin-card">
+			{{template "user/auth/signin_inner" .}}
 		</div>
 	</div>
 </div>

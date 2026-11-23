@@ -405,15 +405,19 @@ kbd {
 .lehel-signin {
   display: flex;
   flex-wrap: wrap;
-  gap: 48px;
   align-items: center;
-  max-width: 1100px;
+  gap: clamp(24px, 6vw, 72px);
+  max-width: 1120px;
   margin: 0 auto;
-  padding: clamp(28px, 6vw, 64px) clamp(16px, 4vw, 48px);
+  padding: clamp(24px, 5vw, 48px) clamp(16px, 4vw, 48px);
+  box-sizing: border-box;
+  /* Center vertically below the navbar (navbar ~49px + .full.height's 80px
+     bottom padding). */
+  min-height: calc(100vh - 130px);
 }
 
 .lehel-hero {
-  flex: 999 1 420px;
+  flex: 1 1 420px;
   min-width: 0;
   display: grid;
   gap: 20px;
@@ -493,24 +497,35 @@ kbd {
   color: var(--lehel-muted);
 }
 
-/* The sign-in form column sits to the right of the hero; drop the huge page-grid
- * padding so the two align, and cap its width. */
-.lehel-signin .page.grid {
-  flex: 1 1 320px;
-  min-width: 0;
-  margin: 0;
-}
-.lehel-signin .page.grid > .column {
-  max-width: 420px;
-  margin: 0 auto;
+/* The sign-in card sits to the right of the hero (or below it on narrow
+ * screens). It is a plain wrapper — NOT Forgejo's .page.grid/.column, which
+ * carry their own responsive padding-inline that squeezes the form into a
+ * sliver when nested inside a flex item. */
+.lehel-signin-card {
+  flex: 0 1 400px;
   width: 100%;
+  max-width: 400px;
+  min-width: 0;
 }
 
-@media (max-width: 640px) {
+/* signin_inner renders the card as .ui.container.fluid; keep it full-width. */
+.lehel-signin-card .ui.container.fluid {
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+@media (max-width: 767px) {
   .lehel-signin {
+    min-height: 0;
+    align-items: stretch;
     gap: 24px;
   }
-  .lehel-signin .page.grid > .column {
+  .lehel-hero {
+    flex: 1 1 100%;
+  }
+  .lehel-signin-card {
+    flex: 1 1 100%;
     max-width: none;
   }
 }
