@@ -170,7 +170,7 @@
     owner: "{{ forgejo_runner_rootless_user }}"
     group: "{{ forgejo_runner_rootless_user }}"
     mode: '0644'
-  notify: restart rootless runner
+  register: forgejo_runner_rootless_config
   tags:
     - user.docker.runny
 
@@ -191,7 +191,7 @@
     owner: "{{ forgejo_runner_rootless_user }}"
     group: "{{ forgejo_runner_rootless_user }}"
     mode: '0644'
-  notify: restart rootless runner
+  register: forgejo_runner_rootless_unit
   tags:
     - user.docker.runny
 
@@ -277,6 +277,21 @@
   become_user: "{{ forgejo_runner_rootless_user }}"
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ forgejo_runner_rootless_uid }}"
+  tags:
+    - user.docker.runny
+    - molecule-notest
+
+# Restart so a changed config.yml or unit file takes effect. Runs after the
+# service is up (so no user-bus failure in molecule, where the start is skipped).
+- name: Restart the rootless runner if its config or unit changed
+  ansible.builtin.systemd:
+    name: forgejo-runner
+    scope: user
+    state: restarted
+  become_user: "{{ forgejo_runner_rootless_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ forgejo_runner_rootless_uid }}"
+  when: (forgejo_runner_rootless_config is changed) or (forgejo_runner_rootless_unit is changed)
   tags:
     - user.docker.runny
     - molecule-notest
