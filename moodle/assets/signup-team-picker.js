@@ -16,9 +16,11 @@
  *
  * WHY A LOADER AND NOT THREE <script> TAGS
  * Only the signup (/login/signup.php) and profile-edit forms carry
- * #id_profile_field_teamname, so jQuery/select2 are fetched on demand. If any of
- * the three assets fails to load, nothing is hidden and the plain Moodle text
- * field stays usable — the participant can still type their club name.
+ * #id_profile_field_teamname, so jQuery/select2 are fetched on demand — through
+ * Moodle's own RequireJS where it exists (it always does in practice), which
+ * also means Moodle's jQuery is reused instead of downloading a second copy. If
+ * a dependency cannot be loaded, nothing is hidden and the plain Moodle text
+ * field stays usable: the participant can still type their club name.
  *
  * WHAT IT DOES
  * - teamname (profile field 3) is what the participant sees and what Moodle
@@ -71,15 +73,47 @@
 
   /* jQuery first, then select2, then hand back the instance select2 attached to.
    *
-   * window.jQuery is a moving target on a Moodle page: Moodle's own AMD modules
-   * load their jQuery too, and whichever ran last owns the global. select2 binds
-   * to whatever window.jQuery is AT ITS EXECUTION TIME, so the global is pinned
-   * to our instance for exactly the length of that load, and the previous value
-   * is put back afterwards. Checking the global afterwards (rather than a
-   * captured reference) is what silently disabled the first version of this
-   * file: select2 had attached to our jQuery, then Moodle replaced the global
-   * and the check `window.jQuery.fn.select2` came back false. */
+   * Two things make this less obvious than it looks:
+   *
+   * 1. Moodle's RequireJS is always on the page. Both jQuery and select2 are
+   *    UMD bundles that PREFER AMD whenever `define.amd` exists — select2 then
+   *    calls `define(["jquery"], …)` and binds to the AMD jquery module, not to
+   *    `window.jQuery`. Loading it as a plain <script> after RequireJS is up
+   *    therefore leaves `window.jQuery.fn.select2` empty, which is exactly how
+   *    the first version of this file failed silently. So: use the AMD path
+   *    when it is there, which also means we reuse Moodle's own jQuery instead
+   *    of downloading a second copy.
+   * 2. The plain-script fallback (no RequireJS) has to keep `window.jQuery`
+   *    pinned to our instance for the length of select2's load, because that is
+   *    the only jQuery the UMD will find then. The previous value is restored
+   *    afterwards.
+   *
+   * Either way `done` receives the jQuery that select2 actually attached to —
+   * never re-read the global, it is a moving target on a Moodle page. */
   function loadPickerLibs(done) {
+    var haveAmd = window.require && window.define && window.define.amd;
+
+    if (haveAmd) {
+      try {
+        window.require.config({
+          paths: { offdselect2: ASSET_BASE + 'vendor/select2-4.0.13.min' }
+        });
+      } catch (e) {
+        done(e);
+        return;
+      }
+      window.require(['jquery', 'offdselect2'], function ($) {
+        if (!$ || !$.fn || !$.fn.select2) {
+          done(new Error('select2 did not attach to the AMD jQuery'));
+          return;
+        }
+        done(null, $);
+      }, function (err) {
+        done(err || new Error('requirejs could not load jquery + select2'));
+      });
+      return;
+    }
+
     function withJquery($) {
       if ($ && $.fn && $.fn.select2) { done(null, $); return; }
       var prevJquery = window.jQuery;

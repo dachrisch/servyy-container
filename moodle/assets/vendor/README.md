@@ -1,7 +1,7 @@
 # Vendored browser libraries for the signup team picker
 
-`moodle/assets/signup-team-picker.js` needs jQuery and select2. Both are
-committed here instead of loaded from a CDN, for the same reason
+`moodle/assets/signup-team-picker.js` needs select2. jQuery and select2 are committed
+here instead of loaded from a CDN, for the same reason
 [`moodle/plugins/`](../../plugins/README.md) vendors the enrolment plugin: **the
 registration form is the front door of the site.** A CDN outage, a corporate
 proxy or an ad blocker that filters `cdnjs.cloudflare.com` used to leave the
@@ -10,6 +10,14 @@ text field had already run. Now every asset comes from the same origin as the
 page.
 
 Nothing else is vendored: no build step, no package manager, no sass.
+
+**jQuery is rarely fetched at all.** On a Moodle page the picker loads select2
+through Moodle's RequireJS (`require(['jquery', 'offdselect2'])`), which reuses
+Moodle's own jQuery; the two plain `<script>` files below are the fallback for
+the case where RequireJS is not on the page. Both are UMD bundles, and with
+`define.amd` present they register as AMD modules instead of attaching to
+`window.jQuery` — which is why loading select2 as a plain script on a Moodle
+page silently produces `window.jQuery.fn.select2 === undefined`.
 
 | File | Source | sha256 |
 |---|---|---|
