@@ -11,9 +11,11 @@
 # create a missing bind source as root and the container could not write its
 # database.
 #
-# Git is served over HTTPS only (tokens). There is deliberately no SSH port:
-# the published-ports guard allows only Traefik's 80/443, and SSH is disabled
-# in the app config (FORGEJO__server__DISABLE_SSH in forgejo.env).
+# Git is served over HTTPS (tokens) and over SSH on port 22. There is still
+# deliberately no published port (the published-ports guard allows only
+# Traefik's 80/443): SSH arrives at the HOST sshd as user `git`, which forwards
+# into this container with `docker exec … forgejo serv` (forgejo_bootstrap
+# role, tasks/ssh_passthrough.yml; ci/AGENTS.md "Git over SSH").
 #
 # The image is pinned to the current Forgejo LTS line (15.x, still receiving
 # security releases as of 2026-11) and bumped by Renovate. Do not unpin to `latest`: Forgejo majors

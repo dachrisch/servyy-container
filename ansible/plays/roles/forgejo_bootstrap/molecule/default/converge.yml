@@ -2,7 +2,9 @@
 # The admin-user + runner-registration tasks need a running Forgejo (tagged
 # molecule-notest), so this scenario exercises the DB-dump half: the dump
 # script and its systemd unit/timer render with the right command, output path
-# and 01:30 schedule, and converge is idempotent.
+# and 01:30 schedule, and converge is idempotent. It also lays down the
+# Git-over-SSH passthrough (git user, wrapper, sudoers, sshd Match block) and
+# validates it with visudo / sshd -t; only the sshd reload is skipped.
 - name: Converge
   hosts: all
   become: true
@@ -21,6 +23,6 @@
     forgejo_admin_api_token: test-admin-api-token
     forgejo_runners: [codey, runny]
   tasks:
-    - name: Run forgejo_bootstrap (DB-dump timer; docker-exec tasks skipped)
+    - name: Run forgejo_bootstrap (DB-dump timer + SSH passthrough; docker-exec tasks skipped)
       ansible.builtin.include_role:
         name: forgejo_bootstrap

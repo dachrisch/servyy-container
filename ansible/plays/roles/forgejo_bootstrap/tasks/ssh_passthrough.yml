@@ -1,0 +1,89 @@
+---
+# Git-over-SSH for Forgejo on the standard port 22 (ci/AGENTS.md "Git over SSH").
+#
+# ci.<domain> resolves to this host, whose own sshd owns port 22, so the host
+# sshd is the front door (Forgejo's "SSH container passthrough"):
+#
+#   git@ci.lehel.xyz:22 -> sshd Match User git
+#     AuthorizedKeysCommand forgejo-keys  -> sudo forgejo-exec keys -> docker exec `forgejo keys`
+#     forced command forgejo-serv key-N   -> sudo forgejo-exec serv -> docker exec -i `forgejo serv`
+#
+# The `git` user is not in the docker group: its only privilege is the
+# validating wrapper (sudoers). No port is published, so no firewall, guard or
+# DNS change was needed. Forgejo side: SSH_* + SSH_AUTHORIZED_KEYS_COMMAND_TEMPLATE
+# in docker_service/templates/ci/forgejo.env.j2.
+
+- name: Create the host user for Git over SSH
+  ansible.builtin.user:
+    name: "{{ forgejo_ssh_user }}"
+    system: true
+    # The forced command runs through the login shell.
+    shell: /bin/sh
+    home: "{{ forgejo_ssh_home }}"
+    create_home: true
+    # '*' = no password, but NOT locked ('!'): sshd refuses key logins for a
+    # locked account when PAM is off.
+    password: '*'
+    comment: Forgejo Git-over-SSH passthrough (ci.forgejo)
+
+- name: Deploy the validating docker-exec wrapper
+  ansible.builtin.template:
+    src: forgejo-exec.sh.j2
+    dest: /usr/local/sbin/forgejo-exec
+    owner: root
+    group: root
+    mode: '0755'
+
+# sshd requires the AuthorizedKeysCommand (and its parent dirs) to be owned by
+# root and not group/world-writable.
+- name: Deploy the AuthorizedKeysCommand and the forced-command shims
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - {src: forgejo-keys.sh.j2, dest: /usr/local/bin/forgejo-keys}
+    - {src: forgejo-serv.sh.j2, dest: /usr/local/bin/forgejo-serv}
+  loop_control:
+    label: "{{ item.dest }}"
+
+- name: Allow the git user to run the wrapper (and nothing else) as root
+  ansible.builtin.template:
+    src: forgejo-git-sudoers.j2
+    dest: /etc/sudoers.d/forgejo-git
+    owner: root
+    group: root
+    mode: '0440'
+    validate: visudo -cf %s
+
+# Named so it sorts after every other drop-in: its Match block is the last
+# thing sshd reads. `sshd -t -f %s` validates the fragment on its own.
+- name: Deploy the sshd Match block for the git user
+  ansible.builtin.template:
+    src: forgejo-git-sshd.conf.j2
+    dest: /etc/ssh/sshd_config.d/zz-forgejo-git.conf
+    owner: root
+    group: root
+    mode: '0644'
+    validate: sshd -t -f %s
+  register: forgejo_sshd_conf
+
+# The fragment check above cannot see how the drop-in combines with the rest,
+# so check the whole config before sshd is touched. A failure here stops the
+# deploy BEFORE the reload: the running sshd keeps its old config.
+- name: Validate the complete sshd configuration
+  ansible.builtin.command:
+    cmd: sshd -t
+  changed_when: false
+  when: forgejo_sshd_conf is changed
+
+- name: Reload sshd when the Match block changed
+  ansible.builtin.systemd:
+    name: ssh
+    state: reloaded
+  when: forgejo_sshd_conf is changed
+  tags:
+    # No running sshd in the molecule container.
+    - molecule-notest

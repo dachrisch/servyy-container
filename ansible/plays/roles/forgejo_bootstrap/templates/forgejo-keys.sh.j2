@@ -1,0 +1,6 @@
+#!/bin/sh
+# Managed by Ansible (forgejo_bootstrap) - sshd AuthorizedKeysCommand for the
+# `{{ forgejo_ssh_user }}` user. Called as: forgejo-keys %u %t %k
+# Prints the authorized_keys line Forgejo knows for this key (with its forced
+# command), or nothing, in which case sshd rejects the key.
+exec sudo -n /usr/local/sbin/forgejo-exec keys "$1" "$2" "$3"

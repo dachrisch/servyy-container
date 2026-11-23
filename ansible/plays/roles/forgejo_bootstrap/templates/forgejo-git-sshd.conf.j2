@@ -1,0 +1,17 @@
+# Managed by Ansible (forgejo_bootstrap) - do not edit by hand.
+# Git-over-SSH for ci.lehel.xyz on port 22: the `{{ forgejo_ssh_user }}` user's keys come
+# from Forgejo (via docker exec), and every key carries Forgejo's forced
+# command, so this account can only run git through `forgejo serv`.
+# See ci/AGENTS.md "Git over SSH".
+Match User {{ forgejo_ssh_user }}
+    AuthorizedKeysFile none
+    AuthorizedKeysCommand /usr/local/bin/forgejo-keys %u %t %k
+    AuthorizedKeysCommandUser {{ forgejo_ssh_user }}
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    AllowTcpForwarding no
+    AllowAgentForwarding no
+    AllowStreamLocalForwarding no
+    X11Forwarding no
+    PermitTTY no
+    PermitTunnel no

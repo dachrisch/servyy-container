@@ -12,9 +12,9 @@ migrated yet**, and `git/` + `git.lehel.xyz` stay untouched until that cut-over.
 | Image | `codeberg.org/forgejo/forgejo:17.0.2-rootless` (v17 is **not** LTS; supported until 2027-01-28, so plan the next upgrade) |
 | Database | SQLite, `./data/data/gitea.db` (WAL mode) |
 | Access | private: registration closed, sign-in required, single admin `cda` |
-| Git transport | HTTPS + access token only (no SSH port) |
+| Git transport | HTTPS (access token) and SSH on port 22 via servy's host sshd (`git@ci.lehel.xyz:cda/<repo>.git`) |
 | Runners | `codey` (arm64, dind) and `runny` (amd64, rootless): see `runny/AGENTS.md` |
-| History | `history/2026-11-20_forgejo-platform-setup.md`, `history/2026-11-23_ci-server.md` (v17 + current state), `history/2026-11-23_runner-rootless.md`, `history/2026-11-23_forgejo-theme.md` |
+| History | `history/2026-11-20_forgejo-platform-setup.md`, `history/2026-11-23_ci-ssh.md`, `history/2026-11-23_ci-server.md` (v17 + current state), `history/2026-11-23_runner-rootless.md`, `history/2026-11-23_forgejo-theme.md` |
 
 ## Using it
 
@@ -27,9 +27,47 @@ migrated yet**, and `git/` + `git.lehel.xyz` stay untouched until that cut-over.
 - The default theme `lehel` only applies to new accounts and signed-out pages.
   To use it on an existing account: Settings → Appearance → `lehel`.
 
+### Git over SSH
+
+```bash
+git clone git@ci.lehel.xyz:cda/<repo>.git
+```
+
+Add your public key under Settings → SSH / GPG Keys first. Port 22, no
+`~/.ssh/config` needed. The host key you see is **servy's** (same machine as
+`ssh servy.lehel.xyz`). `ssh git@ci.lehel.xyz` answers "Hi there, cda! You've
+successfully authenticated…, but Forgejo does not provide shell access."
+
+How it works (passthrough, no published port):
+
+```
+git@ci.lehel.xyz:22 -> servy sshd, Match User git (sshd_config.d/zz-forgejo-git.conf)
+  AuthorizedKeysCommand /usr/local/bin/forgejo-keys -> sudo forgejo-exec keys -> docker exec `forgejo keys`
+  forced command /usr/local/bin/forgejo-serv key-N  -> sudo forgejo-exec serv -> docker exec -i `forgejo serv`
+```
+
+- The host user `git` is **not** in the docker group. Its only privilege is
+  `/usr/local/sbin/forgejo-exec` via sudoers. That wrapper accepts nothing
+  but `keys <user> <type> <key>` and `serv key-<id>`, with each argument
+  validated.
+- The forced command comes from
+  `FORGEJO__server__SSH_AUTHORIZED_KEYS_COMMAND_TEMPLATE` in `forgejo.env`.
+  Forgejo's default points at `/app/gitea/gitea`, which exists only inside
+  the image.
+- No forwarding, TTY or agent for `git`. Failed logins go through the host
+  sshd, so the existing sshd fail2ban jails cover them.
+- servy's sshd has `MaxAuthTries 3`. With many keys in your agent, pin one:
+  `ssh -o IdentitiesOnly=yes -i ~/.ssh/<key> git@ci.lehel.xyz`.
+- If `ci.forgejo` is down, `git@` logins fail with "Permission denied
+  (publickey)": the keys command gets no answer.
+- Debug: `ssh servy.lehel.xyz 'sudo -u git /usr/local/bin/forgejo-keys git <type> <base64>'`
+  prints the `command=` line Forgejo serves for that key, or nothing.
+- Code: `ansible/plays/roles/forgejo_bootstrap/tasks/ssh_passthrough.yml`
+  (tag `user.docker.ci.ssh`).
+
 ### Git over HTTPS
 
-There is no SSH. Create a personal access token (Settings → Applications, scope
+Create a personal access token (Settings → Applications, scope
 `write:repository`, plus `write:package` if you push images) and use it as the
 password:
 

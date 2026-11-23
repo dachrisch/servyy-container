@@ -1,0 +1,38 @@
+#!/bin/bash
+# Managed by Ansible (forgejo_bootstrap, ssh_passthrough.yml) - do not edit by hand.
+#
+# The ONLY command the host `git` user may run as root (/etc/sudoers.d/forgejo-git).
+# It turns servy's sshd into the front door for Forgejo's Git-over-SSH
+# (ci/AGENTS.md "Git over SSH"):
+#
+#   forgejo-exec keys <user> <type> <key>   sshd AuthorizedKeysCommand -> `forgejo keys`
+#   forgejo-exec serv key-<id>              the forced command -> `forgejo serv`
+#
+# Every argument is validated and the container command line is built here, so
+# the caller can never smuggle in another forgejo subcommand or docker flag.
+set -euo pipefail
+
+CONTAINER="{{ forgejo_bootstrap_container }}"
+FORGEJO=/usr/local/bin/forgejo   # the image's wrapper; it adds -c <app.ini>
+
+die() { echo "forgejo-exec: $*" >&2; exit 1; }
+
+case "${1:-}" in
+    keys)
+        [[ $# -eq 4 ]] || die "usage: keys <user> <type> <key>"
+        [[ "$2" == "{{ forgejo_ssh_user }}" ]] || exit 0       # not our user: no keys
+        [[ "$3" =~ ^[A-Za-z0-9@._-]+$ ]] || die "bad key type"
+        [[ "$4" =~ ^[A-Za-z0-9+/=]+$ ]] || die "bad key"
+        exec docker exec "${CONTAINER}" "${FORGEJO}" keys \
+            -e "{{ forgejo_ssh_user }}" -u "$2" -t "$3" -k "$4"
+        ;;
+    serv)
+        [[ $# -eq 2 && "$2" =~ ^key-[0-9]+$ ]] || die "usage: serv key-<id>"
+        # SSH_ORIGINAL_COMMAND (git-upload-pack 'cda/repo.git') is kept by sudo
+        # (env_keep) and handed to the container; `forgejo serv` validates it.
+        exec docker exec -i -e SSH_ORIGINAL_COMMAND "${CONTAINER}" "${FORGEJO}" serv "$2"
+        ;;
+    *)
+        die "only 'keys' and 'serv' are allowed"
+        ;;
+esac

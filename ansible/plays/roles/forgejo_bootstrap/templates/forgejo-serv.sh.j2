@@ -1,0 +1,5 @@
+#!/bin/sh
+# Managed by Ansible (forgejo_bootstrap) - the forced command that Forgejo puts
+# in front of every key (SSH_AUTHORIZED_KEYS_COMMAND_TEMPLATE in forgejo.env).
+# Called as: forgejo-serv key-<id>
+exec sudo -n /usr/local/sbin/forgejo-exec serv "$1"

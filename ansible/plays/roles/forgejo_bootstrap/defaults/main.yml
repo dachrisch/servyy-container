@@ -2,12 +2,14 @@
 # forgejo_bootstrap — one-time (idempotent) setup of the Forgejo instance,
 # run on the host that deploys `ci/` (servy; servyy-test in rehearsal).
 #
-# Three jobs, all idempotent:
+# Four jobs, all idempotent:
 #   1. create the admin user if it does not exist;
 #   2. register the Actions runners offline with the shared secret
 #      (`forgejo forgejo-cli actions register`) for each name in
 #      `forgejo_runners`;
 #   3. install the nightly DB-dump systemd timer (01:30, keep last 3).
+#   4. Git-over-SSH passthrough: host `git` user + sshd Match block that
+#      forwards to `forgejo serv` in the container (tasks/ssh_passthrough.yml).
 #
 # The admin PASSWORD and the runner SECRET come from plays/vars/secrets.yml as
 # literals (never `lookup('password', …)` seeds — CLAUDE.md rule 6).
@@ -52,3 +54,11 @@ forgejo_bootstrap_scripts_dir: "{{ (remote_user_home, '.forgejo') | path_join }}
 forgejo_root_url: >-
   {{ ('https' if (ci_traefik_tls | default('true')) == 'true' else 'http')
      ~ '://ci.' ~ domain }}
+
+# --- Git over SSH (host sshd passthrough, tasks/ssh_passthrough.yml) ---------
+# servy's own sshd serves git@ci.<domain>:22 for Forgejo. A host user of this
+# name gets its keys from Forgejo and can only run the forgejo-exec wrapper.
+# Must match Forgejo's RUN_USER (`git`, the USER env in ci/docker-compose.yml).
+forgejo_ssh_user: git
+forgejo_ssh_home: /var/lib/forgejo-git
+forgejo_ssh_enabled: true

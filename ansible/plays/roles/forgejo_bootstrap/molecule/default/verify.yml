@@ -40,3 +40,91 @@
       ansible.builtin.command:
         cmd: "grep -q 'OnCalendar=.*01:30' /home/testuser/.config/systemd/user/forgejo-dump.timer"
       changed_when: false
+
+    # --- Git-over-SSH passthrough ---------------------------------------------
+    - name: Check the git user exists with a shell and no usable password
+      ansible.builtin.getent:
+        database: shadow
+        key: git
+
+    - name: Assert the git account is passwordless but not locked
+      ansible.builtin.assert:
+        that:
+          # '*' (no password); '!' would make sshd refuse the key login.
+          - getent_shadow['git'][0] == '*'
+
+    - name: Check the git user is NOT in the docker group
+      ansible.builtin.command:
+        cmd: id -nG git
+      register: git_groups
+      changed_when: false
+      failed_when: "'docker' in git_groups.stdout.split()"
+
+    - name: Check the wrapper, keys command and serv shim are root-owned 0755
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: passthrough_bins
+      failed_when: >-
+        not passthrough_bins.stat.exists
+        or passthrough_bins.stat.pw_name != 'root'
+        or passthrough_bins.stat.mode != '0755'
+      loop:
+        - /usr/local/sbin/forgejo-exec
+        - /usr/local/bin/forgejo-keys
+        - /usr/local/bin/forgejo-serv
+
+    - name: Check the sudoers drop-in is 0440 and valid
+      ansible.builtin.command:
+        cmd: visudo -cf /etc/sudoers.d/forgejo-git
+      changed_when: false
+
+    - name: Check the git user may run exactly the wrapper as root
+      ansible.builtin.command:
+        cmd: sudo -l -U git
+      register: git_sudo
+      changed_when: false
+      failed_when: >-
+        '(root) NOPASSWD: /usr/local/sbin/forgejo-exec' not in git_sudo.stdout
+        or git_sudo.stdout_lines | select('search', 'NOPASSWD') | list | length != 1
+
+    - name: Check the wrapper refuses any subcommand but keys/serv
+      ansible.builtin.command:
+        cmd: "/usr/local/sbin/forgejo-exec {{ item }}"
+      register: wrapper_refusal
+      changed_when: false
+      failed_when: wrapper_refusal.rc == 0
+      loop:
+        - admin user list
+        - "serv key-1; id"
+        - "serv --help"
+        - "keys git ssh-ed25519 AAAA;id"
+
+    - name: Check keys for a foreign user returns nothing (and does not call docker)
+      ansible.builtin.command:
+        cmd: /usr/local/sbin/forgejo-exec keys cda ssh-ed25519 AAAAC3Nz
+      register: foreign_keys
+      changed_when: false
+      failed_when: foreign_keys.rc != 0 or foreign_keys.stdout != ''
+
+    - name: Check the complete sshd config is valid with the Match block
+      ansible.builtin.command:
+        cmd: sshd -t
+      changed_when: false
+
+    - name: Check the effective sshd config for the git user
+      ansible.builtin.command:
+        cmd: sshd -T -C user=git,host=x,addr=127.0.0.1
+      register: git_sshd
+      changed_when: false
+      failed_when: >-
+        'authorizedkeyscommand /usr/local/bin/forgejo-keys %u %t %k' not in git_sshd.stdout
+        or 'authorizedkeyscommanduser git' not in git_sshd.stdout
+        or 'allowtcpforwarding no' not in git_sshd.stdout
+        or 'permittty no' not in git_sshd.stdout
+
+    - name: Check other users are unaffected by the Match block
+      ansible.builtin.command:
+        cmd: sshd -T -C user=testuser,host=x,addr=127.0.0.1
+      register: other_sshd
+      changed_when: false
+      failed_when: "'authorizedkeyscommand none' not in other_sshd.stdout"

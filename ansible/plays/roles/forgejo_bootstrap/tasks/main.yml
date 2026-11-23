@@ -131,3 +131,18 @@
     - user.docker.ci.bootstrap
     # No systemd user bus in the molecule container.
     - molecule-notest
+
+# --- Git over SSH (host sshd passthrough on port 22) -------------------------
+- name: Set up Git-over-SSH passthrough
+  ansible.builtin.include_tasks:
+    file: ssh_passthrough.yml
+    apply:
+      become: true
+      become_user: root
+      tags:
+        - user.docker.ci
+        - user.docker.ci.ssh
+  when: forgejo_ssh_enabled | bool
+  tags:
+    - user.docker.ci
+    - user.docker.ci.ssh
