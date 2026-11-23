@@ -33,9 +33,14 @@ migrated yet**, and `git/` + `git.lehel.xyz` stay untouched until that cut-over.
 git clone git@ci.lehel.xyz:cda/<repo>.git
 ```
 
-Add your public key under Settings → SSH / GPG Keys first. Port 22, no
-`~/.ssh/config` needed. The host key you see is **servy's** (same machine as
-`ssh servy.lehel.xyz`). `ssh git@ci.lehel.xyz` answers "Hi there, cda! You've
+The client key is `~/.ssh/ci_lehel` (ed25519). Its source of truth is the
+Vaultwarden SSH Key item **"ssh - ci.lehel.xyz (cda)"**. setup-home restores it
+and writes the `Host ci.lehel.xyz` block (`User git`, `IdentitiesOnly yes`):
+`ansible-playbook ansible/plays/user.yml --tags user.ssh.vaultwarden`. That
+needs `~/.ssh/vw.key` on a machine that lacks the key. The public key is
+registered for `cda` as `ci_lehel (<host>)`. A new machine reuses the same key,
+so it needs no new Forgejo entry. The host key you see is **servy's** (same
+machine as `ssh servy.lehel.xyz`). `ssh git@ci.lehel.xyz` answers "Hi there, cda! You've
 successfully authenticated…, but Forgejo does not provide shell access."
 
 How it works (passthrough, no published port):
@@ -56,8 +61,8 @@ git@ci.lehel.xyz:22 -> servy sshd, Match User git (sshd_config.d/zz-forgejo-git.
   the image.
 - No forwarding, TTY or agent for `git`. Failed logins go through the host
   sshd, so the existing sshd fail2ban jails cover them.
-- servy's sshd has `MaxAuthTries 3`. With many keys in your agent, pin one:
-  `ssh -o IdentitiesOnly=yes -i ~/.ssh/<key> git@ci.lehel.xyz`.
+- servy's sshd has `MaxAuthTries 3`. The setup-home ssh config pins the key
+  (`IdentitiesOnly`). Without it, a full agent can run out of attempts.
 - If `ci.forgejo` is down, `git@` logins fail with "Permission denied
   (publickey)": the keys command gets no answer.
 - Debug: `ssh servy.lehel.xyz 'sudo -u git /usr/local/bin/forgejo-keys git <type> <base64>'`
