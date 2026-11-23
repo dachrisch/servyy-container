@@ -42,6 +42,16 @@ services:
       # forgejo.env already cover everything this instance configures, so this
       # stays empty for now and is kept for a future app.ini override.
       - ./conf:/etc/gitea
+      # Theme + template overrides (ci/custom in the repo). CUSTOM_PATH on the
+      # rootless image is /var/lib/gitea/custom, but that path also holds
+      # conf/app.ini — Forgejo's own effective-config file, written into
+      # ./data/custom/conf at install time. So we mount only the two override
+      # dirs we ship (templates/ + public/), read-only: the container can never
+      # write theme files, and app.ini stays writable in the data volume. The
+      # custom/ tree is tracked in git and read by Forgejo as the deploy user
+      # (see ci/AGENTS.md "Theme").
+      - ./custom/templates:/var/lib/gitea/custom/templates:ro
+      - ./custom/public:/var/lib/gitea/custom/public:ro
     networks:
       - proxy
     labels:

@@ -1,0 +1,20 @@
+{{template "base/head" .}}
+<div role="main" aria-label="{{.Title}}" class="page-content user signin{{if .LinkAccountMode}} icon{{end}}">
+	<div class="lehel-signin">
+		<div class="lehel-hero">
+			<span class="lehel-logo"><span class="lehel-mark">ci</span><span id="lehel-host">ci.lehel.xyz</span></span>
+			<h2 class="lehel-tagline">Build, ship, <em>repeat.</em></h2>
+			<p class="lehel-intro">Self-hosted Forgejo for the servyy stack. Private instance &mdash; sign in to see repositories, runs and packages.</p>
+			<div class="lehel-status">
+				<div class="lehel-status-row"><span><i class="lehel-dot"></i>Forgejo</span><span class="lehel-mono" id="lehel-version">17.0.2</span></div>
+				<div class="lehel-status-row"><span><i class="lehel-dot"></i>Instance</span><span class="lehel-mono">private &middot; sign-in required</span></div>
+			</div>
+		</div>
+		<div class="ui middle very relaxed page grid">
+			<div class="column tw-flex tw-flex-col tw-gap-4 tw-max-w-2xl tw-m-auto">
+				{{template "user/auth/signin_inner" .}}
+			</div>
+		</div>
+	</div>
+</div>
+{{template "base/footer" .}}

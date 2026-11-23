@@ -1,0 +1,553 @@
+/* theme-lehel.css — custom theme for ci.lehel.xyz (Forgejo 17).
+ *
+ * A "modern developer" look for the servyy Forgejo instance:
+ *   - Space Grotesk headings, Inter body, JetBrains Mono for hashes/metrics/tags
+ *   - amber accent (light #d48a10 / dark #f2b84b)
+ *   - rounded cards, status pills, a faint 24px grid page background
+ *   - automatic light/dark via prefers-color-scheme (same mechanism as the
+ *     built-in forgejo-auto theme)
+ *
+ * The file is loaded INSTEAD of theme-forgejo-auto.css when this theme is the
+ * default (see forgejo.env: FORGEJO__ui__DEFAULT_THEME). It imports the built-in
+ * auto theme as a base (so every --color-* variable the app references stays
+ * defined) and then overrides the semantic surface/text/accent variables plus
+ * a handful of component styles. Fonts are self-hosted in ../fonts (OFL) — no
+ * Google Fonts calls from the instance.
+ */
+
+/* The built-in auto theme supplies the full variable set + light/dark switching.
+ * It is served by Forgejo at /assets/css/theme-forgejo-auto.css regardless of
+ * which theme is selected, so this relative import is stable. */
+@import "./theme-forgejo-auto.css";
+
+/* ---------------------------------------------------------------------------
+ * Self-hosted fonts (SIL OFL 1.1 — see ../fonts/OFL-*.txt)
+ * ------------------------------------------------------------------------- */
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/inter-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../fonts/inter-latin-500-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../fonts/inter-latin-600-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../fonts/space-grotesk-latin-500-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../fonts/space-grotesk-latin-700-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2");
+}
+
+/* ---------------------------------------------------------------------------
+ * Design tokens + Forgejo variable overrides — LIGHT
+ * ------------------------------------------------------------------------- */
+
+:root {
+  --lehel-bg: #f4f6f9;
+  --lehel-surface: #ffffff;
+  --lehel-sunk: #eef1f5;
+  --lehel-line: #dde3ea;
+  --lehel-fg: #18202b;
+  --lehel-muted: #5d6b7b;
+  --lehel-accent: #d48a10;
+  --lehel-accent-ink: #ffffff;
+  --lehel-accent-soft: rgba(212, 138, 16, 0.12);
+  --lehel-ok: #2f8f5b;
+  --lehel-ok-soft: rgba(47, 143, 91, 0.12);
+  --lehel-run: #2a74c4;
+  --lehel-run-soft: rgba(42, 116, 196, 0.12);
+  --lehel-bad: #c2483a;
+  --lehel-bad-soft: rgba(194, 72, 58, 0.12);
+  --lehel-grid: rgba(24, 32, 43, 0.05);
+  --lehel-radius: 14px;
+  --lehel-display: "Space Grotesk", "Inter", system-ui, sans-serif;
+  --lehel-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* Typography */
+  --fonts-regular: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --fonts-proportional: "Inter", system-ui, -apple-system, sans-serif;
+  --fonts-monospace: var(--lehel-mono);
+
+  /* Primary = amber */
+  --color-primary: #d48a10;
+  --color-primary-contrast: #ffffff;
+  --color-primary-dark-1: #d48a10;
+  --color-primary-dark-2: #b5740d;
+  --color-primary-dark-3: #b5740d;
+  --color-primary-dark-4: #9a620b;
+  --color-primary-light-1: #e39a1d;
+  --color-primary-light-2: #ecab3a;
+  --color-primary-light-3: #f2bc5f;
+  --color-primary-light-4: #f6cc85;
+  --color-primary-light-5: #fadcab;
+  --color-primary-light-6: #fdeccf;
+  --color-primary-light-7: #fef6e6;
+  --color-primary-alpha-10: #d48a1019;
+  --color-primary-alpha-20: #d48a1033;
+  --color-primary-alpha-30: #d48a104b;
+  --color-primary-alpha-40: #d48a1066;
+  --color-primary-alpha-50: #d48a1080;
+  --color-primary-alpha-60: #d48a1099;
+  --color-primary-alpha-70: #d48a10b3;
+  --color-primary-alpha-80: #d48a10cc;
+  --color-primary-alpha-90: #d48a10e1;
+  --color-primary-hover: var(--color-primary-dark-2);
+  --color-primary-active: var(--color-primary-dark-4);
+
+  /* Surfaces & text */
+  --color-body: #f4f6f9;
+  --color-box-header: #ffffff;
+  --color-box-body: #ffffff;
+  --color-box-body-highlight: #eef1f5;
+  --color-text-dark: #18202b;
+  --color-text: #18202b;
+  --color-text-light: #3f4a5a;
+  --color-text-light-1: #5d6b7b;
+  --color-text-light-2: #718096;
+  --color-text-light-3: #8794a5;
+  --color-footer: #eef1f5;
+  --color-timeline: #dde3ea;
+  --color-input-text: #18202b;
+  --color-input-background: #ffffff;
+  --color-input-border: #dde3ea;
+  --color-input-border-hover: #c6cfd9;
+  --color-header-wrapper: #f4f6f9;
+  --color-hover: #eef1f5;
+  --color-active: #e4e8ee;
+  --color-menu: #f4f6f9;
+  --color-card: #ffffff;
+  --fancy-card-bg: #ffffff;
+  --fancy-card-border: #dde3ea;
+  --color-button: #eef1f5;
+  --color-code-bg: #f4f6f9;
+  --color-shadow: #00000050;
+  --color-secondary-bg: #eef1f5;
+  --color-placeholder-text: #8794a5;
+  --color-nav-bg: #ffffff;
+  --color-nav-hover-bg: #eef1f5;
+  --color-accent: #d48a10;
+  --color-small-accent: var(--color-primary-light-5);
+  --color-highlight-fg: var(--color-primary-light-4);
+  --color-highlight-bg: var(--color-primary-light-6);
+  --color-selection-bg: #d48a10;
+  --color-selection-fg: #ffffff;
+}
+
+/* ---------------------------------------------------------------------------
+ * Design tokens + Forgejo variable overrides — DARK
+ * ------------------------------------------------------------------------- */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --lehel-bg: #0d131b;
+    --lehel-surface: #141c26;
+    --lehel-sunk: #101720;
+    --lehel-line: #243040;
+    --lehel-fg: #e6ecf2;
+    --lehel-muted: #93a3b5;
+    --lehel-accent: #f2b84b;
+    --lehel-accent-ink: #15110a;
+    --lehel-accent-soft: rgba(242, 184, 75, 0.14);
+    --lehel-ok: #6fcf97;
+    --lehel-ok-soft: rgba(111, 207, 151, 0.14);
+    --lehel-run: #6cb6f2;
+    --lehel-run-soft: rgba(108, 182, 242, 0.14);
+    --lehel-bad: #f08a7a;
+    --lehel-bad-soft: rgba(240, 138, 122, 0.14);
+    --lehel-grid: rgba(255, 255, 255, 0.035);
+
+    /* Primary = amber (hover/active darken, matching forgejo-auto convention) */
+    --color-primary: #f2b84b;
+    --color-primary-contrast: #15110a;
+    --color-primary-dark-1: #f6c56e;
+    --color-primary-dark-2: #f6c56e;
+    --color-primary-dark-3: #f8d08a;
+    --color-primary-dark-4: #f8d08a;
+    --color-primary-light-1: #d49a1f;
+    --color-primary-light-2: #b57d0f;
+    --color-primary-light-3: #96630c;
+    --color-primary-light-4: #7a4f0a;
+    --color-primary-light-5: #7a4f0a;
+    --color-primary-light-6: #5c3c08;
+    --color-primary-light-7: #5c3c08;
+    --color-primary-alpha-10: #f2b84b19;
+    --color-primary-alpha-20: #f2b84b33;
+    --color-primary-alpha-30: #f2b84b4b;
+    --color-primary-alpha-40: #f2b84b66;
+    --color-primary-alpha-50: #f2b84b80;
+    --color-primary-alpha-60: #f2b84b99;
+    --color-primary-alpha-70: #f2b84bb3;
+    --color-primary-alpha-80: #f2b84bcc;
+    --color-primary-alpha-90: #f2b84be1;
+    --color-primary-hover: var(--color-primary-light-1);
+    --color-primary-active: var(--color-primary-light-2);
+
+    /* Surfaces & text */
+    --color-body: #0d131b;
+    --color-box-header: #141c26;
+    --color-box-body: #141c26;
+    --color-box-body-highlight: #101720;
+    --color-text-dark: #ffffff;
+    --color-text: #e6ecf2;
+    --color-text-light: #c3ccd8;
+    --color-text-light-1: #b0bccb;
+    --color-text-light-2: #93a3b5;
+    --color-text-light-3: #7c8c9f;
+    --color-footer: #101720;
+    --color-timeline: #243040;
+    --color-input-text: #e6ecf2;
+    --color-input-background: #101720;
+    --color-input-border: #243040;
+    --color-input-border-hover: #31415767;
+    --color-header-wrapper: #101720;
+    --color-hover: #1a2431;
+    --color-active: #1e2a39;
+    --color-menu: #101720;
+    --color-card: #141c26;
+    --fancy-card-bg: #141c26;
+    --fancy-card-border: #243040;
+    --color-button: #1a2431;
+    --color-code-bg: #101720;
+    --color-shadow: #00000080;
+    --color-secondary-bg: #101720;
+    --color-placeholder-text: #7c8c9f;
+    --color-nav-bg: #101720;
+    --color-nav-hover-bg: #1a2431;
+    --color-accent: #f2b84b;
+    --color-small-accent: var(--color-primary-light-5);
+    --color-highlight-fg: var(--color-primary-light-4);
+    --color-highlight-bg: var(--color-primary-alpha-20);
+    --color-selection-bg: #f2b84b;
+    --color-selection-fg: #15110a;
+    color-scheme: dark;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Base
+ * ------------------------------------------------------------------------- */
+
+body {
+  background-color: var(--lehel-bg);
+  /* faint 24px grid, developer-graph motif, only in the page gaps */
+  background-image: linear-gradient(var(--lehel-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--lehel-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Display face for headings. Forgejo has no dedicated heading-font variable, so
+ * set it explicitly on the heading-like elements it uses. */
+h1, h2, h3, h4, h5,
+.ui.header, .ui.header > .content,
+.repo-title, .repo-name, .page-title {
+  font-family: var(--lehel-display);
+  letter-spacing: -0.01em;
+}
+
+/* Mono for the small technical bits Forgejo already marks up. */
+.sha, .sha.label, code, kbd, pre, .ui.label.mono,
+.commit-sha, .ui.label.commit-sha, .ui.label.sha {
+  font-family: var(--lehel-mono);
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--lehel-accent);
+  outline-offset: 2px;
+}
+
+/* Rounded cards + segments */
+.ui.segment,
+.ui.attached.segment,
+.ui.card,
+.flex-item,
+.ui.menu .item {
+  border-radius: var(--lehel-radius);
+}
+
+/* The top-attached header / attached-segment pair used on the sign-in page and
+ * many boxes: round the header's top corners and the segment's bottom corners
+ * so the two read as one card. */
+.ui.top.attached.header {
+  border-radius: var(--lehel-radius) var(--lehel-radius) 0 0;
+}
+.ui.attached.segment {
+  border-radius: 0 0 var(--lehel-radius) var(--lehel-radius);
+}
+
+/* Cards get a touch of depth in light mode */
+.ui.card,
+.fancy-card-bg {
+  box-shadow: 0 1px 2px rgba(24, 32, 43, 0.06);
+}
+
+/* ---------------------------------------------------------------------------
+ * Buttons & inputs
+ * ------------------------------------------------------------------------- */
+
+.ui.primary.button,
+.ui.primary.buttons .button {
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  border-radius: 10px;
+  font-weight: 600;
+}
+.ui.primary.button:hover,
+.ui.primary.buttons .button:hover {
+  background: var(--color-primary-hover);
+  color: var(--color-primary-contrast);
+}
+.ui.primary.button:active,
+.ui.primary.buttons .button:active {
+  background: var(--color-primary-active);
+}
+
+.ui.button {
+  border-radius: 10px;
+}
+
+.ui.form input[type="text"],
+.ui.form input[type="password"],
+.ui.form input:not([type]),
+.ui.input input {
+  border-radius: 10px;
+  border-color: var(--color-input-border);
+}
+.ui.form input:focus,
+.ui.input input:focus {
+  border-color: var(--lehel-accent);
+  box-shadow: 0 0 0 3px var(--lehel-accent-soft);
+}
+
+/* Status pills (labels) — rounded, dot-free, soft-tinted */
+.ui.label {
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-weight: 500;
+}
+
+/* ---------------------------------------------------------------------------
+ * Navbar
+ * ------------------------------------------------------------------------- */
+
+#navbar {
+  background: var(--color-nav-bg);
+  border-bottom: 1px solid var(--lehel-line);
+  box-shadow: none;
+}
+#navbar .item {
+  border-radius: 8px;
+  font-weight: 500;
+}
+#navbar .item.active {
+  color: var(--lehel-fg);
+  background: var(--lehel-sunk);
+}
+
+/* ---------------------------------------------------------------------------
+ * kbd chips (keyboard-hint chips used on the sign-in button + search box)
+ * ------------------------------------------------------------------------- */
+
+kbd {
+  font-family: var(--lehel-mono);
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--lehel-line);
+  border-bottom-width: 2px;
+  background: var(--lehel-surface);
+  color: var(--lehel-muted);
+}
+
+/* ---------------------------------------------------------------------------
+ * Sign-in page (see the signin.tmpl override for the .lehel-* markup)
+ * ------------------------------------------------------------------------- */
+
+.lehel-signin {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 48px;
+  align-items: center;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: clamp(28px, 6vw, 64px) clamp(16px, 4vw, 48px);
+}
+
+.lehel-hero {
+  flex: 999 1 420px;
+  min-width: 0;
+  display: grid;
+  gap: 20px;
+}
+
+.lehel-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--lehel-display);
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.lehel-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--lehel-accent);
+  color: var(--lehel-accent-ink);
+  display: grid;
+  place-items: center;
+  font-family: var(--lehel-mono);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.lehel-tagline {
+  font-family: var(--lehel-display);
+  font-size: clamp(34px, 6vw, 54px);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.lehel-tagline em {
+  font-style: normal;
+  color: var(--lehel-accent);
+}
+
+.lehel-intro {
+  margin: 0;
+  color: var(--lehel-muted);
+  font-size: 17px;
+  max-width: 52ch;
+}
+
+.lehel-status {
+  display: grid;
+  gap: 10px;
+  background: var(--lehel-surface);
+  border: 1px solid var(--lehel-line);
+  border-radius: var(--lehel-radius);
+  padding: 18px;
+}
+.lehel-status-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+.lehel-status-row > span:first-child {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.lehel-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--lehel-ok);
+  box-shadow: 0 0 0 4px var(--lehel-ok-soft);
+  flex: none;
+}
+.lehel-mono {
+  font-family: var(--lehel-mono);
+  color: var(--lehel-muted);
+}
+
+/* The sign-in form column sits to the right of the hero; drop the huge page-grid
+ * padding so the two align, and cap its width. */
+.lehel-signin .page.grid {
+  flex: 1 1 320px;
+  min-width: 0;
+  margin: 0;
+}
+.lehel-signin .page.grid > .column {
+  max-width: 420px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .lehel-signin {
+    gap: 24px;
+  }
+  .lehel-signin .page.grid > .column {
+    max-width: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Dashboard (Forgejo's own layout, restyled)
+ * ------------------------------------------------------------------------- */
+
+/* The dashboard navbar ("Dashboard / Issues / Pull Requests ..." for the user) */
+.page-content.dashboard .secondary-nav {
+  background: var(--color-nav-bg);
+  border-bottom: 1px solid var(--lehel-line);
+}
+
+/* Feed items (activity) as soft cards */
+.page-content.dashboard .flex-list .flex-item {
+  background: var(--lehel-surface);
+  border: 1px solid var(--lehel-line);
+  border-radius: var(--lehel-radius);
+  padding: 12px 16px;
+}
+.page-content.dashboard .flex-list .flex-item + .flex-item {
+  margin-top: 8px;
+}
+
+/* Repo list sidebar */
+#dashboard-repo-list .flex-item {
+  background: var(--lehel-surface);
+  border: 1px solid var(--lehel-line);
+  border-radius: var(--lehel-radius);
+}
+
+/* Heatmap uses --color-primary for its activity levels, so an amber primary
+ * recolours it automatically. Add a little rounding for cohesion. */
+#user-heatmap {
+  border-radius: var(--lehel-radius);
+}
+#user-heatmap .total-contributions {
+  font-family: var(--lehel-mono);
+}

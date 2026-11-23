@@ -19,6 +19,11 @@
         cmd: "grep -qE 'FORGEJO__metrics__ENABLED=true|FORGEJO__metrics__TOKEN=test-metrics-token|FORGEJO__security__SECRET_KEY=test-secret-key|FORGEJO__security__INTERNAL_TOKEN=test-internal-token|FORGEJO__security__INSTALL_LOCK=true' /home/molecule/ci/forgejo.env"
       changed_when: false
 
+    - name: Verify forgejo.env registers the lehel theme as the default
+      ansible.builtin.command:
+        cmd: "grep -qE 'FORGEJO__ui__THEMES=forgejo-auto,forgejo-light,forgejo-dark,lehel|FORGEJO__ui__DEFAULT_THEME=lehel' /home/molecule/ci/forgejo.env"
+      changed_when: false
+
     - name: Verify .env carries the DNS-01 Traefik resolver (prod default)
       ansible.builtin.command:
         cmd: "grep -q 'TRAEFIK_CERTRESOLVER=letsencryptdnsresolver' /home/molecule/ci/.env"
