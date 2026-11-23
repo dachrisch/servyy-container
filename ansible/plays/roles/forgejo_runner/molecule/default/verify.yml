@@ -70,3 +70,39 @@
       register: host_dind
       changed_when: false
       failed_when: host_dind.rc == 0
+
+    # --- rootless variant (runny-test) ------------------------------------
+    - name: Verify the rootless user exists with no supplementary groups
+      ansible.builtin.command:
+        cmd: "getent passwd runner >/dev/null && [ -z \"$(id -Gn runner)\" ]"
+      changed_when: false
+
+    - name: Verify /etc/subuid has exactly one runner line
+      ansible.builtin.command:
+        cmd: "[ \"$(grep -c '^runner:' /etc/subuid)\" = \"1\" ] && [ \"$(grep -c '^runner:' /etc/subgid)\" = \"1\" ]"
+      changed_when: false
+
+    - name: Verify the rootless docker user unit exists and runs dockerd-rootless.sh
+      ansible.builtin.command:
+        cmd: "grep -q 'ExecStart=/usr/share/docker.io/contrib/dockerd-rootless.sh' /home/runner/.config/systemd/user/docker.service && grep -q 'Delegate=yes' /home/runner/.config/systemd/user/docker.service"
+      changed_when: false
+
+    - name: Verify the rootless forgejo-runner unit sets the rootless DOCKER_HOST
+      ansible.builtin.command:
+        cmd: "grep -q 'DOCKER_HOST=unix://%t/docker.sock' /home/runner/.config/systemd/user/forgejo-runner.service"
+      changed_when: false
+
+    - name: Verify the rootless config.yml hands jobs the rootless socket and fixes the cache port
+      ansible.builtin.command:
+        cmd: "grep -qF 'docker_host: \"unix:///run/user/' /home/runner/runny/data/config.yml && grep -q 'port: 41500' /home/runner/runny/data/config.yml"
+      changed_when: false
+
+    - name: Verify the rootless service dir has NO compose file and is runner-owned
+      ansible.builtin.command:
+        cmd: "test ! -e /home/runner/runny/docker-compose.yml && [ \"$(stat -c %U /home/runner/runny/data)\" = \"runner\" ]"
+      changed_when: false
+
+    - name: Verify prometheus-node-exporter is installed
+      ansible.builtin.command:
+        cmd: "dpkg -s prometheus-node-exporter >/dev/null 2>&1"
+      changed_when: false

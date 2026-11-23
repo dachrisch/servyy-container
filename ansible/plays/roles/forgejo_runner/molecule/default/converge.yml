@@ -39,3 +39,18 @@
         forgejo_runner_container_options: --memory=900m --memory-swap=4g
         forgejo_runner_service_dir: /home/testuser/runny-host
         forgejo_runner_data_dir: /home/testuser/runny-host/data
+
+    - name: Render the rootless variant (runny-test)
+      ansible.builtin.include_role:
+        name: forgejo_runner
+      vars:
+        forgejo_runner_docker: rootless
+        forgejo_runner_name: runny-test
+        forgejo_runner_labels:
+          - "amd64:docker://ghcr.io/catthehacker/ubuntu:act-22.04"
+        forgejo_runner_capacity: 1
+        forgejo_runner_container_options: --memory=900m --memory-swap=4g
+        forgejo_runner_node_exporter: true
+        forgejo_runner_cache_port: 41500
+        forgejo_runner_service_dir: /home/runner/runny
+        forgejo_runner_data_dir: /home/runner/runny/data
