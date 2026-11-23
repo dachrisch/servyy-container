@@ -128,7 +128,7 @@
     fail_msg: >-
       additionalhtmlfooter is '{{ moodle_footer_after.stdout }}' but this repo
       expects '{{ moodle_signup_picker_footer }}'
-      (moodle_signup_picker_version={{ moodle_signup_picker_version }}).
+      (moodle_site_js_version={{ moodle_site_js_version }}).
     quiet: true
   tags:
     - molecule-notest
