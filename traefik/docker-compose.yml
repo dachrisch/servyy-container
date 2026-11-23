@@ -17,7 +17,7 @@ services:
     # traefik.yaml/dynamic.yaml; the rest is Kubernetes-only.
     # Rollback: pin the previous patch (`traefik:3.7.16`) back and run
     # `docker compose up -d --force-recreate` (see traefik/AGENTS.md).
-    image: traefik:3.7
+    image: traefik:v3.8
     container_name: ${COMPOSE_PROJECT_NAME}.traefik
     # ~152M resident + 11M swap measured 2026-10-29. 384m, not the tighter 256m
     # first considered: this is the one container whose death takes every site on
