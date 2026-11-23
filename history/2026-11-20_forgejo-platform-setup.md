@@ -200,3 +200,10 @@ Tested by the molecule scenario `user/no-checkout`.
   repo-archive. The probe reads with WAL visibility, as the probe's uid.
 - **Vaultwarden:** `plays/forgejo_vaultwarden.yml` (`--tags ci.vaultwarden`)
   pushes the admin password as "forgejo - admin (ci.lehel.xyz)".
+
+## Later changes
+
+- 2026-11-23: Forgejo upgraded to 17.0.2, runny moved to a rootless runner scoped
+  to `cda`, fail2ban stopped banning runner polling, and the `lehel` theme went
+  live. See [`2026-11-23_ci-server.md`](2026-11-23_ci-server.md). Usage and
+  operations: [`ci/AGENTS.md`](../ci/AGENTS.md).

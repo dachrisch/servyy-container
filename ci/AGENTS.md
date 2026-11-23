@@ -1,38 +1,171 @@
 # ci/ — Forgejo (Git + Actions CI) at ci.lehel.xyz
 
-Self-hosted Forgejo instance that will eventually replace `git.lehel.xyz`
-(`git/`, the EOL nginx-git image). **This round is platform-only: no repo has
-been migrated, and `git/` + `git.lehel.xyz` stay untouched until the later
-cut-over.**
+Self-hosted Forgejo on **servy**: private Git hosting, Forgejo Actions CI and a
+package/container registry. It is meant to replace `git.lehel.xyz` (`git/`, the
+EOL nginx-git image) and the fleet's dependency on GitHub. **No repo has been
+migrated yet**, and `git/` + `git.lehel.xyz` stay untouched until that cut-over.
 
-- One container, `ci.forgejo`, from the pinned Forgejo LTS image
-  (`codeberg.org/forgejo/forgejo:<lts>-rootless`), running as uid 1000 with a
-  SQLite database in `./data` (bind-mounted to `/var/lib/gitea`).
-- Config comes entirely from `forgejo.env` (rendered from `FORGEJO__section__KEY`
-  vars by the `docker_service` role) — nothing secret is in this compose file.
-- Git is HTTPS-only (tokens). No SSH port; the instance is private
-  (`DISABLE_REGISTRATION`, `REQUIRE_SIGNIN_VIEW`) with a single admin `cda`.
-- Backup of record: the bare repos (`./data/git/repositories`) ride servy's
-  `home` restic repo, and a nightly DB dump (`./data/backup/forgejo-db.sql.gz`,
-  `forgejo dump --database sqlite3`, keep 3) is made by a systemd timer at
-  01:30. The live `./data/data/gitea.db` and the container registry
-  (`./data/packages`) are deliberately **excluded** from backup (regenerable /
-  a live-SQLite snapshot is worthless).
-- Actions runners are a separate concern: the `runny/` service dir (deployed to
-  codey and to the amd64 runner host `runny.lehel.xyz`) and the
-  `forgejo_runner` role. Forgejo itself never runs CI jobs.
+| | |
+|---|---|
+| URL | `https://ci.lehel.xyz` (test: `http://ci.servyy-test.lxd`) |
+| Container | `ci.forgejo` on `servy.lehel.xyz` |
+| Image | `codeberg.org/forgejo/forgejo:17.0.2-rootless` (v17 is **not** LTS; supported until 2027-01-28, so plan the next upgrade) |
+| Database | SQLite, `./data/data/gitea.db` (WAL mode) |
+| Access | private: registration closed, sign-in required, single admin `cda` |
+| Git transport | HTTPS + access token only (no SSH port) |
+| Runners | `codey` (arm64, dind) and `runny` (amd64, rootless): see `runny/AGENTS.md` |
+| History | `history/2026-11-20_forgejo-platform-setup.md`, `history/2026-11-23_ci-server.md` (v17 + current state), `history/2026-11-23_runner-rootless.md`, `history/2026-11-23_forgejo-theme.md` |
+
+## Using it
+
+### Sign in
+
+- Web UI: `https://ci.lehel.xyz`, user `cda`. The password is
+  `forgejo_admin_password` in `ansible/plays/vars/secrets.yml`, with a copy in
+  Vaultwarden as **"forgejo - admin (ci.lehel.xyz)"**.
+- Signed-out visitors only ever see the sign-in page (`REQUIRE_SIGNIN_VIEW`).
+- The default theme `lehel` only applies to new accounts and signed-out pages.
+  To use it on an existing account: Settings → Appearance → `lehel`.
+
+### Git over HTTPS
+
+There is no SSH. Create a personal access token (Settings → Applications, scope
+`write:repository`, plus `write:package` if you push images) and use it as the
+password:
+
+```bash
+git remote add forgejo https://ci.lehel.xyz/cda/<repo>.git
+git push forgejo master            # username: cda, password: <token>
+```
+
+Create repos in the UI or with the API
+(`POST /api/v1/user/repos`, basic auth or `Authorization: token <token>`).
+
+### Running CI
+
+Workflows go in `.forgejo/workflows/*.yml`. Existing `.github/workflows` files
+also run unchanged (`workflow_call` included). Pick a runner with `runs-on`:
+
+| `runs-on` | Runner | Image / arch | Use it for |
+|---|---|---|---|
+| `ubuntu-latest` | codey | `catthehacker/ubuntu:act-22.04`, **arm64** | general jobs, tests |
+| `docker` | codey | `node:20-bookworm`, arm64 | light node jobs |
+| `arm64` | codey | act-22.04, arm64 | explicitly arm64 work |
+| `amd64` | runny | act-22.04, **amd64** | amd64 image builds; **only repos owned by `cda`** (runner scoped) |
+
+What to know before writing a workflow:
+
+- **Actions come from `data.forgejo.org`**, not GitHub
+  (`DEFAULT_ACTIONS_URL`), and there is no fallback. `actions/checkout`,
+  `setup-node`, `docker/setup-buildx-action` and `docker/build-push-action` are
+  mirrored and work. An action that is not mirrored fails the job with
+  `remote: Not found`. Reference it by full URL instead
+  (`uses: https://github.com/<owner>/<action>@<ref>`).
+- **Artifacts:** `actions/upload-artifact@v4` and later fail
+  (`not supported on GHES`). Use `@v3` or the Forgejo fork
+  `https://data.forgejo.org/forgejo/upload-artifact@v4` (not yet verified on
+  v17).
+- **Cache:** `actions/setup-node` with `cache: npm` works on both runners.
+  `cache-from/cache-to: type=gha` in `build-push-action` misses silently and
+  builds cold. It does not fail.
+- **Docker inside jobs:**
+  - On `amd64` (runny), jobs get a rootless Docker socket, so
+    `build-push-action` works. The job runs as the unprivileged `runner` user:
+    no `--privileged` escape, host disk unreadable, `--memory=900m` enforced.
+  - On codey, jobs get the dind socket. That one is privileged, see
+    `runny/AGENTS.md`.
+- **Keep heavy test suites off runny.** It is a 1-vCPU-class box (2 threads,
+  951 MB, heavy CPU steal): vitest with `mongodb-memory-server` times out there.
+  Run tests on `ubuntu-latest` (codey) and use `amd64` only for the amd64 image
+  build (cold about 409 s, warm about 108 s).
+- **Secrets:** repo or user Settings → Actions → Secrets, read as
+  `${{ secrets.NAME }}`.
+
+### Container registry
+
+```bash
+docker login ci.lehel.xyz -u cda          # password: token with write:package
+docker push ci.lehel.xyz/cda/<image>:<tag>
+```
+
+In a workflow, log in with a token stored as a secret. Packages
+(`./data/packages`) are **not backed up**: treat them as rebuildable.
+
+## Operating it
+
+### Deploy
+
+```bash
+cd ansible
+./servyy-test.sh --tags user.docker.repo,user.docker.ci                  # test first
+./servyy.sh      --tags user.docker.repo,user.docker.ci --limit servy.lehel.xyz
+```
+
+`user.docker.repo` syncs servy's checkout, which is what carries `ci/custom/`
+and the compose file. Never run the untagged playbook for a CI change: that
+runs every play.
+
+### Upgrade Forgejo
+
+Renovate bumps the image tag in `ci/docker-compose.yml`. Merging that bump does
+nothing until you deploy. The procedure used for 15.0.12 → 17.0.2 on 2026-11-23:
+
+1. Read the release notes' breaking changes for every major version crossed.
+2. Run on servyy-test first (deploy as above), including one Actions job.
+3. Fresh DB dump, then flush queues on servy:
+   ```bash
+   ssh servy.lehel.xyz 'systemctl --user start forgejo-dump.service; ls -la ~/servyy-container/ci/data/backup/'
+   ssh servy.lehel.xyz 'docker exec ci.forgejo forgejo manager flush-queues'
+   ```
+4. Deploy to servy. Migrations run on start: check
+   `docker logs ci.forgejo | grep Migration` and the API version
+   (`GET /api/v1/version`).
+5. Check the runners are `idle` again (they log a few seconds of
+   `failed to fetch task` 502/405 during the restart; that is expected).
+6. **Re-check the sign-in page.** `custom/templates/user/auth/signin.tmpl` is a
+   full-template override and can break on any upgrade.
+
+`forgejo doctor check --all` reports `/var/lib/gitea/data/log ... not
+accessible`. That is harmless: Forgejo logs to the console here.
+
+### Backup
+
+- The bare repos (`./data/git/repositories`) ride servy's `home` restic repo.
+- A nightly DB dump goes to `./data/backup/forgejo-db-<ts>.tar.gz` (systemd
+  **user** timer `forgejo-dump.timer`, 01:30, keeps the last 3). It runs
+  `forgejo dump --database sqlite3` and skips repos, logs, attachments and
+  packages.
+- **Excluded on purpose:** the live `gitea.db` (+ `-wal`/`-shm`), because a
+  snapshot of a live SQLite file is worthless, and the package registry.
+
+### Configuration
+
+- All config comes from `forgejo.env`, rendered by the `docker_service` role from
+  `ansible/plays/roles/docker_service/templates/ci/forgejo.env.j2`
+  (`FORGEJO__<section>__<KEY>`). Secrets come from `plays/vars/secrets.yml`. Nothing
+  secret goes in the compose file (compose files are plaintext, see the
+  git-crypt rule in CLAUDE.md).
+- Forgejo writes its own `./data/custom/conf/app.ini`. Do not mount over
+  `/var/lib/gitea/custom` as a whole: only `custom/templates` and
+  `custom/public` are mounted (read-only).
 
 ## Registration model (shared secret)
 
 Runners register offline with a shared secret, no UI step:
 
 - Forgejo side (servy, `forgejo_bootstrap` role):
-  `forgejo forgejo-cli actions register --secret <forgejo_runner_secrets[<runner>]> --name <runner>`
+  `forgejo forgejo-cli actions register --secret <forgejo_runner_secrets[<runner>]> --name <runner> --keep-labels [--scope <owner>]`.
+  `--keep-labels` stops a re-registration from wiping the other runners' labels.
+  `--scope` comes from `forgejo_runner_scopes` (runny → `cda`).
 - Runner side (`forgejo_runner` role, on codey/runny):
   `forgejo-runner create-runner-file --instance https://ci.lehel.xyz --name <runner> --secret <forgejo_runner_secrets[<runner>]>`
 
-Both reference `forgejo_runner_secrets[<runner>]` from `plays/vars/secrets.yml` — never a
+Both reference `forgejo_runner_secrets[<runner>]` from `plays/vars/secrets.yml`, never a
 `lookup('password', …)` seed (CLAUDE.md rule 6).
+
+servy's fail2ban crawler and rate-limit queries ignore
+`/api/actions/runner.v1.*`. The runners poll every 2 s and used to get banned
+mid-job.
 
 ## Monitoring
 
@@ -43,9 +176,11 @@ Both reference `forgejo_runner_secrets[<runner>]` from `plays/vars/secrets.yml` 
   `forgejo_runners.sh.j2`, which queries the Forgejo admin API and pushes
   `forgejo_runner_online` / `forgejo_runner_last_seen_seconds` /
   `forgejo_actions_jobs` to the Pushgateway.
+- Grafana dashboard `forgejo-ci.json`. Alerts: `forgejo_down`,
+  `forgejo_runner_offline`, `forgejo_jobs_stuck_waiting`, `runny_swap_exhausted`.
 
 See `ansible/plays/roles/forgejo_bootstrap/` for the admin-user + runner
-registration + DB-dump timer, and the history entry for the full setup.
+registration + DB-dump timer.
 
 ## Theme
 
@@ -70,27 +205,27 @@ ci/custom/
   `ansible/plays/roles/docker_service/templates/ci/forgejo.env.j2`. Theme name =
   the CSS filename minus the `theme-` prefix / `.css` suffix.
 - **How it works**: `theme-lehel.css` starts with
-  `@import "./theme-forgejo-auto.css"` (the built-in auto theme — always served
-  at `/assets/css/theme-forgejo-auto.css`) so every `--color-*` variable the app
-  references stays defined, then overrides the semantic surface/text/accent
-  variables for light, and again inside `@media (prefers-color-scheme: dark)`.
-  It is loaded *instead of* the built-in theme when `lehel` is the default, so
-  it must re-declare the variables it changes — do not remove the `@import`.
+  `@import "./theme-forgejo-auto.css"`, the built-in auto theme, which is always
+  served at `/assets/css/theme-forgejo-auto.css`. That keeps every `--color-*`
+  variable the app references defined. The file then overrides the semantic
+  surface/text/accent variables for light, and again inside
+  `@media (prefers-color-scheme: dark)`. It is loaded *instead of* the built-in
+  theme when `lehel` is the default, so it must re-declare the variables it
+  changes. Do not remove the `@import`.
 - **Sign-in hero**: `templates/user/auth/signin.tmpl` is a **full-template
-  override** (the only one) because Forgejo has no hook that places content
-  beside the sign-in card (`custom/signin_mid.tmpl` only injects *inside* the
-  card). It adds a `.lehel-hero` column and keeps `signin_inner` unchanged.
+  override** (the only one). Forgejo has no hook that places content beside the
+  sign-in card: `custom/signin_mid.tmpl` only injects *inside* the card. The
+  override adds a `.lehel-hero` column and keeps `signin_inner` unchanged.
   **Upgrade risk**: this template must be re-checked on Forgejo upgrades.
 - **No fake data**: the hero's "Forgejo {version}" and host come from
-  `window.config` (set by Forgejo); `theme-lehel.js` never invents values. The
-  design's runner-status card and push heatmap are **deliberately omitted** —
-  those APIs aren't available to a signed-out user on 17.0.2.
+  `window.config`, which Forgejo sets. `theme-lehel.js` never invents values.
+  The design's runner-status card and push heatmap are **deliberately
+  omitted**: a signed-out user can't reach those APIs on 17.0.2.
 - **Keyboard shortcuts** (in `theme-lehel.js`): `/` focuses search,
   `g a` → `/admin/actions`, `g r` → `/explore/repos`.
-- **To change it**: edit `ci/custom/public/assets/css/theme-lehel.css` and
-  re-run `./servyy-test.sh --tags user.docker.repo,user.docker.ci -e docker_branch=<branch>` (test) then
-  `./servyy.sh --tags user.docker.repo,user.docker.ci --limit servy.lehel.xyz` (prod).
-  Forgejo must restart to pick up env/config changes; a plain
-  `docker compose up -d` after the env render is enough (a template override
-  like `signin.tmpl` also needs a `docker restart`). Fonts are self-hosted
-  under `custom/public/assets/fonts` (OFL) — do not add Google Fonts calls.
+- **To change it**: edit `ci/custom/public/assets/css/theme-lehel.css`, run
+  `./servyy-test.sh --tags user.docker.repo,user.docker.ci -e docker_branch=<branch>`
+  (test), check the sign-in page in a **signed-out** browser at desktop and phone
+  width, then deploy to prod as above. A template change (`signin.tmpl`) needs a
+  `docker restart ci.forgejo`. Fonts are self-hosted under
+  `custom/public/assets/fonts` (OFL), so do not add Google Fonts calls.
