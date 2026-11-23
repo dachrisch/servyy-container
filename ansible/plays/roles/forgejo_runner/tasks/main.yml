@@ -119,7 +119,7 @@
 # Runs as root (unlike the container backends, which run as the deploy user):
 # masking units, apt, subuid ranges and the binary install all need root, and
 # the runner-scoped tasks below override back to the rootless user.
-- include_tasks: rootless.yml
+- import_tasks: rootless.yml
   when: forgejo_runner_docker == 'rootless'
   become: true
   become_user: root
