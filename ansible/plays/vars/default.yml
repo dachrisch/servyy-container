@@ -304,7 +304,7 @@ moodle_plugin_enrol_waitlist_sha256: 2266fa07d360414efc1af74e592f988a09e14af4af6
 # image's nginx sends `expires 5d` for *.js and the file name is stable, so an
 # edited picker needs this bumped IN THE SAME COMMIT or returning visitors keep
 # the old file for five days.
-moodle_signup_picker_version: '1'
+moodle_signup_picker_version: '2'
 moodle_signup_picker_footer: '<script src="/moodle-custom/signup-team-picker.js?v={{ moodle_signup_picker_version }}"></script>'
 
 # Monitor stack identity (non-secret).

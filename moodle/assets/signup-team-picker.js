@@ -63,47 +63,63 @@
     document.head.appendChild(el);
   }
 
-  /* Run `steps` in order; `steps` are functions taking a `next` callback. */
-  function chain(steps, onDone) {
-    var i = 0;
-    (function next(err) {
-      if (err) { onDone(err); return; }
-      if (i >= steps.length) { onDone(null); return; }
-      steps[i++](next);
-    })();
-  }
-
   /* "ohne Team" by id (the real list row) or by name (free text / tag). */
   function isNoTeam(name, id) {
     if (String(id) === String(INVOICE_TEAM_ID)) { return true; }
     return String(name || '').trim().toLowerCase() === INVOICE_TEAM_NAME;
   }
 
-  ready(function () {
-    var teamName = document.getElementById('id_profile_field_teamname');
-    if (!teamName) { return; }          // not the signup / profile form: do nothing.
-
-    var steps = [];
-
-    if (!window.jQuery) {
-      steps.push(function (next) {
-        loadScript(ASSET_BASE + 'vendor/jquery-3.6.0.min.js', next);
+  /* jQuery first, then select2, then hand back the instance select2 attached to.
+   *
+   * window.jQuery is a moving target on a Moodle page: Moodle's own AMD modules
+   * load their jQuery too, and whichever ran last owns the global. select2 binds
+   * to whatever window.jQuery is AT ITS EXECUTION TIME, so the global is pinned
+   * to our instance for exactly the length of that load, and the previous value
+   * is put back afterwards. Checking the global afterwards (rather than a
+   * captured reference) is what silently disabled the first version of this
+   * file: select2 had attached to our jQuery, then Moodle replaced the global
+   * and the check `window.jQuery.fn.select2` came back false. */
+  function loadPickerLibs(done) {
+    function withJquery($) {
+      if ($ && $.fn && $.fn.select2) { done(null, $); return; }
+      var prevJquery = window.jQuery;
+      var prevDollar = window.$;
+      window.jQuery = window.$ = $;
+      loadScript(ASSET_BASE + 'vendor/select2-4.0.13.min.js', function (err) {
+        if (window.jQuery === $) { window.jQuery = prevJquery; }
+        if (window.$ === $) { window.$ = prevDollar; }
+        if (err || !$ || !$.fn || !$.fn.select2) {
+          done(err || new Error('select2 did not attach to jQuery'));
+          return;
+        }
+        done(null, $);
       });
     }
-    steps.push(function (next) {
-      loadCss(ASSET_BASE + 'vendor/select2-4.0.13.min.css');
-      if (window.jQuery && window.jQuery.fn && window.jQuery.fn.select2) { next(null); return; }
-      loadScript(ASSET_BASE + 'vendor/select2-4.0.13.min.js', next);
-    });
 
-    chain(steps, function (err) {
-      if (err || !window.jQuery || !window.jQuery.fn.select2) {
+    if (window.jQuery) { withJquery(window.jQuery); return; }
+    loadScript(ASSET_BASE + 'vendor/jquery-3.6.0.min.js', function (err) {
+      if (err) { done(err); return; }
+      var $ = window.jQuery;
+      if (!$) { done(new Error('jQuery loaded but set no window.jQuery')); return; }
+      withJquery($);
+    });
+  }
+
+  ready(function () {
+    if (!document.getElementById('id_profile_field_teamname')) { return; }  // not the signup / profile form.
+
+    loadCss(ASSET_BASE + 'vendor/select2-4.0.13.min.css');
+    loadPickerLibs(function (err, $) {
+      if (err) {
         /* Leave the plain field alone — worst case the participant types the
          * club name and the invoice rule is not applied. Never hide a field we
-         * cannot drive. */
+         * cannot drive. A broken picker must be visible in the console. */
+        if (window.console && window.console.warn) {
+          window.console.warn('[offd] team picker disabled:', err.message || err);
+        }
         return;
       }
-      init(window.jQuery);
+      init($);
     });
   });
 
