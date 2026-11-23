@@ -1,0 +1,130 @@
+---
+# Reconcile Moodle's `additionalhtmlfooter` with git.
+#
+# The imported OFFD database carried the whole registration team picker inline in
+# that setting: jQuery 3.6 + select2 4.0.13 from two CDNs plus ~90 lines of
+# picker code, loaded on EVERY page of the site and editable only through the
+# Moodle UI. It now ships from this repo (moodle/assets/, bind-mounted read-only
+# at /var/www/html/moodle-custom) and the setting is reduced to the one tag that
+# loads it — so a change to the picker is a reviewed commit with a rollback.
+#
+# Written through Moodle's own CLI (`admin/cli/cfg.php --set`) rather than SQL:
+# that purges the config cache, which a raw UPDATE to mdl_config does not.
+# Read-then-set keeps a re-run a no-op.
+#
+# Imported from plays/user.yml `post_tasks` (not from the `user` role): it talks
+# to the running container, which only exists after that play's compose up.
+
+# A missing asset does not fail the container (it is a bind mount of a
+# directory) — it fails quietly: nginx 404s the tag and the participant sees the
+# bare text field instead of the picker. Catch it at deploy time.
+- name: Stat the picker assets the footer tag depends on
+  ansible.builtin.stat:
+    path: "{{ docker.remote_dir }}/moodle/assets/{{ item }}"
+  loop:
+    - signup-team-picker.js
+    - vendor/jquery-3.6.0.min.js
+    - vendor/select2-4.0.13.min.js
+    - vendor/select2-4.0.13.min.css
+  register: moodle_picker_asset
+  tags:
+    - molecule-notest
+
+- name: Assert the picker assets are present
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+    fail_msg: >-
+      moodle/assets/{{ item.item }} is missing from {{ docker.remote_dir }}.
+      `additionalhtmlfooter` points at /moodle-custom/... and the registration
+      form depends on it — see moodle/assets/vendor/README.md.
+    quiet: true
+  loop: "{{ moodle_picker_asset.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  tags:
+    - molecule-notest
+
+- name: Read the container state
+  community.docker.docker_container_info:
+    name: moodle.moodle
+  register: moodle_picker_container
+  tags:
+    - molecule-notest
+
+- name: Assert the Moodle container is running before reconciling its settings
+  ansible.builtin.assert:
+    that:
+      - moodle_picker_container.container is defined
+      - moodle_picker_container.container.State.Running | default(false)
+    fail_msg: >-
+      moodle.moodle is not running, so additionalhtmlfooter cannot be
+      reconciled. The compose up above it must have failed — check
+      `docker logs moodle.moodle` before re-running.
+    quiet: true
+  tags:
+    - molecule-notest
+
+- name: Read the current additionalhtmlfooter
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - moodle.moodle
+      - php
+      - /var/www/html/admin/cli/cfg.php
+      - --name=additionalhtmlfooter
+      - --no-eol
+  register: moodle_footer_current
+  changed_when: false
+  # cfg.php exits 3 when the setting does not exist yet; anything else non-zero
+  # (no container, broken config.php) must fail the deploy.
+  failed_when: moodle_footer_current.rc not in [0, 3]
+  tags:
+    - molecule-notest
+
+- name: Point additionalhtmlfooter at the picker from this repo
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - moodle.moodle
+      - php
+      - /var/www/html/admin/cli/cfg.php
+      - --name=additionalhtmlfooter
+      - "--set={{ moodle_signup_picker_footer }}"
+  when: moodle_footer_current.rc != 0 or moodle_footer_current.stdout != moodle_signup_picker_footer
+  tags:
+    - molecule-notest
+
+- name: Read the footer back
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - moodle.moodle
+      - php
+      - /var/www/html/admin/cli/cfg.php
+      - --name=additionalhtmlfooter
+      - --no-eol
+  register: moodle_footer_after
+  changed_when: false
+  failed_when: false
+  tags:
+    - molecule-notest
+
+# The tag is load-bearing for registration: a half-written or template-mangled
+# value (a `{{` that Ansible expanded, a quote eaten by a shell) would leave the
+# site's signup form without a picker and nobody would notice until a Lehrgang.
+- name: Assert the footer is exactly the tag this repo ships
+  ansible.builtin.assert:
+    that:
+      - moodle_footer_after.rc == 0
+      - moodle_footer_after.stdout == moodle_signup_picker_footer
+    fail_msg: >-
+      additionalhtmlfooter is '{{ moodle_footer_after.stdout }}' but this repo
+      expects '{{ moodle_signup_picker_footer }}'
+      (moodle_signup_picker_version={{ moodle_signup_picker_version }}).
+    quiet: true
+  tags:
+    - molecule-notest

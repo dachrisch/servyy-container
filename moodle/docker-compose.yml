@@ -72,6 +72,13 @@ services:
       # a missing/renamed archive fails the *boot* (not a request) — hence the
       # checksum assert in roles/user/tasks/moodle_plugins.yml.
       - ./plugins:/opt/moodle-plugins:ro
+      # Site JS that is not a plugin: the signup/profile team picker and the
+      # jQuery + select2 it needs (moodle/assets/). Served by the image's nginx
+      # at /moodle-custom/… — the folder sits inside the docroot because
+      # `additionalhtmlfooter` has to reference it by URL, and nginx only serves
+      # from there. Read-only, so the docroot stays immutable; the `<script>`
+      # tag itself is reconciled from git by roles/user/tasks/moodle_signup_picker.yml.
+      - ./assets:/var/www/html/moodle-custom:ro
     networks:
       # The DB tier's external network (WP-7b). The app reaches its database as
       # `db-business.mariadb:3306` from here; `internal` is gone with the `db:`

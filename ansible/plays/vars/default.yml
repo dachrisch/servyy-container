@@ -128,6 +128,12 @@ world_readable_paths_by_service:
     - rendered/forgejo-metrics-token
   moodle:
     - php-fpm-limits.conf         # php-fpm runs as `nobody` in this image
+    # Site JS served by the image's nginx from the read-only mount at
+    # /var/www/html/moodle-custom (team picker + vendored jQuery/select2). nginx
+    # reads it as `nobody` and the checkout leaves 0660, so it must be world
+    # readable or the picker silently 403s and the signup form falls back to the
+    # bare text field.
+    - assets
     # Bind-mounted at /opt/moodle-plugins and read by the image's boot-time
     # plugin installer; 0644/0755 so it does not depend on that script running
     # as root forever (moodle/plugins/README.md).
@@ -286,6 +292,20 @@ moodle_data_root_path: "{{ moodle_data_root if moodle_data_root is defined else 
 # a missing or silently replaced archive makes the container fail to START.
 moodle_plugin_enrol_waitlist_zip: enrol_waitlist-2026051200.zip
 moodle_plugin_enrol_waitlist_sha256: 2266fa07d360414efc1af74e592f988a09e14af4af60def5063752a548a0c090
+
+# The site JS that is not a plugin (moodle/assets/, bind-mounted read-only at
+# /var/www/html/moodle-custom): the signup/profile team picker plus the jQuery and
+# select2 it loads. `additionalhtmlfooter` is nothing but the one tag below, and
+# roles/user/tasks/moodle_signup_picker.yml reconciles it into mdl_config — the
+# imported OFFD database had ~175 kB of inline jQuery + select2 + picker code in
+# that setting, which no deploy could review or roll back.
+#
+# `moodle_signup_picker_version` is a CACHE BUSTER, not a plugin version: the
+# image's nginx sends `expires 5d` for *.js and the file name is stable, so an
+# edited picker needs this bumped IN THE SAME COMMIT or returning visitors keep
+# the old file for five days.
+moodle_signup_picker_version: '1'
+moodle_signup_picker_footer: '<script src="/moodle-custom/signup-team-picker.js?v={{ moodle_signup_picker_version }}"></script>'
 
 # Monitor stack identity (non-secret).
 # NOTE: the admin email lives in vars/secrets.yml as `monitor_admin_email` —

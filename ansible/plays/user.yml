@@ -1014,6 +1014,20 @@
       tags: [user.docker, user.docker.monitor]
 
   post_tasks:
+    # The registration team picker ships from this repo (moodle/assets/), so the
+    # one `<script>` tag in mdl_config.additionalhtmlfooter is reconciled from
+    # git and asserted. Here, not in the `user` role: it talks to the running
+    # container, which only exists after the compose up above.
+    - name: Reconcile the Moodle signup team picker
+      ansible.builtin.import_tasks: roles/user/tasks/moodle_signup_picker.yml
+      when:
+        - "'moodle' in (services | default([]))"
+        - with_containers | default(false)
+        - services_enabled.moodle | default(false) | bool
+      tags:
+        - user.docker
+        - user.docker.moodle
+
     # Monitor split (2026-11-20): grafana + loki moved to codey and this host
     # runs only the `collect` profile. Compose NEVER removes a service whose
     # profile is inactive — `up --profile collect` simply ignores grafana/loki and

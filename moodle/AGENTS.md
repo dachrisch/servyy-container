@@ -133,6 +133,51 @@ silently swapped archive would otherwise make the **container fail to start**.
   `deferredfeedback`, `immediatefeedback` or `immediatecbm`), so deliberately not installed.
   Moodle shows one "missing from disk" notice; installing it later is the same procedure.
 
+## Site JS: the signup/profile team picker
+
+`moodle/assets/` is bind-mounted read-only at `/var/www/html/moodle-custom` and served by the
+image's own nginx; `additionalhtmlfooter` is nothing but one `<script>` tag pointing at
+[`assets/signup-team-picker.js`](assets/signup-team-picker.js) (`?v=` cache buster, see
+below). jQuery 3.6.0 and select2 4.0.13 are vendored in
+[`assets/vendor/`](assets/vendor/README.md) — no CDN, because the registration form must not
+depend on one.
+
+- **The setting is owned by the deploy.** `roles/user/tasks/moodle_signup_picker.yml` reads
+  `additionalhtmlfooter` via `admin/cli/cfg.php` and overwrites it when it differs from
+  `moodle_signup_picker_footer`, then asserts the read-back. A UI edit reverts on the next
+  deploy that carries `user.docker.moodle` — same rule as the mail settings above. Before
+  2026-11-22 this setting held the entire widget inline (~175 kB of jQuery + select2 + picker
+  code, loaded on *every* page, editable only in the UI); that is what moved.
+- **`moodle_signup_picker_version` is a cache buster, not a version.** nginx sends
+  `expires 5d` for `*.js`/`*.css` and the file names are stable, so every edit to the picker
+  must bump it in the same commit or returning visitors keep the old bytes.
+- **It is a loader, not a widget.** jQuery/select2 are fetched only on pages that carry
+  `#id_profile_field_teamname` (signup, profile edit). If any asset fails, nothing is hidden
+  and Moodle's plain text field stays usable — never hide a field the script cannot drive.
+- The picker writes two profile fields: `teamname` (3, what the participant sees) and `teamid`
+  (7, the leaguesphere team id; `-1` = free text, i.e. a club leaguesphere does not list).
+  `teamid` therefore needs `signup=1` in `mdl_user_info_field` — it was `0` since ~2026-09-23,
+  which is why 52 signups in that window have a team name and no id. Restoring the flag is a
+  DB change, not a code change: `UPDATE mdl_user_info_field SET signup=1 WHERE id=7;` followed
+  by a cache purge.
+- **Team id 213 is the "ohne Team" row** and requires the invoice address (`rechnung`, field
+  8). Both paths — picking 213 from the list and typing "ohne Team" as free text — must apply
+  it; the old inline version only did so for the list, which is why the two behaved
+  differently.
+
+The picker is a *client-side* convenience: Moodle itself knows nothing about teams, so
+`teamname` is an optional free-text field and nothing server-side rejects (or requires) it.
+
+## Why embedded PDFs work (and must keep working)
+
+`X-Frame-Options` is set by Traefik for the whole fleet, and it replaces whatever Moodle sends.
+It is `SAMEORIGIN` since 2026-11-22 — `frameDeny: true` (DENY) before that, which blocked
+Moodle's own `<iframe src="pluginfile.php/…">` embeds and made every resource set to
+"Eingebettet" show `ERR_BLOCKED_BY_RESPONSE` on desktop. If a future header change flips it
+back to DENY, those 20 activities break again (mobile keeps working, which is what made it look
+like a browser problem). See `traefik/AGENTS.md` and
+[history/2026-11-22_traefik-xfo-sameorigin-moodle-pdf.md](../history/2026-11-22_traefik-xfo-sameorigin-moodle-pdf.md).
+
 ## Everyday operations
 
 ```bash
