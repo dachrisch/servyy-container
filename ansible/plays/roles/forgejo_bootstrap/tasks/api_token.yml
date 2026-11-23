@@ -97,8 +97,17 @@
     - forgejo_api_token_candidate | length > 0
     - forgejo_api_token_check.stdout not in ['200', '401']
 
+# Decided ONCE, before the block: a block's `when` is re-evaluated for every
+# task inside it, and "Adopt the minted token" changes the candidate mid-block
+# (on 2026-11-23 that made the last task read .stdout of the SKIPPED check).
+- name: Decide whether a new token must be minted
+  ansible.builtin.set_fact:
+    forgejo_api_token_mint: >-
+      {{ forgejo_api_token_candidate | length == 0
+         or (forgejo_api_token_check.stdout | default('')) == '401' }}
+
 - name: Mint a new token (no candidate, or the candidate was rejected)
-  when: forgejo_api_token_candidate | length == 0 or forgejo_api_token_check.stdout == '401'
+  when: forgejo_api_token_mint | bool
   block:
     - name: Generate the access token with the forgejo CLI
       ansible.builtin.command:
