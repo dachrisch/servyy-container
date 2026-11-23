@@ -6,10 +6,21 @@
 # daemon, systemd, loginctl, the binary download, the daemon socket): molecule
 # only asserts the RENDER (user, subuid ranges, unit files, config.yml).
 
-- name: Mask root-run Docker (socket + service + containerd)
+- name: Stop root-run Docker units
   ansible.builtin.systemd:
     name: "{{ item }}"
     state: stopped
+  loop:
+    - docker.socket
+    - docker.service
+    - containerd.service
+  tags:
+    - user.docker.runny
+    - molecule-notest
+
+- name: Mask root-run Docker units
+  ansible.builtin.systemd:
+    name: "{{ item }}"
     masked: true
   loop:
     - docker.socket
