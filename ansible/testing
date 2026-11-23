@@ -135,7 +135,8 @@ test-runner:
           - "amd64:docker://ghcr.io/catthehacker/ubuntu:act-22.04"
         forgejo_runner_capacity: 1
         forgejo_runner_qemu: false
-        forgejo_runner_docker: host
+        forgejo_runner_docker: rootless
+        forgejo_runner_cache_port: 41500
         forgejo_runner_container_options: --memory=900m --memory-swap=4g
         forgejo_runner_node_exporter: true
         forgejo_runner_instance: http://ci.servyy-test.lxd
