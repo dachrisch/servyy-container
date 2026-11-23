@@ -143,6 +143,10 @@ work" can present itself.
 
 ## Open / deliberately not done
 
+- **The round trip itself was fixed on 2026-11-23** —
+  [live validation entry](2026-11-23_moodle-signup-live-validation.md): the browser now checks
+  exactly what the server checks (and nothing more) before the submit. The policy values
+  themselves are unchanged.
 - **The invoice rule is still client-side only.** Moodle knows nothing about teams or
   invoices; enforcing it server-side needs a small `local_` plugin (or a web-service call from
   the picker). Decision on 2026-11-23: keep the rule, accept that a visitor with JavaScript
