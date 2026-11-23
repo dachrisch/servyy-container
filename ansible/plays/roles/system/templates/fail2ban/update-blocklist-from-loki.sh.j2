@@ -161,8 +161,10 @@ get_traefik_rate_limit_ips() {
     # non-browser fetches documents. Counting build assets here made two ordinary
     # page views in a minute look like a flood. A client that genuinely floods the
     # assets is still caught: the limiter sheds it, and the 429 query is the
-    # primary flood signal.
-    local query='topk(50, sum by (ClientHost) (count_over_time({job="docker",container="traefik.traefik"} | json | ClientHost=~".+" | RequestPath!~"/_app/immutable/.*" [1m])))'
+    # primary flood signal. Also exclude the Forgejo Actions runner API: the 2 s
+    # task poll plus log streaming (UpdateLog/UpdateTask) is not a crawl, and its
+    # per-IP rate tripped this jail and banned our own runners (2026-11-23).
+    local query='topk(50, sum by (ClientHost) (count_over_time({job="docker",container="traefik.traefik"} | json | RequestPath !~ "/api/actions/runner.v1.*" | ClientHost=~".+" | RequestPath!~"/_app/immutable/.*" [1m])))'
 
     loki_query "$query" | \
     jq -r '.data.result[] | select(.value[1] | tonumber >= '"$MIN_REQUEST_RATE"') | .metric.ClientHost + " traefik-rate-limit attempts=" + .value[1]' 2>/dev/null || true
@@ -191,7 +193,10 @@ get_traefik_crawler_ips() {
     # satisfied by ONE ordinary page view, so the query banned real users,
     # including the owner, on their first visit. Document pages and API calls
     # still count, which is what the "aggressive crawler" signal was always about.
-    local query='topk(50, sum by (ClientHost) (count_over_time({job="docker",container="traefik.traefik"} | json | ClientHost=~".+" | RequestPath!~"/_app/immutable/.*" [2m])))'
+    # Also exclude the Forgejo Actions runner API (runner.v1.RunnerService/*):
+    # runny's 2 s task poll alone is ~60 req/2 min and a job's log streaming pushes
+    # it past 200, so this jail banned our own runner three times (2026-11-22/23).
+    local query='topk(50, sum by (ClientHost) (count_over_time({job="docker",container="traefik.traefik"} | json | RequestPath !~ "/api/actions/runner.v1.*" | ClientHost=~".+" | RequestPath!~"/_app/immutable/.*" [2m])))'
 
     loki_query "$query" | \
     jq -r '.data.result[] | select(.value[1] | tonumber >= '"$MIN_CRAWLER_RATE"') | .metric.ClientHost + " traefik-aggressive-crawler attempts=" + .value[1]' 2>/dev/null || true
