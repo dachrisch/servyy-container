@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Idempotent setup for the runny-test VM (the rootless-runner rehearsal host).
-# Launches an Ubuntu 26.04 VM shaped like runny (2 vCPU / 1 GiB) on the local
+# Launches an Ubuntu 26.04 VM shaped like runny (2 vCPU) on the local
 # lxd, injects ~/.ssh/id_rsa.pub into the default `ubuntu` user, and prints the
 # IP. Run with `-x` to tear it down.
 #
@@ -82,12 +82,12 @@ EOF
 cat "/tmp/${instance}.yaml" | lxc profile edit "$instance"
 
 if ! lxc info "$instance" >/dev/null 2>&1; then
-  echo "launching VM [$instance] (Ubuntu $UBUNTU_VERSION, 2 vCPU / 1 GiB)"
+  echo "launching VM [$instance] (Ubuntu $UBUNTU_VERSION, 2 vCPU / ${RUNNY_TEST_RAM:-2GiB})"
   lxc launch ubuntu:"$UBUNTU_VERSION" "$instance" \
     --vm \
     -p "$instance" \
     -c limits.cpu=2 \
-    -c limits.memory=1GiB
+    -c limits.memory="${RUNNY_TEST_RAM:-2GiB}"
 fi
 
 # Wait for the lxd DNS name (DHCP lease registered on first boot).
