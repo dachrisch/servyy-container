@@ -91,4 +91,22 @@ step 4.
 
 ## Phase B: disable password basic auth
 
-_Pending._
+`FORGEJO__service__ENABLE_BASIC_AUTHENTICATION=false` in `forgejo.env.j2`. The
+molecule assertion is in `docker_service/molecule/forgejo/verify.yml`, and
+`ci/AGENTS.md` and the skill were updated.
+
+Before Phase B, the two stale test tokens from Phase A were deleted on
+servyy-test while the password still worked (204 each). The pre-existing
+`smoke-1795186187` token (2026-11-20) was left alone.
+
+### Verification: servyy-test (gate)
+
+| Check | Result |
+|---|---|
+| password basic auth, `/api/v1/user` | **401** |
+| `Authorization: token`, `/api/v1/user` | 200 |
+| token as basic-auth password, `/api/v1/user` | 200 |
+| registry `/v2/token`, token as password | 200 |
+| registry `/v2/token`, password | **401** |
+| `git clone http://cda:<token>@…` | OK |
+| runner after the restart | `test` idle |
