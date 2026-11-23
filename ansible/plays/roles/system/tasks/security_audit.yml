@@ -165,6 +165,10 @@
     requirements: "{{ security_audit.script_dir }}/humble/requirements.txt"
     executable: pip3
     extra_args: --break-system-packages
+    # The host's default umask (0077) left these world-unreadable, which broke
+    # `import requests` for non-root users (community.docker runs as cda). A
+    # system-wide pip install should be world-readable.
+    umask: "0022"
   become: true
   when: security_audit.tools.humble | default(true)
   tags:

@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Idempotent setup for the runny-test VM (the rootless-runner rehearsal host).
-# Launches an Ubuntu 24.04 VM shaped like runny (2 vCPU / 1 GiB) on the local
+# Launches an Ubuntu 26.04 VM shaped like runny (2 vCPU / 1 GiB) on the local
 # lxd, injects ~/.ssh/id_rsa.pub into the default `ubuntu` user, and prints the
 # IP. Run with `-x` to tear it down.
 #
@@ -10,8 +10,8 @@
 set -e
 instance=runny-test
 hostname="${instance}.lxd"
-# runny is Ubuntu 24.04, so the rehearsal VM is too (not the workstation's own release).
-UBUNTU_VERSION="${UBUNTU_VERSION:-24.04}"
+# runny/servy/codey are Ubuntu 26.04 (resolute); the rehearsal VM matches them.
+UBUNTU_VERSION="${UBUNTU_VERSION:-26.04}"
 PUBKEY="${PUBKEY:-$HOME/.ssh/id_rsa.pub}"
 POOL="${RUNNY_TEST_POOL:-runner}"   # dir pool that also backs the old git-runner profile
 
@@ -51,13 +51,13 @@ config:
         content: |
           Types: deb
           URIs: https://mirror.netcologne.de/ubuntu
-          Suites: noble noble-updates noble-backports
+          Suites: resolute resolute-updates resolute-backports
           Components: main universe restricted multiverse
           Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 
           Types: deb
           URIs: https://mirror.netcologne.de/ubuntu
-          Suites: noble-security
+          Suites: resolute-security
           Components: main universe restricted multiverse
           Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
     users:
