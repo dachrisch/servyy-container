@@ -77,6 +77,7 @@ devices:
     path: /
     pool: $POOL
     type: disk
+    size: ${RUNNY_TEST_DISK:-20GiB}
 EOF
 cat "/tmp/${instance}.yaml" | lxc profile edit "$instance"
 

@@ -61,6 +61,9 @@ forgejo_runner_binary_path: /usr/local/bin/forgejo-runner
 forgejo_runner_cache_port: 0
 forgejo_runner_prune_schedule: "*-*-* 02:00"
 forgejo_runner_prune_flags: "-a -f --volumes"
+# RootlessKit network driver (slirp4netns|pasta|vpnkit). pasta is faster and
+# preserves source IPs; it is the default now that passt ships on 26.04.
+forgejo_runner_rootless_net: "pasta"
 # The old container-backend service dir, removed once the rootless runner is up.
 forgejo_runner_legacy_service_dir: "/home/{{ create_user }}/runny"
 

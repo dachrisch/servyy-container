@@ -125,6 +125,7 @@
     name:
       - rootlesskit
       - slirp4netns
+      - passt
       - uidmap
       - dbus-user-session
     state: present
@@ -315,6 +316,57 @@
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ forgejo_runner_rootless_uid }}"
   when: (forgejo_runner_rootless_config is changed) or (forgejo_runner_rootless_unit is changed)
+  tags:
+    - user.docker.runny
+    - molecule-notest
+
+# The cache listener binds *:<port>; restrict it to loopback so it is not
+# reachable from outside the host. Job containers reach it via slirp/pasta,
+# which lands on loopback. Same script + oneshot pattern as the node-exporter
+# INPUT filter (system role).
+- name: Deploy the cache-port INPUT filter script
+  ansible.builtin.template:
+    src: rootless/cache-firewall.sh.j2
+    dest: /usr/local/sbin/forgejo-runner-cache-firewall.sh
+    mode: '0700'
+    owner: root
+    group: root
+  when: (forgejo_runner_cache_port | default(0) | int) > 0
+  tags:
+    - user.docker.runny
+    - molecule-notest
+
+- name: Deploy the cache-port INPUT filter unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/forgejo-runner-cache-firewall.service
+    mode: '0644'
+    owner: root
+    group: root
+    content: |
+      [Unit]
+      Description=Restrict the Forgejo runner cache port to loopback
+      After=network-pre.target
+      Wants=network-pre.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/local/sbin/forgejo-runner-cache-firewall.sh
+
+      [Install]
+      WantedBy=multi-user.target
+  when: (forgejo_runner_cache_port | default(0) | int) > 0
+  tags:
+    - user.docker.runny
+    - molecule-notest
+
+- name: Enable and start the cache-port INPUT filter
+  ansible.builtin.systemd:
+    name: forgejo-runner-cache-firewall.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: (forgejo_runner_cache_port | default(0) | int) > 0
   tags:
     - user.docker.runny
     - molecule-notest

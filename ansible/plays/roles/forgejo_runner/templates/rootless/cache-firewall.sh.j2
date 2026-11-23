@@ -1,0 +1,15 @@
+#!/bin/bash
+# Managed by Ansible (forgejo_runner role, rootless backend). The runner's
+# Actions cache listener must not be reachable from outside the host: job
+# containers reach it via loopback (slirp/pasta), so drop non-loopback traffic
+# on the cache port for both families. Idempotent, INSERTED at the top of INPUT
+# so it wins over the image's catch-all REJECT.
+set -euo pipefail
+
+ensure() { # $1 = iptables|ip6tables, rest = rule spec
+  local bin=$1; shift
+  "$bin" -C INPUT "$@" 2>/dev/null || "$bin" -I INPUT 1 "$@"
+}
+
+ensure iptables  -p tcp --dport {{ forgejo_runner_cache_port }} ! -i lo -j DROP
+ensure ip6tables -p tcp --dport {{ forgejo_runner_cache_port }} ! -i lo -j DROP
