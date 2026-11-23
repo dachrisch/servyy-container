@@ -62,3 +62,33 @@ forgejo_root_url: >-
 forgejo_ssh_user: git
 forgejo_ssh_home: /var/lib/forgejo-git
 forgejo_ssh_enabled: true
+
+# --- management API token (tasks/api_token.yml, play plays/forgejo_api_token.yml)
+# One `all`-scope token for user cda, used by the managing-ci skill (fj helper).
+# Source of truth: the Vaultwarden item + a controller-local copy. Ansible MINTS a
+# new token only when neither holds a token that Forgejo accepts (proven 401);
+# an unreachable Forgejo or a missing vw.key with no local copy FAILS instead.
+forgejo_api_token_user: "{{ forgejo_bootstrap_admin_username }}"
+forgejo_api_token_scopes: all
+# Suffixed with a UTC timestamp at mint time: token names are unique per user,
+# and the API cannot delete tokens without basic auth.
+forgejo_api_token_name_prefix: ansible-manage
+forgejo_api_token_vw_item: "forgejo - api token (ci.{{ domain }})"
+forgejo_api_token_local_file: "{{ lookup('env', 'HOME') }}/.config/forgejo/ci.{{ domain }}.token"
+# Prints the HTTP status of GET /api/v1/user for the token in $FJ_TOKEN. The
+# token is read from the environment INSIDE the container (docker exec -e
+# FJ_TOKEN passes the caller's variable through), never from argv. The pipe runs
+# in the container's sh: busybox wget exits 1 on a 401, so the status line is
+# parsed instead of trusting the exit code.
+forgejo_api_token_check_argv:
+  - docker
+  - exec
+  - -e
+  - FJ_TOKEN
+  - "{{ forgejo_bootstrap_container }}"
+  - sh
+  - -c
+  - >-
+    wget -q -S -O /dev/null --header "Authorization: token $FJ_TOKEN"
+    http://localhost:3000/api/v1/user 2>&1
+    | sed -n 's/^ *HTTP\/[0-9.]* \([0-9][0-9][0-9]\).*/\1/p' | head -n 1

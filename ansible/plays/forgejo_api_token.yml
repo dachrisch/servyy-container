@@ -1,0 +1,32 @@
+---
+# Management API token for ci.<domain> (Forgejo): resolve from the local copy or
+# Vaultwarden, mint only when Forgejo rejects every copy, then keep both copies
+# in sync. Logic: roles/forgejo_bootstrap/tasks/api_token.yml.
+#
+# A separate play because it calls `bw` on the controller, which the
+# `strategy: free` user play must never do (roles/vaultwarden/tasks/unlock.yml).
+# Runs with the ci deploy tags, so `--tags user.docker.ci` keeps it current.
+#
+# Run alone: ./servyy.sh --limit servy.lehel.xyz --tags user.docker.ci.token
+- name: Forgejo management API token
+  hosts: all
+  strategy: linear
+  remote_user: "{{ create_user }}"
+  become: true
+  become_user: "{{ create_user }}"
+  vars_files:
+    - vars/default.yml
+    - vars/secrets.yml
+  tasks:
+    - name: Resolve, validate, mint if needed, and store the token
+      ansible.builtin.include_role:
+        name: forgejo_bootstrap
+        tasks_from: api_token.yml
+        apply:
+          tags:
+            - user.docker.ci
+            - user.docker.ci.token
+      when: services_enabled.ci | default(false) | bool
+      tags:
+        - user.docker.ci
+        - user.docker.ci.token

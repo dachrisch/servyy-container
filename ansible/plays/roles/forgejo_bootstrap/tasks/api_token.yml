@@ -1,0 +1,190 @@
+---
+# Management API token for ci.<domain> (user cda, scopes `all`), used by the
+# managing-ci skill. Stored in Vaultwarden (item forgejo_api_token_vw_item) and
+# as a controller-local copy (forgejo_api_token_local_file, 0600).
+#
+# Resolve order - a token is minted ONLY when it is proven that no working one
+# exists (the controller-local-seed drift trap, CLAUDE.md rule 6):
+#   1. candidate = local copy, else the Vaultwarden item
+#      (no local copy and no vw.key -> FAIL, never mint);
+#   2. validate the candidate against the live API from inside the container:
+#      200 -> keep, 401 -> replace, anything else -> FAIL (Forgejo not healthy);
+#   3. mint only for "no candidate" or 401, validate the new one (must be 200);
+#   4. write the local copy, push to Vaultwarden (create/update).
+# The token never reaches argv or a log: it travels as the FJ_TOKEN environment
+# variable into `docker exec -e FJ_TOKEN`, and every task touching it is no_log.
+#
+# Runs from plays/forgejo_api_token.yml (strategy linear): the shared bw unlock
+# must never run in the `strategy: free` user play.
+
+- name: Read the controller-local token copy
+  ansible.builtin.set_fact:
+    forgejo_api_token_candidate: "{{ lookup('file', forgejo_api_token_local_file, errors='ignore') | default('', true) | trim }}"
+    forgejo_api_token_source: local
+  no_log: true
+
+- name: Fetch the token from Vaultwarden when there is no local copy
+  when: forgejo_api_token_candidate | length == 0
+  block:
+    - name: Refuse to continue without a local copy or vw.key
+      ansible.builtin.assert:
+        that:
+          - vw_master_password | default('') | length > 0
+        fail_msg: >-
+          No local copy at {{ forgejo_api_token_local_file }} and no Vaultwarden
+          master password (~/.ssh/vw.key). Refusing to mint a new token blind:
+          restore vw.key (mode 0600) and re-run --tags user.docker.ci.token.
+        quiet: true
+
+    - name: Unlock the bw vault (shared)
+      ansible.builtin.include_role:
+        name: vaultwarden
+        tasks_from: unlock.yml
+
+    - name: Look the token item up in Vaultwarden
+      ansible.builtin.command:
+        argv: [bw, list, items, --search, "{{ forgejo_api_token_vw_item }}"]
+      environment:
+        BW_SESSION: "{{ bw_session }}"
+      delegate_to: localhost
+      run_once: true
+      become: false
+      register: forgejo_api_token_vw_search
+      changed_when: false
+      no_log: true
+
+    - name: Take the Vaultwarden copy as the candidate
+      ansible.builtin.set_fact:
+        forgejo_api_token_candidate: >-
+          {{ (forgejo_api_token_vw_search.stdout | from_json
+              | selectattr('name', 'equalto', forgejo_api_token_vw_item)
+              | map(attribute='login.password') | first | default('')) | trim }}
+        forgejo_api_token_source: vaultwarden
+      no_log: true
+
+    - name: Lock the vault again
+      ansible.builtin.command:
+        cmd: bw lock
+      delegate_to: localhost
+      run_once: true
+      become: false
+      changed_when: false
+      failed_when: false
+
+- name: Validate the candidate token against the live API
+  ansible.builtin.command:
+    argv: "{{ forgejo_api_token_check_argv }}"
+  environment:
+    FJ_TOKEN: "{{ forgejo_api_token_candidate }}"
+  register: forgejo_api_token_check
+  changed_when: false
+  when: forgejo_api_token_candidate | length > 0
+  no_log: true
+
+- name: Report the candidate's status (secret-free)
+  ansible.builtin.debug:
+    msg: >-
+      Candidate from {{ forgejo_api_token_source if forgejo_api_token_candidate | length > 0 else 'nowhere' }}:
+      HTTP {{ forgejo_api_token_check.stdout | default('n/a') }}
+
+- name: Fail when Forgejo did not give a clear yes/no on the candidate
+  ansible.builtin.fail:
+    msg: >-
+      Validating the API token returned HTTP '{{ forgejo_api_token_check.stdout }}'
+      (expected 200 or 401). Forgejo is probably not healthy; refusing to mint a
+      replacement on a guess. Check `docker logs {{ forgejo_bootstrap_container }}`.
+  when:
+    - forgejo_api_token_candidate | length > 0
+    - forgejo_api_token_check.stdout not in ['200', '401']
+
+- name: Mint a new token (no candidate, or the candidate was rejected)
+  when: forgejo_api_token_candidate | length == 0 or forgejo_api_token_check.stdout == '401'
+  block:
+    - name: Generate the access token with the forgejo CLI
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - "{{ forgejo_bootstrap_container }}"
+          - forgejo
+          - admin
+          - user
+          - generate-access-token
+          - --username
+          - "{{ forgejo_api_token_user }}"
+          - --token-name
+          - "{{ forgejo_api_token_name_prefix }}-{{ now(utc=true).strftime('%Y%m%d%H%M%S') }}"
+          - --scopes
+          - "{{ forgejo_api_token_scopes }}"
+          - --raw
+      register: forgejo_api_token_minted
+      changed_when: true
+      no_log: true
+
+    - name: Validate the minted token
+      ansible.builtin.command:
+        argv: "{{ forgejo_api_token_check_argv }}"
+      environment:
+        FJ_TOKEN: "{{ forgejo_api_token_minted.stdout | trim }}"
+      register: forgejo_api_token_minted_check
+      changed_when: false
+      failed_when: forgejo_api_token_minted_check.stdout != '200'
+      no_log: true
+
+    - name: Adopt the minted token
+      ansible.builtin.set_fact:
+        forgejo_api_token_candidate: "{{ forgejo_api_token_minted.stdout | trim }}"
+        forgejo_api_token_source: minted
+      no_log: true
+
+    - name: Report the mint (secret-free)
+      ansible.builtin.debug:
+        msg: >-
+          Minted a new `{{ forgejo_api_token_scopes }}` token for
+          {{ forgejo_api_token_user }} on ci.{{ domain }}. Any previous
+          {{ forgejo_api_token_name_prefix }}-* token is still valid: revoke it in
+          the UI (Settings -> Applications).
+
+- name: Ensure the local copy directory exists (0700)
+  ansible.builtin.file:
+    path: "{{ forgejo_api_token_local_file | dirname }}"
+    state: directory
+    mode: '0700'
+  delegate_to: localhost
+  run_once: true
+  become: false
+
+- name: Write the controller-local token copy (0600)
+  ansible.builtin.copy:
+    content: "{{ forgejo_api_token_candidate }}\n"
+    dest: "{{ forgejo_api_token_local_file }}"
+    mode: '0600'
+  delegate_to: localhost
+  run_once: true
+  become: false
+  no_log: true
+
+- name: Push the token to Vaultwarden (create or update)
+  ansible.builtin.include_role:
+    name: vaultwarden
+    tasks_from: push_items.yml
+  vars:
+    vaultwarden_item_username: "{{ forgejo_api_token_user }}"
+    vaultwarden_items:
+      - name: "{{ forgejo_api_token_vw_item }}"
+        secret: "{{ forgejo_api_token_candidate }}"
+        notes: >-
+          Forgejo API token for https://ci.{{ domain }} (user {{ forgejo_api_token_user }},
+          scopes {{ forgejo_api_token_scopes }}, name {{ forgejo_api_token_name_prefix }}-<utc ts>).
+          Managed by servyy-container forgejo_bootstrap/tasks/api_token.yml
+          (--tags user.docker.ci.token); local copy {{ forgejo_api_token_local_file }}.
+          Used by the managing-ci skill (fj helper). Minted again only when Forgejo
+          rejects this one.
+  when: vw_master_password | default('') | length > 0
+
+- name: Warn that Vaultwarden was not updated (no vw.key)
+  ansible.builtin.debug:
+    msg: >-
+      No Vaultwarden master password on this controller: the local copy is valid
+      but the Vaultwarden item was not checked or updated.
+  when: vw_master_password | default('') | length == 0

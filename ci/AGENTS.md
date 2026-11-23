@@ -27,6 +27,27 @@ migrated yet**, and `git/` + `git.lehel.xyz` stay untouched until that cut-over.
 - The default theme `lehel` only applies to new accounts and signed-out pages.
   To use it on an existing account: Settings → Appearance → `lehel`.
 
+### API token (managed)
+
+API automation, and the agent skill `.claude/skills/managing-ci` (`fj` helper),
+uses one `all`-scope token for `cda`:
+
+- **Local copy:** `~/.config/forgejo/ci.<domain>.token` (0600).
+- **Vaultwarden:** item `forgejo - api token (ci.<domain>)`.
+- **Ansible:** `plays/forgejo_api_token.yml` → `roles/forgejo_bootstrap/tasks/api_token.yml`.
+  Tags `user.docker.ci` / `user.docker.ci.token`.
+
+The resolve order: local copy, else Vaultwarden (needs `~/.ssh/vw.key`). The
+token is validated against the API from inside the container.
+
+- **200:** keep it, and sync both copies.
+- **401, or no copy anywhere:** mint `ansible-manage-<utc ts>` with
+  `forgejo admin user generate-access-token`.
+- **Anything else:** fail. A token is never minted blind.
+
+A re-mint leaves the old token valid. Revoke it in the UI under Settings →
+Applications.
+
 ### Git over SSH
 
 ```bash
@@ -81,8 +102,8 @@ git remote add forgejo https://ci.lehel.xyz/cda/<repo>.git
 git push forgejo master            # username: cda, password: <token>
 ```
 
-Create repos in the UI or with the API
-(`POST /api/v1/user/repos`, basic auth or `Authorization: token <token>`).
+Create repos in the UI or with the API (`POST /api/v1/user/repos` with
+`Authorization: token <token>`; see `.claude/skills/managing-ci`).
 
 ### Running CI
 

@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# fj - call the Forgejo API on ci.<domain> with the managed token.
+#
+#   fj METHOD /path [json-body | @file.json]
+#   fj GET /user
+#   fj POST /user/repos '{"name":"x","private":true}'
+#
+# Token: ~/.config/forgejo/ci.${FJ_DOMAIN:-lehel.xyz}.token (written by
+# ansible --tags user.docker.ci.token). It is handed to curl through a config
+# on stdin, so it never appears in argv, `ps`, or output.
+# Env: FJ_DOMAIN (default lehel.xyz), FJ_BASE (override the URL, e.g. for
+# servyy-test via its Traefik: FJ_BASE=http://127.0.0.1 FJ_HOST=ci.servyy-test.lxd).
+# Prints the response body; exits 1 on HTTP >= 400 with the status on stderr.
+set -euo pipefail
+
+domain="${FJ_DOMAIN:-lehel.xyz}"
+token_file="${HOME}/.config/forgejo/ci.${domain}.token"
+base="${FJ_BASE:-https://ci.${domain}}"
+
+if [[ $# -lt 2 ]]; then
+    sed -n '2,13p' "$0" >&2; exit 2
+fi
+method="$1"; path="$2"; body="${3:-}"
+[[ "$path" == /* ]] || path="/$path"
+[[ "$path" == /api/* ]] || path="/api/v1${path}"
+
+if [[ ! -s "$token_file" ]]; then
+    echo "fj: no token at $token_file - run: cd ansible && ./servyy.sh --limit servy.lehel.xyz --tags user.docker.ci.token" >&2
+    exit 1
+fi
+
+args=(-sS -X "$method" -w '\n%{http_code}' "${base}${path}")
+[[ -n "${FJ_HOST:-}" ]] && args+=(-H "Host: ${FJ_HOST}")
+if [[ -n "$body" ]]; then
+    args+=(-H 'Content-Type: application/json')
+    args+=(--data-binary "$body")   # "@file.json" reads a file (curl syntax)
+fi
+
+out=$(printf 'header = "Authorization: token %s"\n' "$(tr -d '[:space:]' < "$token_file")" \
+      | curl -K - "${args[@]}")
+code="${out##*$'\n'}"
+resp="${out%$'\n'*}"
+[[ -n "$resp" ]] && printf '%s\n' "$resp"
+if [[ "$code" -ge 400 || "$code" == 000 ]]; then
+    echo "fj: HTTP $code for $method $path" >&2
+    exit 1
+fi
