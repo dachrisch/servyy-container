@@ -85,6 +85,10 @@ prod:
         # Forgejo runners to register server-side (offline shared secret). The
         # runner-side half runs on codey/runny via the forgejo_runner role.
         forgejo_runners: [codey, runny]
+        # runny is scoped to `cda` (the only account): an out-of-scope repo never
+        # lands on it (Task 6 step 4). codey stays global.
+        forgejo_runner_scopes:
+          runny: cda
         # bnb-office reachable at this second host too (owner-facing stopgap
         # until the Strato DNS for ibs.bricksnbytes.de is flipped). DNS for
         # ibs.bumbleflies.de already points at servy; own Traefik router/cert.

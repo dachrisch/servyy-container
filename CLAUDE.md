@@ -693,7 +693,7 @@ cd ansible && ./servyy.sh --tags "docker" --limit all
 | `codey.lehel.xyz` | Secondary (opencode + claude-hub) | opencode, claude-hub, Forgejo runner (dind) |
 | `aqui.fritz.box` | Dev/testing | Various dev services |
 | `servyy-test.lxd` | Test environment | Mirrors production for validation |
-| `runny.lehel.xyz` | CI runner (amd64) | Forgejo runner (host socket) + node-exporter |
+| `runny.lehel.xyz` | CI runner (amd64) | Forgejo runner (rootless backend — no root-run containers) + node-exporter |
 
 ### Agent Responsibility: Know Your Server
 
@@ -1252,12 +1252,12 @@ ssh lehel.xyz "docker exec leaguesphere-demo.demo-app /bin/bash -c 'rm -f /app/.
 - Limit: 500MB max, 4-week retention
 - No manual intervention required
 
-**Docker Cleanup** (weekly):
-- Schedule: Every Sunday at 02:00 CET
+**Docker Cleanup** (weekly on servy/codey; daily on runny):
+- Schedule: Every Sunday at 02:00 CET (servy/codey); runny's rootless daemon is pruned daily 02:00 by the `runner` user's `docker-prune.timer` instead (`systemctl --user status docker-prune.timer`)
 - Mode: Aggressive (`docker system prune -a -f --volumes`)
 - Removes all unused images, containers, volumes
-- Log: `/var/log/docker-cleanup.log`
-- Monitoring: monit alerts if log not updated in 8 days
+- Log: `/var/log/docker-cleanup.log` (servy/codey only)
+- Monitoring: monit alerts if log not updated in 8 days (servy/codey only; runny has no root-run docker_cleanup)
 
 **Kernel Cleanup** (monthly):
 - Schedule: 1st Sunday of each month at 01:00 CET

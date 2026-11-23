@@ -23,6 +23,12 @@ forgejo_bootstrap_admin_email: "cda@lehel.xyz"
 # on codey/runny; this list is the server-side half of the same shared secret.
 forgejo_runners: []
 
+# Per-runner scope: "{owner}[/{repo}]", empty = global. A scoped runner only
+# picks up jobs from repos the named owner (or repo) can reach. `runny` is
+# scoped to `cda` (the single account on this instance) so an out-of-scope repo
+# never lands on it (Task 6 step 4). Keyed by runner name.
+forgejo_runner_scopes: {}
+
 # Where the Forgejo container lives (matches ci/docker-compose.yml). The
 # `forgejo` binary is the image entrypoint; subcommands run via `docker exec`.
 forgejo_bootstrap_container: ci.forgejo

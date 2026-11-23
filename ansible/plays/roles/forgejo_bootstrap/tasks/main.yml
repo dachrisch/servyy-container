@@ -59,7 +59,8 @@
   ansible.builtin.command:
     cmd: >-
       docker exec {{ forgejo_bootstrap_container }} forgejo forgejo-cli actions register
-      --secret {{ forgejo_runner_secrets[item] }} --name {{ item }}
+      --secret {{ forgejo_runner_secrets[item] }} --name {{ item }} --keep-labels
+      {{ ('--scope ' ~ forgejo_runner_scopes[item]) if (forgejo_runner_scopes | default({})).get(item, '') else '' }}
   loop: "{{ forgejo_runners }}"
   changed_when: false
   no_log: true

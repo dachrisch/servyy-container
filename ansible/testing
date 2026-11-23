@@ -78,6 +78,8 @@ test:
       ci_traefik_tls: "false"
       ci_traefik_certresolver: ""
       forgejo_runners: [test, runny-test]
+      forgejo_runner_scopes:
+        runny-test: cda
       forgejo_runner_instance: http://ci.servyy-test.lxd
       forgejo_runner_name: test
       forgejo_runner_labels:
