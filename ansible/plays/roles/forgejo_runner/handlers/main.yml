@@ -9,3 +9,5 @@
   become_user: "{{ forgejo_runner_rootless_user }}"
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ forgejo_runner_rootless_uid }}"
+  tags:
+    - molecule-notest
