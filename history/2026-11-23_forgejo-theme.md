@@ -64,7 +64,20 @@ a faint 24px grid page background, and automatic light/dark via
 - Test (servyy-test only): `cd ansible && ./servyy-test.sh --tags user.docker.ci -e docker_branch=claude/forgejo-theme`
 - Production: after approval, `cd ansible && ./servyy.sh --limit servy.lehel.xyz`
 
-## Verification
+## Verification (servyy-test)
 
-See the closing report for the servyy-test validation outputs (theme CSS served,
-default theme applied, sign-in hero rendered, container logs clean, screenshots).
+Deployed with `./servyy-test.sh --tags user.docker.repo,user.docker.ci -e docker_branch=claude/forgejo-theme`
+(play recap: `failed=0`, `changed=4`; Forgejo `Up (healthy)` after restart). Verified:
+
+- Theme CSS served: `curl -H 'Host: ci.servyy-test.lxd' http://localhost/assets/css/theme-lehel.css` → HTTP 200.
+- Default theme applied: `/user/login` HTML has `data-theme="lehel"` and links `theme-lehel.css`.
+- Sign-in hero renders: `.lehel-hero` / `.lehel-tagline` / `.lehel-status` present.
+- Mounts: `docker inspect ci.forgejo` shows `ci/custom/{templates,public}` → `/var/lib/gitea/custom/…` (ro).
+- No console/template errors in `docker logs ci.forgejo` after restart.
+- Light + dark screenshots of `/user/login` and the dashboard taken with headless
+  Chrome (backgrounds sampled: light ≈ `#f4f6f9`, dark ≈ `#0d131b`).
+
+Gotcha (documented, not a bug): the existing admin `cda` keeps their prior
+`forgejo-auto` theme — `DEFAULT_THEME` only governs anonymous/new users. To adopt
+`lehel` the account switches it in Settings → Appearance (done on servyy-test for
+the dashboard screenshots via a temporary API token, removed after).
