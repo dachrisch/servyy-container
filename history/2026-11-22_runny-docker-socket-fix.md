@@ -3,6 +3,17 @@
 **Date:** 2026-11-22
 **Branch:** `master`
 
+> ## Superseded 2026-11-23
+>
+> This change is reverted in intent by `docs/plans/2026-11-23_runny-docker-trust.md` (the
+> "CI runners without root" plan). The grant below — handing the host daemon socket to job
+> containers — is exactly the "F5: whoever holds the daemon socket has the host" finding: a
+> job on runny could `docker run --rm -v /:/host:ro alpine`, read `data/.runner` (the
+> registration secret) and every container, and escape the 900 MB job cap, i.e. root on
+> runny. Task 0 of that plan makes `container.docker_host: "-"` on the host backend (jobs get
+> no daemon socket); the ultimate shape is rootless Docker on the host. Keep the benchmark
+> table and the two findings below for the record.
+
 ## Problem
 
 A probe migration (`https://github.com/dachrisch/energy.consumption` → a private

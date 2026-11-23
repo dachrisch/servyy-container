@@ -52,6 +52,13 @@ forgejo_runner_docker_host: >-
   {{ 'unix:///var/run/dind/docker.sock' if forgejo_runner_docker == 'dind'
      else 'unix:///var/run/docker.sock' }}
 
+# What JOB containers get as /var/run/docker.sock (config.yml container.docker_host).
+# Separate from forgejo_runner_docker_host, which the RUNNER itself needs.
+# "-" = never mount. Empty is NOT auto-detect on runner 13.2.1: it also mounts nothing.
+# host: "-" because the host socket is root on the host (history/2026-11-22_runny-docker-socket-fix.md).
+forgejo_runner_job_docker_host: >-
+  {{ forgejo_runner_docker_host if forgejo_runner_docker == 'dind' else '-' }}
+
 # Extra host:ip mappings for the runner AND its job containers (as --add-host).
 # Only servyy-test needs it: ci.servyy-test.lxd has no DNS there, so it maps to
 # the host gateway where Traefik listens.

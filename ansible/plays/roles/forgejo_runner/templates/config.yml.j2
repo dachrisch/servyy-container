@@ -38,11 +38,10 @@ container:
   options: {{ (forgejo_runner_container_options | default('') ~ ' ' ~ (forgejo_runner_extra_hosts | map('regex_replace', '^', '--add-host=') | join(' '))) | trim }}
   workdir_parent: workspace
   valid_volumes: []
-  # The daemon socket handed to every job container as /var/run/docker.sock.
-  # Both backends pass it explicitly: dind hands on the shared dind socket,
-  # host hands on the host socket. An EMPTY value does not mean "auto-detect"
-  # — runner 13.2.1 then mounts nothing and `docker` inside a job dies with
-  # "cannot connect to the Docker daemon" (measured on runny 2026-11-22; the
-  # act default only applies when the flag is unset, and the runner always sets
-  # it from this file).
-  docker_host: "{{ forgejo_runner_docker_host }}"
+  # The daemon socket handed to every JOB container as /var/run/docker.sock.
+  # This is forgejo_runner_job_docker_host, NOT forgejo_runner_docker_host: the
+  # runner's own daemon connection is the DOCKER_HOST env the compose injects.
+  # "-" = never mount. Empty is NOT auto-detect on runner 13.2.1 (it also mounts
+  # nothing). The host backend sets "-" because the host socket is root on the
+  # host (history/2026-11-22_runny-docker-socket-fix.md); only dind hands a socket on.
+  docker_host: "{{ forgejo_runner_job_docker_host }}"

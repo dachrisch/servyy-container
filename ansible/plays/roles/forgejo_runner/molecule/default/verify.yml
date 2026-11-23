@@ -56,12 +56,12 @@
 
     - name: Verify the dind config hands the dind socket to job containers
       ansible.builtin.command:
-        cmd: "grep -q 'docker_host: unix:///var/run/dind/docker.sock' /home/testuser/runny-dind/data/config.yml"
+        cmd: "grep -qF 'docker_host: \"unix:///var/run/dind/docker.sock\"' /home/testuser/runny-dind/data/config.yml"
       changed_when: false
 
-    - name: Verify the host config hands the host socket to job containers
+    - name: Verify the host config gives job containers NO daemon socket
       ansible.builtin.command:
-        cmd: "grep -q 'docker_host: unix:///var/run/docker.sock' /home/testuser/runny-host/data/config.yml"
+        cmd: "grep -qF 'docker_host: \"-\"' /home/testuser/runny-host/data/config.yml"
       changed_when: false
 
     - name: Verify the host compose has no dind sidecar
