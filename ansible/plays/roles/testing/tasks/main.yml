@@ -3,10 +3,12 @@
     - testing.hosts
 
 - import_tasks: runc_lxc_fix.yml
+  when: ansible_virtualization_type == 'lxc'
   tags:
     - testing.runc
 
 - import_tasks: mkcert.yml
+  when: services_enabled.traefik | default(false)
   tags:
     - testing.mkcert
 
