@@ -97,6 +97,18 @@
   tags:
     - user.docker.runny
 
+# The container backends resolve these via docker --add-host; the rootless
+# runner is a host binary, so map them in /etc/hosts instead.
+- name: Map extra hosts in /etc/hosts (rootless runner runs on the host)
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^{{ item.split(":")[1] }}\s+{{ item.split(":")[0] }}\s*$'
+    line: "{{ item.split(':')[1] }} {{ item.split(':')[0] }}"
+  loop: "{{ forgejo_runner_extra_hosts | default([]) }}"
+  when: forgejo_runner_extra_hosts | default([]) | length > 0
+  tags:
+    - user.docker.runny
+
 # Ubuntu 24.04 ships the rootlesskit AppArmor profile; it must be LOADED, not
 # merely present, and the sysctl must stay at 1. Never write a profile or flip
 # the sysctl — if this fails, stop and report.
