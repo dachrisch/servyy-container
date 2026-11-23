@@ -193,13 +193,20 @@ prod:
           devhub: false
           claude-hub: false
 
-    # The amd64 Actions runner (Oracle E2.1.Micro). Deployed from the runny/
-    # service dir (same as codey's runner), registered as runner `runny` with the
-    # `amd64` label only. Stateless: no restic, no storagebox, no Traefik — it
-    # dials OUT to ci.lehel.xyz for jobs. `ansible_host` is the DNS name because
-    # the public IP is only known once scripts/provision-oracle-runner.sh has
-    # run; create the runny.lehel.xyz A/AAAA record via dns-master (pointing at
-    # that IP) before the first deploy.
+    # The amd64 Actions runner (Oracle E2.1.Micro, 1 GB). Registered as runner
+    # `runny` with the `amd64` label only. Since 2026-11-23 the runner and every
+    # job run WITHOUT root: no root-run daemon socket, no --privileged container
+    # anywhere in the chain. The runner is the `rootless` backend (forgejo-runner
+    # binary + rootless dockerd as systemd --user services of the unprivileged
+    # `runner` user; root-run docker.service/socket/containerd are MASKED). The
+    # shared Docker plays are off (with_docker/with_containers false) and the
+    # role's daily user-level prune replaces docker_cleanup. Stateless: no
+    # restic, no storagebox, no Traefik — it dials OUT to ci.lehel.xyz for jobs.
+    # See docs/plans/2026-11-23_runny-docker-trust.md and
+    # history/2026-11-23_runner-rootless.md. `ansible_host` is the DNS name
+    # because the public IP is only known once scripts/provision-oracle-runner.sh
+    # has run; create the runny.lehel.xyz A/AAAA record via dns-master (pointing
+    # at that IP) before the first deploy.
     runny.lehel.xyz:
         ansible_host: runny.lehel.xyz
         # Oracle images boot with only `ubuntu`; the system play connects as
@@ -215,8 +222,8 @@ prod:
         ipv6_address: 2603:c020:802e:5f02:0:2406:9caf:b6a3
         ipv6_gateway: fe80::200:17ff:fecf:724
         domain: lehel.xyz
-        with_docker: true
-        with_containers: true
+        with_docker: false
+        with_containers: false
         has_extension_drive: false
         create_swap: true
         # 1 GB RAM on the E2.1.Micro: 4 GB swap to survive amd64 image builds.
@@ -229,13 +236,16 @@ prod:
         # No deploy checkout: CI jobs can reach this host, and the checkout is
         # git-crypt unlocked (secrets.yml in plaintext). No deploy key, no
         # git.lehel.xyz login, no opencode keys either. The runner is rendered
-        # outside the checkout (forgejo_runner_service_dir below).
+        # outside the checkout (under the rootless `runner` user's home).
         repo_checkout: false
-        forgejo_runner_service_dir: /home/cda/runny
+        # The rootless backend prunes its own daemon (daily user timer); the
+        # root-run docker_cleanup system timer is disabled.
+        docker_cleanup:
+          enabled: false
         # Light system play on 1 GB (see ansible/production header): the Loki
         # blocklist is the one fail2ban piece this host skips (it has no Loki
         # query route and no room); portainer-agent and promtail are simply not
-        # enabled. The weekly Docker prune and node-exporter stay.
+        # enabled.
         loki_blocklist_enabled: false
         services_enabled:
           # The runner only; no traefik, no monitor, no portainer-agent.
@@ -246,8 +256,11 @@ prod:
           - "amd64:docker://ghcr.io/catthehacker/ubuntu:act-22.04"
         forgejo_runner_capacity: 1
         forgejo_runner_qemu: false
-        # The host socket: the box holds no secrets, and this saves ~100 MB.
-        forgejo_runner_docker: host
+        # Rootless: the runner and rootless dockerd run as the unprivileged
+        # `runner` user; no root-run daemon anywhere.
+        forgejo_runner_docker: rootless
+        # Fixed cache port so it can be firewalled to loopback-only (acceptance #13).
+        forgejo_runner_cache_port: 41500
         # Cap job containers to ~90% of the 1 GB host; allow the 4 GB swap.
         forgejo_runner_container_options: --memory=900m --memory-swap=4g
         # node-exporter is the only monitoring piece on this host.

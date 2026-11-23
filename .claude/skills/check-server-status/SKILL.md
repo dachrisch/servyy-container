@@ -22,7 +22,7 @@ that Traefik is still fronting with a stale connection.
 |---|---|---|---|
 | `servy.lehel.xyz` | `lehel.xyz` | Primary | traefik, git, photoprism, **ci (Forgejo → `ci.lehel.xyz`)**, bumbleflies (www/bnb/edu/live — repository/archive retired 2026-09-27), achim-hoefer, portainer, pass, energy, groceries, leagues-finance, finance (firefly/importer/queen), shared (mongo/valkey/postgres — backend-only, watched by the container-health probe as tier="backend"), bnb-office, searxng, dontforget, **monitor (collect profile: prometheus, promtail, cadvisor, node-exporter, pushgateway+bridge)**, leaguesphere (+ demo/stage), **moodle**, **waggle** (OpenPost → `waggle.bumbleflies.de`) — disabled: thore, platzler-heid, dns, me, job-search (retired 2026-10-27) |
 | `codey.lehel.xyz` | `code.lehel.xyz` | Secondary (opencode) | traefik, opencode, opencode-authgate, portainer-agent, **monitor (ui profile: grafana + loki — `monitor.lehel.xyz`, `loki.lehel.xyz`)**, **runny (Forgejo runner `codey`, dind backend — container `runny.runner`)**, devhub — disabled: claude-hub (its compose dir exists on the test host but **no container has ever run**, so a missing `claude-hub.*` is expected, not a finding) |
-| `runny.lehel.xyz` | — | CI runner (amd64) | runny (Forgejo runner `runny`, host-socket backend — container `runny.runner`) + node-exporter. Stateless, no restic, no Traefik; SSH-only ingress. |
+| `runny.lehel.xyz` | — | CI runner (amd64) | runny (Forgejo runner `runny`, **rootless backend** — the `forgejo-runner` binary + rootless `dockerd` as systemd **--user** services of the unprivileged `runner` user; **no root-run containers**, root-run docker.service/socket/containerd are masked) + node-exporter. Stateless, no restic, no Traefik; SSH-only ingress. Health = `sudo -u runner XDG_RUNTIME_DIR=/run/user/$(id -u runner) systemctl --user is-active docker forgejo-runner` plus `:9100`. |
 
 Since 2026-11-20 Grafana and Loki run on codey, not servy: a missing
 `monitor.grafana`/`monitor.loki` on servy is expected, and `monitor.lehel.xyz` is
@@ -114,6 +114,10 @@ ssh <host> "sudo fail2ban-client status; sudo monit summary"
 ssh <host> "systemctl list-timers --all | grep -E 'apt-daily-upgrade|docker-cleanup|kernel-cleanup|restic-forget|restic-check'"
 curl -s -o /dev/null -w '%{http_code}\n' https://traefik.lehel.xyz   # or https://code.lehel.xyz for codey
 ```
+
+> **runny is rootless:** `docker ps` on runny fails (the daemon is masked).
+> Check the two user units instead:
+> `ssh runny.lehel.xyz 'sudo -u runner XDG_RUNTIME_DIR=/run/user/$(id -u runner) systemctl --user is-active docker forgejo-runner'`.
 
 ## Common mistakes
 

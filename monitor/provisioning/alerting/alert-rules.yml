@@ -2955,7 +2955,7 @@ groups:
         for: 15m
         annotations:
           summary: 'Forgejo runner {{ $labels.runner }} is offline'
-          description: 'The {{ $labels.runner }} runner has not been seen by Forgejo for 15 minutes. Check `docker ps | grep runny.runner` on the runner host and `docker logs runny.runner`.'
+          description: 'The {{ $labels.runner }} runner has not been seen by Forgejo for 15 minutes. On runny (rootless): `sudo -u runner XDG_RUNTIME_DIR=/run/user/$(id -u runner) systemctl --user status forgejo-runner` and `journalctl --user -u forgejo-runner`. On codey (dind): `docker ps | grep runny.runner` and `docker logs runny.runner`.'
         labels:
           severity: high
         isPaused: false
