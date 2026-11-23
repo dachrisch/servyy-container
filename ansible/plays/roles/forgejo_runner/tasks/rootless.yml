@@ -125,11 +125,19 @@
     name:
       - rootlesskit
       - slirp4netns
-      - passt
       - uidmap
       - dbus-user-session
     state: present
     update_cache: true
+  tags:
+    - user.docker.runny
+
+# passt only ships from Ubuntu 24.04 (noble) on; the molecule image is jammy.
+- name: Install passt (pasta network driver)
+  ansible.builtin.apt:
+    name: passt
+    state: present
+  when: ansible_distribution_major_version | int >= 24
   tags:
     - user.docker.runny
 
