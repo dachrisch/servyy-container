@@ -24,6 +24,11 @@ migrated yet**, and `git/` + `git.lehel.xyz` stay untouched until that cut-over.
   `forgejo_admin_password` in `ansible/plays/vars/secrets.yml`, with a copy in
   Vaultwarden as **"forgejo - admin (ci.lehel.xyz)"**.
 - Signed-out visitors only ever see the sign-in page (`REQUIRE_SIGNIN_VIEW`).
+- **Password basic auth is off** (`ENABLE_BASIC_AUTHENTICATION=false`). The
+  password works only in the web login form. The API, git over HTTPS and
+  `docker login` all need a **token**, sent either as the basic-auth password
+  or as `Authorization: token …`. The API also cannot list or delete tokens
+  any more: do that in the UI (Settings → Applications).
 - The default theme `lehel` only applies to new accounts and signed-out pages.
   To use it on an existing account: Settings → Appearance → `lehel`.
 

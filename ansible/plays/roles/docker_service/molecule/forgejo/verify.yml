@@ -17,12 +17,13 @@
     # Each line checked on its own (grep -E alternation passes on any ONE match).
     # The template line is the one that matters: if Jinja ate the {{.Key.ID}},
     # every key's forced command would be broken.
-    - name: Verify forgejo.env enables Git-over-SSH via the host sshd passthrough
+    - name: Verify forgejo.env enables Git-over-SSH and disables password basic auth
       ansible.builtin.command:
         cmd: "grep -qxF '{{ item }}' /home/molecule/ci/forgejo.env"
       changed_when: false
       loop:
         - FORGEJO__server__DISABLE_SSH=false
+        - FORGEJO__service__ENABLE_BASIC_AUTHENTICATION=false
         - FORGEJO__server__START_SSH_SERVER=false
         - FORGEJO__server__SSH_PORT=22
         - FORGEJO__server__SSH_CREATE_AUTHORIZED_KEYS_FILE=false

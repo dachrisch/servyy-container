@@ -6,8 +6,8 @@ description: Use when creating, listing, deleting or mirroring repositories on c
 # Managing ci.lehel.xyz (Forgejo)
 
 All API work goes through `fj` (next to this file) with the **managed API
-token**. Never use the admin password: password basic auth on the API is being
-switched off, and it was the way secrets leaked into transcripts before.
+token**. The admin password does not work on the API (password basic auth is
+off since 2026-11-23; `ENABLE_BASIC_AUTHENTICATION=false`).
 
 ```bash
 FJ=.claude/skills/managing-ci/fj      # from the servyy-container repo root
