@@ -1,0 +1,303 @@
+---
+# rootless backend — forgejo-runner binary + rootless dockerd as systemd --user
+# services of an unprivileged user. Root-run Docker is masked. No compose file.
+#
+# Tag `molecule-notest` on everything that touches the live system (masking the
+# daemon, systemd, loginctl, the binary download, the daemon socket): molecule
+# only asserts the RENDER (user, subuid ranges, unit files, config.yml).
+
+- name: Mask root-run Docker (socket + service + containerd)
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    masked: true
+  loop:
+    - docker.socket
+    - docker.service
+    - containerd.service
+  tags:
+    - user.docker.runny
+    - molecule-notest
+
+# The docker edge filter only installs DOCKER-USER rules; runny's :9100 filter
+# is the separate node-exporter-firewall (INPUT) and is unaffected.
+- name: Stop and disable the Docker user firewall
+  ansible.builtin.systemd:
+    name: docker-user-firewall.service
+    state: stopped
+    enabled: false
+  ignore_errors: true
+  tags:
+    - user.docker.runny
+    - molecule-notest
+
+# with_docker: false only skips docker_setup.yml; it does not revoke an existing
+# membership. Remove the deploy user from `docker` AFTER the mask so it never
+# holds a live daemon mid-play. Needs its own getent: the container-backend
+# "Look up the docker group id" sits in the non-rootless block.
+- name: Look up the docker group (rootless)
+  ansible.builtin.getent:
+    database: group
+    key: docker
+  tags:
+    - user.docker.runny
+    - molecule-notest
+
+- name: Remove the deploy user from the docker group
+  ansible.builtin.command:
+    cmd: "gpasswd -d {{ create_user }} docker"
+  when: create_user in (ansible_facts.getent_group.docker[2] | default('')).split(',')
+  changed_when: true
+  tags:
+    - user.docker.runny
+    - molecule-notest
+
+- name: Create the rootless runner user
+  ansible.builtin.user:
+    name: "{{ forgejo_runner_rootless_user }}"
+    shell: /usr/sbin/nologin
+    create_home: true
+    groups: []
+    append: false
+  tags:
+    - user.docker.runny
+
+- name: Look up the rootless user's uid
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ forgejo_runner_rootless_user }}"
+  tags:
+    - user.docker.runny
+
+- name: Record the rootless uid
+  ansible.builtin.set_fact:
+    forgejo_runner_rootless_uid: "{{ ansible_facts.getent_passwd[forgejo_runner_rootless_user][1] }}"
+  tags:
+    - user.docker.runny
+
+- name: Grant the subuid/subgid range
+  ansible.builtin.lineinfile:
+    path: "{{ item }}"
+    regexp: '^{{ forgejo_runner_rootless_user }}:'
+    line: "{{ forgejo_runner_rootless_user }}:{{ forgejo_runner_rootless_subid }}"
+  loop:
+    - /etc/subuid
+    - /etc/subgid
+  tags:
+    - user.docker.runny
+
+# Ubuntu 24.04 ships the rootlesskit AppArmor profile; it must be LOADED, not
+# merely present, and the sysctl must stay at 1. Never write a profile or flip
+# the sysctl — if this fails, stop and report.
+- name: Assert the rootlesskit AppArmor profile is loaded
+  ansible.builtin.command:
+    cmd: "grep -qx 'rootlesskit (unconfined)' /sys/kernel/security/apparmor/profiles"
+  changed_when: false
+  tags:
+    - user.docker.runny
+    - molecule-notest
+
+- name: Install rootless Docker packages
+  ansible.builtin.apt:
+    name:
+      - rootlesskit
+      - slirp4netns
+      - uidmap
+      - dbus-user-session
+    state: present
+    update_cache: true
+  tags:
+    - user.docker.runny
+
+# node-exporter becomes a host unit (the rootless "host" network is rootlesskit's
+# netns, so :9100 would not answer servy's Prometheus from a container).
+- name: Install node-exporter as a host package
+  ansible.builtin.apt:
+    name: prometheus-node-exporter
+    state: present
+  when: forgejo_runner_node_exporter | default(false) | bool
+  tags:
+    - user.docker.runny
+
+- name: Enable and start node-exporter
+  ansible.builtin.systemd:
+    name: prometheus-node-exporter
+    enabled: true
+    state: started
+  when: forgejo_runner_node_exporter | default(false) | bool
+  tags:
+    - user.docker.runny
+    - molecule-notest
+
+- name: Enable linger for the rootless user
+  ansible.builtin.command:
+    cmd: "loginctl enable-linger {{ forgejo_runner_rootless_user }}"
+    creates: "/var/lib/systemd/linger/{{ forgejo_runner_rootless_user }}"
+  tags:
+    - user.docker.runny
+    - molecule-notest
+
+- name: Download the runner binary
+  ansible.builtin.get_url:
+    url: "{{ forgejo_runner_binary_url }}"
+    dest: "{{ forgejo_runner_binary_path }}"
+    mode: '0755'
+    owner: root
+    group: root
+    checksum: "sha256:{{ forgejo_runner_binary_url }}.sha256"
+  tags:
+    - user.docker.runny
+    - molecule-notest
+
+- name: Ensure the rootless runner directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ forgejo_runner_rootless_user }}"
+    group: "{{ forgejo_runner_rootless_user }}"
+    mode: '0750'
+  loop:
+    - "{{ ('/home/' ~ forgejo_runner_rootless_user ~ '/runny/data') }}"
+    - "{{ ('/home/' ~ forgejo_runner_rootless_user ~ '/.config/systemd/user') }}"
+    - "{{ ('/home/' ~ forgejo_runner_rootless_user ~ '/.config/docker') }}"
+  tags:
+    - user.docker.runny
+
+- name: Render the runner config.yml (rootless)
+  ansible.builtin.template:
+    src: config.yml.j2
+    dest: "{{ ('/home/' ~ forgejo_runner_rootless_user ~ '/runny/data/config.yml') }}"
+    owner: "{{ forgejo_runner_rootless_user }}"
+    group: "{{ forgejo_runner_rootless_user }}"
+    mode: '0644'
+  notify: restart rootless runner
+  tags:
+    - user.docker.runny
+
+- name: Render the rootless docker user unit
+  ansible.builtin.template:
+    src: rootless/docker.service.j2
+    dest: "{{ ('/home/' ~ forgejo_runner_rootless_user ~ '/.config/systemd/user/docker.service') }}"
+    owner: "{{ forgejo_runner_rootless_user }}"
+    group: "{{ forgejo_runner_rootless_user }}"
+    mode: '0644'
+  tags:
+    - user.docker.runny
+
+- name: Render the rootless forgejo-runner user unit
+  ansible.builtin.template:
+    src: rootless/forgejo-runner.service.j2
+    dest: "{{ ('/home/' ~ forgejo_runner_rootless_user ~ '/.config/systemd/user/forgejo-runner.service') }}"
+    owner: "{{ forgejo_runner_rootless_user }}"
+    group: "{{ forgejo_runner_rootless_user }}"
+    mode: '0644'
+  notify: restart rootless runner
+  tags:
+    - user.docker.runny
+
+- name: Render the rootless daemon.json
+  ansible.builtin.template:
+    src: rootless/daemon.json.j2
+    dest: "{{ ('/home/' ~ forgejo_runner_rootless_user ~ '/.config/docker/daemon.json') }}"
+    owner: "{{ forgejo_runner_rootless_user }}"
+    group: "{{ forgejo_runner_rootless_user }}"
+    mode: '0644'
+  tags:
+    - user.docker.runny
+
+- name: Render the rootless docker-prune units
+  ansible.builtin.template:
+    src: "{{ item }}"
+    dest: "{{ ('/home/' ~ forgejo_runner_rootless_user ~ '/.config/systemd/user/' ~ item | basename | regex_replace('\\.j2$', '')) }}"
+    owner: "{{ forgejo_runner_rootless_user }}"
+    group: "{{ forgejo_runner_rootless_user }}"
+    mode: '0644'
+  loop:
+    - rootless/docker-prune.service.j2
+    - rootless/docker-prune.timer.j2
+  tags:
+    - user.docker.runny
+
+- name: Start the rootless docker daemon
+  ansible.builtin.systemd:
+    name: docker
+    scope: user
+    enabled: true
+    state: started
+    daemon_reload: true
+  become_user: "{{ forgejo_runner_rootless_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ forgejo_runner_rootless_uid }}"
+  tags:
+    - user.docker.runny
+    - molecule-notest
+
+- name: Wait for the rootless docker socket
+  ansible.builtin.wait_for:
+    path: "/run/user/{{ forgejo_runner_rootless_uid }}/docker.sock"
+    timeout: 60
+  tags:
+    - user.docker.runny
+    - molecule-notest
+
+- name: Register the runner (offline shared secret, rootless)
+  ansible.builtin.command:
+    cmd: >-
+      {{ forgejo_runner_binary_path }} create-runner-file
+      --instance {{ forgejo_runner_instance }}
+      --name {{ forgejo_runner_name }}
+      --secret {{ forgejo_runner_secrets[forgejo_runner_name] }}
+    chdir: "/home/{{ forgejo_runner_rootless_user }}/runny/data"
+    creates: "/home/{{ forgejo_runner_rootless_user }}/runny/data/.runner"
+  become_user: "{{ forgejo_runner_rootless_user }}"
+  no_log: true
+  tags:
+    - user.docker.runny
+    - molecule-notest
+
+- name: Lock down the runner registration file
+  ansible.builtin.file:
+    path: "/home/{{ forgejo_runner_rootless_user }}/runny/data/.runner"
+    owner: "{{ forgejo_runner_rootless_user }}"
+    group: "{{ forgejo_runner_rootless_user }}"
+    mode: '0600'
+  tags:
+    - user.docker.runny
+    - molecule-notest
+
+- name: Enable and start the rootless runner and prune timer
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    scope: user
+    enabled: true
+    state: started
+  loop:
+    - forgejo-runner
+    - docker-prune.timer
+  become_user: "{{ forgejo_runner_rootless_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ forgejo_runner_rootless_uid }}"
+  tags:
+    - user.docker.runny
+    - molecule-notest
+
+# Remove the old container-backend service dir once the new runner is up, so a
+# stale second copy of `.runner` (owned by the deploy user) does not linger.
+- name: Confirm the rootless runner is active before removing the legacy dir
+  ansible.builtin.command:
+    cmd: "systemctl --user is-active forgejo-runner"
+  become_user: "{{ forgejo_runner_rootless_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ forgejo_runner_rootless_uid }}"
+  changed_when: false
+  tags:
+    - user.docker.runny
+    - molecule-notest
+
+- name: Remove the legacy container-backend service dir
+  ansible.builtin.file:
+    path: "{{ forgejo_runner_legacy_service_dir }}"
+    state: absent
+  tags:
+    - user.docker.runny
+    - molecule-notest

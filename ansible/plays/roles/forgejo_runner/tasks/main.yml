@@ -1,111 +1,122 @@
 ---
 # forgejo_runner — deploy the Forgejo Actions runner from the runny/ service
-# dir. Runs on the runner hosts (codey, runny); skipped elsewhere.
+# dir (container backends) or as the rootless binary + user services (rootless).
+# Runs on the runner hosts (codey, runny, runny-test); skipped elsewhere.
 
+# --- container backends (`host` and `dind`) --------------------------------
 # The runner (and its one-shot registration) run as the deploy user, which owns
 # ./data. Its uid differs per host (1000 on servy/codey, 1001 on servyy-test),
 # and the image's default uid 1000 cannot write ./data where it doesn't match.
-- name: Look up the deploy user's uid/gid for the runner
-  ansible.builtin.getent:
-    database: passwd
-    key: "{{ create_user }}"
-  tags:
-    - user.docker.runny
+- block:
+    - name: Look up the deploy user's uid/gid for the runner
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ create_user }}"
+      tags:
+        - user.docker.runny
 
-- name: Ensure the runner data directory exists
-  ansible.builtin.file:
-    path: "{{ forgejo_runner_data_dir }}"
-    state: directory
-    mode: '0755'
-    owner: "{{ create_user }}"
-    group: "{{ create_user }}"
-  tags:
-    - user.docker.runny
+    - name: Ensure the runner data directory exists
+      ansible.builtin.file:
+        path: "{{ forgejo_runner_data_dir }}"
+        state: directory
+        mode: '0755'
+        owner: "{{ create_user }}"
+        group: "{{ create_user }}"
+      tags:
+        - user.docker.runny
 
-- name: Render the runner config.yml
-  ansible.builtin.template:
-    src: config.yml.j2
-    dest: "{{ (forgejo_runner_data_dir, 'config.yml') | path_join }}"
-    mode: '0644'
-  register: forgejo_runner_config
-  tags:
-    - user.docker.runny
+    - name: Render the runner config.yml
+      ansible.builtin.template:
+        src: config.yml.j2
+        dest: "{{ (forgejo_runner_data_dir, 'config.yml') | path_join }}"
+        mode: '0644'
+      register: forgejo_runner_config
+      tags:
+        - user.docker.runny
 
-# The runner image runs as uid 1000; on the host-socket backend it needs the
-# host's docker group to talk to /var/run/docker.sock.
-- name: Look up the docker group id
-  ansible.builtin.getent:
-    database: group
-    key: docker
-  when: forgejo_runner_docker == 'host'
-  tags:
-    - user.docker.runny
+    # The runner image runs as uid 1000; on the host-socket backend it needs the
+    # host's docker group to talk to /var/run/docker.sock.
+    - name: Look up the docker group id
+      ansible.builtin.getent:
+        database: group
+        key: docker
+      when: forgejo_runner_docker == 'host'
+      tags:
+        - user.docker.runny
 
-- name: Render the runner docker-compose.yml
-  ansible.builtin.template:
-    src: docker-compose.yml.j2
-    dest: "{{ (forgejo_runner_service_dir, 'docker-compose.yml') | path_join }}"
-    mode: '0644'
-  tags:
-    - user.docker.runny
+    - name: Render the runner docker-compose.yml
+      ansible.builtin.template:
+        src: docker-compose.yml.j2
+        dest: "{{ (forgejo_runner_service_dir, 'docker-compose.yml') | path_join }}"
+        mode: '0644'
+      tags:
+        - user.docker.runny
 
-# amd64 binfmt emulation so the arm64 host (codey) can build amd64 images via
-# QEMU. One-shot: re-running --install is idempotent and cheap.
-- name: Install amd64 binfmt emulation (QEMU)
-  ansible.builtin.command:
-    cmd: docker run --rm --privileged tonistiigi/binfmt:latest --install amd64
-  when: forgejo_runner_qemu | default(false) | bool
-  changed_when: false
-  tags:
-    - user.docker.runny
-    - molecule-notest
+    # amd64 binfmt emulation so the arm64 host (codey) can build amd64 images via
+    # QEMU. One-shot: re-running --install is idempotent and cheap.
+    - name: Install amd64 binfmt emulation (QEMU)
+      ansible.builtin.command:
+        cmd: docker run --rm --privileged tonistiigi/binfmt:latest --install amd64
+      when: forgejo_runner_qemu | default(false) | bool
+      changed_when: false
+      tags:
+        - user.docker.runny
+        - molecule-notest
 
-# The .runner file is the offline shared-secret registration (write once; a
-# lost runner is recreated by a redeploy re-registering from
-# forgejo_runner_secrets[<runner>]). Its presence is the idempotency check.
-- name: Check whether the runner is already registered
-  ansible.builtin.stat:
-    path: "{{ (forgejo_runner_data_dir, '.runner') | path_join }}"
-  register: forgejo_runner_registered
-  tags:
-    - user.docker.runny
+    # The .runner file is the offline shared-secret registration (write once; a
+    # lost runner is recreated by a redeploy re-registering from
+    # forgejo_runner_secrets[<runner>]). Its presence is the idempotency check.
+    - name: Check whether the runner is already registered
+      ansible.builtin.stat:
+        path: "{{ (forgejo_runner_data_dir, '.runner') | path_join }}"
+      register: forgejo_runner_registered
+      tags:
+        - user.docker.runny
 
-- name: Register the runner (offline shared secret)
-  ansible.builtin.command:
-    cmd: >-
-      docker run --rm
-      -u {{ ansible_facts.getent_passwd[create_user][1] }}:{{ ansible_facts.getent_passwd[create_user][2] }}
-      -v {{ forgejo_runner_data_dir }}:/data
-      -w /data
-      {{ forgejo_runner_image }}
-      forgejo-runner create-runner-file
-      --instance {{ forgejo_runner_instance }}
-      --name {{ forgejo_runner_name }}
-      --secret {{ forgejo_runner_secrets[forgejo_runner_name] }}
-  when: not forgejo_runner_registered.stat.exists
-  no_log: true
-  tags:
-    - user.docker.runny
-    - molecule-notest
+    - name: Register the runner (offline shared secret)
+      ansible.builtin.command:
+        cmd: >-
+          docker run --rm
+          -u {{ ansible_facts.getent_passwd[create_user][1] }}:{{ ansible_facts.getent_passwd[create_user][2] }}
+          -v {{ forgejo_runner_data_dir }}:/data
+          -w /data
+          {{ forgejo_runner_image }}
+          forgejo-runner create-runner-file
+          --instance {{ forgejo_runner_instance }}
+          --name {{ forgejo_runner_name }}
+          --secret {{ forgejo_runner_secrets[forgejo_runner_name] }}
+      when: not forgejo_runner_registered.stat.exists
+      no_log: true
+      tags:
+        - user.docker.runny
+        - molecule-notest
 
-- name: Deploy the runner compose project
-  community.docker.docker_compose_v2:
-    project_src: "{{ forgejo_runner_service_dir }}"
-    project_name: runny
-    files:
-      - docker-compose.yml
-    state: present
-  tags:
-    - user.docker.runny
-    - molecule-notest
+    - name: Deploy the runner compose project
+      community.docker.docker_compose_v2:
+        project_src: "{{ forgejo_runner_service_dir }}"
+        project_name: runny
+        files:
+          - docker-compose.yml
+        state: present
+      tags:
+        - user.docker.runny
+        - molecule-notest
 
-# config.yml is a bind mount, so `up -d` does not recreate the container when
-# only its content changes: the daemon keeps the config it read at start.
-- name: Restart the runner so a changed config.yml takes effect
-  ansible.builtin.command:
-    cmd: docker restart runny.runner
-  when: forgejo_runner_config is changed
-  changed_when: true
+    # config.yml is a bind mount, so `up -d` does not recreate the container when
+    # only its content changes: the daemon keeps the config it read at start.
+    - name: Restart the runner so a changed config.yml takes effect
+      ansible.builtin.command:
+        cmd: docker restart runny.runner
+      when: forgejo_runner_config is changed
+      changed_when: true
+      tags:
+        - user.docker.runny
+        - molecule-notest
+
+  when: forgejo_runner_docker != 'rootless'
+
+# --- rootless backend -------------------------------------------------------
+- include_tasks: rootless.yml
+  when: forgejo_runner_docker == 'rootless'
   tags:
     - user.docker.runny
-    - molecule-notest

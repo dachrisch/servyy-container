@@ -30,6 +30,9 @@ runner:
 cache:
   enabled: true
   dir: cache
+{% if (forgejo_runner_cache_port | default(0) | int) > 0 %}
+  port: {{ forgejo_runner_cache_port }}
+{% endif %}
 
 container:
   network: ""

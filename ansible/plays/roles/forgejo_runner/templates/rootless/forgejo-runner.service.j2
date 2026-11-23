@@ -1,0 +1,14 @@
+[Unit]
+Description=Forgejo Actions runner ({{ forgejo_runner_name }})
+Requires=docker.service
+After=docker.service
+
+[Service]
+WorkingDirectory=%h/runny/data
+Environment=DOCKER_HOST=unix://%t/docker.sock
+ExecStart={{ forgejo_runner_binary_path }} daemon --config config.yml
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

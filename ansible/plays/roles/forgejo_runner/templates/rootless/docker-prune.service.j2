@@ -1,0 +1,7 @@
+[Unit]
+Description=Daily prune of the rootless Docker daemon
+
+[Service]
+Type=oneshot
+Environment=DOCKER_HOST=unix://%t/docker.sock
+ExecStart=/usr/bin/docker system prune {{ forgejo_runner_prune_flags }}

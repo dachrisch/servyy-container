@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily prune of the rootless Docker daemon
+
+[Timer]
+OnCalendar={{ forgejo_runner_prune_schedule }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

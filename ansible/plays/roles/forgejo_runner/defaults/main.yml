@@ -1,6 +1,7 @@
 ---
 # forgejo_runner — deploys the Forgejo Actions runner from the `runny/` service
-# dir to the runner hosts (codey = dind backend, runny = host-socket backend).
+# dir to the runner hosts (codey = dind backend, runny = host-socket backend,
+# runny-test = rootless backend).
 #
 # The compose is TEMPLATED (not a committed static file) because the Docker
 # backend is chosen per host by `forgejo_runner_docker`:
@@ -8,7 +9,10 @@
 #     on codey (mounting codey's host socket would expose the claude-hub and
 #     opencode credentials to CI jobs);
 #   * `host` — the host socket, used on runny (saves ~100 MB; the box holds no
-#     secrets).
+#     secrets);
+#   * `rootless` — the forgejo-runner binary + a rootless dockerd as systemd
+#     --user services of an unprivileged user, on runner-only hosts (runny's
+#     migration target). No compose, no root-run daemon.
 # The runner image is multi-arch (`data.forgejo.org/forgejo/runner`), so the
 # same file serves both amd64 (runny) and arm64 (codey).
 
@@ -29,7 +33,8 @@ forgejo_runner_labels: []
 # Max concurrent jobs this runner accepts.
 forgejo_runner_capacity: 1
 
-# Docker backend: `host` (host socket) or `dind` (docker-in-docker sidecar).
+# Docker backend: `host` (host socket), `dind` (docker-in-docker sidecar) or
+# `rootless` (binary runner + rootless dockerd as user services).
 forgejo_runner_docker: host
 
 # Install amd64 binfmt emulation (QEMU) so arm64 codey can build amd64 images.
@@ -42,22 +47,47 @@ forgejo_runner_container_options: ""
 # Run node-exporter on this runner host (the only monitoring piece on runny).
 forgejo_runner_node_exporter: false
 
+# --- rootless backend (forgejo_runner_docker: rootless) --------------------
+# The unprivileged user that owns the rootless dockerd and the runner binary.
+forgejo_runner_rootless_user: runner
+# subuid/subgid range handed to that user (next free range on runny).
+forgejo_runner_rootless_subid: "296608:65536"
+# The standalone runner binary (replaces the container image).
+forgejo_runner_binary_arch: "{{ 'arm64' if ansible_facts.architecture == 'aarch64' else 'amd64' }}"
+forgejo_runner_binary_url: >-
+  https://code.forgejo.org/forgejo/runner/releases/download/v{{ forgejo_runner_version }}/forgejo-runner-{{ forgejo_runner_version }}-linux-{{ forgejo_runner_binary_arch }}
+forgejo_runner_binary_path: /usr/local/bin/forgejo-runner
+# Cache listener port, fixed so it can be firewalled and checked. 0 = runner picks.
+forgejo_runner_cache_port: 0
+forgejo_runner_prune_schedule: "*-*-* 02:00"
+forgejo_runner_prune_flags: "-a -f --volumes"
+# The old container-backend service dir, removed once the rootless runner is up.
+forgejo_runner_legacy_service_dir: "/home/{{ create_user }}/runny"
+
 # Where the service dir lives on the host. The runner's config.yml and .runner
-# both live in ./data (bind-mounted to /data, the runner's working dir).
-forgejo_runner_service_dir: "{{ (docker.remote_dir, 'runny') | path_join }}"
+# both live in ./data (bind-mounted to /data, the runner's working dir). The
+# rootless backend keeps them under the rootless user's home instead of the
+# deploy checkout.
+forgejo_runner_service_dir: >-
+  {{ ('/home/' ~ forgejo_runner_rootless_user ~ '/runny') if forgejo_runner_docker == 'rootless'
+     else (docker.remote_dir, 'runny') | path_join }}
 forgejo_runner_data_dir: "{{ (forgejo_runner_service_dir, 'data') | path_join }}"
 
-# The Docker host the runner daemon talks to (per backend).
+# The Docker host the runner daemon talks to (per backend). For rootless this is
+# the rootless socket under the user's runtime dir; the uid is a fact set in
+# tasks/rootless.yml (getent) and referenced lazily here.
 forgejo_runner_docker_host: >-
   {{ 'unix:///var/run/dind/docker.sock' if forgejo_runner_docker == 'dind'
-     else 'unix:///var/run/docker.sock' }}
+     else ('unix:///run/user/' ~ (forgejo_runner_rootless_uid | string) ~ '/docker.sock' if forgejo_runner_docker == 'rootless'
+     else 'unix:///var/run/docker.sock') }}
 
 # What JOB containers get as /var/run/docker.sock (config.yml container.docker_host).
 # Separate from forgejo_runner_docker_host, which the RUNNER itself needs.
 # "-" = never mount. Empty is NOT auto-detect on runner 13.2.1: it also mounts nothing.
 # host: "-" because the host socket is root on the host (history/2026-11-22_runny-docker-socket-fix.md).
+# rootless: jobs get the rootless socket on purpose — it is the runner user's rights, not root.
 forgejo_runner_job_docker_host: >-
-  {{ forgejo_runner_docker_host if forgejo_runner_docker == 'dind' else '-' }}
+  {{ '-' if forgejo_runner_docker == 'host' else forgejo_runner_docker_host }}
 
 # Extra host:ip mappings for the runner AND its job containers (as --add-host).
 # Only servyy-test needs it: ci.servyy-test.lxd has no DNS there, so it maps to
