@@ -52,7 +52,7 @@
     - system.maintenance
 
 - import_tasks: firewall.yml
-  when: with_docker | default(false)
+  when: (with_docker | default(false)) or (forgejo_runner_node_exporter | default(false))
   tags:
     - system.firewall
 

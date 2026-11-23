@@ -14,7 +14,7 @@
     group: root
   become: true
   notify: restart docker edge filter
-  when: edge_filter_enabled | default(true)
+  when: edge_filter_enabled | default(true) and with_docker | default(false)
   tags:
     - system.firewall
     - system.firewall.edge
@@ -28,7 +28,7 @@
     group: root
   become: true
   notify: reload systemd
-  when: edge_filter_enabled | default(true)
+  when: edge_filter_enabled | default(true) and with_docker | default(false)
   tags:
     - system.firewall
     - system.firewall.edge
@@ -41,6 +41,7 @@
   become: true
   when:
     - edge_filter_enabled | default(true)
+    - with_docker | default(false)
     - ansible_facts['virtualization_type'] | default('') != 'docker'
   tags:
     - system.firewall

@@ -118,8 +118,10 @@ test-runner:
         # every key and sshd drops the connection (same as runny on Oracle).
         ansible_ssh_common_args: '-o IdentitiesOnly=yes'
         domain: servyy-test.lxd
-        with_docker: true
-        with_containers: true
+        with_docker: false
+        with_containers: false
+        docker_cleanup:
+          enabled: false
         has_extension_drive: false
         create_swap: true
         swap_space_override: 4G
