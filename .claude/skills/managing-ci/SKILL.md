@@ -93,7 +93,8 @@ User-wide: the same paths under `/user/actions/…`.
 **Runs and runners**
 ```bash
 $FJ GET '/repos/cda/<repo>/actions/tasks?limit=20'      # recent jobs: status, workflow, head_sha
-$FJ GET /admin/actions/runners                                   # codey / runny: status idle|active|offline
+$FJ GET /admin/actions/runners                           # GLOBAL runners only (codey): status idle|active|offline
+$FJ GET /user/actions/runners                            # owner-scoped runners (runny, scope cda)
 $FJ POST /repos/cda/<repo>/actions/workflows/<file.yml>/dispatches '{"ref":"master"}'
 ```
 Runner and runs background (labels, which runner builds what): `ci/AGENTS.md`

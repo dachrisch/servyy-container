@@ -1,7 +1,7 @@
 # ci.lehel.xyz: Ansible-managed API token, managing-ci skill, no password basic auth
 
 **Date:** 2026-11-23
-**Status:** 🚧 Phase A (token + skill) verified on servyy-test; prod pending approval. Phase B (basic auth off) not started.
+**Status:** ✅ Phase A live on `servy.lehel.xyz`. 🚧 Phase B (basic auth off) not started.
 **Relates to:** `2026-11-23_ci-ssh.md`
 
 ## Problem
@@ -67,6 +67,27 @@ stops working.
 
 Stale test tokens: the orphan from the first run, plus the token replaced in
 step 4.
+
+## Verification: production (Phase A)
+
+- **Deploy:** `./servyy.sh --limit servy.lehel.xyz --tags user.docker.repo,user.docker.ci`,
+  `failed=0`.
+- **Race during the first run:** a concurrent run of the same play (started
+  separately, then stopped by the user) minted `ansible-manage-20261123222336`
+  at 22:23:37 UTC and wrote the local copy first. This run then read that copy
+  (HTTP 200), so it did **not** mint again, and it created the Vaultwarden
+  item.
+- **After the race:**
+  - prod has exactly one `ansible-manage-*` token (plus `runner-probe`), from
+    a read-only DB query;
+  - Vaultwarden has a single `ci.lehel.xyz` item, and its hash matches the
+    local copy.
+- **Rerun** `--tags user.docker.ci.token`: local, HTTP 200, no mint, VW
+  unchanged, file unchanged.
+- **`fj` on prod:** `GET /user` = cda, and repo create/delete works.
+  - `/admin/actions/runners` lists only the **global** runner (codey).
+  - The `cda`-scoped runny appears under `/user/actions/runners`. The skill
+    lists both.
 
 ## Phase B: disable password basic auth
 
