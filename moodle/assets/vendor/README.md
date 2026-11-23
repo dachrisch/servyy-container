@@ -32,7 +32,7 @@ external images (`grep 'url('` is empty), so the three files are complete.
 ## Updating one
 
 1. Download the new file, run `sha256sum`, update the row above.
-2. Bump `moodle_signup_picker_version` in
+2. Bump `moodle_site_js_version` in
    [`ansible/plays/vars/default.yml`](../../../ansible/plays/vars/default.yml) —
    the image's nginx sends `expires 5d` for `*.js`/`*.css` and the file names are
    stable, so without the bump returning visitors keep the old bytes for days.

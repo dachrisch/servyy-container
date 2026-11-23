@@ -11,7 +11,7 @@
  * — reconciled from git by ansible/plays/roles/user/tasks/moodle_signup_picker.yml.
  * The file is bind-mounted read-only at /var/www/html/moodle-custom (docker-compose.yml)
  * and served by the image's nginx, which caches *.js for 5 days, hence the ?v=N
- * and the rule: bump MOODLE_SIGNUP_PICKER_VERSION in plays/vars/default.yml
+ * and the rule: bump moodle_site_js_version in plays/vars/default.yml
  * whenever this file changes, or returning visitors keep the old one.
  *
  * WHY A LOADER AND NOT THREE <script> TAGS

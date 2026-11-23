@@ -5,8 +5,11 @@
 # that setting: jQuery 3.6 + select2 4.0.13 from two CDNs plus ~90 lines of
 # picker code, loaded on EVERY page of the site and editable only through the
 # Moodle UI. It now ships from this repo (moodle/assets/, bind-mounted read-only
-# at /var/www/html/moodle-custom) and the setting is reduced to the one tag that
-# loads it — so a change to the picker is a reviewed commit with a rollback.
+# at /var/www/html/moodle-custom) and the setting is reduced to the tags that
+# load it — so a change to that code is a reviewed commit with a rollback.
+#
+# It also asserts that `moodle_password_policy` (which signup-validate.js mirrors
+# into the browser) still equals what Moodle enforces.
 #
 # Written through Moodle's own CLI (`admin/cli/cfg.php --set`) rather than SQL:
 # that purges the config cache, which a raw UPDATE to mdl_config does not.
@@ -23,6 +26,7 @@
     path: "{{ docker.remote_dir }}/moodle/assets/{{ item }}"
   loop:
     - signup-team-picker.js
+    - signup-validate.js
     - vendor/jquery-3.6.0.min.js
     - vendor/select2-4.0.13.min.js
     - vendor/select2-4.0.13.min.css
@@ -37,7 +41,7 @@
     fail_msg: >-
       moodle/assets/{{ item.item }} is missing from {{ docker.remote_dir }}.
       `additionalhtmlfooter` points at /moodle-custom/... and the registration
-      form depends on it — see moodle/assets/vendor/README.md.
+      form depends on it — see moodle/AGENTS.md.
     quiet: true
   loop: "{{ moodle_picker_asset.results }}"
   loop_control:
@@ -126,5 +130,56 @@
       expects '{{ moodle_signup_picker_footer }}'
       (moodle_signup_picker_version={{ moodle_signup_picker_version }}).
     quiet: true
+  tags:
+    - molecule-notest
+
+# The pre-check in signup-validate.js mirrors Moodle's password policy, but it
+# does NOT decide what the policy is: the values come from
+# `moodle_password_policy` in plays/vars/default.yml and reach the browser as
+# data-* attributes on the script tag. This compares them with what Moodle
+# actually enforces, so a policy changed in the UI without touching the repo (or
+# the other way round) fails the deploy instead of silently blocking — or
+# silently not blocking — a valid password.
+- name: Read the password policy Moodle actually enforces
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - moodle.moodle
+      - php
+      - /var/www/html/admin/cli/cfg.php
+      - --name={{ item }}
+      - --no-eol
+  loop:
+    - minpasswordlength
+    - minpassworddigits
+    - minpasswordlower
+    - minpasswordupper
+    - minpasswordnonalphanum
+  register: moodle_pw_policy_live
+  changed_when: false
+  failed_when: moodle_pw_policy_live.rc not in [0, 3]
+  tags:
+    - molecule-notest
+
+- name: Assert the repo's password policy matches Moodle's
+  ansible.builtin.assert:
+    that:
+      - item.0 == item.1
+    fail_msg: >-
+      {{ item.2 }} is {{ item.0 }} in Moodle but
+      {{ item.1 }} in moodle_password_policy (plays/vars/default.yml).
+      The browser pre-check would then disagree with the server: either change
+      the policy in the Moodle UI (Site administration → Security → Site
+      policies) or update the variable, then redeploy.
+    quiet: true
+  loop: >-
+    {{ [ [moodle_pw_policy_live.results[0].stdout | default('', true) | trim, moodle_password_policy.length | string, 'minpasswordlength'],
+         [moodle_pw_policy_live.results[1].stdout | default('', true) | trim, moodle_password_policy.digits | string, 'minpassworddigits'],
+         [moodle_pw_policy_live.results[2].stdout | default('', true) | trim, moodle_password_policy.lower | string, 'minpasswordlower'],
+         [moodle_pw_policy_live.results[3].stdout | default('', true) | trim, moodle_password_policy.upper | string, 'minpasswordupper'],
+         [moodle_pw_policy_live.results[4].stdout | default('', true) | trim, moodle_password_policy.special | string, 'minpasswordnonalphanum'] ] }}
+  loop_control:
+    label: "{{ item.2 }}"
   tags:
     - molecule-notest

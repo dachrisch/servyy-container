@@ -133,12 +133,13 @@ silently swapped archive would otherwise make the **container fail to start**.
   `deferredfeedback`, `immediatefeedback` or `immediatecbm`), so deliberately not installed.
   Moodle shows one "missing from disk" notice; installing it later is the same procedure.
 
-## Site JS: the signup/profile team picker
+## Site JS: the team picker and the signup pre-check
 
 `moodle/assets/` is bind-mounted read-only at `/var/www/html/moodle-custom` and served by the
-image's own nginx; `additionalhtmlfooter` is nothing but one `<script>` tag pointing at
-[`assets/signup-team-picker.js`](assets/signup-team-picker.js) (`?v=` cache buster, see
-below). jQuery 3.6.0 and select2 4.0.13 are vendored in
+image's own nginx; `additionalhtmlfooter` is nothing but two `<script>` tags, one for
+[`assets/signup-team-picker.js`](assets/signup-team-picker.js) and one for
+[`assets/signup-validate.js`](assets/signup-validate.js) (`?v=` cache buster, see below).
+jQuery 3.6.0 and select2 4.0.13 are vendored in
 [`assets/vendor/`](assets/vendor/README.md) — no CDN, because the registration form must not
 depend on one.
 
@@ -148,9 +149,24 @@ depend on one.
   deploy that carries `user.docker.moodle` — same rule as the mail settings above. Until
   2026-11-23 this setting held the entire widget inline (~175 kB of jQuery + select2 + picker
   code, loaded on *every* page, editable only in the UI); that is what moved.
-- **`moodle_signup_picker_version` is a cache buster, not a version.** nginx sends
-  `expires 5d` for `*.js`/`*.css` and the file names are stable, so every edit to the picker
+- **`moodle_site_js_version` is a cache buster, not a version.** nginx sends
+  `expires 5d` for `*.js`/`*.css` and the file names are stable, so every edit to either file
   must bump it in the same commit or returning visitors keep the old bytes.
+- **`signup-validate.js` mirrors the server, it does not invent rules.** The form is plain
+  HTML with `aria-required` (an accessibility hint, *not* a constraint), and the password
+  policy lives only in PHP, so the browser used to have nothing to enforce — 5 of 31
+  participants got through on the first submit on 2026-11-22. The file checks only what
+  `signup_validate_data()` checks (`username` lowercase/charset, e-mail format and repetition,
+  the five password rules) and leaves the club alone. It **fails open**: a missing field, a
+  non-signup page, the cancel button or any exception leaves the form untouched.
+- **The password policy is a deploy-time contract.** Its values are *not* hard-coded in the
+  JS: `moodle_password_policy` in `plays/vars/default.yml` is rendered into `data-pw-*`
+  attributes, and `moodle_signup_picker.yml` asserts them against
+  `minpasswordlength/digits/lower/upper/nonalphanum` in `mdl_config`. Change the policy in the
+  Moodle UI **and** the variable, or the deploy fails — that is deliberate: the browser must
+  never block a password the server would accept.
+- **No live "is this username taken" check.** That needs a server round trip and a public
+  endpoint Moodle does not expose; the server's message stays the answer.
 - **It is a loader, not a widget.** jQuery/select2 are fetched only on pages that carry
   `#id_profile_field_teamname` (signup, profile edit). If any asset fails, nothing is hidden
   and Moodle's plain text field stays usable — never hide a field the script cannot drive.
