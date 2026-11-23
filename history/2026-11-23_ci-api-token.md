@@ -1,7 +1,7 @@
 # ci.lehel.xyz: Ansible-managed API token, managing-ci skill, no password basic auth
 
 **Date:** 2026-11-23
-**Status:** ✅ Phase A live on `servy.lehel.xyz`. 🚧 Phase B (basic auth off) not started.
+**Status:** ✅ Phase A and Phase B live on `servy.lehel.xyz` (2026-11-23)
 **Relates to:** `2026-11-23_ci-ssh.md`
 
 ## Problem
@@ -110,3 +110,28 @@ servyy-test while the password still worked (204 each). The pre-existing
 | registry `/v2/token`, password | **401** |
 | `git clone http://cda:<token>@…` | OK |
 | runner after the restart | `test` idle |
+
+### Verification: production
+
+The deploy (`--tags user.docker.repo,user.docker.ci`) finished `failed=0`.
+`ci.forgejo` was healthy, `app.ini` shows `ENABLE_BASIC_AUTHENTICATION = false`,
+servy stayed on master, and the token play reported local, HTTP 200, VW
+unchanged.
+
+| Check | Result |
+|---|---|
+| password basic auth, `/api/v1/user` | **401** |
+| `Authorization: token` | 200 |
+| token as basic-auth password | 200 |
+| registry `/v2/token`: token / password | 200 / **401** |
+| web login page | 200 |
+| runners | codey idle (global), runny idle (`cda`-scoped) |
+| `ssh git@ci.lehel.xyz` | "Hi there, cda" |
+
+## Known limits
+
+- The API can no longer list or delete tokens (both need basic auth). Revoke
+  stale `ansible-manage-*` tokens in the UI.
+- The admin password now only works in the web login form. The
+  Vaultwarden copy (`forgejo - admin (ci.lehel.xyz)`) stays for that.
+
