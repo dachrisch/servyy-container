@@ -47,6 +47,11 @@ The reverse proxy for every host (servy + codey). Deployed by
   or relax the shared value instead. CSP and Permissions-Policy are deliberately **not**
   global for exactly this reason. Rationale and the pre-change header survey:
   `history/2026-10-29_traefik-security-headers.md`.
+  **The XFO value is `SAMEORIGIN`, never `DENY`** (since 2026-11-23): `DENY` also blocks
+  *same-origin* framing, and Moodle embeds its PDF resources as
+  `<iframe src="pluginfile.php/…">` — every one of them answered with Chrome's
+  `ERR_BLOCKED_BY_RESPONSE` page until the value changed. Measured and explained in
+  `history/2026-11-23_traefik-xfo-sameorigin-moodle-pdf.md`.
 * **Every request is bounded by the edge guard, and there is no opt-out.**
   `edge-guard@file` sits between `security-headers@file` and `error-pages@file` on both
   `web` and `websecure` (`traefik.yaml`), so every router inherits it without labels. It is
