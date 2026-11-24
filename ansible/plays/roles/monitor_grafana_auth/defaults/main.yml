@@ -31,7 +31,7 @@
 # SIDE EFFECT when it repairs: any open admin browser session is logged out
 # (Grafana rotates auth tokens on a password change). The rendered value is the
 # documented credential and the Vaultwarden copy of it (`grafana - admin
-# (lehel.xyz)`) stays correct; the recovery rule is in CLAUDE.md.
+# (lehel.xyz)`) stays correct; the recovery rule is in AGENTS.md.
 
 monitor_grafana_auth_container: monitor.grafana
 # The endpoint that needs an authenticated admin. `/api/v1/provisioning/

@@ -41,7 +41,7 @@ taken off Traefik in 2026-09 because it had no auth; it is back only behind
 - The credentials are literal values in `plays/vars/secrets.yml`
   (`monitor_remote_auth`) — **not** `lookup('password', 'vars/.…')` seeds, which
   exist only on one controller and would silently rotate on a fresh checkout
-  (CLAUDE.md rule 6). `roles/monitor_remote_auth` hashes them into
+  (AGENTS.md rule 6). `roles/monitor_remote_auth` hashes them into
   `traefik/monitor-{loki,prometheus}-auth.htpasswd`; the plaintext is rendered
   into `monitor/rendered/` (`loki-password`, `datasources.yml`) and into the
   fail2ban helper (installed `0700 root`).
@@ -72,7 +72,7 @@ taken off Traefik in 2026-09 because it had no auth; it is back only behind
    - Grafana **polls dashboards and datasources, but not `provisioning/alerting/`**. After editing
      `alert-rules.yml` it keeps evaluating the previous rule set until it restarts. Measured on
      2026-11-18: a deploy left it running 47 of 49 rules.
-   - The deploy now handles both: [`plays/tasks/monitor_reload.yml`](../ansible/plays/tasks/monitor_reload.yml)
+   - The deploy now handles both: [`roles/monitor_reload/tasks/main.yml`](../ansible/plays/roles/monitor_reload/tasks/main.yml)
      fingerprints `prometheus.yml` + `rules/*.yml` + `rendered/loki-target.json` +
      `rendered/loki-password` and `provisioning/alerting/*.yml` +
      `rendered/contact-points.yml` + `rendered/datasources.yml`, compares each with the
@@ -291,3 +291,103 @@ root-owned DB. Before that, the honest alternative is to leave the rule in the f
   public tenant literal.
 - The alert rules and dashboards are provisioned **from this directory**; edits made in the Grafana
   UI are overwritten on the next restart and must be brought back here.
+
+## Querying logs and checking bans
+
+### Verifying Container Labels for Loki Queries
+
+**Critical:** Promtail uses `{directory}.{service}` pattern for container names, NOT compose service names.
+
+```bash
+# Check actual container name/labels
+ssh lehel.xyz "docker ps --format '{{.Names}}: {{.Label \"com.docker.compose.service\"}}'"
+
+# Example output:
+# traefik.traefik: reverse-proxy
+# monitor.grafana: grafana
+
+# For Loki queries, use the container name (first part):
+{job="docker",container="traefik.traefik"}  # ✅ Correct
+{job="docker",container="reverse-proxy"}    # ❌ Wrong
+{job="docker",container="traefik"}          # ❌ Wrong
+```
+
+### Testing Loki Queries
+
+Loki is on codey and its only door is the authenticated route (basicAuth user
+`promtail`; password = `monitor_remote_auth.loki_password` in
+`ansible/plays/vars/secrets.yml`, also in Vaultwarden). **Use `query_range` (NOT
+`query`) for log queries.** The tenant is `servyy-logs-k8x9m2p4q7`.
+
+```bash
+LOKI_URL="https://loki.lehel.xyz"
+LOKI_AUTH="promtail:<password from secrets.yml>"
+TENANT_ID="servyy-logs-k8x9m2p4q7"
+END=$(date +%s)000000000
+START=$((END - 3600000000000))  # Last 1 hour
+
+curl -s -u "$LOKI_AUTH" -H "X-Scope-OrgID: $TENANT_ID" \
+  "$LOKI_URL/loki/api/v1/query_range" \
+  --data-urlencode 'query={job="docker",container="traefik.traefik"} | json | DownstreamStatus >= 400' \
+  --data-urlencode "start=$START" \
+  --data-urlencode "end=$END" | jq
+```
+
+### Loki Query Issues
+
+Loki runs on codey behind basicAuth + ipAllowList (`loki.lehel.xyz`). User: `promtail`,
+password: `monitor_remote_auth.loki_password` (`secrets.yml`). Lists, labels and a smoke
+test:
+
+```bash
+# List available labels
+curl -s -u "$LOKI_AUTH" -H "X-Scope-OrgID: $TENANT_ID" \
+  "$LOKI_URL/loki/api/v1/label/__name__/values"
+
+# Check container labels
+ssh lehel.xyz "docker ps --format '{{.Names}}'"
+
+# Test query (use query_range for log streams)
+curl -s -u "$LOKI_AUTH" -H "X-Scope-OrgID: $TENANT_ID" \
+  "$LOKI_URL/loki/api/v1/query_range" \
+  --data-urlencode 'query={job="docker"}' \
+  --data-urlencode "start=$(($(date +%s)-3600))000000000" \
+  --data-urlencode "end=$(date +%s)000000000"
+```
+
+### fail2ban Issues
+
+```bash
+# Check active jails
+ssh lehel.xyz "sudo fail2ban-client status"
+
+# View loki-blocklist jail
+ssh lehel.xyz "sudo fail2ban-client status loki-blocklist"
+
+# Test Loki blocklist script
+ssh lehel.xyz "sudo bash /usr/local/bin/blocklist/update-from-loki.sh"
+
+# Check fail2ban logs
+ssh lehel.xyz "sudo journalctl -u fail2ban -n 50 --no-pager"
+
+# Web-tier bans must land in DOCKER-USER (container traffic never traverses INPUT).
+# Rules in INPUT with counters stuck at 0 mean the jail is banning nothing.
+ssh lehel.xyz "sudo iptables -S DOCKER-USER | grep f2b-loki-blocklist"
+ssh lehel.xyz "sudo iptables -S f2b-loki-blocklist | head -3"
+
+# The SSH jails read journald (`backend = systemd`), so fail2ban reporting
+# "No file is currently monitored" for logpath is expected, not a fault.
+# Check what the jail is actually matching: it must cover the whole ssh.service unit,
+# not `_COMM=sshd`, because OpenSSH >= 10 logs from `sshd-session`.
+ssh lehel.xyz "sudo journalctl _SYSTEMD_UNIT=ssh.service -n 200 --no-pager | grep -cE 'sshd-session|sshd\['"
+ssh lehel.xyz "sudo fail2ban-client status sshd-invalid-user"
+
+# The SSH jails ban both families; a v6 attacker with no rule in the v6 chain is not
+# banned at all (iptables writes v4 rules only).
+ssh lehel.xyz "sudo ip6tables -S f2b-sshd | head -3"
+
+# v6 clients are only visible if the proxy network carries IPv6. Without it, [::]:443 is
+# served by docker-proxy and Traefik logs every v6 client as 172.18.0.1 - so no v6 ban
+# can ever match. Check with a marked request, not by assumption.
+ssh lehel.xyz "docker network inspect proxy --format '{{.EnableIPv6}} {{range .IPAM.Config}}{{.Subnet}} {{end}}'"
+```

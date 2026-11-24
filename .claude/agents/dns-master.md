@@ -311,5 +311,5 @@ A DNS change is successful when:
 - **This is production infrastructure** - DNS changes affect all users and services
 - **DNS is slow to propagate** - Changes may take 5-300 seconds to propagate globally
 - **Porkbun API is rate-limited** - Don't hammer the API; wait between requests
-- **Keep infrastructure docs current** - Update CLAUDE.md when DNS structure changes
+- **Keep infrastructure docs current** - Update AGENTS.md when DNS structure changes
 - **Monitor impact after changes** - Check service availability and Traefik logs

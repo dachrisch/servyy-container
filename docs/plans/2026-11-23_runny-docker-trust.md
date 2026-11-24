@@ -217,7 +217,7 @@ Docker jobs on runny fail until Task 5. The only consumer today is the probe rep
 `| RequestPath !~ "/api/actions/runner.v1.*"` after `| json` (the gRPC paths are `/api/actions/runner.v1.RunnerService/FetchTask` etc. There is **no** slash after `v1`; a `runner.v1/` pattern matches nothing, as the worker found in Task 1) (see memory `loki_logql_query_quirks`).
 
 **Steps**
-1. Run old vs new query against Loki for the last hour (CLAUDE.md "Testing Loki Queries"):
+1. Run old vs new query against Loki for the last hour (monitor/AGENTS.md "Querying logs and checking bans"):
    `92.5.160.254` drops out, other IPs unchanged.
 2. Commit `fix(fail2ban): don't count Forgejo runner polling as crawling`.
 3. `./servyy-test.sh --tags system.fail2ban`; `ssh servyy-test.lxd 'sudo bash /usr/local/bin/blocklist/update-from-loki.sh'` exits 0.
@@ -496,8 +496,9 @@ and uses no compose file.
    (no scope today). Prove a repo outside the scope isn't picked up. Re-test after the v17 deploy.
 5. `history/2026-11-23_runner-rootless.md`: problem (F5), decision (§4), files, deploy output, §0
    table with real outputs, benchmark column, rollback. Update `runny/AGENTS.md` (backends: `dind`
-   for codey, `host` legacy, `rootless` for runny; how to operate the user units), the CLAUDE.md
-   per-server table (runny: rootless, no containers) and its cleanup section (daily, not weekly).
+   for codey, `host` legacy, `rootless` for runny; how to operate the user units), the root
+   AGENTS.md per-server table (runny: rootless, no containers) and scripts/AGENTS.md cleanup
+   section (daily, not weekly).
 6. `architecture/landscape.yaml`: runny vCPU 1 → 2; `architecture/render.py --verify`.
 7. Delete the probe repo once numbers are recorded (`DELETE /api/v1/repos/cda/energy.consumption`,
    basic auth `cda`) and its servyy-test copy.

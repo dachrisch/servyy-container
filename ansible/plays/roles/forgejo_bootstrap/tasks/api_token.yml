@@ -4,7 +4,7 @@
 # as a controller-local copy (forgejo_api_token_local_file, 0600).
 #
 # Resolve order - a token is minted ONLY when it is proven that no working one
-# exists (the controller-local-seed drift trap, CLAUDE.md rule 6):
+# exists (the controller-local-seed drift trap, AGENTS.md rule 6):
 #   1. candidate = local copy, else the Vaultwarden item
 #      (no local copy and no vw.key -> FAIL, never mint);
 #   2. validate the candidate against the live API from inside the container:

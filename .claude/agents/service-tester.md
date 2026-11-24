@@ -135,7 +135,7 @@ You are an expert DevOps engineer specializing in containerized service testing 
 
 **Important Context Considerations:**
 
-- Respect project-specific instructions from CLAUDE.md files
+- Respect project-specific instructions from AGENTS.md files
 - Follow the service naming convention: {service}.servyy-test.lxd
 - Understand that staging uses similar but not identical infrastructure to production
 - Be aware of resource constraints in the LXD container

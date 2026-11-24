@@ -129,7 +129,7 @@ Everything runs from `ansible/plays/leaguesphere.yml`, imported by `ansible/serv
 
 > **Deployment policy (this repo): test-first, no manual prod edits.** Validate on
 > `servyy-test.lxd` first, never `scp`/`ssh`-edit prod files, and **ask for explicit approval
-> before any production deploy.** See the repo `CLAUDE.md` › "CRITICAL DEPLOYMENT RULES."
+> before any production deploy.** See the repo `AGENTS.md` › "CRITICAL DEPLOYMENT RULES."
 
 ### 1. Prod — `leaguesphere.app`
 
@@ -511,7 +511,7 @@ ssh lehel.xyz "docker logs leaguesphere.app --tail 100 -f"            # prod bac
 ssh lehel.xyz "docker logs leaguesphere_stage.staging-app --tail 100" # stage backend
 ```
 
-See the repo `CLAUDE.md` › "Testing Loki Queries" for the raw `curl`/`X-Scope-OrgID` recipe.
+See `monitor/AGENTS.md` › "Querying logs and checking bans" for the raw `curl`/`X-Scope-OrgID` recipe.
 
 ---
 

@@ -225,7 +225,7 @@ accessible`. That is harmless: Forgejo logs to the console here.
   `ansible/plays/roles/docker_service/templates/ci/forgejo.env.j2`
   (`FORGEJO__<section>__<KEY>`). Secrets come from `plays/vars/secrets.yml`. Nothing
   secret goes in the compose file (compose files are plaintext, see the
-  git-crypt rule in CLAUDE.md).
+  git-crypt rule in AGENTS.md).
 - Forgejo writes its own `./data/custom/conf/app.ini`. Do not mount over
   `/var/lib/gitea/custom` as a whole: only `custom/templates` and
   `custom/public` are mounted (read-only).
@@ -242,7 +242,7 @@ Runners register offline with a shared secret, no UI step:
   `forgejo-runner create-runner-file --instance https://ci.lehel.xyz --name <runner> --secret <forgejo_runner_secrets[<runner>]>`
 
 Both reference `forgejo_runner_secrets[<runner>]` from `plays/vars/secrets.yml`, never a
-`lookup('password', …)` seed (CLAUDE.md rule 6).
+`lookup('password', …)` seed (AGENTS.md rule 6).
 
 servy's fail2ban crawler and rate-limit queries ignore
 `/api/actions/runner.v1.*`. The runners poll every 2 s and used to get banned

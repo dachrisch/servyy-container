@@ -147,7 +147,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://traefik.lehel.xyz   # or https:
 
 ## See also
 
-- `CLAUDE.md` → "Deployment Verification Checklist" for the fuller
+- `AGENTS.md` → "Deployment Verification Checklist" for the fuller
   post-deployment check (includes Traefik/journal log greps this skill
   doesn't run by default).
 - `@agent-service-master` for turning a finding here into an actual fix.
