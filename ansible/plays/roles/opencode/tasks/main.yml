@@ -284,6 +284,16 @@
   notify: restart opencode container
   tags: [user.docker.opencode]
 
+- name: Deploy OpenCode apk bootstrap script
+  # Called by startup.sh; owns the apk-DB repair that stops a half-upgraded
+  # package set from crash-looping the container (2026-11-24 codey incident).
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../opencode/scripts/apk-bootstrap.sh"
+    dest: "{{ ('/home/', create_user, 'servyy-container/opencode/scripts/apk-bootstrap.sh') | path_join }}"
+    mode: '0755'
+  notify: restart opencode container
+  tags: [user.docker.opencode]
+
 - name: Deploy OpenCode session pruner
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../../opencode/scripts/prune-sessions.py"

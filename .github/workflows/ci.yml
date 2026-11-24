@@ -34,6 +34,7 @@ jobs:
       ansible: ${{ steps.changed.outputs.ansible }}
       python: ${{ steps.changed.outputs.python }}
       compose: ${{ steps.changed.outputs.compose }}
+      opencode: ${{ steps.changed.outputs.opencode }}
       ci: ${{ steps.changed.outputs.ci }}
       yamllint: ${{ steps.changed.outputs.yamllint }}
       ansible_files: ${{ steps.files.outputs.ansible_files }}
@@ -63,6 +64,9 @@ jobs:
               - '**/*.py'
             compose:
               - '**/docker-compose*.yml'
+            opencode:
+              - 'opencode/**'
+              - '!**/*.md'
             ci:
               - '.github/**'
               - '!**/*.md'
@@ -200,6 +204,19 @@ jobs:
           cd ansible
           # Disable pylint warnings for existing code patterns
           pylint library/json_patch.py --disable=C0103,R0912,R0915,C0209,W0613,R1705,W0707,R1720,R1710,W0612,R0911,C0116,R1735 --fail-under=6.0
+
+  test-opencode-scripts:
+    name: OpenCode boot script contracts
+    needs: [changes]
+    # Only the container's boot scripts can break this; docs edits cannot.
+    if: >-
+      needs.changes.outputs.opencode == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: apk bootstrap contract tests
+        run: sh opencode/tests/test_apk_bootstrap.sh
 
   syntax-check:
     name: Ansible Syntax Check
@@ -607,6 +624,7 @@ jobs:
       - syntax-check
       - git-crypt-validation
       - test-custom-modules
+      - test-opencode-scripts
       - molecule-plan
       - molecule-test
     runs-on: ubuntu-26.04

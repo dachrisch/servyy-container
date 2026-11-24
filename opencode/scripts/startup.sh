@@ -4,27 +4,16 @@ set -e
 echo "🔧 [Startup] Initializing development environment..."
 
 # 1. System Packages
-echo "📦 [Startup] Installing system packages..."
-# apt-get update
-# apt-get install -y git curl python3 python3-pip
-apk update
-# openssh-client-default, NOT the `openssh` meta installed here since d0d95b7:
-# the meta pulls openssh-server, i.e. the sshd that showed up in this container
-# without anyone starting it. The base image ships no OpenSSH at all (its
-# /etc/apk/world is alpine-baselayout, alpine-keys, apk-tools, busybox, ...), so
-# this line alone is what put sshd on the filesystem. The client stays: `ssh`
-# for git/github, `ssh-keyscan` for known_hosts, `ssh-keygen` for commit signing.
-# bash: the base image is Alpine/BusyBox, which ships only /bin/sh -> busybox.
-# Without it, `#!/bin/bash` scripts (agent skills such as check-server-status)
-# die with `env: can't execute 'bash': No such file or directory` (exit 127) and
-# the agent's `shell` tool can only offer sh/ash -- see
-# history/2026-11-13_opencode-container-bash.md.
-apk add git curl github-cli nodejs npm python3 py3-pip openssh-client-default git-crypt gettext bash
+# Delegated to a separate, contract-tested helper: it repairs a half-upgraded
+# apk DB first (the 2026-11-24 codey crash loop) and never aborts the boot on an
+# apk failure. See opencode/tests/test_apk_bootstrap.sh.
+sh /scripts/apk-bootstrap.sh || echo "⚠️ [Startup] apk bootstrap skipped (continuing)"
 
 # 1a. Purge any sshd this container already carries.
-# Containers created before the line above was fixed (2026-11-05) installed the
-# full openssh meta, i.e. openssh-server, on every boot. It never bound :22, but
-# it is Alpine/musl without PAM — precisely the recipe behind the Nov 2026
+# Containers created before apk-bootstrap.sh switched to openssh-client-default
+# (2026-11-05) installed the full openssh meta, i.e. openssh-server, on every
+# boot. It never bound :22, but it is Alpine/musl without PAM — precisely the
+# recipe behind the Nov 2026
 # "sshole" bug: on musl, crypt() returns "*" when it cannot hash (passwords
 # > 256 bytes), so an account locked with a bare `*` in shadow accepts any
 # password of 257-1024 bytes. Fixed upstream in openssh 10.6p2; Alpine's master
@@ -128,9 +117,18 @@ if [ -f "/scripts/opencode.json.template" ]; then
     # Set default if not provided
     export CIRCLECI_BASE_URL="${CIRCLECI_BASE_URL:-https://circleci.com}"
 
-    # We only substitute specific variables to avoid breaking $schema
+    # We only substitute specific variables to avoid breaking $schema.
+    # Write to a temp file first: if gettext/envsubst is unavailable after a
+    # failed apk bootstrap, keep the last good config instead of truncating it,
+    # and never let it abort the boot (set -e) into a restart loop.
     echo "⚙️ [Startup] Generating opencode.json from template..."
-    envsubst '$CIRCLECI_TOKEN $CIRCLECI_BASE_URL $DASHSCOPE_API_KEY $OPENCODE_GO_API_KEY' < /scripts/opencode.json.template > "$CONFIG_DIR/opencode.json"
+    if envsubst '$CIRCLECI_TOKEN $CIRCLECI_BASE_URL $DASHSCOPE_API_KEY $OPENCODE_GO_API_KEY' \
+        < /scripts/opencode.json.template > "$CONFIG_DIR/opencode.json.tmp"; then
+        mv "$CONFIG_DIR/opencode.json.tmp" "$CONFIG_DIR/opencode.json"
+    else
+        rm -f "$CONFIG_DIR/opencode.json.tmp"
+        echo "⚠️ [Startup] envsubst failed; keeping existing opencode.json"
+    fi
 fi
 
 # Global AGENTS.md: the zero-dependency, V2-native cross-session memory channel.
@@ -146,11 +144,17 @@ fi
 rm -f "$CONFIG_DIR/opencode-mem.jsonc"
 rm -f "$CONFIG_DIR/tui.json"
 
-# 4b. Configure git to prefer SSH over HTTPS for github.com
-git config --global --add safe.directory '*'
-git config --global user.name  "${GIT_AUTHOR_NAME:-opencode}"
-git config --global user.email "${GIT_AUTHOR_EMAIL:-opencode@servy.lehel.xyz}"
-git config --global url."git@github.com:".insteadOf "https://github.com/"
+# 4b. Configure git to prefer SSH over HTTPS for github.com. Guard the whole
+# block: if apk never installed git, these would fail under set -e and turn a
+# package hiccup into a restart loop. The image's `opencode serve` still runs.
+if command -v git >/dev/null 2>&1; then
+    git config --global --add safe.directory '*'
+    git config --global user.name  "${GIT_AUTHOR_NAME:-opencode}"
+    git config --global user.email "${GIT_AUTHOR_EMAIL:-opencode@servy.lehel.xyz}"
+    git config --global url."git@github.com:".insteadOf "https://github.com/"
+else
+    echo "⚠️ [Startup] git unavailable; skipping git config"
+fi
 
 # 5. Extensions (Placeholder)
 # echo "🧩 [Startup] Installing extensions..."
