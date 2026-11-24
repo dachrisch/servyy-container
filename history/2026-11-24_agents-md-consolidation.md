@@ -32,6 +32,10 @@ wording.
   References to a *task workspace's* `CLAUDE.md` in `claude-hub/vendor/` and
   `claude-hub/skills/session-fleet/` were deliberately left alone — those are generated
   per-workspace files, not this repo's root file.
+- Repointed the two `CLAUDE.md` mentions in the still-active
+  `docs/plans/2026-11-23_runny-docker-trust.md` plan.
+- Fixed a pre-existing broken link in `monitor/AGENTS.md` (the monitor reload role lives
+  at `ansible/plays/roles/monitor_reload/`, not `ansible/plays/tasks/`).
 - Deleted `CLAUDE.md`.
 
 ## Files changed
@@ -48,7 +52,7 @@ listed above.
 # Only history/vendor/task-workspace references may remain
 git grep -n 'CLAUDE\.md' -- ':!history/**' ':!claude-hub/**' ':!ansible/docs/testing/**'
 
-# All 17 guides exist and are linked from the root index
+# 18 AGENTS.md files (root + 17 subguides); 17 linked from the root index
 for f in $(git ls-files '*AGENTS.md'); do test -f "$f" || exit 1; done
 grep -c 'AGENTS.md](' AGENTS.md
 
@@ -70,6 +74,6 @@ print('broken links:', bad)
 PY
 ```
 
-Result: no live `CLAUDE.md` references remain; 17 linked guides; git-crypt reports
+Result: no live `CLAUDE.md` references remain; root + 17 linked subguides; git-crypt reports
 `secrets.yml` encrypted; no broken relative links in any `AGENTS.md`. No deployment —
 documentation only.
