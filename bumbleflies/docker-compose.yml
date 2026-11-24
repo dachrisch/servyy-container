@@ -44,6 +44,8 @@ services:
       test: wget --quiet --tries=1 --spider http://localhost/ || exit 1
       interval: 30s
     restart: unless-stopped
+    pids_limit: 512
+    init: true
 
   bnb:
     image: bumblecode/bnb:latest
@@ -76,6 +78,8 @@ services:
     networks:
       - proxy
     restart: unless-stopped
+    pids_limit: 512
+    init: true
 
   edu:
     image: bumblecode/edu:latest
@@ -99,6 +103,8 @@ services:
     networks:
       - proxy
     restart: unless-stopped
+    pids_limit: 512
+    init: true
 
   live:
     image: bumblecode/live:latest
@@ -129,6 +135,8 @@ services:
     networks:
       - proxy
     restart: unless-stopped
+    pids_limit: 512
+    init: true
 
 networks:
   proxy:
