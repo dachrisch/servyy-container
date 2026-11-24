@@ -120,7 +120,7 @@ also run unchanged (`workflow_call` included). Pick a runner with `runs-on`:
 | `ubuntu-latest` | codey | `catthehacker/ubuntu:act-22.04`, **arm64** | general jobs, tests |
 | `docker` | codey | `node:20-bookworm`, arm64 | light node jobs |
 | `arm64` | codey | act-22.04, arm64 | explicitly arm64 work |
-| `amd64` | runny | act-22.04, **amd64** | amd64 image builds; **only repos owned by `cda`** (runner scoped) |
+| `amd64` | runny | act-22.04, **amd64** | amd64 image builds and running/testing amd64 images; global since 2026-11-24 (rootless runner, no host secrets) |
 
 What to know before writing a workflow:
 
@@ -225,7 +225,7 @@ Runners register offline with a shared secret, no UI step:
 - Forgejo side (servy, `forgejo_bootstrap` role):
   `forgejo forgejo-cli actions register --secret <forgejo_runner_secrets[<runner>]> --name <runner> --keep-labels [--scope <owner>]`.
   `--keep-labels` stops a re-registration from wiping the other runners' labels.
-  `--scope` comes from `forgejo_runner_scopes` (runny → `cda`).
+  `--scope` comes from `forgejo_runner_scopes`; it is empty for both runners since 2026-11-24, so neither is scoped.
 - Runner side (`forgejo_runner` role, on codey/runny):
   `forgejo-runner create-runner-file --instance https://ci.lehel.xyz --name <runner> --secret <forgejo_runner_secrets[<runner>]>`
 
