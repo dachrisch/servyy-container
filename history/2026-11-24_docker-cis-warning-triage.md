@@ -102,6 +102,41 @@ Negative:
 - `pids_limit: 512` is a conservative default and may need adjustment for a container with
   unusually high process counts.
 
+## Implementation Details
+
+**Files Modified:**
+- `bumbleflies/docker-compose.yml` (MODIFY) — `pids_limit: 512` and `init: true` on
+  `www`, `bnb`, `edu`, `live`
+- `docs/plans/2026-11-24_docker-hardening-and-servy-audit-refresh.md` (NEW; removed
+  2026-11-24, in git history)
+
+**Commits:**
+- `26510d8d` fix(bumbleflies): cap PIDs and reap zombies in all four containers
+
+**Testing & Verification:**
+- ✅ servyy-test.lxd: `./servyy-test.sh --tags user.docker.repo,user.docker.bumbleflies
+  -e docker_branch=claude/docker-cis-triage` — `failed=0`; checkout on the pilot branch,
+  all four containers healthy with `Pids=512 Init=true`.
+  - The first attempt without `docker_branch` silently synced the *controller's main
+    checkout branch* (owned by another session) instead of the pilot branch — the
+    explicit override is required whenever the controller's HEAD is not the target ref.
+- ✅ servy.lehel.xyz production: `./servyy.sh --tags user.docker.repo,user.docker.bumbleflies
+  -e docker_branch=master --limit servy.lehel.xyz` — `failed=0`, 3 changes; checkout back
+  on `master` at `26510d8d`, all four containers healthy with `Pids=512 Init=true`,
+  `https://bumbleflies.de → 200`.
+- ✅ Post-change Docker Bench on servy: bumbleflies-specific WARN lines fell from
+  **35 → 31** (one per container). Total WARN lines rose 427 → 438, but the two runs
+  used different bench versions (check numbering moved from 5.29 to 5.28 for the PIDs
+  check), so the totals are not comparable. The check-level PIDs-limit WARN remains
+  because the other ~50 containers are still unbounded — exactly as the narrow scope
+  intended.
+
+**Known Issues / Limitations:**
+- The accepted exceptions still dominate the WARN count; this pilot was deliberately
+  narrow and does not materially reduce it.
+- `pids_limit` is now a repo-first value; 512 was chosen from observed steady state
+  (5–13 tasks per container, ~40–100× headroom), not an existing convention.
+
 ## Related Decisions
 
 - [2026-10-08 host hardening](2026-10-08_host-hardening.md) — history entry; the
