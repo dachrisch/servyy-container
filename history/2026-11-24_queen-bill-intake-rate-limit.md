@@ -126,8 +126,39 @@ registered schedule.
 - **Add Gmail-429 backoff / friendly message in queen** — useful, but it only
   hides the symptom while the runaway job keeps burning quota. Deferred as a
   separate follow-up, not part of this fix.
-- **Disable the Ofelia job until the quota recovers** — unnecessary: correcting
-  the schedule stops new calls immediately and the quota self-recovers in ~15 min.
+- **Disable the Ofelia job until the quota recovers** — initially judged
+  unnecessary, but see the 2026-11-24 evening follow-up below: the throttle did
+  not clear in ~15 min, so the job was temporarily parked at Jan 1.
+
+## Follow-up (2026-11-24, same day): throttle did not clear
+
+The 15-minute `Retry after` was a **rolling cooldown, not the real reset**. A
+direct `users.getProfile` probe with queen's own stored token (1 quota unit)
+also returned 429, and the corrected hourly cron failed at 11:00, 12:00 and
+13:00Z with fresh `Retry after <now + 15 min>` values. Three manual "Fetch now"
+attempts 45 minutes apart produced the same result.
+
+Evidence gathered:
+
+- Throttled identity: `christian.daehn@bumbleflies.de` (Google Workspace), the
+  admin whose refresh token queen uses.
+- The Cloud project behind the OAuth client is `league-finance` (391372270100).
+  Its Gmail quotas are **15,000 queries/min/user** and 1,200,000/min/project,
+  with `total_query_cost` overridden to unlimited — the ~60 runs/min of the
+  old job were nowhere near that, so the documented per-minute quota was not
+  the limit. The 429 is an account-level Gmail throttle (Google documents that
+  these can persist for hours after a burst).
+- No other consumer was found: no crontab/systemd timer, no Ofelia on the test
+  host (which still carries the stale 5-field label but has no scheduler), and
+  no queued Bull jobs.
+
+Decision: temporarily park the Ofelia schedule at `0 0 0 1 1 *` (Jan 1 00:00)
+so no hourly run keeps poking the throttled account. The queen-side backoff and
+friendly toast from `bumbleflies/queen#390` stay in place. Recheck after the
+midnight-Pacific reset (08:00 UTC / 09:00 CET on 2026-11-25) with a single
+`getProfile` probe; restore the hourly schedule once it succeeds. If still
+429 at that point, escalate to Google Workspace support with the collected
+timestamps rather than making more code/config changes.
 
 ## Related Decisions
 

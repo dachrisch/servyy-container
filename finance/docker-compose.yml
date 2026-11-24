@@ -122,7 +122,11 @@ services:
       # Ofelia schedules are 6 fields, seconds first: 0 0 * * * * = minute 0 of
       # every hour. The old 5-field `0 * * * *` ran every minute and burned the
       # shared admin Gmail quota (history/2026-11-24_queen-bill-intake-rate-limit.md).
-      - ofelia.job-exec.bill-intake.schedule=0 0 * * * *
+      # TEMPORARILY DISABLED 2026-11-24: the shared admin account is still
+      # throttled (429 on every call, including getProfile) hours after the
+      # runaway job stopped. Park at Jan 1 00:00 so no hourly run pokes the
+      # quota; restore to `0 0 * * * *` once Gmail recovers (check tomorrow).
+      - ofelia.job-exec.bill-intake.schedule=0 0 0 1 1 *
       - ofelia.job-exec.bill-intake.command=node dist/src/server/cron/billIntake.js
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
