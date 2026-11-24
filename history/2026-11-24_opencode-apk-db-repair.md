@@ -106,8 +106,15 @@ docker run --rm --entrypoint sh ghcr.io/anomalyco/opencode:2.4.1 -c 'opencode --
 #   -> session_v2 49, session_message 8404, project 34  (identical before/after)
 # validation container + volume removed afterwards
 
-# deploy
+# deploy (test host first, then prod)
+cd ansible && ./servyy-test.sh --limit servyy-test.lxd --tags user.docker.opencode
 cd ansible && ./servyy.sh --limit codey.lehel.xyz --tags user.docker.opencode
+#   test: ok=193 changed=6 failed=0 -> opencode.web Up, healthy on 2.4.1
+#   prod: ok=251 changed=18 failed=0 -> opencode.web Up (healthy), image 2.4.1,
+#         RestartCount=0, boot log "apk database checked" -> "system packages ready"
+#   note: the first test run was blocked by a stale /tmp/opencode-superpowers-upstream
+#         controller clone (all files deleted, no local edits); removing that disposable
+#         staging dir and re-running passed. No repo change needed.
 
 # post-deploy
 ssh codey.lehel.xyz "docker ps --filter name=opencode.web --format '{{.Names}} {{.Status}}'"
