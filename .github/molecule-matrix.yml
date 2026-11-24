@@ -46,6 +46,11 @@ scenarios:
   - {role: system_probe, scenario: no-sink, baseline: false}
   - {role: restic, scenario: default, baseline: false}
   - {role: restic, scenario: no-leaguesphere, baseline: false}
+  # High-risk, untested roles (2026-11-24): restore drills and the Grafana
+  # admin-password reconciliation. Both stub their external dependency, so
+  # they are cheap enough to run on every change to their own role.
+  - {role: restore_drill, scenario: default, baseline: false}
+  - {role: monitor_grafana_auth, scenario: default, baseline: false}
 
   - role: portainer_rbac
     scenario: default

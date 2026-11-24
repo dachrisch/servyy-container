@@ -1,0 +1,76 @@
+---
+# The role shells out to `docker exec <container> sh -c ...`, so a tiny stand-in
+# on PATH is enough to exercise its real control flow. It deliberately keeps a
+# call log on disk so verify.yml can prove the repair happened once and that
+# every probe happened at the right point (not merely that tasks were skipped).
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  become: true
+  vars:
+    stub_dir: /var/tmp/monitor-grafana-auth
+
+  tasks:
+    - name: Install Python and sudo for Ansible
+      ansible.builtin.raw: |
+        apt-get update
+        apt-get install -y python3 python3-apt sudo
+      changed_when: false
+
+    - name: Create the Grafana stand-in state directory
+      ansible.builtin.file:
+        path: "{{ stub_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Install the docker CLI stand-in
+      ansible.builtin.copy:
+        dest: /usr/local/bin/docker
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          # Test double for the three docker invocations the role makes:
+          #   inspect --format <status format> monitor.grafana -> running
+          #   exec ... curl ... <check path>                       -> 401/200
+          #   exec ... reset-admin-password --password-from-stdin  -> clears drift
+          set -u
+          state_dir=/var/tmp/monitor-grafana-auth
+          mkdir -p "$state_dir"
+          printf '%s\n' "$*" >> "$state_dir/all-calls.log"
+          case "${1:-}" in
+            inspect)
+              printf '%s\n' running
+              ;;
+            exec)
+              cmd="${5:-}"
+              printf '%s\n' "$cmd" >> "$state_dir/exec-calls.log"
+              case "$cmd" in
+                *reset-admin-password*)
+                  printf 'reset\n' >> "$state_dir/reset-calls.log"
+                  printf '%s' "${GF_SECURITY_ADMIN_PASSWORD:-}" >> "$state_dir/reset-env-password.log"
+                  rm -f "$state_dir/drift"
+                  ;;
+                *curl*)
+                  if [ -e "$state_dir/drift" ]; then
+                    printf '%s' 401
+                  else
+                    printf '%s' 200
+                  fi
+                  ;;
+                *)
+                  printf 'unexpected docker exec: %s\n' "$cmd" >&2
+                  exit 1
+                  ;;
+              esac
+              ;;
+            *)
+              printf 'unexpected docker command: %s\n' "$*" >&2
+              exit 1
+              ;;
+          esac
+
+    - name: Seed a drifted grafana.db (env works, DB row does not)
+      ansible.builtin.copy:
+        dest: "{{ stub_dir }}/drift"
+        content: "seeded; env password answers 401 until repaired\n"
+        mode: "0644"

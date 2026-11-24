@@ -1,0 +1,26 @@
+---
+# Drives the real role against the docker stand-in installed in prepare.yml.
+# The first converge starts with a seeded 401 (env != grafana.db), so the role
+# must take the repair branch and then prove a 200. Molecule's `idempotence`
+# step runs this playbook again with the drift cleared: a second reset would be
+# a change and fail the scenario.
+- name: Converge
+  hosts: all
+  become: true
+  environment:
+    GF_SECURITY_ADMIN_USER: admin
+    # Dummy on purpose. The contract under test is that this value reaches the
+    # container via the ENVIRONMENT and never appears in a docker argv.
+    GF_SECURITY_ADMIN_PASSWORD: molecule-grafana-dummy-password
+  vars:
+    monitor_grafana_auth_container: monitor.grafana
+    monitor_grafana_auth_check_path: /api/v1/provisioning/alert-rules
+    # The stand-in answers immediately; no need for the production 30x2s wait.
+    monitor_grafana_auth_wait_retries: 1
+    monitor_grafana_auth_wait_delay: 0
+    monitor_grafana_auth_wait_max_time: 2
+
+  tasks:
+    - name: Apply the monitor_grafana_auth role
+      ansible.builtin.include_role:
+        name: monitor_grafana_auth

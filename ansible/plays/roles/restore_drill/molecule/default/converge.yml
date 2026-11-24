@@ -1,0 +1,45 @@
+---
+# Converge the deploy half of restore_drill only. Production gets its roster
+# from plays/vars/db_tenants.yml (git-crypt encrypted; CI stubs it), so this
+# scenario supplies the minimal `restore_drill_tenants` rows the role reads.
+# Two cadence classes are present to prove the weekly and monthly timers are
+# rendered with their own schedules and that both pending states are seeded.
+# No drill is run (`restore_drill_run_now: false`): a real drill needs restic,
+# docker and a live tenant, none of which exist in the molecule container.
+- name: Converge
+  hosts: all
+  become: true
+  become_user: testuser
+  vars:
+    create_user: testuser
+    remote_user_home: /home/testuser
+    remote_user_systemd: /home/testuser/.config/systemd/user
+    restore_drill_enabled: true
+    restore_drill_run_now: false
+    # Deliberately obvious dummy values: no real repo, password or host here.
+    restore_drill_tenants:
+      - tenant: drilltest_weekly
+        tier: business
+        engine: mariadb
+        server: drilltest.mariadb
+        db: drilltest_weekly
+        user: drilltest_app
+        restic_repo: db-drilltest
+        dump_dir: /home/testuser/db-dumps/drilltest_weekly
+        drill: weekly
+        drill_format: logical
+      - tenant: drilltest_monthly
+        tier: private
+        engine: postgres
+        server: drilltest.postgres
+        db: drilltest_monthly
+        user: drilltest_pg
+        restic_repo: db-drilltest-monthly
+        dump_dir: /home/testuser/db-dumps/drilltest_monthly
+        drill: monthly
+        drill_format: logical
+
+  tasks:
+    - name: Apply the restore_drill role
+      ansible.builtin.include_role:
+        name: restore_drill
