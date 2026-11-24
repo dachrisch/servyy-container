@@ -382,7 +382,7 @@ cd ansible && ./servyy.sh --tags "user.docker.monitor" --limit servy.lehel.xyz
 cd ansible && ansible-playbook plays/remove_service.yml -e "target_host=servy.lehel.xyz"
 
 # Recreate locked Restic repositories (DESTRUCTIVE)
-cd ansible && ansible-playbook restic_recreate.yml --limit servy.lehel.xyz
+cd ansible && ./servyy.sh --limit servy.lehel.xyz --tags restic.recreate
 
 # Service management (know which server has the service!)
 ssh lehel.xyz "docker ps"                          # Check containers on lehel.xyz
@@ -555,7 +555,7 @@ code.lehel.xyz → CNAME → codey.lehel.xyz
 
 ```bash
 # code.lehel.xyz requires root access to bootstrap setup
-ansible-playbook servyy.yml -i inventory/production -l codey.lehel.xyz -u root
+cd ansible && ansible-playbook servyy.yml -i production -l codey.lehel.xyz -u root
 
 # Then Ansible will:
 # 1. Create cda user with sudo privileges
@@ -863,8 +863,7 @@ Example:
 
 **Environments:**
 - Production: `*.lehel.xyz` (lehel.xyz host)
-- Dev: `*.aqui.fritz.box` (aqui.fritz.box host)
-- Test: `*.servyy-test.lxd` (LXD container)
+- Test: `*.servyy-test.lxd` (LXD container), `*.runny-test.lxd` (runner rehearsal VM)
 
 **⚠️ CRITICAL: DO NOT NAME SERVICES "app"**
 - ❌ Never use `app` as a docker-compose service name or container name
@@ -884,8 +883,7 @@ Each server has its own set of enabled services defined in the ansible inventory
 
 **1. Check the Ansible Inventory**
 ```bash
-cd ansible
-grep -A 100 "services_enabled:" plays/production
+grep -A 100 "services_enabled:" ansible/production
 
 # Output will show which services are enabled per server:
 # lehel.xyz:
@@ -921,8 +919,8 @@ cd ansible && ./servyy.sh --tags "user.docker.opencode" --limit codey.lehel.xyz
 # Deploy all services to lehel.xyz
 cd ansible && ./servyy.sh --limit servy.lehel.xyz
 
-# Deploy specific tag to all servers
-cd ansible && ./servyy.sh --tags "docker" --limit all
+# Deploy all Docker services to all servers
+cd ansible && ./servyy.sh --tags "user.docker" --limit all
 ```
 
 ### Common Per-Server Configurations
@@ -931,7 +929,7 @@ cd ansible && ./servyy.sh --tags "docker" --limit all
 |--------|------|----------|
 | `servy.lehel.xyz` | Primary production | traefik, monitor, photoprism, git, ci (Forgejo), leaguesphere-*, etc. |
 | `codey.lehel.xyz` | Secondary (opencode + claude-hub) | opencode, claude-hub, Forgejo runner (dind) |
-| `aqui.fritz.box` | Dev/testing | Various dev services |
+| `runny-test.lxd` | Test (runner rehearsal, `test-runner` group) | Forgejo runner rehearsal (rootless) |
 | `servyy-test.lxd` | Test environment | Mirrors production for validation |
 | `runny.lehel.xyz` | CI runner (amd64) | Forgejo runner (rootless backend — no root-run containers) + node-exporter |
 
@@ -1264,7 +1262,7 @@ stale alerts):
 - DNS via `dns-master` + Traefik `Host()` labels; update the
   `check-server-status` skill's enabled-services table.
 
-5. Deploy: `cd ansible && ./servyy.sh --tags "docker" --limit servy.lehel.xyz`
+5. Deploy: `cd ansible && ./servyy.sh --tags "user.docker" --limit servy.lehel.xyz`
 
 5. Verify:
 ```bash
@@ -1349,7 +1347,8 @@ ssh lehel.xyz "docker exec leaguesphere-demo.demo-app /bin/bash -c 'rm -f /app/.
    - ✅ **Manual intervention** is required if Restic passwords need to be changed/synchronized
 
 3. **Repository Lockout Recovery**
-   - **Manual Only:** Use `ansible-playbook restic_recreate.yml` to wipe and re-init locked repos
+   - **Manual Only:** Run `cd ansible && ./servyy.sh --limit <hostname> --tags restic.recreate`
+     to wipe and re-init locked repos (there is no standalone recreate playbook)
    - **Verification:** The playbook automatically verifies lockouts and requires explicit confirmation
 
 4. **Off-host Password Backup (Vaultwarden)**
