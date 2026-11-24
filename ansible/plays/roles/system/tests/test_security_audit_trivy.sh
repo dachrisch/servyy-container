@@ -155,6 +155,7 @@ with open(template_path) as fh:
     source = fh.read()
 
 ctx = {
+    "inventory_hostname": "audit-test-host",
     "security_audit": {
         "log_dir": log_dir,
         "script_dir": script_dir,
@@ -310,6 +311,7 @@ check "summary separates criticals without an upstream fix" \
 check "summary separates fixable highs" \
     "$(grep '^high_unfixed=' "${STATS}" 2>/dev/null || echo missing)" "high_unfixed=0"
 check "summary names the failed image" "$(grep '^failed_target=' "${STATS}" 2>/dev/null || echo missing)" "failed_target=unscannable:latest"
+check_contains "SUMMARY.md names the host it ran on" "${SUMMARY}" "- **Host**: audit-test-host"
 check_contains "SUMMARY.md reports coverage" "${SUMMARY}" "2/3 scanned"
 check_contains "SUMMARY.md names the unscanned image" "${SUMMARY}" "unscannable:latest"
 check_contains "SUMMARY.md counts the tools that ran" "${SUMMARY}" "Tools Run**: 1"

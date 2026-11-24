@@ -85,6 +85,19 @@
     - system.security_audit
     - system.security_audit.scripts
 
+- name: Deploy Docker Bench Security source
+  ansible.builtin.git:
+    repo: https://github.com/docker/docker-bench-security.git
+    dest: "{{ security_audit.script_dir }}/docker-bench-security"
+    version: "{{ security_audit.docker_bench_version }}"
+    depth: 1
+    update: true
+  become: true
+  when: security_audit.tools.docker_bench | default(true)
+  tags:
+    - system.security_audit
+    - system.security_audit.tools
+
 - name: Deploy security audit orchestrator script
   template:
     src: security-audit.sh.j2
@@ -177,6 +190,20 @@
     - system.security_audit
     - system.security_audit.tools
 
+- name: Resolve nuclei release architecture for this host
+  ansible.builtin.set_fact:
+    nuclei_arch: "{{ nuclei_arch_map.get(ansible_architecture, 'amd64') }}"
+  vars:
+    nuclei_arch_map:
+      x86_64: amd64
+      amd64: amd64
+      aarch64: arm64
+      arm64: arm64
+  when: security_audit.tools.nuclei | default(true)
+  tags:
+    - system.security_audit
+    - system.security_audit.tools
+
 - name: Get latest nuclei version
   uri:
     url: https://api.github.com/repos/projectdiscovery/nuclei/releases/latest
@@ -191,6 +218,7 @@
 - name: Set nuclei version fact
   set_fact:
     nuclei_version: "{{ nuclei_release.json.tag_name }}"
+    nuclei_version_plain: "{{ nuclei_release.json.tag_name | regex_replace('^v', '') }}"
   when: security_audit.tools.nuclei | default(true)
   tags:
     - system.security_audit
@@ -198,7 +226,7 @@
 
 - name: Download nuclei binary
   get_url:
-    url: "https://github.com/projectdiscovery/nuclei/releases/download/{{ nuclei_version }}/nuclei_{{ nuclei_version | regex_replace('^v', '') }}_linux_amd64.zip"
+    url: "https://github.com/projectdiscovery/nuclei/releases/download/{{ nuclei_version }}/nuclei_{{ nuclei_version_plain }}_linux_{{ nuclei_arch }}.zip"
     dest: /tmp/nuclei.zip
     mode: '0644'
   become: true
@@ -213,6 +241,16 @@
     dest: /usr/local/bin/
     remote_src: true
     mode: '0755'
+  become: true
+  when: security_audit.tools.nuclei | default(true)
+  tags:
+    - system.security_audit
+    - system.security_audit.tools
+
+- name: Verify nuclei binary runs on this architecture
+  ansible.builtin.command: nuclei -version
+  register: nuclei_version_check
+  changed_when: false
   become: true
   when: security_audit.tools.nuclei | default(true)
   tags:
