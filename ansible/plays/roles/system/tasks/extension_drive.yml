@@ -60,6 +60,8 @@
     - name: Mount extension drive
       command: mount "{{ extension_drive.path }}"
       register: mount_result
+      # The enclosing mount_check guard means the drive is not mounted yet.
+      changed_when: true
       failed_when: mount_result.rc != 0 and mount_result.stderr != ''
 
     - name: Verify extension drive mounted
@@ -68,6 +70,8 @@
       failed_when: verify_mount.stderr != '' or verify_mount.rc != 0
       changed_when: false
 
-  when: mount_check.changed
+  # Mounting and its verification must stay inline before later tasks use the
+  # data dir; there is no handler for this mount.
+  when: mount_check.changed  # noqa: no-handler
   tags:
     - system.extension_drive.mount.execute

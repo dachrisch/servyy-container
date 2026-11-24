@@ -110,7 +110,9 @@
     - testing.mkcert.local
     - molecule-notest
 
-- name: Install CA certificate on local machine (macOS)
+# Local developer convenience only: an already-trusted cert makes `security
+# add-trusted-cert` fail, and that must not abort the deploy.
+- name: Install CA certificate on local machine (macOS)  # noqa: ignore-errors
   shell: |
     sudo security add-trusted-cert -d -r trustRoot \
       -k /Library/Keychains/System.keychain \

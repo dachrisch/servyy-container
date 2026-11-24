@@ -96,6 +96,8 @@
           - "{{ atuin_installer.path }}"
           - --no-modify-path
         chdir: "{{ atuin_home }}"
+      # The enclosing version guard only runs the installer when an upgrade is needed.
+      changed_when: true
       environment:
         ATUIN_NO_MODIFY_PATH: "1"
 
@@ -184,7 +186,10 @@
 - name: Sync
   ansible.builtin.command:
     cmd: atuin sync
-  when: login is changed
+  # Sync must follow the fresh login immediately; no handler exists for it.
+  when: login is changed  # noqa: no-handler
+  # A skipped login leaves this task unchanged; a real login always syncs history.
+  changed_when: true
 
 - name: Check whether atuin keeps its config in the legacy location
   ansible.builtin.stat:

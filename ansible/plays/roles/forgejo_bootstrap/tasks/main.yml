@@ -40,6 +40,8 @@
       --password {{ forgejo_admin_password }}
       --email {{ forgejo_bootstrap_admin_email }}
       --must-change-password=false
+  # The guard is the existence check: the command only runs for a missing admin user.
+  changed_when: true
   when: forgejo_bootstrap_admin_username not in (forgejo_users.stdout | default(''))
   no_log: true
   tags:

@@ -77,13 +77,15 @@
   ansible.builtin.command:
     cmd: sshd -t
   changed_when: false
-  when: forgejo_sshd_conf is changed
+  # Read-only validation has to abort here, before the reload; not a handler.
+  when: forgejo_sshd_conf is changed  # noqa: no-handler
 
 - name: Reload sshd when the Match block changed
   ansible.builtin.systemd:
     name: ssh
     state: reloaded
-  when: forgejo_sshd_conf is changed
+  # Must follow the whole-config validation above; a handler would run later.
+  when: forgejo_sshd_conf is changed  # noqa: no-handler
   tags:
     # No running sshd in the molecule container.
     - molecule-notest

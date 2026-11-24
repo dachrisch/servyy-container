@@ -217,7 +217,11 @@
         state: stopped
         enabled: no
       become_user: "{{ create_user }}"
-      ignore_errors: true
+      register: container_health_timer_stop
+      # Cleanup: the timer may be absent (or un-loadable in a container), while
+      # the unit/script removal below is the state actually being enforced.
+      failed_when: false
+      changed_when: container_health_timer_stop.changed | default(false)
       tags:
         - system.probe
         - system.probe.container
@@ -244,7 +248,11 @@
         state: stopped
         enabled: no
       become_user: "{{ create_user }}"
-      ignore_errors: true
+      register: storagebox_timer_stop
+      # Cleanup: the timer may be absent (or un-loadable in a container), while
+      # the unit/script removal below is the state actually being enforced.
+      failed_when: false
+      changed_when: storagebox_timer_stop.changed | default(false)
       tags:
         - system.probe
         - system.probe.storagebox
@@ -336,7 +344,11 @@
         state: stopped
         enabled: no
       become_user: "{{ create_user }}"
-      ignore_errors: true
+      register: dump_age_timer_stop
+      # Cleanup: the timer may be absent (or un-loadable in a container), while
+      # the unit/script removal below is the state actually being enforced.
+      failed_when: false
+      changed_when: dump_age_timer_stop.changed | default(false)
       tags:
         - system.probe
         - system.probe.dump
@@ -366,7 +378,11 @@
         state: stopped
         enabled: no
       become_user: "{{ create_user }}"
-      ignore_errors: true
+      register: forgejo_runners_timer_stop
+      # Cleanup: the timer may be absent (or un-loadable in a container), while
+      # the unit/script removal below is the state actually being enforced.
+      failed_when: false
+      changed_when: forgejo_runners_timer_stop.changed | default(false)
       tags:
         - system.probe
         - system.probe.forgejo

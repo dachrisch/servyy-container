@@ -43,13 +43,17 @@
   ansible.builtin.command:
     cmd: netplan generate
   changed_when: false
-  when: ipv6_netplan is changed
+  # Validation must abort the deploy inline if the generated config is bad.
+  when: ipv6_netplan is changed  # noqa: no-handler
   tags:
     - system.ipv6
 
 - name: Apply netplan
   ansible.builtin.command:
     cmd: netplan apply
-  when: ipv6_netplan is changed
+  # The copy guard is the state check: applying a new config changes the host.
+  changed_when: true
+  # Network config must be applied in this order, not at handler time.
+  when: ipv6_netplan is changed  # noqa: no-handler
   tags:
     - system.ipv6

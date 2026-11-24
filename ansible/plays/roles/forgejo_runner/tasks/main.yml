@@ -85,6 +85,8 @@
           --instance {{ forgejo_runner_instance }}
           --name {{ forgejo_runner_name }}
           --secret {{ forgejo_runner_secrets[forgejo_runner_name] }}
+      # The stat guard encodes whether registration is still needed.
+      changed_when: true
       when: not forgejo_runner_registered.stat.exists
       no_log: true
       tags:
@@ -107,7 +109,9 @@
     - name: Restart the runner so a changed config.yml takes effect
       ansible.builtin.command:
         cmd: docker restart runny.runner
-      when: forgejo_runner_config is changed
+      # Restart must be inline: the container backend has no handler and later
+      # tasks in this block act on the running runner immediately.
+      when: forgejo_runner_config is changed  # noqa: no-handler
       changed_when: true
       tags:
         - user.docker.runny

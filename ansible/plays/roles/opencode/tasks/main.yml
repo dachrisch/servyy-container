@@ -32,6 +32,8 @@
   delegate_to: localhost
   run_once: true
   become: false
+  # Generation only happens for a missing seed with explicit opt-in.
+  changed_when: true
   when: not ssh_key_seed.stat.exists and opencode_allow_key_generation
   register: ssh_keygen_result
 

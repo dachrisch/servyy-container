@@ -93,6 +93,7 @@
   ansible.builtin.template:
     src: "drill.{{ item.ext }}.j2"
     dest: "{{ (remote_user_systemd, 'db-restore-drill-' ~ item.name ~ '.' ~ item.ext) | path_join }}"
+    mode: '0644'
   loop:
     - ext: service
       name: weekly
@@ -151,6 +152,7 @@
   ansible.builtin.template:
     src: "probe.{{ item }}.j2"
     dest: "{{ (remote_user_systemd, 'system-restore-drill.' ~ item) | path_join }}"
+    mode: '0644'
   loop:
     - service
     - timer

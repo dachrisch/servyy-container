@@ -97,6 +97,8 @@
       - /var/www/html/admin/cli/cfg.php
       - --name=additionalhtmlfooter
       - "--set={{ moodle_signup_picker_footer }}"
+  # The guard compares the live value; reaching the command means a real write.
+  changed_when: true
   when: moodle_footer_current.rc != 0 or moodle_footer_current.stdout != moodle_signup_picker_footer
   tags:
     - molecule-notest

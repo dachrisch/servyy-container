@@ -71,6 +71,8 @@
     - name: Mount storagebox
       command: mount "{{ storagebox.mount }}"
       register: mount_check
+      # The enclosing mountpoint check already established that it is unmounted.
+      changed_when: true
       failed_when: not(mount_check.stderr == '' or 'Operation now in progress' in mount_check.stderr)
 
     - name: Check if storagebox mounted
@@ -97,6 +99,8 @@
     - name: Retry mounting storagebox after reboot
       command: mount "{{ storagebox.mount }}"
       register: mount_check_retry
+      # The rescue path only runs when the first mount failed and the host rebooted.
+      changed_when: true
       failed_when: not(mount_check_retry.stderr == '' or 'Operation now in progress' in mount_check_retry.stderr)
       retries: 3  # Retry up to 3 times
       delay: 10  # Delay 10 seconds between retries

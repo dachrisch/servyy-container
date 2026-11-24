@@ -518,7 +518,11 @@
   loop: "{{ db_backup_tenants }}"
   loop_control:
     label: "db-dump-{{ item.tenant }}.timer"
-  ignore_errors: true
+  register: legacy_tenant_timer_stop
+  # Optional legacy units: a tenant may never have had one, and systemd also
+  # rejects these stub units inside molecule. Removal below is what matters.
+  failed_when: false
+  changed_when: legacy_tenant_timer_stop.changed | default(false)
   when: db_backup_tenants | length > 0
   tags:
     - restic.backup
@@ -555,7 +559,11 @@
         name: docker-bnb-office-dump.timer
         state: stopped
         enabled: false
-      ignore_errors: true
+      register: legacy_bnb_timer_stop
+      # Pre-R8 cleanup: the unit can be absent or un-loadable; the file removal
+      # below is the state we actually enforce.
+      failed_when: false
+      changed_when: legacy_bnb_timer_stop.changed | default(false)
     - name: Remove the legacy bnb dump unit files
       ansible.builtin.file:
         path: "{{ (remote_user_systemd, item) | path_join }}"
@@ -646,7 +654,11 @@
         - moodle-dump
         - restic-backup-moodle-db
         - restic-backup-moodle-files
-      ignore_errors: true
+      register: moodle_timer_stop
+      # Cleanup: hosts that never had Moodle have no such units, and molecule
+      # cannot load these stubs. The file removal below is what matters.
+      failed_when: false
+      changed_when: moodle_timer_stop.changed | default(false)
       tags:
         - restic.backup
     - name: Remove Moodle backup units and scripts
@@ -683,7 +695,11 @@
         - restic-backup-ls-db
         - binlog-ship
         - restic-backup-ls-binlog
-      ignore_errors: true
+      register: db_backup_timer_stop
+      # Legacy units may be absent or un-loadable on hosts without LeagueSphere;
+      # the file removal below is the state we actually enforce.
+      failed_when: false
+      changed_when: db_backup_timer_stop.changed | default(false)
       tags:
         - restic.backup
     - name: Remove DB backup units and scripts

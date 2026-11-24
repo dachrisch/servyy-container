@@ -42,6 +42,8 @@
 
 - name: Create swap space
   command: dd if=/dev/zero of={{ swap_file }} bs=1M count={{dd_count|int}}
+  # The stat guard encodes the state: this only writes a brand-new swap file.
+  changed_when: true
   tags:
     - system.swap.space.create
   when: not swap_file_check.stat.exists
@@ -58,6 +60,8 @@
 
 - name: format swap file
   command: mkswap {{ swap_file }}
+  # Only runs for a freshly created file, so it always changes the host.
+  changed_when: true
   when: not swap_file_check.stat.exists
   tags:
     - system.swap.file.format
@@ -81,6 +85,8 @@
 
 - name: turn on swap
   command: swapon {{ swap_file }}
+  # The active-device list is the state check; activation is a real change.
+  changed_when: true
   when: swap_file not in active_swap_devices.stdout_lines
   tags:
     - system.swap.on
@@ -116,6 +122,8 @@
 - name: turn off stale swap files
   command: swapoff {{ item }}
   loop: "{{ stale_swap_files }}"
+  # Every item is an identified stale (still active) swap file.
+  changed_when: true
   failed_when: false
   tags:
     - system.swap.stale.cleanup

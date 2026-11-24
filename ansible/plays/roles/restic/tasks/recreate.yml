@@ -136,6 +136,8 @@
             - "restic[item].repository.startswith('sftp://')"
             - not (mount_delete.results | selectattr('item', 'equalto', item) | map(attribute='changed') | first | default(false))
           register: sftp_delete
+          # This fallback only runs for broken repos and deletes remote paths.
+          changed_when: true
           failed_when: false
 
         - name: Re-initialize repositories

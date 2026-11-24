@@ -24,23 +24,22 @@ skip_list:
   - name[missing]      # Allow tasks without names (import_tasks, blocks)
   - name[play]         # Allow unnamed import_playbook entries
   - name[template]     # Allow Jinja templates anywhere in task names
-  - risky-file-permissions  # We explicitly set permissions
-  - no-changed-when    # raw/command tasks sometimes need this
-  - no-handler         # Some tasks run on change but aren't handlers
-  - command-instead-of-module  # Sometimes necessary for specific commands
+  # git CLI state checks (rev-parse/reset --hard/update-index/submodule), mount of
+  # cifs/sshfs shares and `systemctl is-active` probes have no drop-in module
+  # equivalent; replacing them would change what is verified, and several live in
+  # molecule fixtures that assert git's own URL-rewriting behaviour.
+  - command-instead-of-module
   - command-instead-of-shell  # shell is sometimes necessary
+  # Package upgrades here are a deliberate part of the host refresh, not drift.
+  - package-latest
   - fqcn[action-core]  # FQCN for builtin actions - existing code uses short names
   - fqcn[action]       # Don't require FQCN for all actions
   - yaml[truthy]       # Allow 'yes'/'no' in existing code
   - var-naming[no-role-prefix]  # Allow simple names in verify/test files
   - var-naming[pattern]  # Allow variable naming patterns like filesFound
   - key-order[task]    # Don't enforce strict task key ordering
-  - package-latest     # Allow 'state: latest' for packages
-  - no-free-form       # Allow free-form module arguments
   - jinja[spacing]     # Don't enforce strict Jinja spacing
   - jinja[invalid]     # Skip jinja template syntax errors (false positives)
-  - ignore-errors      # Allow ignore_errors when appropriate
-  - internal-error     # Skip internal ansible-lint errors
   - partial-become[task]  # Allow become_user without become (inherited from play)
 
 # Treat warnings as errors
