@@ -25,5 +25,7 @@ actually readable via a public link. Previously the global sign-in gate meant
 ## Follow-up
 
 Contributor accounts are still to be created by name; registration remains
-closed. Add `CONTRIBUTING.md` to migrated repos and enable forks/PRs for those
-accounts rather than opening signup.
+closed. `CONTRIBUTING.md` was added to `cda/dontforget` master (commit
+`ec8fb98`) and is anonymously readable (HTTP 200); it documents fork/branch →
+conventional commit → PR → green CI → Knope release. No accounts were created
+yet.
