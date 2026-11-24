@@ -78,6 +78,18 @@
     opencode_key_path: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/id_github') | path_join }}"
   notify: push opencode ssh key to vaultwarden
 
+- name: Write Forgejo SSH private key to container mount point
+  # Used by provision-dev.sh for repos migrated from GitHub to ci.lehel.xyz.
+  # The key is the same ci_lehel key the workstation uses; Vaultwarden item
+  # "ssh - ci.lehel.xyz (cda)" is its recovery copy.
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/.ssh/ci_lehel"
+    dest: "{{ ('/home/', create_user, 'servyy-container/opencode/.ssh/id_ci_lehel') | path_join }}"
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0600'
+  tags: [user.docker, user.docker.opencode]
+
 - name: Back up opencode YouTube OAuth token to Vaultwarden
   # Idempotent: push_items.yml only creates the item when missing and updates
   # it when the secret changed, so running on every deploy is safe. Not

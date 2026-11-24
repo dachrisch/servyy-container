@@ -26,6 +26,12 @@ Host github.com
   User git
   IdentityFile ~/.ssh/id_github
   StrictHostKeyChecking accept-new
+
+Host ci.lehel.xyz
+  HostName ci.lehel.xyz
+  User git
+  IdentityFile ~/.ssh/id_ci_lehel
+  StrictHostKeyChecking accept-new
 EOF
   chmod 600 "$SSH_DIR/config"
   # The .ssh dir is a bind mount from the docker host, where these files are
@@ -36,6 +42,10 @@ EOF
   if [ -f "$SSH_DIR/id_github" ]; then
     chown root:root "$SSH_DIR/id_github"
     chmod 600 "$SSH_DIR/id_github"
+  fi
+  if [ -f "$SSH_DIR/id_ci_lehel" ]; then
+    chown root:root "$SSH_DIR/id_ci_lehel"
+    chmod 600 "$SSH_DIR/id_ci_lehel"
   fi
   if [ -f "$SSH_DIR/id_servy" ]; then
     chown root:root "$SSH_DIR/id_servy"
@@ -72,6 +82,13 @@ mkdir -p "$DEV_DIR"
 # ORGS is also used below (step 6) to identify orphaned clones -- keep both
 # uses in sync by only listing orgs here.
 ORGS="dachrisch bumbleflies"
+
+# Repos migrated off GitHub keep their old path under /root/dev so skills and
+# scripts that reference it keep working, but are cloned/updated from Forgejo.
+# The GitHub discovery loop below must skip them or it would reset origin back
+# to github.com on every boot.
+MIGRATED_REPO="dachrisch/dontforget"
+MIGRATED_REPO_URL="git@ci.lehel.xyz:cda/dontforget.git"
 
 # A gh-dash-crypt checkout is only usable when three things hold: the key is
 # installed, the smudge/clean filters are the real git-crypt commands, and no
@@ -179,6 +196,7 @@ for r in repos:
     # Path: owner/repo (e.g. dachrisch/servyy-container)
     print("\t".join([owner_repo, ssh_url, branch, crypt]))
 ' "$crypt_repos" | while IFS="$(printf '\t')" read -r dir repo branch crypt; do
+      [ "$dir" = "$MIGRATED_REPO" ] && continue
       dest="$DEV_DIR/$dir"
       if [ -d "$dest/.git" ]; then
         if [ "$crypt" = "1" ] && [ -n "$CRYPT_KEY" ]; then
@@ -200,6 +218,21 @@ for r in repos:
       fi
     done
   done
+fi
+
+# 5b. Repos migrated to ci.lehel.xyz. Keep the old path, point origin at
+# Forgejo, and never let the GitHub discovery loop above undo that.
+log "updating migrated repo from Forgejo: $MIGRATED_REPO"
+dest="$DEV_DIR/$MIGRATED_REPO"
+if [ -d "$dest/.git" ]; then
+  git -C "$dest" remote set-url origin "$MIGRATED_REPO_URL"
+  git -C "$dest" fetch --quiet origin master \
+    && git -C "$dest" checkout --quiet master \
+    && git -C "$dest" pull --quiet --ff-only origin master \
+    || log "WARN: Forgejo update failed for $MIGRATED_REPO (continuing)"
+else
+  git clone --quiet --branch master "$MIGRATED_REPO_URL" "$dest" \
+    || log "ERROR: Forgejo clone failed for $MIGRATED_REPO"
 fi
 
 # 6. Clean up orphaned flat-layout clones. An earlier discovery generation

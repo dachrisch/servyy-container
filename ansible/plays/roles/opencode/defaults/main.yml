@@ -21,7 +21,7 @@ agent_config_plugins_src: "{{ lookup('env', 'HOME') }}/dev/infrastructure/setup-
 opencode_server_shared_skills:
   - adding-opencode-bot
   - gh-stack
-  - release-please
+  - migrating-repos-to-forgejo
   - session-messaging
   # What runs where, what depends on what (app -> tier, app -> codey/opencode),
   # plus the invariants. Same content the dev homes get from setup-home's
@@ -31,6 +31,8 @@ opencode_server_shared_skills:
 # pruned by the copy tasks, so delete them explicitly on the next deploy.
 opencode_server_retired_skills:
   - graphify
+  # GitHub-only release automation; Forgejo repos use Knope via the migration skill.
+  - release-please
   # Renamed to servy-landscape on 2026-11-19; the old copy still sits on the
   # server until this list runs.
   - servyy-architecture
