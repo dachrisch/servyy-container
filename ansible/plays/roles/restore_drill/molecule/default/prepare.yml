@@ -1,0 +1,43 @@
+---
+# Same shape as roles/restic and roles/system_probe: a real systemd user bus
+# (linger) so the role's `systemd: scope: user` timer tasks can converge here.
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Install Python, sudo and systemd for Ansible
+      ansible.builtin.raw: |
+        apt-get update
+        apt-get install -y python3 python3-apt sudo systemd
+      changed_when: false
+
+    - name: Create the test deploy user
+      ansible.builtin.user:
+        name: testuser
+        uid: 1001
+        groups: sudo
+        append: true
+        shell: /bin/bash
+        create_home: true
+
+    - name: Allow passwordless sudo for the test user
+      ansible.builtin.lineinfile:
+        path: /etc/sudoers
+        line: 'testuser ALL=(ALL) NOPASSWD:ALL'
+        validate: 'visudo -cf %s'
+
+    - name: Enable lingering so user timers survive without a login session
+      ansible.builtin.command: loginctl enable-linger testuser
+      args:
+        creates: /var/lib/systemd/linger/testuser
+      changed_when: false
+      failed_when: false
+
+    - name: Create the user systemd unit directory
+      ansible.builtin.file:
+        path: /home/testuser/.config/systemd/user
+        state: directory
+        owner: testuser
+        group: testuser
+        mode: "0755"

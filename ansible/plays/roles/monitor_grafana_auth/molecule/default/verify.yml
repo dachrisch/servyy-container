@@ -1,0 +1,63 @@
+---
+# Verify the OUTCOME recorded by the docker stand-in: the drifted admin row was
+# repaired exactly once, every probe ran (before AND after the repair, on both
+# converges), and the rendered password never entered a docker argv.
+- name: Verify
+  hosts: all
+  become: true
+  vars:
+    stub_dir: /var/tmp/monitor-grafana-auth
+    dummy_password: molecule-grafana-dummy-password
+    # Lazy: evaluated when the assertion runs, after the slurp below.
+    exec_lines: "{{ (stub_logs.results[1].content | b64decode).splitlines() }}"
+    all_lines: "{{ (stub_logs.results[0].content | b64decode).splitlines() }}"
+
+  tasks:
+    - name: Read the stand-in call logs
+      ansible.builtin.slurp:
+        src: "{{ stub_dir }}/{{ item }}"
+      loop:
+        - all-calls.log
+        - exec-calls.log
+        - reset-calls.log
+        - reset-env-password.log
+      register: stub_logs
+
+    - name: Assert the drift was repaired exactly once
+      ansible.builtin.assert:
+        that:
+          - (stub_logs.results[2].content | b64decode | trim | length) > 0
+          - (stub_logs.results[2].content | b64decode | split('\n') | select('ne', '') | list | length) == 1
+        fail_msg: >-
+          expected exactly one `grafana cli admin reset-admin-password` call:
+          zero means the 401 repair branch never ran, two means it is not
+          idempotent.
+        quiet: true
+
+    - name: Assert the repair read the password from the container environment
+      ansible.builtin.assert:
+        that:
+          - (stub_logs.results[3].content | b64decode | trim) == dummy_password
+        fail_msg: "the reset did not read $GF_SECURITY_ADMIN_PASSWORD inside the container"
+        quiet: true
+
+    - name: Assert the auth probes bracket the repair on both converges
+      ansible.builtin.assert:
+        that:
+          - exec_lines | select('search', '/api/v1/provisioning/alert-rules') | list | length == 4
+          - exec_lines | select('search', '--password-from-stdin') | list | length == 1
+          - all_lines | select('match', '^inspect ') | list | length == 2
+        fail_msg: >-
+          expected probe + repair + probe on the first converge and probe +
+          probe on the second (four provisioning calls, one reset, two inspects).
+        quiet: true
+
+    - name: Assert the rendered password never appeared in a docker argv
+      ansible.builtin.assert:
+        that:
+          - dummy_password not in (stub_logs.results[1].content | b64decode)
+          - expected_reset_command in (stub_logs.results[1].content | b64decode)
+        fail_msg: "the password must stay in the container env, never in argv"
+        quiet: true
+      vars:
+        expected_reset_command: 'printf %s "$GF_SECURITY_ADMIN_PASSWORD" | grafana cli admin reset-admin-password --password-from-stdin'

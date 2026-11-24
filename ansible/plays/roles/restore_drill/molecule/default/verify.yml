@@ -1,0 +1,202 @@
+---
+# Verify the OPERATIONAL SURFACE, not "tasks were not skipped": the rendered
+# drill/probe scripts, the pending state files, all six timer/unit files and the
+# exact cadences. Molecule's `idempotence` step runs converge a second time, so a
+# re-seed that reset the pending state or a template that rewrote a unit on every
+# run would fail the scenario before this play starts.
+- name: Verify
+  hosts: all
+  become: true
+  vars:
+    drill_dir: /home/testuser/.restore-drills
+    unit_dir: /home/testuser/.config/systemd/user
+    # Ansible's `quote` filter leaves a simple path unquoted; only the
+    # space-bearing tenant list is wrapped in single quotes.
+    expected_base: "BASE=/home/testuser/.restore-drills"
+    expected_tenants: "DRILL_TENANTS='drilltest_weekly drilltest_monthly'"
+    expected_scratch: "SCRATCH_ROOT=/home/testuser/.cache/restore-drills"
+    expected_weekly_series: "series drilltest_weekly 691200"
+    expected_monthly_series: "series drilltest_monthly 2764800"
+    expected_weekly_exec: "ExecStart=/home/testuser/.restore-drills/restore-drill.sh --class weekly"
+    expected_monthly_exec: "ExecStart=/home/testuser/.restore-drills/restore-drill.sh --class monthly"
+    expected_probe_exec: "ExecStart=/home/testuser/.restore-drills/restore-drill-probe.sh"
+
+  tasks:
+    - name: Stat the deployed directories
+      ansible.builtin.stat:
+        path: "{{ item.path }}"
+      loop:
+        - {path: /home/testuser/.restore-drills, mode: '0750'}
+        - {path: /home/testuser/.restore-drills/state, mode: '0750'}
+        - {path: /home/testuser/.restore-drills/evidence, mode: '0750'}
+        - {path: /home/testuser/.restore-drills/logs, mode: '0750'}
+        - {path: /home/testuser/.cache/restore-drills, mode: '0700'}
+      loop_control:
+        label: "{{ item.path }}"
+      register: drill_dirs
+
+    - name: Assert every directory exists with its intended mode
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.mode == item.item.mode
+        fail_msg: "directory {{ item.item.path }} has mode {{ item.stat.mode | default('-') }}"
+        quiet: true
+      loop: "{{ drill_dirs.results }}"
+      loop_control:
+        label: "{{ item.item.path }}"
+
+    - name: Stat the rendered scripts
+      ansible.builtin.stat:
+        path: "{{ drill_dir }}/{{ item }}"
+      loop:
+        - restore-drill.sh
+        - restore-drill-probe.sh
+      register: drill_scripts
+
+    - name: Assert both scripts are present and executable
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.executable
+          - item.stat.mode == '0750'
+        quiet: true
+      loop: "{{ drill_scripts.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Read the rendered drill script
+      ansible.builtin.slurp:
+        src: "{{ drill_dir }}/restore-drill.sh"
+      register: drill_script
+
+    - name: Assert the drill script carries the tenant roster and the safety rails
+      ansible.builtin.assert:
+        that:
+          - expected_base in (drill_script.content | b64decode)
+          - expected_tenants in (drill_script.content | b64decode)
+          - "'drilltest_weekly)' in (drill_script.content | b64decode)"
+          - "'drilltest_monthly)' in (drill_script.content | b64decode)"
+          # scratch is copied DB data: under ~/.cache (excluded from restic) and
+          # never under /tmp, with an enforced drill-* prefix for every target.
+          - expected_scratch in (drill_script.content | b64decode)
+          - "'E_SCRATCH=\"drill-${tenant}-' in (drill_script.content | b64decode)"
+          - "'case \"$E_SCRATCH\" in drill-*)' in (drill_script.content | b64decode)"
+          - "'flock -w 10800 9' in (drill_script.content | b64decode)"
+          - "'KEEP_FAILED=0' in (drill_script.content | b64decode)"
+        fail_msg: >-
+          the rendered restore-drill.sh lost part of its contract (roster,
+          scratch safety or the host-wide lock).
+        quiet: true
+
+    - name: Read the rendered metrics probe
+      ansible.builtin.slurp:
+        src: "{{ drill_dir }}/restore-drill-probe.sh"
+      register: probe_script
+
+    - name: Assert the probe publishes age/success/threshold/duration per tenant
+      ansible.builtin.assert:
+        that:
+          - "'# TYPE db_restore_drill_age_seconds gauge' in (probe_script.content | b64decode)"
+          - "'db_restore_drill_probe_success' in (probe_script.content | b64decode)"
+          # 8d weekly / 32d monthly, pushed so the alert rule carries no names.
+          - expected_weekly_series in (probe_script.content | b64decode)
+          - expected_monthly_series in (probe_script.content | b64decode)
+          - "'-X PUT' in (probe_script.content | b64decode)"
+        fail_msg: "the rendered probe does not publish the R11 drill series/thresholds"
+        quiet: true
+
+    - name: Stat the seeded per-tenant state files
+      ansible.builtin.stat:
+        path: "{{ drill_dir }}/state/{{ item }}"
+      loop:
+        - drilltest_weekly
+        - drilltest_monthly
+      register: drill_states
+
+    - name: Assert both tenants have a protected state file
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.mode == '0640'
+        quiet: true
+      loop: "{{ drill_states.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Read the seeded state files
+      ansible.builtin.slurp:
+        src: "{{ drill_dir }}/state/{{ item }}"
+      loop:
+        - drilltest_weekly
+        - drilltest_monthly
+      register: drill_state_bodies
+
+    - name: Assert a never-drilled tenant is pending (success=-1), not a fake success
+      ansible.builtin.assert:
+        that:
+          - "'tenant=' ~ item.item in (item.content | b64decode)"
+          - "'status=pending' in (item.content | b64decode)"
+          - "'last_attempt_epoch=0' in (item.content | b64decode)"
+          - "'last_success_epoch=0' in (item.content | b64decode)"
+          - "'detail=installed; never drilled on this host' in (item.content | b64decode)"
+          # The idempotence run must not append a second block or re-seed.
+          - (item.content | b64decode | regex_findall('^installed_epoch=', multiline=True) | length) == 1
+        fail_msg: "{{ item.item }} state was re-seeded or reports a success that never happened"
+        quiet: true
+      loop: "{{ drill_state_bodies.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Stat the drill and probe units
+      ansible.builtin.stat:
+        path: "{{ unit_dir }}/{{ item }}"
+      loop:
+        - db-restore-drill-weekly.service
+        - db-restore-drill-weekly.timer
+        - db-restore-drill-monthly.service
+        - db-restore-drill-monthly.timer
+        - system-restore-drill.service
+        - system-restore-drill.timer
+      register: drill_units
+
+    - name: Assert every cadence-class and probe unit was rendered
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+        quiet: true
+      loop: "{{ drill_units.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Read the weekly and monthly timers and their services
+      ansible.builtin.slurp:
+        src: "{{ unit_dir }}/{{ item }}"
+      loop:
+        - db-restore-drill-weekly.timer
+        - db-restore-drill-monthly.timer
+        - db-restore-drill-weekly.service
+        - db-restore-drill-monthly.service
+        - system-restore-drill.timer
+        - system-restore-drill.service
+      register: drill_unit_bodies
+
+    - name: Assert the two drill classes keep their distinct, quiet-window schedules
+      ansible.builtin.assert:
+        that:
+          - "'OnCalendar=Sun *-*-* 08:15:00' in (drill_unit_bodies.results[0].content | b64decode)"
+          - "'Persistent=true' in (drill_unit_bodies.results[0].content | b64decode)"
+          - "'OnCalendar=Sun *-*-1..7 09:45:00' in (drill_unit_bodies.results[1].content | b64decode)"
+          - "'Persistent=true' in (drill_unit_bodies.results[1].content | b64decode)"
+          - expected_weekly_exec in (drill_unit_bodies.results[2].content | b64decode)
+          - expected_monthly_exec in (drill_unit_bodies.results[3].content | b64decode)
+        fail_msg: "the weekly/monthly units do not carry their own schedule and class"
+        quiet: true
+
+    - name: Assert the probe timer keeps the age clock ticking between drills
+      ansible.builtin.assert:
+        that:
+          - "'OnCalendar=*-*-* *:07/30:00' in (drill_unit_bodies.results[4].content | b64decode)"
+          - expected_probe_exec in (drill_unit_bodies.results[5].content | b64decode)
+        fail_msg: "the probe timer is missing: the pushed drill age would freeze"
+        quiet: true
