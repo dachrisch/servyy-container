@@ -27,7 +27,6 @@ provisioner:
         create_user: testuser
         with_docker: false
         with_containers: false
-        check_git_servyy_reachable: false
         shell:
           repo: "https://github.com/sorin-ionescu/prezto.git"
           remote_dir: "/home/testuser/.zprezto"

@@ -7,32 +7,6 @@
   tags:
     - user.repo.validate
 
-- name: Attempt to perform HEAD request to git.lehel.xyz
-  uri:
-    url: https://git.lehel.xyz
-    method: HEAD
-    return_content: no
-    status_code: 200
-  register: head_request_result
-  ignore_errors: yes
-  when: check_git_servyy_reachable | default(false)
-  tags:
-    - user.repo.clone
-
-- name: Set reachability fact based on HEAD request result
-  set_fact:
-    git_servyy_reachable: "{{ 'yes' if head_request_result.status == 200 else 'no' }}"
-  when: check_git_servyy_reachable | default(false)
-  tags:
-    - user.repo.clone
-
-- name: Set reachability fact to true when check is skipped
-  set_fact:
-    git_servyy_reachable: "yes"
-  when: not (check_git_servyy_reachable | default(false))
-  tags:
-    - user.repo.clone
-
 - name: "Check if {{ remote_dir }} is a valid git repository"
   command: "git -C {{ remote_dir }} rev-parse --git-dir"
   register: git_check
@@ -75,7 +49,7 @@
     repo: "{{ repository_uri }}"
     dest: "{{ remote_dir }}"
     force: true
-    recursive: "{{ clone_submodules | default(true) and git_servyy_reachable == 'yes' }}"
+    recursive: "{{ clone_submodules | default(true) }}"
     version: "{{ branch | default('master') }}"
     key_file: "{{ git_key_file | default(omit) }}"
     accept_hostkey: true

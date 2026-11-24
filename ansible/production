@@ -16,8 +16,8 @@ prod:
         monitor_profiles: [collect]
         services_enabled:
           traefik: true
-          git: true
-          # Forgejo (ci.lehel.xyz) — platform-only this round, no repo migrated.
+          git: false    # retired 2026-11-24; repos live on ci.lehel.xyz now
+          # Forgejo (ci.lehel.xyz) — home of the migrated repos.
           ci: true
           # Self-hosted Renovate (one-shot, daily 04:17; no port/router).
           # Tokens are prod-only, so this is deliberately absent on the test host.

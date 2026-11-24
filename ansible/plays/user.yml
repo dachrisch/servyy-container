@@ -413,14 +413,7 @@
       when: "'traefik' in (services | default([]))"
       tags: [user.docker, user.docker.traefik]
 
-    - role: docker_service
-      vars:
-        service_dir: git
-      when: "'git' in (services | default([]))"
-      tags: [user.docker, user.docker.git]
-
-    # Forgejo (ci.lehel.xyz) — the future home of git.lehel.xyz. Platform-only
-    # this round: no repo is migrated, and git/ stays untouched. Two env files:
+    # Forgejo (ci.lehel.xyz) — home of the migrated repos. Two env files:
     # .env (compose interpolation + Traefik knobs) and forgejo.env (the
     # FORGEJO__* container env, from secrets.yml — nothing secret in the
     # plaintext compose).

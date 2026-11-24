@@ -1,9 +1,11 @@
 # ci/ — Forgejo (Git + Actions CI) at ci.lehel.xyz
 
 Self-hosted Forgejo on **servy**: private Git hosting, Forgejo Actions CI and a
-package/container registry. It is meant to replace `git.lehel.xyz` (`git/`, the
-EOL nginx-git image) and the fleet's dependency on GitHub. **No repo has been
-migrated yet**, and `git/` + `git.lehel.xyz` stay untouched until that cut-over.
+package/container registry. It replaced `git.lehel.xyz` (`git/`, the EOL
+nginx-git image) on 2026-11-24: `cloudy`, `home` and `notes` were migrated as
+private `cda/*` repos, and `git.www` plus its bare-repo directory were retired.
+GitHub repos are migrated one at a time; `servyy-container` stays on GitHub
+because its checkout is the deploy source.
 
 | | |
 |---|---|

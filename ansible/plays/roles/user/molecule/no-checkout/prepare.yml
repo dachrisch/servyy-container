@@ -24,8 +24,8 @@
         line: 'testuser ALL=(ALL) NOPASSWD:ALL'
         validate: 'visudo -cf %s'
 
-    # What a previous full run leaves on a host: the unlocked checkout, the
-    # deploy key + its ssh config block, and the git.lehel.xyz login.
+    # What a previous full run leaves on a host: the unlocked checkout and the
+    # deploy key + its ssh config block.
     - name: Create the seed directories
       ansible.builtin.file:
         path: "{{ item }}"
@@ -70,4 +70,3 @@
         mode: "0600"
         content: |
           https://keep:other@example.org
-          https://cda:secret@git.lehel.xyz

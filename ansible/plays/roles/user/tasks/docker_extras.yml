@@ -8,8 +8,6 @@
   vars:
     services:
       - dir: traefik
-      - dir: git
-        depends: traefik
       - dir: ci
         depends: traefik
       # One-shot Renovate (no router, no port) — still needs the checkout dir.

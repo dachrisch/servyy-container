@@ -104,7 +104,7 @@ Two rules follow from that:
 **LeagueSphere roles** (`ls_setup`, `ls_app`, `ls_access`, `ls_db_sync`) are tested manually on `servyy-test.lxd`:
 - Require encrypted production secrets
 - Need SSH chroot jail setup
-- Depend on real git.lehel.xyz infrastructure
+- Depend on real service infrastructure unavailable in CI
 - Include manual operations tagged with `never`
 
 **`portainer_rbac/default`** is registered in the manifest with `enabled: false`

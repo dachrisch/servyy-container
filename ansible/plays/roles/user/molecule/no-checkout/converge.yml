@@ -7,8 +7,6 @@
     create_user: testuser
     docker:
       remote_dir: /home/testuser/servyy-container
-    servyy_git_repo:
-      hostname: git.lehel.xyz
   tasks:
     - name: Run the no-checkout cleanup  # noqa: role-name[path]
       ansible.builtin.include_role:

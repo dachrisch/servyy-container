@@ -29,7 +29,6 @@ provisioner:
         create_user: testuser
         with_docker: true
         with_containers: true
-        check_git_servyy_reachable: false
         docker:
           repo: "https://github.com/example/container.git"
           remote_dir: "/home/testuser/servyy-container"

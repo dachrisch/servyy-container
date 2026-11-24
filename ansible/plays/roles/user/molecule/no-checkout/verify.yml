@@ -30,4 +30,3 @@
           - "'keep.example' in (kept.results[0].content | b64decode)"
           - "'id_servyy_container_deploy' not in (kept.results[0].content | b64decode)"
           - "'example.org' in (kept.results[1].content | b64decode)"
-          - "'git.lehel.xyz' not in (kept.results[1].content | b64decode)"

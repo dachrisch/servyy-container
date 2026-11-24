@@ -265,10 +265,6 @@ jobs:
             share: "backup"
             user: "mockuser"
             pass: "mockpass"
-          servyy_git_repo:
-            hostname: "git.example.com"
-            username: "mockuser"
-            password: "mockpass"
           create_user: testuser
           EOF
 
@@ -518,10 +514,6 @@ jobs:
             share: "backup"
             user: "mockuser"
             pass: "mockpass"
-          servyy_git_repo:
-            hostname: "git.example.com"
-            username: "mockuser"
-            password: "mockpass"
           create_user: testuser
           monit:
             email: "test@example.com"

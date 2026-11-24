@@ -3,7 +3,6 @@
     repository_uri: "{{ shell.repo }}"
     remote_dir: "{{ shell.remote_dir }}"
     local_dir: "{{ shell.local_dir }}"
-    check_git_servyy_reachable: false    # zpresto is from GitHub, not git.lehel.xyz
     clone_submodules: true                # Clone submodules during initial clone
     update_submodules: true               # Update submodules on every deployment
     secure_checkout_modes: true           # compinit blocks login on a group-writable fpath
@@ -17,16 +16,6 @@
 - import_tasks: atuin.yml
   tags:
     - user.atuin
-
-- import_tasks: git_credentials.yml
-  vars:
-    hostname: "{{ servyy_git_repo.hostname }}"
-    username: "{{ servyy_git_repo.username }}"
-    password: "{{ servyy_git_repo.password }}"
-  tags:
-    - user.repo.me
-  # No git.lehel.xyz login on hosts without a checkout (the runny CI runner).
-  when: repo_checkout | default(true) | bool
 
 - import_tasks: includes/github_deploy_key.yml
   tags:
@@ -48,7 +37,6 @@
     # (measured 2026-11-19 during WP-10). The normal path still reads the
     # controller checkout's HEAD, which is master for every merged deploy.
     branch: "{{ docker_branch | default(lookup('pipe', 'git -C ' ~ docker.local_dir ~ ' rev-parse --abbrev-ref HEAD')) }}"
-    check_git_servyy_reachable: true     # Check git.lehel.xyz is reachable before recursive submodule clone
     clone_submodules: true                # Clone submodules if reachable
     update_submodules: true               # Update submodules on every deployment
     git_key_file: "~/.ssh/id_servyy_container_deploy"
@@ -83,7 +71,7 @@
 
 # Hosts that must hold no secrets (repo_checkout: false, i.e. the runny CI
 # runner, whose jobs can reach the host): no deploy checkout, no git-crypt key,
-# no deploy key, no git.lehel.xyz login. Removes them if an earlier run left
+# no deploy key. Removes them if an earlier run left
 # them behind. Their services are rendered outside the checkout by their roles.
 - import_tasks: no_checkout.yml
   tags:
