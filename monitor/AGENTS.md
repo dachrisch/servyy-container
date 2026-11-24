@@ -41,7 +41,7 @@ taken off Traefik in 2026-09 because it had no auth; it is back only behind
 - The credentials are literal values in `plays/vars/secrets.yml`
   (`monitor_remote_auth`) — **not** `lookup('password', 'vars/.…')` seeds, which
   exist only on one controller and would silently rotate on a fresh checkout
-  (CLAUDE.md rule 6). `roles/monitor_remote_auth` hashes them into
+  (AGENTS.md rule 6). `roles/monitor_remote_auth` hashes them into
   `traefik/monitor-{loki,prometheus}-auth.htpasswd`; the plaintext is rendered
   into `monitor/rendered/` (`loki-password`, `datasources.yml`) and into the
   fail2ban helper (installed `0700 root`).

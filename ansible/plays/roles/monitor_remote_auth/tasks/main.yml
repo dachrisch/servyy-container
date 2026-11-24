@@ -10,7 +10,7 @@
 # byte-identical across routine deploys (no churn, no needless file-provider
 # reload) while a rotated secret yields a new salt and hash.
 #
-# Deliberately NOT a lookup('password', 'vars/.…') seed (CLAUDE.md rule 6): a
+# Deliberately NOT a lookup('password', 'vars/.…') seed (AGENTS.md rule 6): a
 # seed file exists only on the controller that first rendered it, so a deploy
 # from a fresh checkout would silently rotate the credential away from every
 # consumer's rendered copy.

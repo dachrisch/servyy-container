@@ -109,7 +109,7 @@
 # The trap, named: a 401 here is NOT "the password is wrong". Either the env
 # never reached the DB (this task's reset is the repair) or the env itself is a
 # different value than the DB was seeded from — which is a controller-seed
-# problem (CLAUDE.md, "controller-local seeds"), not something to fix by hand.
+# problem (AGENTS.md, "controller-local seeds"), not something to fix by hand.
 - name: Fail when the rendered admin password still does not authenticate
   ansible.builtin.assert:
     that:

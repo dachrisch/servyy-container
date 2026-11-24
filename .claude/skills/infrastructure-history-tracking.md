@@ -108,7 +108,7 @@ When you begin infrastructure work:
    - ansible/plays/remove_service.yml (NEW)
    - ansible/production (MODIFY)
    - ansible/plays/user.yml (MODIFY)
-   - CLAUDE.md (MODIFY)
+   - AGENTS.md (MODIFY)
    
    **Testing plan:**
    - Verify playbook syntax
@@ -187,7 +187,7 @@ When work is done:
    - `ansible/plays/remove_service.yml` (NEW)
    - `ansible/production` (services → services_enabled dict)
    - `ansible/plays/user.yml` (+pre-task for filtering)
-   - `CLAUDE.md` (+removal workflow section)
+   - `AGENTS.md` (+removal workflow section)
    
    **Commits:**
    - 9c5edf8 docs: add history entry

@@ -12,7 +12,7 @@
 #      forwards to `forgejo serv` in the container (tasks/ssh_passthrough.yml).
 #
 # The admin PASSWORD and the runner SECRET come from plays/vars/secrets.yml as
-# literals (never `lookup('password', …)` seeds — CLAUDE.md rule 6).
+# literals (never `lookup('password', …)` seeds — AGENTS.md rule 6).
 
 # Admin user. `cda` is the single account on this private instance.
 forgejo_bootstrap_admin_username: cda
