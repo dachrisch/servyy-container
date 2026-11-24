@@ -105,20 +105,12 @@
         - user.docker.env
         - user.docker.env.finance
 
-    - name: Build enabled services list from services_enabled dict (compatibility layer)
-      ansible.builtin.set_fact:
-        services: >-
-          {{
-            (services_enabled | default({}) | dict2items
-              | selectattr('value', 'equalto', true)
-              | map(attribute='key') | list)
-            + (services_enabled | default({}) | dict2items
-              | selectattr('value.enabled', 'defined')
-              | selectattr('value.enabled', 'equalto', true)
-              | map(attribute='key') | list)
-          }}
+    # The `services` fact is shared with the user role, which runs BEFORE this
+    # play's own tasks. Static import keeps the `always` tag on the inner task
+    # (see tasks/build_services.yml); the expression itself is unchanged.
+    - name: Build the enabled services fact for this play
+      ansible.builtin.import_tasks: tasks/build_services.yml
       tags:
-        - user.docker
         - always
 
     # Only on hosts that actually run searxng. Unguarded, this ran everywhere:
@@ -1127,7 +1119,10 @@
 # Opt-in via portainer_rbac_enabled (does not run on routine deploys). See
 # roles/portainer_rbac/tasks/main.yml for usage.
 - name: Configure Portainer RBAC
-  hosts: servy.lehel.xyz
+  # All hosts enter the play and the non-owner hosts leave before any task runs.
+  # The former `hosts: servy.lehel.xyz` made --syntax-check -i testing warn
+  # "Could not match supplied host pattern"; the owner now lives in a variable.
+  hosts: all
   remote_user: "{{ create_user }}"
   become: true
   become_user: "{{ create_user }}"
@@ -1137,9 +1132,18 @@
     - vars/secrets.yml
     - vars/portainer-rbac.yml
   pre_tasks:
+    - name: Skip Portainer RBAC on hosts that do not own it
+      ansible.builtin.meta: end_host
+      when: inventory_hostname != (portainer_rbac_host | default('servy.lehel.xyz'))
+      tags:
+        - always
+
     # Rebuild the enabled-services fact so the role's `when` works even when this
     # play is invoked in isolation via --tags user.portainer-rbac (the fact is
-    # otherwise only produced by the user.docker pre_task in the deploy play).
+    # otherwise only produced by the shared task imported in the deploy play and
+    # the user role). This narrower expression is kept on purpose: the play only
+    # runs on the Portainer owner, whose services_enabled has no dict-form
+    # entries, so using it changes no behaviour.
     - name: Build enabled services list from services_enabled dict
       ansible.builtin.set_fact:
         services: "{{ services_enabled | default({}) | dict2items | selectattr('value', 'equalto', true) | map(attribute='key') | list }}"

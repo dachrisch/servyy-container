@@ -28,9 +28,11 @@
     - restic
     - restic.init
 
+# Test-environment behaviour comes from the inventory/default host var, not a
+# literal hostname, so any host flagged `is_test_host` gets the same semantics.
 - name: Setup Test Environment
   include_tasks: test_setup.yml
-  when: inventory_hostname == 'servyy-test.lxd'
+  when: is_test_host | default(false) | bool
   tags:
     - restic
     - restic.test
@@ -64,7 +66,7 @@
   include_tasks: restore.yml
   vars:
     restore_path: "{{ (docker.remote_dir, 'git', 'repos') | path_join }}"
-    backup_name: "{{ (inventory_hostname == 'servyy-test.lxd') | ternary('test', 'home') }}"
+    backup_name: "{{ (is_test_host | default(false) | bool) | ternary('test', 'home') }}"
     owner: "root"
   when: (with_containers | default(false)) | bool
   tags:
@@ -75,7 +77,7 @@
   include_tasks: restore.yml
   vars:
     restore_path: "{{ (docker.remote_dir, 'pass', 'vw-data') | path_join }}"
-    backup_name: "{{ (inventory_hostname == 'servyy-test.lxd') | ternary('test', 'home') }}"
+    backup_name: "{{ (is_test_host | default(false) | bool) | ternary('test', 'home') }}"
     owner: "root"
   when: (with_containers | default(false)) | bool
   tags:
