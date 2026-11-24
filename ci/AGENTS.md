@@ -23,7 +23,10 @@ migrated yet**, and `git/` + `git.lehel.xyz` stay untouched until that cut-over.
 - Web UI: `https://ci.lehel.xyz`, user `cda`. The password is
   `forgejo_admin_password` in `ansible/plays/vars/secrets.yml`, with a copy in
   Vaultwarden as **"forgejo - admin (ci.lehel.xyz)"**.
-- Signed-out visitors only ever see the sign-in page (`REQUIRE_SIGNIN_VIEW`).
+- Public repos are anonymously readable since 2026-11-24
+  (`REQUIRE_SIGNIN_VIEW=false`); private repos still require sign-in and all
+  writes need a token/SSH key. Registration remains closed, so only accounts an
+  admin creates exist.
 - **Password basic auth is off** (`ENABLE_BASIC_AUTHENTICATION=false`). The
   password works only in the web login form. The API, git over HTTPS and
   `docker login` all need a **token**, sent either as the basic-auth password

@@ -13,26 +13,34 @@ a silently skipped deploy or a stale alert, not an error.
 ansible/
 ├── servyy.yml              # Main playbook
 ├── servyy.sh / servyy-test.sh
-├── inventory/production    # Defines servers and their enabled services
+├── production              # Defines servers and their enabled services
 └── plays/
     ├── system.yml          # OS, fail2ban, monit, backups
     ├── user.yml            # Docker services, containers
     └── roles/{system,user,testing,docker_service,ls_*}/
 ```
 
-**Inventory File: `ansible/production`**
-- Defines all servers (servy.lehel.xyz, codey.lehel.xyz, aqui.fritz.box, etc.)
+**Inventory File: `ansible/production`** (test hosts live in `ansible/testing`)
+- Defines all servers: the `prod` group has `servy.lehel.xyz`, `codey.lehel.xyz`,
+  `runny.lehel.xyz` and `alphavps` (a retired handle kept in inventory); the `test` /
+  `test-runner` groups have `servyy-test.lxd` and `runny-test.lxd`
 - Each server has `services_enabled:` dict specifying which services run there
 - Services NOT in enabled list are skipped during deployment
 - Example: opencode only enabled on codey.lehel.xyz, not on servy.lehel.xyz
 
-**Common Tags:**
-- `system` - OS packages, fail2ban, monit
-- `docker` - Docker services only
-- `fail2ban` - fail2ban configuration
-- `backup` - Backup timers
-- `user.docker.env` - Regenerate .env files
-- `user.docker.{service}` - Deploy specific service (e.g., `user.docker.opencode`)
+**Common Tags** (hierarchical — `--tags` matches tag names exactly, not by substring):
+- `user`, `user.docker`, `user.docker.<service>` — e.g. `user.docker.opencode`,
+  `user.docker.monitor`, `user.docker.db-business`; `user.docker.env` regenerates .env files
+- `system.<area>` — e.g. `system.swap`, `system.firewall`, `system.probe`,
+  `system.fail2ban`, `system.hardening`, `system.packages`
+- `restic` and `restic.<action>` — e.g. `restic.backup`, `restic.init`, `restic.recreate`,
+  `restic.restore`; `restore.drill` runs restore drills
+- `ls.*` — LeagueSphere roles, e.g. `ls.app`, `ls.db.sync`, `ls.demo`, `ls.stage.restore`
+- `testing` (test-host utilities) and `user.portainer-rbac` (Portainer RBAC)
+- `always` / `never` — Ansible built-ins
+
+So `--tags docker` matches nothing (use `user.docker`), and `--tags system` does not
+select `system.swap`.
 
 ## Molecule Testing (REQUIRED FOR NEW FEATURES)
 
@@ -41,7 +49,8 @@ ansible/
 ### Why Test-First Matters
 
 1. **Validation**: Proves your changes work before production deployment
-2. **CI Integration**: All tests run automatically on every push
+2. **CI Integration**: the eight baseline scenarios run on every Ansible change; the rest
+   run only when their own role changes (jobs are path-gated)
 3. **Regression Prevention**: Ensures existing functionality isn't broken
 4. **Documentation**: Tests show how roles are meant to be used
 
@@ -55,9 +64,13 @@ ansible/
 5. DOCUMENT: Update history/YYYY-MM-DD_*.md
 ```
 
-**Current Coverage**: 8 scenarios across system/testing/user/docker_service roles
+**Current Coverage**: 21 scenarios across 12 roles on disk; the CI baseline that runs on
+every Ansible change is 8 of those (see `.github/molecule-matrix.yml`)
 **Test Environment**: servyy-test.lxd (validates before CI)
-**CI Platform**: GitHub Actions (runs all scenarios in parallel)
+**CI Platform**: GitHub Actions via `.github/workflows/ci.yml` is this repo's active CI
+(path-gated jobs, single required `CI Gate` check); Forgejo Actions at ci.lehel.xyz
+([ci/AGENTS.md](../ci/AGENTS.md)) is the self-hosted target that can run the same workflows
+unchanged if this repo migrates.
 
 ### Key Testing Principles
 
@@ -96,7 +109,9 @@ ansible/
 - `.github/molecule-matrix.yml` - which scenarios exist and which run on every ansible change
 - `.github/workflows/README.md` - CI jobs, path gating and the `CI Gate` required check
 
-**Testing is not optional** - if you modify a role, update or add tests. The CI will reject PRs without test coverage.
+**Testing is not optional** - if you modify a role, update or add tests and register the
+scenario in the matrix; Ansible changes run those CI checks, while a docs-only PR skips
+Molecule entirely because jobs are path-gated.
 
 > **CI gate:** register every scenario in `.github/molecule-matrix.yml`. Jobs are path-gated;
 > `CI Gate` is the single required check, so never add a `paths:` trigger or require an
