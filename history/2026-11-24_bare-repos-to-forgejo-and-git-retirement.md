@@ -70,8 +70,25 @@ pytest (`home`), and an always-on `CI Gate` job. Key Forgejo adjustments:
 - Server: `git.www` container and `~/servyy-container/git/` absent; DNS still
   resolves via the `*.lehel.xyz` wildcard, no explicit record changed.
 
+## Deployment
+
+- GitHub CI on `bdd4afe1`: all 34 jobs green, including `CI Gate`.
+- `servyy-test.lxd` full run failed on two **pre-existing, unrelated** issues:
+  `auditd` could not start in the LXD container, and a `github_deploy_key.yml`
+  assertion hit `object of type 'dict' has no attribute 'stat'`. Neither touches
+  the git-service retirement; CI's Molecule matrix covered the changed user role.
+- Production: Pushgateway's stale `system_container_health` series was cleared,
+  then a targeted deploy (`--limit servy.lehel.xyz --tags
+  user.docker.traefik,system.probe`) finished with `failed=0, changed=1`. A full
+  deploy was tried first but was stopped — the service was already removed
+  directly, so only the Traefik error page needed deploying.
+- Final state on servy: zero containers matching `git.*`, no
+  `~/servyy-container/git/` directory, `https://git.lehel.xyz` returns 404.
+
 ## Follow-up
 
 - GitHub repos are a separate, one-at-a-time queue; `servyy-container` stays on
   GitHub (its checkout is the deploy source).
 - `archive` and `me` clones are intentionally orphaned; delete locally if unwanted.
+- A stale `git.lehel.xyz` line may remain in `~/.git-credentials` on servy — it
+  is inert now that the host is gone and no task re-creates it.
