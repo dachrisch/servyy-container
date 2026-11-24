@@ -57,9 +57,10 @@ Optionally also restored: `gamedays_gamedaydesignerstate` for gd874 (see Decisio
 
 ## 3. Mechanism — `ls_prod_restore` role (tag `ls.prod.restore`)
 
-Mirrors `ls_stage_restore`'s structure. Tag-only; **never** part of a default `ls` run.
-Names below use the same `stage_app` / `prod_app` vars loaded from
-`roles/ls_app/vars/secret_{stage,main}.yaml`.
+Mirrors `ls_stage_restore`'s structure. Opt-in via an enable flag (default off,
+like `ls_stage_restore_enabled`); the tag selects the role only when enabled, so
+it is **never** part of a default `ls` run. Names below use the same `stage_app`
+/ `prod_app` vars loaded from `roles/ls_app/vars/secret_{stage,main}.yaml`.
 
 ### Step 0 — Preconditions (assert, fail fast)
 - Prod is in **maintenance mode** (write endpoints frozen) — confirm before starting.
@@ -143,7 +144,8 @@ eyeballed gd874 in the UI. Kept out of the role deliberately.
 - **Transaction** — delete + all inserts commit together or not at all.
 - **Rollback point** — Step 1 dump reconstructs the pre-restore state if needed.
 - **No concurrent writes** — prod is frozen in maintenance mode for the duration.
-- **Tag-only, prod-explicit** — runs only under `--tags ls.prod.restore --limit lehel.xyz`.
+- **Opt-in, prod-explicit** — runs only when its enable flag is set and under
+  `--tags ls.prod.restore --limit lehel.xyz`.
 - **Idempotency** — one-shot data fix, not idempotent by nature; the pre-flight ID check
   (Step 0/4) is the guard against double application.
 
