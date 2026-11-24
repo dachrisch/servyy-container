@@ -173,8 +173,24 @@
         that:
           - "'TCPKeepAlive no' in (sshd_render.content | b64decode)"
           - "'AllowAgentForwarding no' in (sshd_render.content | b64decode)"
+          - "'X11Forwarding no' in (sshd_render.content | b64decode)"
           - "'LogLevel VERBOSE' in (sshd_render.content | b64decode)"
           - "'MaxAuthTries 3' in (sshd_render.content | b64decode)"
           - "'False' not in (sshd_render.content | b64decode)"
           - "'True' not in (sshd_render.content | b64decode)"
         fail_msg: "sshd hardening template rendered YAML booleans instead of sshd yes/no"
+
+    # Regression guard for the base-image drift: the rendered sample above only
+    # proves the template works. This asserts the REAL defaults declare the value,
+    # so removing it from default.yml (and letting codey's image default of `yes`
+    # back in) fails CI.
+    - name: Verify X11Forwarding is declared in the real hardening defaults
+      vars:
+        hardening_defaults: "{{ lookup('ansible.builtin.file', playbook_dir + '/../../../../vars/default.yml') | from_yaml }}"
+      ansible.builtin.assert:
+        that:
+          - hardening_defaults.hardening.ssh.X11Forwarding is defined
+          - not (hardening_defaults.hardening.ssh.X11Forwarding | bool)
+        fail_msg: >-
+          hardening.ssh must declare `X11Forwarding: no`, otherwise each host's
+          base-image /etc/ssh/sshd_config decides (codey shipped `yes`)

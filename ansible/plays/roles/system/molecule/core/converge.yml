@@ -115,5 +115,6 @@
             MaxAuthTries: 3
             TCPKeepAlive: no
             AllowAgentForwarding: no
+            X11Forwarding: no
             LogLevel: VERBOSE
       tags: [system.hardening]

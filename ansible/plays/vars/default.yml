@@ -231,6 +231,10 @@ hardening:
     # for admins and the dbeaver_stage Match block.
     AllowTcpForwarding: local
     AllowAgentForwarding: no
+    # Declare globally: without this, sshd inherits the base image's value from
+    # /etc/ssh/sshd_config (servy shipped `no`, the Oracle image on codey `yes`).
+    # The drop-in is Included first, so its first value wins.
+    X11Forwarding: no
   login_defs:
     UMASK: "027"
     PASS_MIN_DAYS: "1"
