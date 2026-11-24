@@ -53,9 +53,11 @@
   tags:
     - restic.restore
 
+# Keep the fact name: restore.yml's tripwire tasks consume it. Only its source
+# changes — the inventory/default host var instead of a literal hostname.
 - name: Set environment detection fact
   set_fact:
-    is_test_environment: "{{ inventory_hostname == 'servyy-test.lxd' }}"
+    is_test_environment: "{{ is_test_host | default(false) | bool }}"
   tags:
     - restic.restore
 

@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  author: servyy
+  description: Per-tier database users, credentials, dbops and render-only setup.
+  license: MIT
+  min_ansible_version: "2.15"
+  galaxy_tags:
+    - database
+    - docker
+
+# Ordering contract (documented, NOT a role dependency):
+# plays/user.yml invokes this role in three passes per tier: render-only pass,
+# `docker_service` for db-<tier>, then the user-creation pass. The render pass
+# must write the tier's .env/dbops before docker_service starts the server, and
+# the user pass must run after it so the tenants exist when consumers start.
+# A tag-scoped app deploy (`--tags user.docker.<app>`) assumes its tier and its
+# users are already deployed. This ordering belongs to the play, not to a role
+# `dependencies:` entry — adding one would re-run db_tier and change behaviour.
+dependencies: []

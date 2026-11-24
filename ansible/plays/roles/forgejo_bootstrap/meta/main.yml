@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  author: servyy
+  description: Forgejo admin bootstrap and management API token lifecycle.
+  license: MIT
+  min_ansible_version: "2.15"
+  galaxy_tags:
+    - forgejo
+    - ci
+
+# Ordering / execution-context contract (documented, NOT a role dependency):
+# `tasks/api_token.yml` calls `bw` on the controller (Vaultwarden unlock), so it
+# runs from its own linear play, plays/forgejo_api_token.yml. It must NOT be
+# folded into the `strategy: free` Docker user play: run_once is unsupported
+# there and several hosts would drive the single controller-side `bw` CLI at
+# the same time. The rest of the role (admin bootstrap) stays in that user play.
+# Keep the separate play; do not encode this as a `dependencies:` entry.
+dependencies: []

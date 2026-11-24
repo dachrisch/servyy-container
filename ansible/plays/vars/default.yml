@@ -257,6 +257,21 @@ mkcert:
     - "::1"
 
 # --- Cross-role topology flags (single source of truth) ---------------------
+# is_test_host: does this host have the test-environment backup semantics?
+# Inventory sets it to `true` on servyy-test.lxd and runny-test.lxd in
+# ansible/testing. This file is loaded via play `vars_files`, which OUTRANKS
+# inventory host vars (see the monitor_local_traefik note below), so a bare
+# `is_test_host: false` here would silently shadow those overrides. The false
+# default is therefore derived from the inventory-only `test_hosts` list; every
+# host not listed there resolves to false. Consume with `| default(false) | bool`
+# so role-level invocations without this file still get a safe default.
+is_test_host: "{{ inventory_hostname in (test_hosts | default([])) }}"
+
+# Owner of the Portainer RBAC play. The play itself targets `all` and ends the
+# play on every other host; keeping the owner in a variable avoids a hardcoded
+# inventory hostname (and the -i testing "host pattern not matched" warning).
+portainer_rbac_host: servy.lehel.xyz
+
 # leaguesphere_enabled: does this host run LeagueSphere (jail + prod DB)?
 # Owns ALL db/ls-db scoping: restic db repo + backup timers, system_probe db
 # entries, restic forget/check db sections. Derived from inventory
