@@ -160,6 +160,18 @@ docker push ci.lehel.xyz/cda/<image>:<tag>
 In a workflow, log in with a token stored as a secret. Packages
 (`./data/packages`) are **not backed up**: treat them as rebuildable.
 
+### Dependency updates (self-hosted Renovate)
+
+Renovate runs as a one-shot container on servy, once daily at 04:17
+(`renovate.timer`, a user systemd timer). It uses the native Forgejo platform
+(`RENOVATE_PLATFORM=forgejo`, endpoint `https://ci.lehel.xyz/api/v1`) and
+autodiscovers repos. Repo-level `renovate.json` files work unchanged.
+
+Credentials are rendered into `~/servyy-container/renovate/renovate.env` (0600)
+from git-crypt `ansible/plays/vars/secrets.yml` at deploy time; **nothing calls
+`bw` at runtime**. A dedicated Forgejo PAT plus read-only GitHub and Docker Hub
+PATs are used as hostRules for datasource lookups. See `renovate/AGENTS.md`.
+
 ## Operating it
 
 ### Deploy

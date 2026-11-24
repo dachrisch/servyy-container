@@ -19,6 +19,9 @@ prod:
           git: true
           # Forgejo (ci.lehel.xyz) — platform-only this round, no repo migrated.
           ci: true
+          # Self-hosted Renovate (one-shot, daily 04:17; no port/router).
+          # Tokens are prod-only, so this is deliberately absent on the test host.
+          renovate: true
           photoprism: true
           bumbleflies: true
           achim-hoefer: true

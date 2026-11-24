@@ -12,6 +12,8 @@
         depends: traefik
       - dir: ci
         depends: traefik
+      # One-shot Renovate (no router, no port) — still needs the checkout dir.
+      - dir: renovate
       - dir: runny
       - dir: photoprism
         depends: traefik

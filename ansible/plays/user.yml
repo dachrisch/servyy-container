@@ -442,6 +442,23 @@
       when: "'ci' in (services | default([]))"
       tags: [user.docker, user.docker.ci]
 
+    # Self-hosted Renovate. One-shot container on a user timer, not a web
+    # service: docker_service only renders renovate.env (manual: true) and the
+    # renovate role installs the scheduler. Tokens come from secrets.yml.
+    - role: docker_service
+      vars:
+        service_dir: renovate
+        manual: true
+        env_templates:
+          - src: renovate/renovate.env.j2
+            dest: renovate.env
+      when: "'renovate' in (services | default([]))"
+      tags: [user.docker, user.docker.renovate]
+
+    - role: renovate
+      when: "'renovate' in (services | default([]))"
+      tags: [user.docker, user.docker.renovate]
+
     # Forgejo Actions runner (codey = dind, runny = host socket). Not in
     # docker.services[]: the runners never run on servy.
     - role: forgejo_runner

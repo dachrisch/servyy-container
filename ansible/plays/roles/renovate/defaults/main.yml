@@ -1,0 +1,4 @@
+---
+# Daily, outside the 02:00-04:00 restic window and the 05:00 Firefly import.
+renovate_schedule: "*-*-* 04:17:00"
+renovate_service_dir: "{{ (docker.remote_dir, 'renovate') | path_join }}"

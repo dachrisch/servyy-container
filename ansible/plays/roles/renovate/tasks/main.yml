@@ -1,0 +1,30 @@
+---
+# The env file itself is rendered by the docker_service role (manual: true) in
+# plays/user.yml, so this role only installs the scheduler. Keeping the two
+# separate means there is exactly one place that renders secrets into a file.
+
+- name: Install Renovate one-shot systemd service
+  ansible.builtin.template:
+    src: renovate.service.j2
+    dest: "{{ (remote_user_systemd, 'renovate.service') | path_join }}"
+    mode: "0644"
+  tags: [user.docker, user.docker.renovate]
+
+- name: Install Renovate systemd timer
+  ansible.builtin.template:
+    src: renovate.timer.j2
+    dest: "{{ (remote_user_systemd, 'renovate.timer') | path_join }}"
+    mode: "0644"
+  tags: [user.docker, user.docker.renovate]
+
+- name: Reload user systemd and enable the Renovate timer
+  ansible.builtin.systemd:
+    daemon_reload: true
+    scope: user
+    name: renovate.timer
+    state: started
+    enabled: true
+  # The unit files are not actually written in --check mode, so systemd cannot
+  # resolve the timer then. The template tasks above still report their diff.
+  when: not ansible_check_mode
+  tags: [user.docker, user.docker.renovate]

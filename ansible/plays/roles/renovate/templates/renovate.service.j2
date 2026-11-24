@@ -1,0 +1,12 @@
+[Unit]
+Description=Self-hosted Renovate dependency updates (ci.lehel.xyz)
+
+[Service]
+Type=oneshot
+WorkingDirectory={{ renovate_service_dir }}
+ExecStart=/usr/bin/docker compose run --rm renovate
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

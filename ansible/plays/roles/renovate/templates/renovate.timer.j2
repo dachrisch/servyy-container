@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Renovate run for ci.lehel.xyz
+
+[Timer]
+OnCalendar={{ renovate_schedule }}
+RandomizedDelaySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
