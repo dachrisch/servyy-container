@@ -36,12 +36,14 @@
 
 # augenrules concatenates /etc/audit/rules.d/*.rules and loads the result with auditctl -R.
 # It replaces the running rule set, so no auditd restart (which drops events) is needed.
-# Guarded like the other service handlers: auditd cannot load rules inside a container.
+# auditd cannot load rules inside a container: both Docker and LXC fail
+# augenrules --load with "There was an error while processing parameters", so skip there.
+# The rules file is still deployed; Molecule asserts it and that auditd is not started.
 - name: reload auditd
   command: augenrules --load
   changed_when: true
   become: true
-  when: ansible_facts['virtualization_type'] | default('') != 'docker'
+  when: ansible_facts['virtualization_type'] | default('') not in ['docker', 'lxc']
 
 # The filter lives in DOCKER-USER, which Docker recreates on every daemon restart, hence the
 # unit is re-run rather than cared for by iptables persistence.
