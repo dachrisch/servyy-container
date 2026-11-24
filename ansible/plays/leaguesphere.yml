@@ -151,13 +151,8 @@
         - ls.app.stage
         - ls.app
 
-    # DB migrate role - on-demand seed of local prod db from external (tag-only, not in default ls run)
-    - role: ls_db_migrate
-      tags:
-        - ls.db.migrate
-
-    # Hourly maintenance-mode / active-games probe - tag-only, not in default ls run
-    # (mirrors ls_db_migrate above). Pushes metrics to Pushgateway; Grafana alerts on them.
+    # Hourly maintenance-mode / active-games probe - tag-only, not in default ls run.
+    # Pushes metrics to Pushgateway; Grafana alerts on them.
     - role: ls_maintenance_probe
       tags:
         - ls.maintenance.probe

@@ -27,7 +27,6 @@ cd ansible && ./servyy.sh --limit lehel.xyz --tags <tag.name>
 #   system.restic.maintenance  — restic forget/check scripts + timers
 #   ls.app.stage               — staging deployment
 #   ls.db.sync                 — prod → stage DB clone
-#   ls.db.migrate              — external → local prod DB seed
 #   ls.stage.restore           — restore stage from physical backup
 #   restic.restore             — file-level restic restore
 ```
