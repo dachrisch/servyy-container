@@ -172,6 +172,15 @@ prod:
         # collectors stay on servy; the two hosts talk over loki.lehel.xyz and
         # prometheus.lehel.xyz (basicAuth + ipAllowList).
         monitor_profiles: [ui]
+        # 2026-11-24 audit: no NFS mounts exist here, and monit alerts go straight
+        # to smtp.gmail.com (see monit.alert.j2), so neither rpcbind/portmapper
+        # nor a local MTA is needed. bsd-mailx must go with postfix: it requires a
+        # mail-transport-agent, and apt would otherwise install Courier as a
+        # replacement. Remove all three together.
+        system_packages_absent:
+          - rpcbind
+          - postfix
+          - bsd-mailx
         # Forgejo Actions runner (deployed from the runny/ service dir). codey
         # is the default runner: ubuntu-latest tests/lint, with QEMU amd64
         # builds as fallback. `dind` backend because codey's host socket would

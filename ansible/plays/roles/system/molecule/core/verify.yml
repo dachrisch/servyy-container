@@ -150,6 +150,12 @@
           - auditd_active.stdout | default('') != 'active'
         fail_msg: "auditd must not be started in a container; Enable auditd should be skipped"
 
+    - name: Verify package removal stays disabled in the test container
+      ansible.builtin.assert:
+        that:
+          - (system_packages_absent | default([])) | length == 0
+        fail_msg: "system_packages_absent must be empty in Molecule; apt purge in the test container is unsafe"
+
     - name: Check legal banner exists
       stat:
         path: /etc/issue

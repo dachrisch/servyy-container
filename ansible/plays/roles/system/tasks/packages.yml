@@ -65,6 +65,20 @@
   tags:
     - system.packages.install
 
+# Per-host removals (e.g. codey's rpcbind + local MTA). dpkg stops and removes
+# the service units with the package, so no separate mask/stop task is needed;
+# an already-absent package is a no-op, keeping this idempotent on re-runs.
+- name: Purge packages not needed on this host
+  ansible.builtin.apt:
+    name: "{{ system_packages_absent }}"
+    state: absent
+    purge: true
+  become: true
+  when: system_packages_absent | default([]) | length > 0
+  tags:
+    - system.packages
+    - system.packages.remove
+
 - name: Ensure a locale exists
   community.general.locale_gen:
     name: de_DE.UTF-8
