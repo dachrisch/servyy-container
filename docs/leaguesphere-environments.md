@@ -120,7 +120,6 @@ Everything runs from `ansible/plays/leaguesphere.yml`, imported by `ansible/serv
 | `ls.app.stage` | stage only (also triggers `ls.db.sync`) |
 | `ls.demo` | demo only |
 | `ls.db.sync` | clone prod DB → stage (no redeploy); source toggleable via `ls_db_sync_source` |
-| `ls.db.migrate` | seed local prod container from external DB via `mysqldump` (on-demand) |
 | `ls.app.pull` / `ls.app.env` / `ls.app.deploy` | sub-steps of an app deploy |
 
 ---
@@ -184,13 +183,12 @@ deliberately (`docker compose … up -d --force-recreate db`). Rollback is remov
 > repos now carry user data: the audit file on the daily root snapshot, the binlogs inside every
 > hourly `restic-ls-db` snapshot. Treat Storage Box access as data access.
 
-**Seeding the prod DB from external (one-time / re-seed):**
-```bash
-cd ansible
-./servyy.sh --tags ls.db.migrate --limit lehel.xyz
-```
-This role (`ls_db_migrate`) dumps the external DB via `mysqldump`, imports it into
-`leaguesphere.db`, and removes the temp dump. It is re-runnable (idempotent seed).
+**Prod DB is self-contained.** Since the 2026-07-08 cutover the app talks directly to
+`leaguesphere.db`; there is no external seeding step. The former external migration role
+and its dedicated Ansible tag were removed: its external credentials were stale and, because
+it was included in the playbook without a guard, it could have dropped and recreated the live
+prod DB on an ordinary deploy. Restore and re-seed from the binlog-backed
+`mariadb-backup` set and its restic snapshots described above, not from an external host.
 
 ### 2. Stage — `stage.leaguesphere.app`
 
@@ -436,7 +434,8 @@ cd ansible
 ./servyy.sh --tags ls.app.prod --limit lehel.xyz      # pulls master; adds leaguesphere.db (recreates app/www once if checkout was stale)
 ./servyy.sh --tags restic.init,restic.backup --limit lehel.xyz
 ssh lehel.xyz "docker inspect -f '{{.State.Health.Status}}' leaguesphere.db"   # → healthy
-./servyy.sh --tags ls.db.migrate --limit lehel.xyz    # seed; verify table parity (base-table baseline 103)
+# External seed step (formerly a dedicated Ansible tag) was retired with the migration role:
+# prod runs on its own leaguesphere.db and is no longer seeded from an external host.
 ```
 
 ### Phase B — cutover (full-downtime maintenance window, approval-gated)
@@ -448,8 +447,8 @@ ssh lehel.xyz "docker inspect -f '{{.State.Health.Status}}' leaguesphere.db"   #
 #    AND stop every NON-prod stack still on the external DB (servyy-test, stage-on-external, dev).
 # 1. Take the app OFFLINE — full downtime, no in-flight writes, no external-DB contention:
 ssh lehel.xyz "cd /var/jail/home/leaguesphere/container && docker compose -p leaguesphere stop app www"
-# 2. Final delta seed while the app is down (verify base-table parity = 103):
-./servyy.sh --tags ls.db.migrate --limit lehel.xyz
+# 2. (Removed) Final delta seed — the external migration role/tag was retired; live prod
+#    is not re-seeded from an external host. Confirm leaguesphere.db is healthy instead.
 # 3. In ONE deploy: flip app.db_host to 'leaguesphere.db' in secret_main.yaml
 #    AND rename database->egress in leaguesphere/deployed/docker-compose.yaml, then:
 ./servyy.sh --tags ls.app.prod --limit lehel.xyz      # recreates app/www → back ONLINE on local DB
@@ -521,10 +520,10 @@ See `monitor/AGENTS.md` › "Querying logs and checking bans" for the raw `curl`
 PROD    leaguesphere.app          host lehel.xyz   db leaguesphere.db (internal container) [¹]
         containers: leaguesphere.app / leaguesphere.www / leaguesphere.db
         deploy:  ./servyy.sh --tags ls.app.prod --limit lehel.xyz
-        seed db: ./servyy.sh --tags ls.db.migrate --limit lehel.xyz
+        db seed: none — self-contained since cutover (external migration removed)
         backup:  mariadb-backup-ls timer → restic repo restic-ls-db (hourly)
         logs:    docker logs leaguesphere.app   | Grafana "leaguesphere"
-        [¹] STATUS: PENDING cutover — currently still on s207.goserver.host until Task 11 runs
+        [¹] Prod DB is the local leaguesphere.db container since the 2026-07-08 cutover
 
 STAGE   stage.leaguesphere.app    host lehel.xyz   db leaguesphere_stage.mysql (container)
         containers: leaguesphere_stage.staging-app / .www / .mysql

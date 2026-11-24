@@ -58,12 +58,9 @@ Host paths used below:
   *(This is the one intentional manual operational step. The site returns the default error/502
   for the duration — no maintenance page by design.)*
 
-- [ ] **Final delta seed** while the app is down (consistent, no contention):
-  ```bash
-  cd container/ansible
-  ./servyy.sh --tags ls.db.migrate --limit lehel.xyz
-  ```
-  Verify table parity afterward (base-table baseline = **103**).
+- [ ] **No external seed:** the former "Final delta seed" step used a migration role and
+      dedicated Ansible tag that have since been removed. Prod is self-contained on
+      `leaguesphere.db` and must not be re-seeded from an external host.
 
 - [ ] **Cutover deploy — ONE run** (applies the two staged edits, recreates app/www, brings the
       app back **online on the local DB**):
