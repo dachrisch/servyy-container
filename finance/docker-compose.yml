@@ -119,7 +119,10 @@ services:
       # and per content hash, so hourly is one Gmail list call and files
       # nothing twice — and the 07:00 pass still precedes the reconcile, so the
       # filings are there when the receipt reader runs.
-      - ofelia.job-exec.bill-intake.schedule=0 * * * *
+      # Ofelia schedules are 6 fields, seconds first: 0 0 * * * * = minute 0 of
+      # every hour. The old 5-field `0 * * * *` ran every minute and burned the
+      # shared admin Gmail quota (history/2026-11-24_queen-bill-intake-rate-limit.md).
+      - ofelia.job-exec.bill-intake.schedule=0 0 * * * *
       - ofelia.job-exec.bill-intake.command=node dist/src/server/cron/billIntake.js
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]

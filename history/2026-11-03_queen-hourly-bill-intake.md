@@ -6,6 +6,12 @@ the Belege tab only the next day. `finance/docker-compose.yml` now runs it
 hourly, `0 * * * *`, at minute 0 so the 07:00 pass still precedes the 07:30
 reconcile.
 
+> **Correction (2026-11-24):** `0 * * * *` is only 5 fields. Ofelia parses
+> seconds-first 6-field schedules, so this actually ran **every minute** and
+> exhausted the shared Gmail quota (HTTP 429). The real hourly expression is
+> `0 0 * * * *`; see
+> [history/2026-11-24_queen-bill-intake-rate-limit.md](2026-11-24_queen-bill-intake-rate-limit.md).
+
 Intake is idempotent per (message, attachment) and per content hash, so an
 hourly pass is one Gmail list call and files nothing twice. A Bull repeat
 schedule would keep a worker process alive between runs for no benefit, so the
