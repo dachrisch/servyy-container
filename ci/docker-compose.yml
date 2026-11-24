@@ -74,9 +74,10 @@ services:
       - traefik.http.routers.${SERVICE_NAME}.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
       - traefik.http.routers.${SERVICE_NAME}.tls=${TRAEFIK_TLS:-true}
       - traefik.http.routers.${SERVICE_NAME}.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencryptdnsresolver}
-      # Same crawler rate-limit middleware as git.lehel.xyz (aggressive
-      # crawler/scanner protection from the shared file-provider).
-      - traefik.http.routers.${SERVICE_NAME}.middlewares=crawler-ratelimit@file
+      # No per-User-Agent crawler limit here: buildx registry pushes send many
+      # blob HEADs with one User-Agent, and crawler-ratelimit (10/s, burst 20)
+      # answers 429 mid-push. The websecure entrypoint already applies the
+      # per-IP edge-guard (25/s, burst 600), which is the real flood protection.
       - traefik.http.services.${SERVICE_NAME}.loadbalancer.server.port=3000
       # Local-qualified name for the container-health probe / host ping.
       - traefik.http.routers.${SERVICE_NAME}_local_qualified.rule=Host(`${SERVICE_NAME}.${LOCAL_HOSTNAME}`)
