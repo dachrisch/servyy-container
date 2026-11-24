@@ -1,7 +1,7 @@
 # Retiring `github.com/dachrisch/dontforget`
 
 **Date:** 2026-11-24
-**Status:** Phases 1–4 complete; **Phase 5 (GitHub archive) awaiting confirmation**
+**Status:** ✅ Complete — all five phases done, GitHub repo archived 2026-11-24
 **Relates to:** `history/2026-11-24_knope-release-cycle.md`,
 `history/2026-11-24_renovate-self-hosted.md`, `renovate/AGENTS.md`
 
@@ -61,11 +61,12 @@ were removed in commit `5602e65`; Forgejo `master` now has only
 - The two GitHub PRs were closed with pointer comments; `gh-dash` topic removed
   (`topics: []`). GitHub repo is still **not archived**.
 
-## Phase 5 — pending
+## Phase 5 — done
 
-Archive with `gh repo archive dachrisch/dontforget` only after explicit user
-confirmation. Keep the repo as a read-only pointer; never delete. Rollback is
-`gh repo unarchive`.
+`gh repo archive dachrisch/dontforget --yes` after explicit confirmation.
+Verified `archived=true`, `topics=[]`, no open PRs. The GitHub repo remains as a
+read-only pointer and must never be deleted. Rollback is
+`gh repo unarchive dachrisch/dontforget`.
 
 Note: `--check` deployments with `user.docker.repo` fail on two pre-existing
 bugs (repository.yml URI result, vaultwarden unlock); checking the narrow
