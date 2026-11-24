@@ -1,0 +1,28 @@
+---
+# Shared construction of the `services` compatibility fact.
+#
+# Callers MUST import this statically (import_tasks, not include_tasks): a
+# dynamically included file does not inherit the caller's `always` tag on its
+# inner tasks, so a narrowly tagged deploy would skip the fact construction and
+# every `"x" in services` guard would silently go false. See the import_tasks
+# notes in plays/user.yml.
+#
+# Both services_enabled shapes are deliberate and must stay in this order:
+#   - plain true: traefik: true
+#   - dict form:  opencode: {enabled: true, dns_short_name: codey, ...}
+# A single `| bool` check would lose the dict form's service name (codey).
+- name: Build enabled services list from services_enabled dict
+  ansible.builtin.set_fact:
+    services: >-
+      {{
+        (services_enabled | default({}) | dict2items
+          | selectattr('value', 'equalto', true)
+          | map(attribute='key') | list)
+        + (services_enabled | default({}) | dict2items
+          | selectattr('value.enabled', 'defined')
+          | selectattr('value.enabled', 'equalto', true)
+          | map(attribute='key') | list)
+      }}
+  tags:
+    - user.docker
+    - always

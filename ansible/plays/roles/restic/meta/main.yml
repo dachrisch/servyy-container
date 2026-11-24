@@ -1,0 +1,24 @@
+---
+galaxy_info:
+  author: servyy
+  description: Restic backup infrastructure, restore tripwires and backup schedules.
+  license: MIT
+  min_ansible_version: "2.15"
+  galaxy_tags:
+    - backup
+    - restic
+
+# Ordering contract (documented, NOT a role dependency):
+# The restic play (07 in servyy.yml) runs BEFORE the leaguesphere play (09).
+# The LeagueSphere DB restore target deliberately skips when the jail does not
+# exist yet (first test deploy); a host WITH a jail but no snapshots still fails
+# fast in tasks/restore.yml, which is the intended backup tripwire. Reordering
+# the plays would turn that deliberate skip into a failed deploy, so keep the
+# import order in servyy.yml. Do not express this as a `dependencies:` entry —
+# it is a play-order contract, not a role that should be re-run.
+#
+# Test vs production behaviour is selected by the `is_test_host` host var
+# (default false, true on servyy-test.lxd and runny-test.lxd), never by a
+# hardcoded inventory hostname. `restic_repo_name` and all backup semantics are
+# unchanged by that indirection.
+dependencies: []

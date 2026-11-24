@@ -1,0 +1,21 @@
+---
+galaxy_info:
+  author: servyy
+  description: Unlock the controller-side bw CLI and push items to Vaultwarden.
+  license: MIT
+  min_ansible_version: "2.15"
+  galaxy_tags:
+    - vaultwarden
+    - secrets
+
+# Execution-context contract (documented, NOT a role dependency):
+# `tasks/unlock.yml` delegates to localhost and drives one shared `bw` CLI on
+# the controller, so callers must choose their play strategy deliberately:
+#   - linear plays (opencode_authgate.yml, forgejo_vaultwarden.yml,
+#     forgejo_api_token.yml) may use run_once;
+#   - the `strategy: free` Docker user play cannot — its repair-on-failure path
+#     avoids an unconditional `bw logout` for that reason.
+# Callers must also run `bw lock` when finished. The master password is resolved
+# once at the top of servyy.yml. None of this is a role dependency: pushing a
+# Vaultwarden item must not re-run another role's tasks.
+dependencies: []

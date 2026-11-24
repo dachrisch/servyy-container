@@ -98,9 +98,20 @@
 # project starts. Gated on the volume actually being configured for this host:
 # servyy-test.lxd has no volume and uses a plain directory instead.
 #
-# `services` is NOT usable here: it is a set_fact in the play's task list, which
-# runs after the roles, so inside this role it is always undefined. Read the
-# inventory flag directly.
+# The `services` fact used to be a set_fact in the deploy play's pre_tasks,
+# which runs AFTER roles — so inside this role it was always undefined and the
+# Moodle gates had to read services_enabled directly. The shared static import
+# below makes the fact available here too, regardless of which play invokes the
+# role. It is tagged `always` and must stay a static import (an always-tagged
+# dynamic include skips its untagged children under --tags).
+# The Moodle `when` clauses deliberately keep reading the inventory flag: the
+# dict form of services_enabled renders truthy via `| bool`, and changing the
+# condition here would change deploy behaviour.
+- name: Build the enabled services fact before the Moodle includes
+  ansible.builtin.import_tasks: ../../../tasks/build_services.yml
+  tags:
+    - always
+
 - import_tasks: moodle_volume.yml
   tags:
     - user.docker.moodle

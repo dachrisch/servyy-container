@@ -1,0 +1,20 @@
+---
+galaxy_info:
+  author: servyy
+  description: Reload Prometheus/Grafana when the config they read only at startup changes.
+  license: MIT
+  min_ansible_version: "2.15"
+  galaxy_tags:
+    - monitoring
+    - docker
+
+# Ordering contract (documented, NOT a role dependency):
+# monitor_reload must run AFTER the `docker_service` invocation for
+# `service_dir: monitor` in plays/user.yml. docker_service recreates a container
+# only when its spec changes; a rules/provisioning-only edit leaves the old
+# process running, and this role is what compares startup-content fingerprints
+# and restarts just the affected half of the stack. It is deliberately not a
+# `dependencies:` entry: that would re-run docker_service and change behaviour.
+# The later monitor_grafana_auth role also depends on this ordering (Grafana
+# must have settled before its admin password is re-asserted).
+dependencies: []
