@@ -8,6 +8,9 @@
   vars:
     stub_dir: /var/tmp/monitor-grafana-auth
     dummy_password: molecule-grafana-dummy-password
+    # Lazy: evaluated when the assertion runs, after the slurp below.
+    exec_lines: "{{ (stub_logs.results[1].content | b64decode).splitlines() }}"
+    all_lines: "{{ (stub_logs.results[0].content | b64decode).splitlines() }}"
 
   tasks:
     - name: Read the stand-in call logs
@@ -44,9 +47,6 @@
           - exec_lines | select('search', '/api/v1/provisioning/alert-rules') | list | length == 4
           - exec_lines | select('search', '--password-from-stdin') | list | length == 1
           - all_lines | select('match', '^inspect ') | list | length == 2
-        vars:
-          exec_lines: "{{ (stub_logs.results[1].content | b64decode).splitlines() }}"
-          all_lines: "{{ (stub_logs.results[0].content | b64decode).splitlines() }}"
         fail_msg: >-
           expected probe + repair + probe on the first converge and probe +
           probe on the second (four provisioning calls, one reset, two inspects).

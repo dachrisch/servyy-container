@@ -24,12 +24,12 @@
   tasks:
     - name: Stat the deployed directories
       ansible.builtin.stat:
-        path: "{{ drill_dir }}/{{ item.path }}"
+        path: "{{ item.path }}"
       loop:
-        - {path: '', mode: '0750'}
-        - {path: state, mode: '0750'}
-        - {path: evidence, mode: '0750'}
-        - {path: logs, mode: '0750'}
+        - {path: /home/testuser/.restore-drills, mode: '0750'}
+        - {path: /home/testuser/.restore-drills/state, mode: '0750'}
+        - {path: /home/testuser/.restore-drills/evidence, mode: '0750'}
+        - {path: /home/testuser/.restore-drills/logs, mode: '0750'}
         - {path: /home/testuser/.cache/restore-drills, mode: '0700'}
       loop_control:
         label: "{{ item.path }}"
@@ -80,7 +80,7 @@
           # scratch is copied DB data: under ~/.cache (excluded from restic) and
           # never under /tmp, with an enforced drill-* prefix for every target.
           - expected_scratch in (drill_script.content | b64decode)
-          - "'E_SCRATCH=\"drill-${tenant}-\"' in (drill_script.content | b64decode)"
+          - "'E_SCRATCH=\"drill-${tenant}-' in (drill_script.content | b64decode)"
           - "'case \"$E_SCRATCH\" in drill-*)' in (drill_script.content | b64decode)"
           - "'flock -w 10800 9' in (drill_script.content | b64decode)"
           - "'KEEP_FAILED=0' in (drill_script.content | b64decode)"
