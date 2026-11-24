@@ -72,7 +72,7 @@ taken off Traefik in 2026-09 because it had no auth; it is back only behind
    - Grafana **polls dashboards and datasources, but not `provisioning/alerting/`**. After editing
      `alert-rules.yml` it keeps evaluating the previous rule set until it restarts. Measured on
      2026-11-18: a deploy left it running 47 of 49 rules.
-   - The deploy now handles both: [`plays/tasks/monitor_reload.yml`](../ansible/plays/tasks/monitor_reload.yml)
+   - The deploy now handles both: [`roles/monitor_reload/tasks/main.yml`](../ansible/plays/roles/monitor_reload/tasks/main.yml)
      fingerprints `prometheus.yml` + `rules/*.yml` + `rendered/loki-target.json` +
      `rendered/loki-password` and `provisioning/alerting/*.yml` +
      `rendered/contact-points.yml` + `rendered/datasources.yml`, compares each with the
@@ -294,6 +294,8 @@ root-owned DB. Before that, the honest alternative is to leave the rule in the f
 
 ## Querying logs and checking bans
 
+### Verifying Container Labels for Loki Queries
+
 **Critical:** Promtail uses `{directory}.{service}` pattern for container names, NOT compose service names.
 
 ```bash
@@ -309,6 +311,8 @@ ssh lehel.xyz "docker ps --format '{{.Names}}: {{.Label \"com.docker.compose.ser
 {job="docker",container="reverse-proxy"}    # ❌ Wrong
 {job="docker",container="traefik"}          # ❌ Wrong
 ```
+
+### Testing Loki Queries
 
 Loki is on codey and its only door is the authenticated route (basicAuth user
 `promtail`; password = `monitor_remote_auth.loki_password` in
@@ -327,13 +331,28 @@ curl -s -u "$LOKI_AUTH" -H "X-Scope-OrgID: $TENANT_ID" \
   --data-urlencode 'query={job="docker",container="traefik.traefik"} | json | DownstreamStatus >= 400' \
   --data-urlencode "start=$START" \
   --data-urlencode "end=$END" | jq
+```
 
+### Loki Query Issues
+
+Loki runs on codey behind basicAuth + ipAllowList (`loki.lehel.xyz`). User: `promtail`,
+password: `monitor_remote_auth.loki_password` (`secrets.yml`). Lists, labels and a smoke
+test:
+
+```bash
 # List available labels
 curl -s -u "$LOKI_AUTH" -H "X-Scope-OrgID: $TENANT_ID" \
   "$LOKI_URL/loki/api/v1/label/__name__/values"
 
 # Check container labels
 ssh lehel.xyz "docker ps --format '{{.Names}}'"
+
+# Test query (use query_range for log streams)
+curl -s -u "$LOKI_AUTH" -H "X-Scope-OrgID: $TENANT_ID" \
+  "$LOKI_URL/loki/api/v1/query_range" \
+  --data-urlencode 'query={job="docker"}' \
+  --data-urlencode "start=$(($(date +%s)-3600))000000000" \
+  --data-urlencode "end=$(date +%s)000000000"
 ```
 
 ### fail2ban Issues
