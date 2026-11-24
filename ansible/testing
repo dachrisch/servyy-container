@@ -64,7 +64,7 @@ test:
       # sending a broken link (moodle/AGENTS.md, "PDF annotation" section's
       # sibling note on mail). Rendered as SMTP_HOST=127.0.0.1:25.
       moodle_mail_disabled: true
-      shared_services: [mongo, redis]
+      shared_services: [redis]
       # DB tiers this host rehearses (roles/db_tier). Same shape as
       # shared_services/finance_services: a list of tier names, each with its
       # own `--tags user.docker.db-<tier>` invocation. Empty until WP-4..6

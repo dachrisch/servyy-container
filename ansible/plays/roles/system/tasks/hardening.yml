@@ -122,8 +122,10 @@
   become: true
   when:
     - hardening.audit | default(true)
-    # auditd cannot load rules or stay up in a container; molecule still asserts the rules file
-    - ansible_facts['virtualization_type'] | default('') != 'docker'
+    # auditd cannot set its startup state or load rules inside a container: both Docker and
+    # LXC fail with "Unable to set initial audit startup state to 'enable', exiting".
+    # molecule still asserts the rules file, which is deployed independently below.
+    - ansible_facts['virtualization_type'] | default('') not in ['docker', 'lxc']
   tags:
     - system.hardening
     - system.hardening.audit

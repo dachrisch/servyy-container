@@ -130,6 +130,26 @@
       changed_when: false
       failed_when: "'install ok installed' not in auditd_pkg.stdout"
 
+    # The "Enable auditd" task is skipped on container virtualization types
+    # (Docker/LXC): auditd cannot set its startup state there and exits. The
+    # rules file above is still deployed independently. Prove the service was
+    # not started by the role in this Docker-based Molecule instance.
+    # The "reload auditd" handler shares the same container guard: augenrules --load
+    # fails against the container kernel, so a handler that ran here would have failed
+    # converge before verify. Its skip is therefore covered implicitly by this scenario.
+    - name: Check auditd service state
+      command: systemctl is-active auditd
+      register: auditd_active
+      changed_when: false
+      failed_when: false
+
+    - name: Verify auditd service start was skipped in the container
+      assert:
+        that:
+          - ansible_facts['virtualization_type'] | default('') in ['docker', 'lxc']
+          - auditd_active.stdout | default('') != 'active'
+        fail_msg: "auditd must not be started in a container; Enable auditd should be skipped"
+
     - name: Check legal banner exists
       stat:
         path: /etc/issue

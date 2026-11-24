@@ -1,4 +1,26 @@
 # Install packages
+# apt verifies repository indices as the unprivileged _apt user. On hosts that already carry
+# the Trivy keyring from an older deploy, a 0640 root:root mode makes gpgv fail with NO_PUBKEY
+# 35B8ACA44FD9CA9F and update_cache dies. The authoritative key creation/chmod lives in
+# security_audit.yml, but that file is imported last in main.yml -- after these apt tasks --
+# so repair the mode here first. Idempotent and tagged so --tags system.packages fixes it too.
+- name: Stat the Trivy APT keyring
+  stat:
+    path: /usr/share/keyrings/trivy.gpg
+  register: trivy_keyring_stat
+  become: true
+  tags:
+    - system.packages
+
+- name: Relax Trivy APT keyring mode so apt can read it
+  file:
+    path: /usr/share/keyrings/trivy.gpg
+    mode: '0644'
+  when: trivy_keyring_stat.stat.exists
+  become: true
+  tags:
+    - system.packages
+
 - name: Install Prerequisites
   apt: name=aptitude update_cache=yes state=latest force_apt_get=yes
   tags:
