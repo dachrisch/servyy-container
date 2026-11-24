@@ -62,7 +62,8 @@
   ansible.builtin.command:
     argv: [docker, inspect, --format, "{{ '{{.State.StartedAt}}' }}", "{{ monitor_reload_grafana_container }}"]
   register: monitor_grafana_started_after
-  when: monitor_grafana_restart.changed | default(false)
+  # Post-restart verification must read the container inline, before later tasks.
+  when: monitor_grafana_restart.changed | default(false)  # noqa: no-handler
   changed_when: false
   check_mode: false
 

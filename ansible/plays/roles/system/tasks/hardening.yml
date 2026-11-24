@@ -217,6 +217,8 @@
     aide --config /etc/aide/aide-hardening.conf --init
     mv -f /var/lib/aide/aide.db.new /var/lib/aide/aide.db
   become: true
+  # The guards encode "scope changed and no fresh baseline exists yet".
+  changed_when: true
   when:
     - hardening.aide | default(true)
     - aide_conf.changed

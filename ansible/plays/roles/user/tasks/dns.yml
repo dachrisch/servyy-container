@@ -12,6 +12,7 @@
       {{host_ip_v6}}	{{item.dir}}.{{domain}}
     state: present
     create: yes
+    mode: '0644'
   with_items:
     - "{{ docker.services }}"
     - [{dir: 'pihole.dns'}]
@@ -24,3 +25,4 @@
       {{host_ip_v6}}	{{domain}}
     state: present
     create: yes
+    mode: '0644'

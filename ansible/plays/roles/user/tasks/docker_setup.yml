@@ -3,7 +3,9 @@
 # via sys_packages in system.yml for simplicity and Ubuntu compatibility
 
 - name: Remove ancient docker compose
-  apt: name=docker-compose state=absent
+  apt:
+    name: docker-compose
+    state: absent
   become_user: root
   tags:
     - user.docker.install
@@ -34,7 +36,9 @@
     group: docker
     mode: '0660'
   become_user: root
-  when: group_added.changed
+  # Socket group must be set before the reboot immediately below; a handler
+  # would only run after the reboot and leave the deploy user without access.
+  when: group_added.changed  # noqa: no-handler
   tags:
     - user.docker.install.reboot
 

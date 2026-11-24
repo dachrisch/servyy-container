@@ -518,7 +518,17 @@
   loop: "{{ db_backup_tenants }}"
   loop_control:
     label: "db-dump-{{ item.tenant }}.timer"
-  ignore_errors: true
+  register: legacy_tenant_timer_stop
+  # A tenant may never have had a per-tenant dump unit; only "unit not found" is tolerated.
+  failed_when: >-
+    legacy_tenant_timer_stop.results
+    | selectattr('failed', 'defined') | selectattr('failed')
+    | rejectattr('msg', 'search', 'Could not find the requested service')
+    | list | length > 0
+  changed_when: >-
+    legacy_tenant_timer_stop.results
+    | selectattr('changed', 'defined') | selectattr('changed')
+    | list | length > 0
   when: db_backup_tenants | length > 0
   tags:
     - restic.backup
@@ -555,7 +565,12 @@
         name: docker-bnb-office-dump.timer
         state: stopped
         enabled: false
-      ignore_errors: true
+      register: legacy_bnb_timer_stop
+      # The pre-R8 unit can be absent; other stop/disable errors must fail.
+      failed_when: >-
+        legacy_bnb_timer_stop.failed | default(false)
+        and 'Could not find the requested service' not in (legacy_bnb_timer_stop.msg | default(''))
+      changed_when: legacy_bnb_timer_stop.changed | default(false)
     - name: Remove the legacy bnb dump unit files
       ansible.builtin.file:
         path: "{{ (remote_user_systemd, item) | path_join }}"
@@ -646,7 +661,17 @@
         - moodle-dump
         - restic-backup-moodle-db
         - restic-backup-moodle-files
-      ignore_errors: true
+      register: moodle_timer_stop
+      # A host that never had Moodle has no such units; only that is tolerated.
+      failed_when: >-
+        moodle_timer_stop.results
+        | selectattr('failed', 'defined') | selectattr('failed')
+        | rejectattr('msg', 'search', 'Could not find the requested service')
+        | list | length > 0
+      changed_when: >-
+        moodle_timer_stop.results
+        | selectattr('changed', 'defined') | selectattr('changed')
+        | list | length > 0
       tags:
         - restic.backup
     - name: Remove Moodle backup units and scripts
@@ -683,7 +708,17 @@
         - restic-backup-ls-db
         - binlog-ship
         - restic-backup-ls-binlog
-      ignore_errors: true
+      register: db_backup_timer_stop
+      # Legacy units may not exist on a host that never had LeagueSphere.
+      failed_when: >-
+        db_backup_timer_stop.results
+        | selectattr('failed', 'defined') | selectattr('failed')
+        | rejectattr('msg', 'search', 'Could not find the requested service')
+        | list | length > 0
+      changed_when: >-
+        db_backup_timer_stop.results
+        | selectattr('changed', 'defined') | selectattr('changed')
+        | list | length > 0
       tags:
         - restic.backup
     - name: Remove DB backup units and scripts

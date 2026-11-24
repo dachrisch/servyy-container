@@ -44,6 +44,8 @@
   args:
     executable: /bin/bash
   become: true
+  # The keyring is removed and rewritten on every run, so it is always a change.
+  changed_when: true
   when: security_audit.tools.trivy | default(true)
   tags:
     - system.security_audit

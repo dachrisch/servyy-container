@@ -98,6 +98,8 @@
     executable: /bin/bash
   become: true
   become_user: "{{ create_user }}"
+  # The stat guard means the repository does not exist yet.
+  changed_when: true
   when: not repo_config_stat.stat.exists
   tags:
     - restic.test

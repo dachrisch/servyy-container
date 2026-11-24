@@ -132,6 +132,8 @@
                   '--password-file', pg_copy_password_file]
                  + (['--truncate'] if (pg_copy_truncate | bool) else []) }}
           register: pg_copy_load
+          # The guard only distinguishes verify-only runs; every real run writes the target DB.
+          changed_when: true
           when: not (pg_copy_verify_only | bool)
 
         - name: Copy - show what was written

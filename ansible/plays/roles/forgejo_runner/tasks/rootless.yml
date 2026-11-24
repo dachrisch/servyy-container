@@ -37,7 +37,12 @@
     name: docker-user-firewall.service
     state: stopped
     enabled: false
-  ignore_errors: true
+  register: docker_firewall_stop
+  # Only an absent unit is acceptable here; any real stop/disable error must fail.
+  failed_when: >-
+    docker_firewall_stop.failed | default(false)
+    and 'Could not find the requested service' not in (docker_firewall_stop.msg | default(''))
+  changed_when: docker_firewall_stop.changed | default(false)
   tags:
     - user.docker.runny
     - molecule-notest
@@ -325,7 +330,9 @@
   become_user: "{{ forgejo_runner_rootless_user }}"
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ forgejo_runner_rootless_uid }}"
-  when: forgejo_runner_rootless_docker_unit is changed
+  # The daemon must restart before the runner below; no handler exists and
+  # deferring to handler time would reverse that dependency.
+  when: forgejo_runner_rootless_docker_unit is changed  # noqa: no-handler
   tags:
     - user.docker.runny
     - molecule-notest

@@ -12,11 +12,13 @@
   ansible.builtin.file:
     path: "{{ remote_user_systemd }}"
     state: directory
+    mode: '0755'
 
 - name: Create {{service.name}} service
   template:
     src: oneshot.service.j2
     dest: "{{ (remote_user_systemd, service.name) | path_join }}.service"
+    mode: '0644'
   tags:
     - user.systemd.create.service
 
@@ -24,6 +26,7 @@
   template:
     src: oneshot.timer.j2
     dest: "{{ (remote_user_systemd, service.name) | path_join }}.timer"
+    mode: '0644'
   vars:
     timer:
       description: 'Trigger for {{ service.name }}'

@@ -217,7 +217,12 @@
         state: stopped
         enabled: no
       become_user: "{{ create_user }}"
-      ignore_errors: true
+      register: container_health_timer_stop
+      # Cleanup: an absent unit means the probe was never installed here.
+      failed_when: >-
+        container_health_timer_stop.failed | default(false)
+        and 'Could not find the requested service' not in (container_health_timer_stop.msg | default(''))
+      changed_when: container_health_timer_stop.changed | default(false)
       tags:
         - system.probe
         - system.probe.container
@@ -244,7 +249,12 @@
         state: stopped
         enabled: no
       become_user: "{{ create_user }}"
-      ignore_errors: true
+      register: storagebox_timer_stop
+      # Cleanup: an absent unit means the probe was never installed here.
+      failed_when: >-
+        storagebox_timer_stop.failed | default(false)
+        and 'Could not find the requested service' not in (storagebox_timer_stop.msg | default(''))
+      changed_when: storagebox_timer_stop.changed | default(false)
       tags:
         - system.probe
         - system.probe.storagebox
@@ -336,7 +346,12 @@
         state: stopped
         enabled: no
       become_user: "{{ create_user }}"
-      ignore_errors: true
+      register: dump_age_timer_stop
+      # Cleanup: an absent unit means the probe was never installed here.
+      failed_when: >-
+        dump_age_timer_stop.failed | default(false)
+        and 'Could not find the requested service' not in (dump_age_timer_stop.msg | default(''))
+      changed_when: dump_age_timer_stop.changed | default(false)
       tags:
         - system.probe
         - system.probe.dump
@@ -366,7 +381,12 @@
         state: stopped
         enabled: no
       become_user: "{{ create_user }}"
-      ignore_errors: true
+      register: forgejo_runners_timer_stop
+      # Cleanup: an absent unit means the probe was never installed here.
+      failed_when: >-
+        forgejo_runners_timer_stop.failed | default(false)
+        and 'Could not find the requested service' not in (forgejo_runners_timer_stop.msg | default(''))
+      changed_when: forgejo_runners_timer_stop.changed | default(false)
       tags:
         - system.probe
         - system.probe.forgejo

@@ -119,7 +119,9 @@
     # (ignored, but it buried real failures in the same loop — codey, 2026-11-20).
     # ignore_errors stays: on a FIRST deploy the .env is rendered later in this
     # play, so stopping a not-yet-rendered project is expected to fail once.
-    - name: Stop searxng before config update
+    # The module reports that case only in its message, so no narrower failed_when
+    # can distinguish it from a genuine compose failure without changing behaviour.
+    - name: Stop searxng before config update  # noqa: ignore-errors
       community.docker.docker_compose_v2:
         project_src: "{{ docker.remote_dir }}/searxng"
         state: absent

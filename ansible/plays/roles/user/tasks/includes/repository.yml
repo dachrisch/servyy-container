@@ -82,6 +82,8 @@
             chdir: "{{ local_dir }}"
           delegate_to: localhost
           become_user: "{{ local_user }}"
+          # A fresh key file is written into the tempfile on every export.
+          changed_when: true
       tags:
         - user.repo.key.export
       delegate_to: localhost
@@ -98,6 +100,7 @@
           copy:
             src: "{{ local_keyfile.path }}"
             dest: "{{ remote_keyfile.path }}"
+            mode: '0600'
       tags:
         - user.repo.key.copy
 

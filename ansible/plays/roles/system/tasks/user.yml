@@ -39,6 +39,7 @@
   template:
     src: disablePasswordAuth.conf.j2
     dest: /etc/ssh/sshd_config.d/disablePasswordAuth.conf
+    mode: '0644'
   notify:
     - Restart SSHD
   tags:

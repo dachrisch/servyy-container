@@ -141,6 +141,8 @@
   become: true
   become_user: root
   register: stop_result
+  # The guards already encode "containers are up and a forced restore was asked for".
+  changed_when: true
   when:
     - (force_restore | default(false)) | bool
     - containers_running
@@ -243,6 +245,8 @@
   become: true
   become_user: root
   register: restic_restored
+  # `should_restore` is the state check; any executed restore writes files back.
+  changed_when: true
   when: should_restore | bool
   tags:
     - restic.restore
