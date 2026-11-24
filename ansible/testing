@@ -67,10 +67,10 @@ test:
       shared_services: [redis]
       # DB tiers this host rehearses (roles/db_tier). Same shape as
       # shared_services/finance_services: a list of tier names, each with its
-      # own `--tags user.docker.db-<tier>` invocation. business is enabled to
-      # rehearse queen's database backend (db_business_backend) on test;
-      # the other tiers stay off until needed.
-      db_tiers: [business]
+      # own `--tags user.docker.db-<tier>` invocation. Empty until WP-4..6
+      # commit the tier compose files; enabling a tier whose compose is
+      # missing only sets up its users + dbops (and says so loudly).
+      db_tiers: []
       finance_services: [queen]
       # Forgejo rehearsal: ci.lehel.xyz has no test counterpart's TLS — plain
       # `web` entrypoint, no cert, and the runner dials the http instance.
