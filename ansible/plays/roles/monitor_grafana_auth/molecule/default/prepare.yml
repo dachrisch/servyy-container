@@ -34,6 +34,11 @@
           #   exec ... curl ... <check path>                       -> 401/200
           #   exec ... reset-admin-password --password-from-stdin  -> clears drift
           set -u
+          # Stand in for the env INSIDE the Grafana container. Setting this on
+          # the Ansible side would make command's expand_argument_vars write it
+          # into argv, which is exactly what the role must never do.
+          GF_SECURITY_ADMIN_PASSWORD=molecule-grafana-dummy-password
+          export GF_SECURITY_ADMIN_PASSWORD
           state_dir=/var/tmp/monitor-grafana-auth
           mkdir -p "$state_dir"
           printf '%s\n' "$*" >> "$state_dir/all-calls.log"
