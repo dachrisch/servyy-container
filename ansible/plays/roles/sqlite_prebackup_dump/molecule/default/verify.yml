@@ -65,7 +65,7 @@
         argv:
           - grep
           - -qF
-          - ExecStart=/home/testuser/.vaultwarden-dump/vaultwarden-dump.sh
+          - ExecStart=/home/testuser/.vaultwarden-dump/sqlite-prebackup-dumps.sh
           - /home/testuser/.config/systemd/user/sqlite-prebackup-dumps.service
       changed_when: false
 
