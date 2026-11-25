@@ -1,0 +1,79 @@
+---
+# Renders the two maintenance scripts exactly as roles/system deploys them, then
+# exercises them against stub restic/curl/logdy in verify.yml. The systemd units
+# are deliberately not part of this scenario: there is no systemd in the
+# container, and they are unchanged by the stale-lock + metrics work.
+- name: Converge (restic maintenance scripts)
+  hosts: all
+  become: true
+  vars:
+    create_user: testuser
+    restic:
+      logs:
+        forget: /var/log/restic/forget.log
+        check: /var/log/restic/check.log
+    restic_targets_enabled:
+      - name: home
+        retention: host_hourly
+      - name: db
+        retention: db_hourly
+    retention_profiles:
+      host_hourly:
+        last: 24
+        hourly: 48
+      db_hourly:
+        last: 48
+        daily: 30
+    restic_env_dir: /etc/restic
+    restic_maintenance_pushgateway_url: http://localhost:9091
+    restic_maintenance_forget_job: restic_maintenance_forget
+    restic_maintenance_check_job: restic_maintenance_check
+  tasks:
+    - name: Create the restic log directory
+      ansible.builtin.file:
+        path: /var/log/restic
+        state: directory
+        mode: '0755'
+
+    - name: Render the forget script  # noqa: no-relative-paths
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../../templates/restic_forget.sh.j2"
+        dest: /usr/local/bin/restic-forget.sh
+        mode: '0755'
+
+    - name: Render the check script  # noqa: no-relative-paths
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../../templates/restic_check.sh.j2"
+        dest: /usr/local/bin/restic-check.sh
+        mode: '0755'
+
+    - name: Create the restic env fixture directory
+      ansible.builtin.file:
+        path: /etc/restic
+        state: directory
+        mode: '0700'
+
+    - name: Create harmless restic env fixtures
+      ansible.builtin.copy:
+        dest: "/etc/restic/env.{{ item }}"
+        content: "export RESTIC_REPOSITORY=\"/fake/{{ item }}\"\n"
+        mode: '0600'
+      loop:
+        - home
+        - db
+
+    # This scenario converges only the templates; no login user is created, so
+    # the stub is root-owned and the scripts are run as root with HOME pointed
+    # here. Production ownership comes from the zprezto role.
+    - name: Create the logdy function directory
+      ansible.builtin.file:
+        path: /home/testuser/.zprezto/custom/functions
+        state: directory
+        mode: '0755'
+
+    - name: Create a logdy stub
+      ansible.builtin.copy:
+        dest: /home/testuser/.zprezto/custom/functions/logdy
+        content: |
+          logdy() { printf 'LOGDY %s\n' "$*" >> "${LOGDY_CAPTURE:-/tmp/logdy-fallback.log}"; }
+        mode: '0644'

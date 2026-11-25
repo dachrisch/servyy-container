@@ -7,34 +7,66 @@ source "$HOME/.zprezto/custom/functions/logdy"
 
 export LOGDY_ALSO_TO_FILE="{{ restic.logs.check }}"
 LOG_FILE="{{ restic.logs.check }}"
+PUSHGATEWAY_URL="{{ restic_maintenance_pushgateway_url }}"
+JOB_NAME="{{ restic_maintenance_check_job }}"
+OP="check"
 
 logdy info "Starting restic repository check"
+
+# One line per repo ("repo rc"). Collected first because a Pushgateway PUT
+# REPLACES the whole job group: pushing per repo would erase earlier repos.
+RESULTS_FILE="$(mktemp)"
+trap 'rm -f "$RESULTS_FILE"' EXIT
 
 check_repo() {
     local env_file="$1"
     local name="$2"
+    local rc=0 unlock_output
 
-    # Load environment from config file
     if [ ! -f "$env_file" ]; then
         logdy error "Environment file not found" path="$env_file"
-        return 1
-    fi
-
-    source "$env_file"
-
-    logdy info "Checking repository" tag="$name" repository="$RESTIC_REPOSITORY"
-
-    if restic check --read-data-subset=5% >> "$LOG_FILE" 2>&1; then
-        logdy info "Repository check passed" tag="$name"
+        rc=1
     else
-        logdy error "Repository check failed" tag="$name"
-        return 1
+        source "$env_file"
+
+        # Self-heal STALE locks only — NEVER `--remove-all`. The weekly check
+        # used to be blocked for days by a lock left behind by a dead process.
+        if unlock_output="$(restic unlock 2>&1)"; then
+            printf '%s\n' "$unlock_output" >> "$LOG_FILE"
+            logdy info "Stale lock check complete" tag="$name" op="$OP" \
+                detail="$(printf '%s' "$unlock_output" | tr '\n' ' ' | cut -c1-200)"
+        else
+            logdy warn "restic unlock failed (continuing)" tag="$name" op="$OP"
+        fi
+
+        logdy info "Checking repository" tag="$name" repository="$RESTIC_REPOSITORY"
+
+        if restic check --read-data-subset=5% >> "$LOG_FILE" 2>&1; then
+            logdy info "Repository check passed" tag="$name"
+        else
+            logdy error "Repository check failed" tag="$name"
+            rc=1
+        fi
     fi
+
+    # `rc` is an exit code (0 = ok); the metric is a success gauge (1 = ok).
+    printf '%s %s\n' "$name" "$((1 - rc))" >> "$RESULTS_FILE"
+    return "$rc"
 }
 
 FAILED=0
-{% for t in restic_targets_enabled %}check_repo "/etc/restic/env.{{ t.name }}" "{{ t.name }}" || FAILED=1
+{% for t in restic_targets_enabled %}if check_repo "{{ restic_env_dir }}/env.{{ t.name }}" "{{ t.name }}"; then :; else FAILED=1; fi
 {% endfor %}
+# Always push, even when a repo failed; PUT replaces the whole job group.
+{
+  echo '# TYPE restic_maintenance_success gauge'
+  while read -r repo rc; do
+    printf 'restic_maintenance_success{op="%s",repo="%s"} %s\n' "$OP" "$repo" "$rc"
+  done < "$RESULTS_FILE"
+} | curl -sf -X PUT --max-time 15 --connect-timeout 5 --data-binary @- \
+    "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}" >/dev/null 2>&1 \
+  || echo "WARN: push to ${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME} failed (tolerated)" >&2
+
 if [ $FAILED -eq 0 ]; then
     logdy info "All repository checks passed"
     exit 0

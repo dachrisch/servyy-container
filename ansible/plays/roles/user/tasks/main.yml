@@ -13,6 +13,13 @@
   tags:
     - user.zprezto
 
+# Private Loki endpoint/credential for the public logdy function. Deployed with
+# the zprezto tag so a normal dotfile deploy keeps logdy working.
+- import_tasks: logdy_loki.yml
+  tags:
+    - user.zprezto
+    - user.zprezto.logdy
+
 - import_tasks: atuin.yml
   tags:
     - user.atuin

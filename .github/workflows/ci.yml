@@ -383,6 +383,17 @@ jobs:
           cd ansible/tests/fail2ban
           python -m unittest -v test_blocklist_regex
 
+      # The maintenance scripts run under zsh in production; their fixture tests
+      # execute the rendered scripts with stub restic/curl binaries.
+      - name: Run restic maintenance script tests
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq zsh >/dev/null
+          (cd ansible/tests/restic_maintenance && python -m unittest discover -s . -p "test_*.py" -v)
+
+      - name: Run logdy Loki credential tests
+        run: |
+          (cd ansible/tests/logdy_loki && python -m unittest discover -s . -p "test_*.py" -v)
+
       # Monitor notification tuning and codey's local collector stack (2026-11-25).
       # These are static tests over the provisioning/compose/role files: a bad
       # group_by or a missing reload half silently mails too much or leaves the

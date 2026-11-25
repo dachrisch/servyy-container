@@ -28,6 +28,9 @@ scenarios:
   - {role: system, scenario: core, baseline: true}
   - {role: system, scenario: with-docker, baseline: true}
   - {role: system, scenario: default, baseline: true}
+  # Stale-lock self-heal + per-repo Pushgateway outcomes in the forget/check
+  # scripts. Stubs restic/curl, so no external dependency.
+  - {role: system, scenario: restic-maintenance, baseline: false}
   - {role: testing, scenario: default, baseline: true}
   - {role: user, scenario: default, baseline: true}
   - {role: user, scenario: docker-only, baseline: true}
