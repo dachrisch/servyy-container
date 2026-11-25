@@ -23,6 +23,15 @@ class CodeyContainerProbe(unittest.TestCase):
         text = (ROLE / "tasks/main.yml").read_text(encoding="utf-8")
         self.assertIn("system_probe_container_push_enabled | default(false) | bool", text)
 
+    def test_ui_host_skips_containers_that_were_never_created_there(self):
+        """docker.services is fleet-wide; codey must not page for servy's containers."""
+        text = (ROLE / "templates/system_container_health.sh.j2").read_text(encoding="utf-8")
+        self.assertIn("SKIP_MISSING_CONTAINERS=1", text)
+        self.assertIn("'ui' in (monitor_profiles | default([]))", text)
+        self.assertIn("docker container inspect \"$container_name\" >/dev/null 2>&1", text)
+        # A stopped container must still be reported down, not skipped.
+        self.assertIn("system_container_running", text)
+
     def test_no_sink_cleanup_exempts_container_health(self):
         text = (ROLE / "tasks/main.yml").read_text(encoding="utf-8")
         cleanup = text[text.index("Clean up all probes when Pushgateway sink is absent"):]
