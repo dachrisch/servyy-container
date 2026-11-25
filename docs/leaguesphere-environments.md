@@ -567,7 +567,19 @@ cd ansible
 #    and deletes the harness accounts.
 ./servyy-test.sh --tags ls.app.stage
 
-# 2. Agent stage (ref/cand/proxy + harness users).
+# 1b. PRE-APPLY SCHEMA CHECK. ref and cand share the stage database, and
+#     neither runs migrations, so the stage app must be the SAME BUILD as the
+#     pinned ref image. Compare image ids (not just version strings):
+ssh servyy-test.lxd '
+  docker pull -q leaguesphere/backend:v5.27.7 >/dev/null
+  echo "stage: $(docker inspect -f "{{.Image}}" leaguesphere_stage.staging-app)"
+  echo "ref:   $(docker inspect -f "{{.Id}}" leaguesphere/backend:v5.27.7)"'
+#     Both lines must be identical. If not, the stage stack predates (or
+#     postdates) the ref release: deploy stage from the ref release first, or
+#     bump ls_agent_stage_ref_image and record it in the phase plan.
+#     `ls.agent.stage` enforces the same check (ls_agent_stage_schema_check).
+
+# 2. Agent stage (ref/cand/proxy + harness users + opentunnel routes).
 #    Harvest the credentials first, they live in git-crypt:
 #      ansible/plays/roles/ls_agent_stage/vars/secret_agent_stage.yaml
 ./servyy-test.sh --tags ls.agent.stage
@@ -576,6 +588,13 @@ cd ansible
 The role creates/updates the harness users (`agent_staff`,
 `agent_team_manager`, `agent_official`) in the stage database. Passwords are
 throwaway and live only in that git-crypt file — never real prod accounts.
+
+**Harness role limits:** `agent_team_manager` and `agent_official` are plain
+logged-in users — they are not linked to a team (teammanager) or an
+`Official` row (officials) in the clone yet, so their probes exercise the
+logged-in baseline, not team-manager/official-specific pages. TODO(Phase 1):
+link them to a small test team/official in the clone if a phase's probes need
+that surface.
 
 ### Credentials
 
@@ -597,7 +616,7 @@ have re-cloned prod nightly and wiped the harness accounts. The role now
 skips the timer on `is_test_host` and stops/masks a leftover unit:
 
 ```bash
-ssh servyy-test.lxd 'sudo -u leaguesphere systemctl --user status ls-db-sync-nightly.timer'
+ssh servyy-test.lxd 'sudo -u cda systemctl --user status ls-db-sync-nightly.timer'
 # expect: Unit ... could not be found.  (or "masked")
 ```
 
@@ -616,13 +635,33 @@ agent candidate uses the `agent_candidate_ref` input above.
 ### opentunnel
 
 Route names are **not** authentication (the hostname appears in Certificate
-Transparency logs), hence the basic-auth proxy. Install/configure the
-`opentunnel` CLI on servyy-test out of band and supply its invocation as
-`ls_agent_stage_opentunnel_command` (host/group var) so the role can install
-the persistent `opentunnel-ls-agent-stage.service`; profile
-`ls-agent-stage`, routes `ref` → `127.0.0.1:18081` and `cand` →
-`127.0.0.1:18082`. The two HTTPS tunnel URLs and the basic-auth credential are
-what the equivalence session needs.
+Transparency logs), hence the basic-auth proxy.
+
+The role installs the CLI idempotently (official installer,
+`~/.local/bin/opentunnel` as the deploy user) and registers the two routes:
+
+```text
+ref  -> 127.0.0.1:18081
+cand -> 127.0.0.1:18082
+```
+
+`opentunnel route add <port>` creates the tunnel on the first route, prints
+`added route <id> → 127.0.0.1:<port>` and the public
+`https://<id>.<tunnel>.opentunnel.xyz` URL, and leaves the encrypted bridge
+running as its own service (no systemd unit from this role). The role only
+adds a route when `opentunnel route list` does not already contain the port.
+
+Read the current URLs with:
+
+```bash
+ssh servyy-test.lxd 'sudo -u cda ~/.local/bin/opentunnel route list'
+```
+
+If the installed CLI's `--help` does not advertise `route list`, the role
+installs the CLI but skips the routes (to avoid duplicates) and prints the two
+manual `route add` commands; run them once and record the URLs. The two HTTPS
+tunnel URLs and the basic-auth credential are what the equivalence session
+needs.
 
 ### What not to do
 

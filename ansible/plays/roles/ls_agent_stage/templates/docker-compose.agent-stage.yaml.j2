@@ -72,13 +72,21 @@ services:
       - ./agent-stage-nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./agent-stage.htpasswd:/etc/nginx/agent-stage.htpasswd:ro
     networks:
+      # `backend` is internal: it carries proxy -> ref/cand only. Published
+      # ports need a non-internal network, so the proxy also joins `edge`;
+      # ref/cand stay off it.
       - backend
+      - edge
     restart: unless-stopped
 
 networks:
   backend:
     name: {{ ls_agent_stage_project }}_backend
     internal: true
+  # Non-internal bridge so Docker can publish the two loopback ports.
+  edge:
+    name: {{ ls_agent_stage_project }}_edge
+    driver: bridge
   db_nonprod_backend:
     external: true
   egress: {}

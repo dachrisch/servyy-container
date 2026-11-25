@@ -34,6 +34,25 @@ harness accounts — and no per-run setup or secret handoff.
   unit. A nightly prod re-clone would delete the harness accounts.
 - **Runbook**: "Agent stage (Phase 0c)" in `docs/leaguesphere-environments.md`.
 
+## Review fixes (2026-11-25, coordinator review)
+
+- The proxy now joins a dedicated non-internal `edge` bridge: Docker does not
+  reliably publish ports from a container attached only to `internal` networks.
+  `backend` stays internal for proxy↔ref/cand traffic.
+- opentunnel is installed by the role (official installer, `creates:` on
+  `~/.local/bin/opentunnel`), then the two routes are added only when
+  `route list` does not already contain the port. The systemd unit template was
+  dropped: the CLI keeps its own encrypted bridge. If `--help` does not
+  advertise a list command, the install still runs and the role prints the two
+  manual `route add` commands instead of risking duplicates.
+- Harness-user provisioning is a `block/always`: the 0600 secrets script is
+  removed even when the `docker exec` fails.
+- Runbook: role-linkage limits for `agent_team_manager`/`agent_official`
+  (TODO Phase 1), the pre-apply schema check (stage build must equal the pinned
+  ref image), and the opentunnel URL read-back command.
+- Nightly-timer verification in the runbook now names the right owner
+  (`create_user`, i.e. `cda`), not `leaguesphere`.
+
 ## Deliberate limits
 
 - Not applied by the author (no host access from codey; DNS for
