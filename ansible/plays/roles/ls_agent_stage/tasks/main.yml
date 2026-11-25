@@ -79,7 +79,11 @@
   copy:
     content: "{{ agent_stage.basic_auth_htpasswd }}\n"
     dest: "{{ (ls_agent_stage_dir, 'agent-stage.htpasswd') | path_join }}"
-    mode: "0640"
+    # World-readable on purpose: nginx workers run as uid 101 inside the proxy
+    # container and must open this bind-mounted file (0640 gave "Permission
+    # denied" -> 500 on every authenticated request). It holds only a bcrypt
+    # hash, and the parent directory is 0750, so host users cannot reach it.
+    mode: "0644"
   become_user: "{{ ls.user }}"
   no_log: true
 
