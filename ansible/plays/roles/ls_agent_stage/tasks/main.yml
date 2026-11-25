@@ -13,47 +13,6 @@
     file: "{{ playbook_dir }}/roles/ls_app/vars/secret_stage.yaml"
     name: stage_app
 
-# ref and cand share the stage database the stage deploy migrated. If the
-# stage app runs a different build than the pinned ref image, ref may hit
-# schema drift (RUN_MIGRATIONS is false on purpose). Compare image ids: both
-# images must be the same build, not merely the same version string.
-- name: Pull the pinned ref image for the schema-drift check
-  community.docker.docker_image:
-    name: "{{ ls_agent_stage_ref_image }}"
-    source: pull
-  when: ls_agent_stage_schema_check | bool
-
-- name: Read the running stage app image
-  community.docker.docker_container_info:
-    name: "{{ ls_agent_stage_stage_container }}"
-  register: ls_agent_stage_stage_image_info
-  when: ls_agent_stage_schema_check | bool
-
-- name: Read the pinned ref image id
-  community.docker.docker_image_info:
-    name: "{{ ls_agent_stage_ref_image }}"
-  register: ls_agent_stage_ref_image_info
-  when: ls_agent_stage_schema_check | bool
-
-- name: Refuse to start ref on a build the stage database was not migrated by
-  assert:
-    that:
-      - ls_agent_stage_stage_image_info.container is not none
-      - >-
-        ls_agent_stage_stage_image_info.container.Image ==
-        ls_agent_stage_ref_image_info.images[0].Id
-    fail_msg: >-
-      The stage app is {{ (ls_agent_stage_stage_image_info.container.Image
-      if ls_agent_stage_stage_image_info.container is not none else 'missing')
-      }} but ref is pinned to {{ ls_agent_stage_ref_image }} ({{
-      ls_agent_stage_ref_image_info.images[0].Id | default('not pulled')
-      }}). They share the stage database, so ref may hit schema drift. Deploy
-      the stage stack from the ref release first, or bump
-      ls_agent_stage_ref_image to the build the stage deploy migrated and
-      record that in the phase plan.
-    quiet: true
-  when: ls_agent_stage_schema_check | bool
-
 - name: Ensure the agent stage directory exists
   file:
     path: "{{ ls_agent_stage_dir }}"
@@ -97,6 +56,62 @@
     state: present
     recreate: auto
   become_user: "{{ ls.user }}"
+
+# ref and cand share the stage database, and neither runs migrations
+# (RUN_MIGRATIONS=false). A base/head with migrations the stage deploy has not
+# applied would compare a half-migrated database. `migrate --check` is the
+# authoritative test: it exits non-zero when the image has unapplied migrations.
+- name: Wait for ref and cand to be healthy before the schema check
+  community.docker.docker_container_info:
+    name: "{{ ls_agent_stage_project }}.{{ item }}"
+  register: ls_agent_stage_health
+  until: >-
+    ls_agent_stage_health.container is not none and
+    ls_agent_stage_health.container.State.Health.Status | default('') == 'healthy'
+  retries: 30
+  delay: 5
+  loop:
+    - ref
+    - cand
+  when: ls_agent_stage_schema_check | bool
+
+- name: Check ref for migrations the stage database has not applied
+  community.docker.docker_container_exec:
+    container: "{{ ls_agent_stage_project }}.ref"
+    command: python manage.py migrate --check
+  register: ls_agent_stage_ref_migrations
+  changed_when: false
+  failed_when: false
+  when: ls_agent_stage_schema_check | bool
+
+- name: Check cand for migrations the stage database has not applied
+  community.docker.docker_container_exec:
+    container: "{{ ls_agent_stage_project }}.cand"
+    command: python manage.py migrate --check
+  register: ls_agent_stage_cand_migrations
+  changed_when: false
+  failed_when: false
+  when: ls_agent_stage_schema_check | bool
+
+- name: Fail when the phase baseline or head needs unapplied migrations
+  ansible.builtin.assert:
+    that:
+      - ls_agent_stage_ref_migrations.rc == 0
+      - ls_agent_stage_cand_migrations.rc == 0
+    fail_msg: >-
+      ref ({{ ls_agent_stage_ref_image }}) exited
+      {{ ls_agent_stage_ref_migrations.rc }} and cand
+      ({{ ls_agent_stage_cand_image }}) exited
+      {{ ls_agent_stage_cand_migrations.rc }} on `manage.py migrate --check`.
+      The stage database was migrated by the stage deploy; a non-zero result
+      means the image carries migrations it has not applied, so the comparison
+      would run against a half-migrated database. Deploy the stage stack from a
+      build at least as new as the phase base (or provide the phase's own DB
+      copy), then re-apply. Output (first lines): ref
+      {{ ls_agent_stage_ref_migrations.stderr | default('') | truncate(300) }};
+      cand {{ ls_agent_stage_cand_migrations.stderr | default('') | truncate(300) }}.
+    quiet: true
+  when: ls_agent_stage_schema_check | bool
 
 - name: Wait for the stage app to be healthy before seeding harness users
   community.docker.docker_container_info:

@@ -15,10 +15,12 @@ ls_agent_stage_stage_container: "{{ (stage_app.app.name ~ '.staging-app') if sta
 
 ls_agent_stage_project: ls_agent_stage
 
-# The ref image is pinned on purpose: a phase compares the stack against the
-# image master had when the phase started. Bump this in the phase's PR, never
-# automatically.
-ls_agent_stage_ref_image: leaguesphere/backend:v5.27.7
+# `ref` is the phase baseline. It is a commit-pinned build (`agent-ref`,
+# pushed from the stack's BASE commit by the leaguesphere deploy workflow), not
+# a release tag: Renovate keeps moving master, so a release tag would always lag
+# the stack base. It has no auto-update timer; it changes only when someone
+# deliberately rebuilds `agent-ref` for a new phase and re-applies this role.
+ls_agent_stage_ref_image: leaguesphere/backend:agent-ref
 ls_agent_stage_cand_image: leaguesphere/backend:agent-candidate
 ls_agent_stage_proxy_image: nginx:1.29.3-alpine
 
@@ -36,7 +38,9 @@ ls_agent_stage_opentunnel_bin: "{{ (remote_user_home, '.local', 'bin', 'opentunn
 # restarts only `cand` when the image id changed (health-gated).
 ls_agent_stage_cand_update_interval: 5min
 
-# Guard against schema drift: ref must run the same build the stage deploy
-# migrated (both share the stage database). Set false only for a deliberate
-# exception, e.g. a second DB copy for a schema-changing phase.
+# Guard against schema drift: after the stack is up, both app containers run
+# `manage.py migrate --check` against the shared stage database. A base/head
+# with migrations the stage deploy has not applied fails the apply instead of
+# serving a half-broken comparison. Set false only for a deliberate exception,
+# e.g. a phase that provides its own second DB copy.
 ls_agent_stage_schema_check: true

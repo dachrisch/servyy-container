@@ -578,8 +578,8 @@ share the stage database:
 
 | container | image | updates |
 |---|---|---|
-| `ls_agent_stage.ref` | `leaguesphere/backend:v5.27.7` (pinned in `ls_agent_stage/defaults/main.yml`) | never — this is the phase's baseline |
-| `ls_agent_stage.cand` | `leaguesphere/backend:agent-candidate` | `watchtower-dev` (scope `dev`, 300 s, health-gated) |
+| `ls_agent_stage.ref` | `leaguesphere/backend:agent-ref` (pinned in `ls_agent_stage/defaults/main.yml`) | never automatically — rebuilt per phase from the stack's **base commit**, then `ls.agent.stage` is re-applied |
+| `ls_agent_stage.cand` | `leaguesphere/backend:agent-candidate` | `ls-agent-cand-update.timer` (user timer, 5 min, health-gated) |
 
 Both sit behind one nginx basic-auth proxy (`ls_agent_stage.proxy`, loopback
 ports 18081/18082) and read/write **the same** stage database. The equivalence
@@ -623,23 +623,30 @@ cd ansible
 ./servyy-test.sh --limit servyy-test.lxd --tags ls.app.stage --skip-tags ls.db.sync
 
 # 5b. PRE-APPLY SCHEMA CHECK. ref and cand share the stage database, and neither
-#     runs migrations, so the stage app must be the SAME BUILD as the pinned ref
-#     image. Compare image ids (not just version strings):
-ssh servyy-test.lxd '
-  docker pull -q leaguesphere/backend:v5.27.7 >/dev/null
-  echo "stage: $(docker inspect -f "{{.Image}}" leaguesphere_stage.staging-app)"
-  echo "ref:   $(docker inspect -f "{{.Id}}" leaguesphere/backend:v5.27.7)"'
-#     Both lines must be identical. If not, the stage stack predates (or
-#     postdates) the ref release: deploy stage from the ref release first, or
-#     bump ls_agent_stage_ref_image and record it in the phase plan.
-#     `ls.agent.stage` enforces the same check (ls_agent_stage_schema_check).
-
-# 6. Build the candidate BEFORE the agent stage: ls_agent_stage pulls
-#    leaguesphere/backend:agent-candidate with `pull: always`. Environment is
-#    not needed for a candidate build (only for the normal stage/demo bump):
+#     runs migrations, so the phase BASE must not carry migrations the stage
+#     deploy has not applied. Compare the stage stack's release with the base
+#     (replace the tag with the release the stage stack was deployed from):
 cd <leaguesphere-checkout>
-gh workflow run deploy.yaml --ref phase0c-equivalence -f agent_candidate_ref=phase0c-equivalence
+git fetch origin
+BASE=$(git rev-parse origin/phase0-docs)        # the stack's base commit
+git diff --name-only <stage-release-tag>..$BASE | grep migrations && {
+  echo "base adds migrations the stage DB lacks - deploy stage from a newer release first"; exit 1; }
 cd -   # back to ansible/
+#     `ls.agent.stage` enforces the authoritative version after the containers
+#     are up: `python manage.py migrate --check` in both ref and cand against
+#     the shared DB (ls_agent_stage_schema_check).
+
+# 6. Build BOTH agent images BEFORE the agent stage (the role pulls them with
+#    `pull: always`). `agent-ref` is the phase baseline: build it from the stack
+#    BASE commit, not from a release tag (a tag always lags a moving master).
+#    `agent-candidate` is the stack HEAD. Environment is not needed for either:
+cd <leaguesphere-checkout>
+gh workflow run deploy.yaml --ref phase0c-equivalence \
+  -f agent_candidate_ref=$BASE -f agent_tag=agent-ref
+gh workflow run deploy.yaml --ref phase0c-equivalence \
+  -f agent_candidate_ref=phase0c-equivalence -f agent_tag=agent-candidate
+cd -   # back to ansible/
+#    Wait for both workflow runs to finish before step 7.
 
 # 7. Agent stage (ref/cand/proxy + harness users + candidate timer + tunnel).
 #    Harvest the credentials first, they live in git-crypt:
@@ -666,8 +673,14 @@ ssh servyy-test.lxd 'docker exec leaguesphere_stage.staging-app python manage.py
 #    The stage UI on the test box is a plain-HTTP local router
 #    (leaguesphere_stage.<hostname>) without a public certificate; the harness
 #    does not depend on it - it compares ref/cand through the opentunnel proxy.
-# 5b. image ids printed above are identical
-# 7. agent stage
+# 5b. no migrations between the stage release and the stack base
+# 7. agent stage; then verify both sides pass the authoritative check:
+ssh servyy-test.lxd 'docker exec ls_agent_stage.ref python manage.py migrate --check && echo ref-ok'
+ssh servyy-test.lxd 'docker exec ls_agent_stage.cand python manage.py migrate --check && echo cand-ok'
+#    `agent-ref` predates /health/version/, so verify the baked commit from the
+#    image label instead:
+ssh servyy-test.lxd 'docker image inspect leaguesphere/backend:agent-ref \
+  --format "{{index .Config.Labels \"org.opencontainers.image.revision\"}}"'
 ssh servyy-test.lxd 'docker ps --filter name=ls_agent_stage --format "{{.Names}} {{.Status}}"'
 ssh servyy-test.lxd 'sudo -u cda systemctl --user status ls-agent-cand-update.timer'
 ```
@@ -682,6 +695,27 @@ logged-in users — they are not linked to a team (teammanager) or an
 logged-in baseline, not team-manager/official-specific pages. TODO(Phase 1):
 link them to a small test team/official in the clone if a phase's probes need
 that surface.
+
+### Per phase: moving `ref` to the new base
+
+Renovate keeps master moving, so the phase baseline is a **commit-pinned build**,
+not a release tag. When a phase starts (or the agreed base changes):
+
+```bash
+cd <leaguesphere-checkout>
+git fetch origin
+BASE=$(git rev-parse origin/phase0-docs)                 # the stack's base commit
+gh workflow run deploy.yaml --ref <stack branch> \
+  -f agent_candidate_ref=$BASE -f agent_tag=agent-ref     # rebuild the baseline
+# wait for the run, then, in ansible/:
+./servyy-test.sh --limit servyy-test.lxd --tags ls.agent.stage
+```
+
+Before rebuilding, confirm the base adds no migrations the stage DB lacks
+(`git diff --name-only <stage-release-tag>..$BASE | grep migrations`); the role
+also runs `manage.py migrate --check` in both containers after starting them.
+`ref` has no update timer or watchtower label: it only changes on this
+deliberate rebuild + re-apply.
 
 ### Credentials
 

@@ -77,6 +77,18 @@ after WP-4. Changes:
   agent stage → tunnel), including who creates `leaguesphere_stage_media` (the
   stage compose).
 
+## Phase baseline follows the stack base (Stage 2a)
+
+A release-pinned `ref` (`v5.27.7`) always lags a moving master, and the footer
+version alone would diff on every page. The baseline is now
+`leaguesphere/backend:agent-ref`, pushed from the stack's **base commit** by the
+leaguesphere `deploy.yaml` (`agent_tag=agent-ref`) and never auto-updated. The
+schema guard changed with it: instead of comparing image ids (which a newer base
+legitimately changes), both containers run `manage.py migrate --check` against
+the shared stage database after startup; the role fails when either image
+carries unapplied migrations. The runbook documents the per-phase rebuild plus
+the `git diff ... | grep migrations` pre-check.
+
 ## Deliberate limits
 
 - Not applied by the author (no host access from codey; DNS for
