@@ -2,9 +2,24 @@
 # Defaults for ls_db_sync role
 # No defaults needed - all variables come from secret_main.yaml and secret_stage.yaml
 
-# 'local'    = dump from the local prod container leaguesphere.db (post-cutover, default)
-# 'external' = dump from the external host below (pre-cutover, recovery only)
-ls_db_sync_source: "local"
+# 'local'       = dump from the local prod container leaguesphere.db (post-cutover)
+# 'external'    = dump from the external host below (pre-cutover, recovery only)
+# 'remote_prod' = READ-ONLY dump on the production host, fetched through the
+#                 controller and imported here. Needed on a host that has no
+#                 local prod container (servyy-test.lxd); default there.
+ls_db_sync_source: "{{ 'remote_prod' if (is_test_host | default(false) | bool) else 'local' }}"
+
+# Host to delegate the read-only prod dump to when source == remote_prod.
+# `lehel.xyz` is the SSH alias the runbook uses; Ansible's ssh connection reads
+# ~/.ssh/config, so the alias (and its user) applies. Nothing is written to
+# prod except the dump file in /tmp, which is removed in an `always` block.
+ls_db_sync_remote_prod_host: lehel.xyz
+ls_db_sync_remote_prod_become: true
+
+# Controller-side landing zone for the fetched dump. 0700, file 0600, deleted
+# after the import (also on failure) - a prod dump must never sit in a
+# world-readable path.
+ls_db_sync_fetch_dir: "{{ (lookup('env', 'HOME') | default('/tmp', true), '.ansible', 'ls-db-sync') | path_join }}"
 # Source host for the 'external' dump. Kept separate from secret_main.yaml's app.db_host
 # because the cutover repoints app.db_host to the local container (leaguesphere.db), which
 # would otherwise break the external dump. Override with -e if the external host moves.

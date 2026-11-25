@@ -32,6 +32,10 @@ ls_agent_stage_cand_port: 18082
 ls_agent_stage_opentunnel_install_url: https://opentunnel.xyz/install
 ls_agent_stage_opentunnel_bin: "{{ (remote_user_home, '.local', 'bin', 'opentunnel') | path_join }}"
 
+# servyy-test has no watchtower, so this user timer pulls agent-candidate and
+# restarts only `cand` when the image id changed (health-gated).
+ls_agent_stage_cand_update_interval: 5min
+
 # Guard against schema drift: ref must run the same build the stage deploy
 # migrated (both share the stage database). Set false only for a deliberate
 # exception, e.g. a second DB copy for a schema-changing phase.

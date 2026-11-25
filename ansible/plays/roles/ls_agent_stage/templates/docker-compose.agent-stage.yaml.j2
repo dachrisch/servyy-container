@@ -1,8 +1,8 @@
 # Agent stage for the Phase 0c equivalence harness (leaguesphere#2536).
 #
 # ref  - master image at phase start, pinned, never auto-updated.
-# cand - leaguesphere/backend:agent-candidate, updated by watchtower-dev
-#        (scope=dev, 300 s poll, health-gated).
+# cand - leaguesphere/backend:agent-candidate, updated by the
+#        `ls-agent-cand-update` user timer (the test host has no watchtower).
 # Both read and write the SAME stage database; the basic-auth proxy is the
 # only externally reachable part (through opentunnel).
 name: {{ ls_agent_stage_project }}
@@ -15,6 +15,12 @@ services:
     # the code, not from a different worker model.
     command: gunicorn -b 0.0.0.0:8000 -w 1 --worker-class gthread --threads 2 league_manager.wsgi
     mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -A healthcheck -H \"Accept: application/json\" http://localhost:8000/health/?format=json"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 120s
     env_file: {{ ls_agent_stage_stage_env_file }}
     environment:
       DJANGO_SETTINGS_MODULE: league_manager.settings.stage
@@ -39,6 +45,12 @@ services:
     container_name: {{ ls_agent_stage_project }}.cand
     command: gunicorn -b 0.0.0.0:8000 -w 1 --worker-class gthread --threads 2 league_manager.wsgi
     mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -A healthcheck -H \"Accept: application/json\" http://localhost:8000/health/?format=json"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 120s
     env_file: {{ ls_agent_stage_stage_env_file }}
     environment:
       DJANGO_SETTINGS_MODULE: league_manager.settings.stage
@@ -48,7 +60,8 @@ services:
     labels:
       - traefik.enable=false
       - io.portainer.accesscontrol.teams=leaguesphere
-      # watchtower-dev polls scope=dev every 300 s and updates health-gated.
+      # Harmless on hosts without watchtower; servyy-test has none, so the
+      # `ls-agent-cand-update` timer (tasks/main.yml) does the pull/restart.
       - com.centurylinklabs.watchtower.scope=dev
     networks:
       - backend

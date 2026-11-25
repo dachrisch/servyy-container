@@ -53,6 +53,30 @@ harness accounts — and no per-run setup or secret handoff.
 - Nightly-timer verification in the runbook now names the right owner
   (`create_user`, i.e. `cda`), not `leaguesphere`.
 
+## servyy-test reality (second review round)
+
+The test box runs **no** LeagueSphere containers and no watchtower, so the
+previous procedure (and the runbook) described a world that no longer exists
+after WP-4. Changes:
+
+- `ansible/testing` enables `db_tiers: [nonprod]`: the test box now rehearses
+  `db-nonprod.mariadb` (server, `db_nonprod_backend` network, stage/demo users
+  from `secret_stage.yaml`) instead of relying on a retired app-owned mysql.
+- `ls_db_sync` gains `ls_db_sync_source: remote_prod` (the default on test
+  hosts): prod is dumped **read-only** on `lehel.xyz` (`--single-transaction`,
+  views ignored), fetched through the controller (0700 dir, 0600 file), copied
+  0600 to the test box, imported, and every copy is deleted in an `always`
+  block — including on failure. The role also refuses to drop the stage DB
+  when no dump landed.
+- `ls_agent_stage` installs `ls-agent-cand-update.timer` (user timer, 5 min):
+  pulls `agent-candidate`, restarts only `cand` when the image id changed, then
+  waits for the healthcheck. No watchtower dependency; the `dev` scope label
+  stays harmless.
+- The runbook's stage/test/sync sections and the ordered agent-stage procedure
+  were rewritten for the post-WP-4 reality (tier → stage+sync → version check →
+  agent stage → tunnel), including who creates `leaguesphere_stage_media` (the
+  stage compose).
+
 ## Deliberate limits
 
 - Not applied by the author (no host access from codey; DNS for
