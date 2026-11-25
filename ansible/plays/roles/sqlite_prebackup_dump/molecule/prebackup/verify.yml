@@ -79,9 +79,7 @@
       loop:
         - /home/testuser/servyy-container/ci/data/backup
         - /home/testuser/servyy-container/pass/backup
-      failed_when: >-
-        not sqlite_prebackup_dump_dir_stats.results[0].stat.exists
-        or not sqlite_prebackup_dump_dir_stats.results[1].stat.exists
+      failed_when: not sqlite_prebackup_dump_dir_stats.stat.exists
 
     - name: Verify the Pushgateway job and both metric families
       ansible.builtin.command:
