@@ -1,7 +1,8 @@
 # ADR: Quiet the alert emails and give codey its own monitoring
 
 **Date:** 2026-11-25
-**Status:** Proposed (code complete and statically verified; test/production deploy pending)
+**Status:** Proposed — implementation and `servyy-test.lxd` deployment are complete
+and verified; production deployment is pending explicit approval.
 **Relates to:** [`2026-11-20_grafana-loki-to-codey.md`](2026-11-20_grafana-loki-to-codey.md),
 [`2026-10-30_load-alert-tuning.md`](2026-10-30_load-alert-tuning.md),
 [`2026-11-18_db-tier-r2b-alert-truth.md`](2026-11-18_db-tier-r2b-alert-truth.md)
@@ -99,7 +100,8 @@ file.
 
 **Commits:** design/plan `12174567`; notifications `561d3a6f`; compose `2c060905`;
 datasource/rules `a4d6094f`; password render `90d8fd6d`; reload `4d7a1ffb`;
-probe `f2d5bcbd`.
+probe `f2d5bcbd`; docs/map `4c6f1e52`; skip-missing `c7b8d99d`; ui-only gate
+`74754c47`.
 
 **Testing & verification (done on the branch):**
 - All new unit tests written first, watched RED, then GREEN; 18 tests pass.
@@ -111,7 +113,52 @@ probe `f2d5bcbd`.
 - Molecule could not run locally (no Docker daemon); both changed scenarios were
   extended and syntax-checked, and CI will run them.
 
-**Deploy verification and final status:** pending — see the update at the end.
+### servyy-test.lxd (verified 2026-11-25)
+
+- `./servyy-test.sh -e docker_branch=claude/monitor-codey` first failed on the
+  unrelated Moodle test-host image (`config.php` missing); the monitor half had
+  already deployed. A targeted rerun with `--tags user.docker.repo,user.docker.monitor,user.docker.env.monitor,system.probe`
+  finished `failed=0`.
+- All eight new `monitor.*-codey` containers Up; `up{job=...}` for
+  `prometheus-codey`, `node-exporter-codey`, `cadvisor-codey` and
+  `pushgateway-codey` all 1.
+- Grafana: **84 rules** (65 fleet + 19 codey), all `health=ok`; datasources
+  `prometheus`, `prometheus-codey`, `loki`; `group_by: ['severity']`, repeats
+  `1h/4h/12h`; both rendered contact points `disableResolveMessage: true`.
+- The first test run exposed two real problems, both fixed before the final run:
+  1. Render tasks (`datasources.yml`, `contact-points.yml`) read `docker.local_dir`,
+     i.e. the **controller's main checkout**, not the branch in the remote dir.
+     Running from a worktree therefore rendered the master templates. Fixed by
+     temporarily checking the branch out in the controller checkout (then
+     restoring master) and re-running the tagged deploy. This is a trap for every
+     future template change deployed from a worktree.
+  2. The global `docker.services` list describes the whole fleet, so the new
+     container-health probe would have paged codey for servy's containers. The
+     rendered script now skips containers that do not exist on the host (a
+     STOPPED container still exists and is reported down), and the probe gate is
+     **ui-only** so the both-profiles test host keeps the old behaviour. A stale
+     Pushgateway job group from the earlier run was deleted on test; after the
+     rule lookback expired the only remaining alert was the pre-existing
+     LeagueSphere maintenance-probe failure.
+- Molecule scenarios were extended but could not run locally (no Docker daemon);
+  CI runs them, and the test-host deploy exercised the same role changes.
+
+**Production:** not deployed. Requires explicit approval, then
+`--tags user.docker.repo,user.docker.monitor,system.probe --limit codey.lehel.xyz`
+and the collect-side reload on `--limit servy.lehel.xyz`. Update this ADR to
+Accepted with the real results after that deploy.
+
+### Key learnings
+1. A branch deploy from a worktree syncs the **remote** checkout from the branch,
+   but rendered monitor files come from `docker.local_dir` on the **controller**.
+   A template change needs the controller checkout on the same ref, or it renders
+   master's template while the remote dir has the branch's rules.
+2. Any probe driven by the fleet-wide `docker.services` list must skip containers
+   that were never created on the host; "inspect failed" does not distinguish
+   "never existed" from "down" unless you check existence first.
+3. `servyy-test` enables both compose profiles. A gate phrased as `'ui' in
+   monitor_profiles` is also true there; per-host gates must exclude the other
+   profile explicitly.
 
 ## Alternatives Considered
 
@@ -125,3 +172,4 @@ probe `f2d5bcbd`.
 - Molecule scenarios were not executed locally (no Docker); CI/test-host proves them.
 - The rule file was generated from a template, so descriptions are repetitive;
   this is cosmetic.
+- Production has not been deployed; the ADR stays Proposed until that happens.
