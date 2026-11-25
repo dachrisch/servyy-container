@@ -19,6 +19,16 @@
 # Where probe scripts are deployed (mirrors ls_maintenance_probe / docker_cleanup layout).
 system_probe_scripts_dir: "{{ remote_user_home }}/.system-probes"
 system_probe_pushgateway_url: "http://localhost:9091"
+# Codey (ui profile) got its OWN Pushgateway on 127.0.0.1:9092 on 2026-11-25.
+# Only the container-health probe runs there: the restic/dump/log/Moodle/storagebox
+# probes read servy-only paths and would page -1 forever on codey. Keeping the
+# generic URL at 9091 also preserves servyy-test, where both profiles run and the
+# other probes must still land in servy's Prometheus.
+system_probe_container_pushgateway_url: >-
+  {{ 'http://localhost:9092' if 'ui' in (monitor_profiles | default([]))
+     else 'http://localhost:9091' }}
+system_probe_container_push_enabled: >-
+  {{ 'ui' in (monitor_profiles | default([])) }}
 
 # True only on hosts running the monitor stack's Pushgateway sink present).
 # Handles both inventory shapes: bare `monitor: true` and `monitor: {enabled: true}`.

@@ -9,7 +9,7 @@ set -uo pipefail
 # Deliberately no `set -e`: each step below handles its own failure explicitly so a
 # problem in one check can't abort the script before it pushes anything.
 
-PUSHGATEWAY_URL="{{ system_probe_pushgateway_url }}"
+PUSHGATEWAY_URL="{{ system_probe_container_pushgateway_url }}"
 JOB_NAME="system_container_health"
 
 probe_success=1
