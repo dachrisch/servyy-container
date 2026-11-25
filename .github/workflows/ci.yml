@@ -421,6 +421,14 @@ jobs:
           cd ansible/tests/dbaccess_reap
           python -m unittest -v test_reap_verdict
 
+      # ls.env feeds both the MariaDB entrypoint and the app. Pin the image-
+      # standard names as unconditional and keep the temporary legacy aliases
+      # in place for the infra scripts that read MYSQL_PWD from the container.
+      - name: Run ls app env template tests
+        run: |
+          cd ansible/tests/ls_app_env
+          python -m unittest -v test_ls_env
+
       # Path gating is only safe if the matrix it selects is trustworthy. These
       # pin that the baseline scenarios run on every ansible change, that shared
       # or unattributable paths widen to the full matrix, and that this
