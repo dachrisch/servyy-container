@@ -1,7 +1,9 @@
 # ADR: Keep resolve mails and add a two-server overview dashboard
 
 **Date:** 2026-11-25
-**Status:** Proposed (code complete; test deploy pending)
+**Status:** Accepted — merged as PR #369 (`4f3250a4`), verified on
+`servyy-test.lxd`, and rolled out from `master` to `codey.lehel.xyz` on
+2026-11-25.
 **Relates to:** [`2026-11-25_monitor-codey-coverage.md`](2026-11-25_monitor-codey-coverage.md)
 
 ## Context
@@ -50,5 +52,21 @@ alerts but not on a dashboard.
   `ansible/tests/monitor_codey/test_fleet_dashboard.py` — tests.
 - `monitor/AGENTS.md` — documents the paired-datasource invariant.
 
-**Testing & Verification:** pending — CI, test-host deploy and production rollout
-will be recorded here before this ADR is Accepted.
+**Testing & Verification:**
+- Both new tests watched RED then GREEN; full unit suite, Ansible syntax check,
+  `render.py --verify` and yamllint pass locally.
+- PR #369: all CI checks pass including `CI Gate`.
+- `servyy-test.lxd`: `failed=0`; dashboard `fleet-overview` provisioned with 8
+  `prometheus` + 8 `prometheus-codey` panels; both datasources answered live
+  `node_load5` queries; rendered contact points `disableResolveMessage: false`;
+  84 rules `health=ok`.
+- Production `codey.lehel.xyz`: `failed=0`, 5 changes; dashboard present with the
+  same 8/8 panel split; both datasources returning live data; contact points
+  resolve mail on; server checkout at the merge commit. No servy change needed.
+
+### Key learnings
+- Grafana polls dashboard providers but not alerting provisioning: the new
+  dashboard appeared without a restart, while the contact-point change needed
+  the `monitor_reload` Grafana restart (fingerprint over `rendered/contact-points.yml`).
+- A dashboard that leaves `datasource` at the default silently shows only servy;
+  the contract test now fails if any panel omits an explicit uid.
