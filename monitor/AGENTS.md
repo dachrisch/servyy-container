@@ -82,9 +82,10 @@ email storm this split removes.
 
 `notification-policies.yml` groups by **`severity` only** — 65 unique alertnames
 grouped by `alertname` meant one mail per rule; a datasource blip that errored
-50 rules at once produced ~50 mails plus ~50 resolves. Both contact points set
-`disableResolveMessage: true`, and repeats are critical 1h / high 4h / medium 12h.
-Do not "restore" alertname grouping or resolve messages without measuring the
+50 rules at once produced ~50 mails plus ~50 resolves. Repeats are critical 1h /
+high 4h / medium 12h. **Resolve mails are deliberately ON** (`disableResolveMessage:
+false`) at the admin's request: the severity grouping, not silence, is what keeps
+the volume bounded. Do not "restore" alertname grouping without measuring the
 inbox again.
 
 ## Load-bearing invariants — do not "clean these up"
@@ -308,6 +309,7 @@ root-owned DB. Before that, the honest alternative is to leave the rule in the f
   extension selects Prometheus' JSON parser, which rejects comments.
 - `provisioning/alerting/alert-rules.yml` — the fleet rules (one file, groups by area), all on the `prometheus` datasource.
 - `provisioning/alerting/alert-rules-codey.yml` — codey's host/container rules, all on `prometheus-codey`. `monitor_reload` fingerprints `provisioning/alerting/*.yml`, so adding this file bounced Grafana on the deploy.
+- `provisioning/dashboards/infrastructure/fleet-overview.json` — **servy + codey side by side**. Every panel names its datasource explicitly (`prometheus` = servy, `prometheus-codey` = codey); never let one fall back to the default datasource or it silently shows only servy. Grafana polls dashboards, so this file needs no restart; contact points still do.
   `contact-points.yml` is rendered into `rendered/` by Ansible and mounted separately.
 - `provisioning/datasources/datasources.yml` is the **Jinja source** — Ansible renders
   it to `rendered/datasources.yml`, and compose mounts that over the tracked path. It
