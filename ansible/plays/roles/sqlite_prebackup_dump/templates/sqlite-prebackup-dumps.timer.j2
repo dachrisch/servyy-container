@@ -1,0 +1,10 @@
+[Unit]
+Description=Trigger for the nightly SQLite pre-backup dumps
+
+[Timer]
+OnCalendar=*-*-* 23:40:00
+RandomizedDelaySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

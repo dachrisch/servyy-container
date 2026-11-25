@@ -67,6 +67,25 @@ if [ -n "$(sudo find {{ stale_guard_path }} -maxdepth 0 -mmin +{{ stale_guard_ma
 fi
 {% endif %}
 
+{% if pre_backup_dump_script is defined and pre_backup_dump_script | length > 0 %}
+# Pre-backup: consistent SQLite `.backup` snapshots of the Forgejo and
+# Vaultwarden DBs. They land in the same tree restic is about to snapshot, so
+# repos, files and both DBs come from one snapshot (RPO <= 1 h).
+#
+# FAILURE IS NON-FATAL FOR RESTIC: the dump script always exits 0 (it reports
+# problems as metrics instead), and a missing/broken script must not block the
+# hourly backup — an older dump in the snapshot beats no snapshot at all.
+# The SAME FAILURE IS FATAL FOR MONITORING: the script PUTs
+# dr_prebackup_dump_failure{db="forgejo"|"vaultwarden"}=1 to the local
+# Pushgateway, which a medium-severity Grafana rule pages on. Silence here
+# would mean files and DBs silently drifting apart in the snapshot.
+if ! "{{ pre_backup_dump_script }}" >> "$LOG_FILE" 2>&1; then
+    logdy error "Pre-backup SQLite dump hook failed (continuing with restic)" script="{{ pre_backup_dump_script }}"
+else
+    logdy info "Pre-backup SQLite dumps complete" script="{{ pre_backup_dump_script }}"
+fi
+{% endif %}
+
 logdy info "Running backup" command="$BACKUP_CMD"
 
 {% if with_sudo is defined %}

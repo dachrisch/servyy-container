@@ -1,0 +1,115 @@
+---
+# sqlite_prebackup_dump — consistent SQLite `.backup` dumps of BOTH live DBs
+# (Forgejo ci/data/data/gitea.db and Vaultwarden pass/vw-data/db.sqlite3).
+# The primary path is an Exec hook in restic_backup.sh.j2: dumps land in the
+# same tree restic is about to snapshot, so files and DBs share one snapshot.
+# The 23:40 nightly timer remains as a secondary schedule.
+
+- name: Ensure the SQLite dump scripts directory exists
+  ansible.builtin.file:
+    path: "{{ sqlite_prebackup_dump_scripts_dir }}"
+    state: directory
+    mode: '0750'
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+  tags: [user.docker.pass, user.docker.sqlite.prebackup]
+
+- name: Ensure both SQLite pre-backup dump directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0750'
+  loop:
+    - "{{ sqlite_prebackup_dump_dir }}"
+    - "{{ sqlite_prebackup_dump_forgejo_dump_dir }}"
+  loop_control:
+    label: "{{ item }}"
+  tags: [user.docker.pass, user.docker.sqlite.prebackup]
+
+- name: Deploy the SQLite pre-backup dump script (both DBs)
+  ansible.builtin.template:
+    src: sqlite-prebackup-dumps.sh.j2
+    dest: "{{ (sqlite_prebackup_dump_scripts_dir, 'sqlite-prebackup-dumps.sh') | path_join }}"
+    mode: '0750'
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+  tags: [user.docker.pass, user.docker.sqlite.prebackup]
+
+- name: Ensure the systemd user unit directory exists
+  ansible.builtin.file:
+    path: "{{ remote_user_systemd }}"
+    state: directory
+    mode: '0755'
+  tags: [user.docker.pass, user.docker.sqlite.prebackup]
+
+- name: Deploy the SQLite pre-backup systemd service
+  ansible.builtin.template:
+    src: sqlite-prebackup-dumps.service.j2
+    dest: "{{ (remote_user_systemd, 'sqlite-prebackup-dumps.service') | path_join }}"
+    mode: '0644'
+  tags: [user.docker.pass, user.docker.sqlite.prebackup]
+
+- name: Deploy the SQLite pre-backup systemd timer
+  ansible.builtin.template:
+    src: sqlite-prebackup-dumps.timer.j2
+    dest: "{{ (remote_user_systemd, 'sqlite-prebackup-dumps.timer') | path_join }}"
+    mode: '0644'
+  tags: [user.docker.pass, user.docker.sqlite.prebackup]
+
+# Clean migration from the earlier single-DB units: stop and remove them only
+# after the new script and units have been installed. No orphaned timer/unit.
+- name: Stop and disable the legacy vaultwarden-dump timer
+  ansible.builtin.systemd:
+    scope: user
+    name: vaultwarden-dump.timer
+    state: stopped
+    enabled: false
+  failed_when: false
+  tags: [user.docker.pass, user.docker.sqlite.prebackup, molecule-notest]
+  no_log: true
+
+- name: Remove legacy single-DB dump units and wrapper
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ (remote_user_systemd, 'vaultwarden-dump.timer') | path_join }}"
+    - "{{ (remote_user_systemd, 'vaultwarden-dump.service') | path_join }}"
+    - "{{ (sqlite_prebackup_dump_scripts_dir, 'vaultwarden-dump.sh') | path_join }}"
+  loop_control:
+    label: "{{ item }}"
+  tags: [user.docker.pass, user.docker.sqlite.prebackup]
+
+- name: Probe Docker and the pass container for the dump timer
+  ansible.builtin.shell:
+    cmd: >-
+      command -v docker >/dev/null 2>&1
+      && docker inspect {{ sqlite_prebackup_dump_container }} >/dev/null 2>&1
+  register: sqlite_prebackup_dump_container_probe
+  changed_when: false
+  failed_when: false
+  tags: [user.docker.pass, user.docker.sqlite.prebackup]
+
+- name: Check for a systemd user bus  # noqa: command-instead-of-module
+  ansible.builtin.command:
+    cmd: systemctl --user show-environment
+  register: sqlite_prebackup_dump_user_bus
+  changed_when: false
+  failed_when: false
+  tags: [user.docker.pass, user.docker.sqlite.prebackup, molecule-notest]
+
+- name: Enable and start the SQLite pre-backup dump timer
+  ansible.builtin.systemd:
+    scope: user
+    name: sqlite-prebackup-dumps.timer
+    state: started
+    enabled: true
+    daemon_reload: true
+  register: sqlite_prebackup_dump_timer_start
+  failed_when: >-
+    sqlite_prebackup_dump_timer_start.failed
+    and (sqlite_prebackup_dump_user_bus.rc | default(1)) == 0
+  when: (sqlite_prebackup_dump_container_probe.rc | default(1)) == 0
+  tags: [user.docker.pass, user.docker.sqlite.prebackup, molecule-notest]

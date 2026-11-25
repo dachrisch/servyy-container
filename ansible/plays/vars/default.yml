@@ -3,6 +3,14 @@ local_user: "{{ lookup('env', 'USER') }}"
 remote_user_home: "{{ ('/home/', create_user) | path_join }}"
 remote_user_systemd: "{{ (remote_user_home, '.config/systemd/user') | path_join }}"
 copy_local_key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
+# Path of the script installed by sqlite_prebackup_dump: consistent `.backup`
+# snapshots of BOTH live SQLite DBs immediately before restic's hourly HOME
+# snapshot. Empty on hosts without both DB services, so the hook is a no-op.
+sqlite_prebackup_dump_script: >-
+  {{ (remote_user_home, '.vaultwarden-dump', 'sqlite-prebackup-dumps.sh') | path_join
+     if (((services_enabled | default({}))['pass'] | default(false) | bool)
+         and ((services_enabled | default({}))['ci'] | default(false) | bool))
+     else '' }}
 sys_packages:
   - monit                       # server monitoring
   - jq                          # json parsing

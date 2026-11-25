@@ -20,6 +20,11 @@
     excludes: "{{ restic.home.excludes }}"
     exclude_caches: "{{ restic.exclude_caches }}"
     log_file: "{{ restic.logs.backup_home }}"
+    # Consistent SQLite `.backup` snapshots of both live DBs immediately before
+    # the hourly snapshot, so repos/files/DBs share one restic snapshot (1 h
+    # RPO). plays/vars/default.yml resolves this to '' where the role is not
+    # deployed; restic_backup.sh.j2's guard then skips the hook.
+    pre_backup_dump_script: "{{ sqlite_prebackup_dump_script | default('') }}"
   tags:
     - restic.backup
 

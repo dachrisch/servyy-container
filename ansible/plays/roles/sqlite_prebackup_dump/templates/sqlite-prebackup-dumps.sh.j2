@@ -1,0 +1,99 @@
+#!/bin/bash
+# Consistent SQLite snapshots taken IMMEDIATELY before each hourly restic-home
+# run (wired in roles/restic/tasks/backup.yml). Both live DBs are snapshotted
+# with sqlite3's `.backup` in a throwaway container, so the bare repos, files
+# and both DBs come from the SAME restic snapshot: RPO <= 1 h.
+#
+# NON-FATAL for restic: this script always exits 0 and only logs + pushes a
+# metric when a dump fails. An older dump in the snapshot beats no snapshot of
+# the files at all. The same failure is FATAL FOR MONITORING: the per-DB
+# dr_prebackup_dump_failure series is what pages (medium Grafana rule). A
+# missing/unreachable Pushgateway is tolerated and only logged.
+#
+# No DB content is ever printed — only paths and status lines.
+set -uo pipefail  # deliberately no -e: every DB and the push must be attempted.
+
+IMAGE="{{ sqlite_prebackup_dump_image }}"
+KEEP="{{ sqlite_prebackup_dump_keep }}"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+PUSHGATEWAY_URL="{{ sqlite_prebackup_dump_pushgateway_url }}"
+JOB_NAME="{{ sqlite_prebackup_dump_push_job }}"
+
+# label | host source dir | source file | host backup dir | dump prefix | container
+dump_one() {
+  local label="$1" src_dir="$2" src_file="$3" dest_dir="$4" prefix="$5" container="$6"
+  local dest="/out/${prefix}-${STAMP}.sqlite3"
+
+  if ! mkdir -p "${dest_dir}" 2>/dev/null; then
+    echo "ERROR: ${label}: cannot create backup dir ${dest_dir}" >&2
+    return 1
+  fi
+  if [ ! -f "${src_dir}/${src_file}" ]; then
+    echo "ERROR: ${label}: ${src_dir}/${src_file} not found (container: ${container})" >&2
+    return 1
+  fi
+
+  # Mount the live DB dir read-write on purpose: SQLite needs its -wal/-shm
+  # siblings to produce a consistent snapshot of a WAL-mode DB. Run as the
+  # deploy user so the dump is owned by whoever restic reads it as. Container
+  # output is suppressed deliberately — never print DB content, only the
+  # status line below.
+  if ! docker run --rm \
+      -u "$(id -u):$(id -g)" \
+      -v "${src_dir}:/db" \
+      -v "${dest_dir}:/out" \
+      "${IMAGE}" \
+      sqlite3 "/db/${src_file}" ".backup '${dest}'" >/dev/null 2>&1; then
+    echo "ERROR: ${label}: .backup failed (container: ${container}, image: ${IMAGE})" >&2
+    return 1
+  fi
+
+  # Keep the newest KEEP dumps by mtime; xargs -r is a no-op if nothing to prune.
+  find "${dest_dir}" -maxdepth 1 -name "${prefix}-*.sqlite3" -printf '%T@ %p\n' 2>/dev/null \
+    | sort -rn | tail -n +"$((KEEP + 1))" | cut -d' ' -f2- | xargs -r rm -f
+
+  echo "${label}: wrote ${dest_dir}/${prefix}-${STAMP}.sqlite3 (keeping ${KEEP})"
+  return 0
+}
+
+# Age of the newest surviving dump, or -1 when none exists.
+dump_age() {
+  local dest_dir="$1" prefix="$2" newest mtime
+  newest="$(find "${dest_dir}" -maxdepth 1 -name "${prefix}-*.sqlite3" -printf '%T@ %p\n' 2>/dev/null \
+    | sort -rn | head -1 | cut -d' ' -f2-)"
+  if [ -n "${newest}" ] && mtime="$(stat -c %Y "${newest}" 2>/dev/null)"; then
+    echo $(( $(date +%s) - mtime ))
+  else
+    echo -1
+  fi
+}
+
+forgejo_failure=0
+vaultwarden_failure=0
+
+dump_one forgejo \
+  "{{ sqlite_prebackup_dump_forgejo_data_dir }}" gitea.db \
+  "{{ sqlite_prebackup_dump_forgejo_dump_dir }}" gitea-db \
+  "{{ sqlite_prebackup_dump_forgejo_container }}" || forgejo_failure=1
+
+dump_one vaultwarden \
+  "{{ sqlite_prebackup_dump_vw_data_dir }}" db.sqlite3 \
+  "{{ sqlite_prebackup_dump_dir }}" vaultwarden-db \
+  "{{ sqlite_prebackup_dump_container }}" || vaultwarden_failure=1
+
+# Always push, including failures. PUT replaces the whole job group so a stale
+# series cannot linger. A missing Pushgateway is tolerated: log it, but do not
+# fail the backup and do not fail this script.
+{
+  echo '# TYPE dr_prebackup_dump_failure gauge'
+  printf 'dr_prebackup_dump_failure{db="forgejo"} %s\n' "${forgejo_failure}"
+  printf 'dr_prebackup_dump_failure{db="vaultwarden"} %s\n' "${vaultwarden_failure}"
+  echo '# TYPE dr_prebackup_dump_age_seconds gauge'
+  printf 'dr_prebackup_dump_age_seconds{db="forgejo"} %s\n' "$(dump_age "{{ sqlite_prebackup_dump_forgejo_dump_dir }}" gitea-db)"
+  printf 'dr_prebackup_dump_age_seconds{db="vaultwarden"} %s\n' "$(dump_age "{{ sqlite_prebackup_dump_dir }}" vaultwarden-db)"
+} | curl -sf -X PUT --max-time 15 --connect-timeout 5 --data-binary @- \
+    "${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME}" >/dev/null 2>&1 \
+  || echo "WARN: push to ${PUSHGATEWAY_URL}/metrics/job/${JOB_NAME} failed (tolerated)" >&2
+
+echo "sqlite-prebackup dumps: forgejo_failure=${forgejo_failure} vaultwarden_failure=${vaultwarden_failure}"
+exit 0

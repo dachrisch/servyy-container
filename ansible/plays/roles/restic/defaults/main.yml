@@ -13,6 +13,14 @@
 #     here, it's the only one that exists on that path.
 vw_server: "https://pass.lehel.xyz"
 
+# Optional hook for the HOME scope only: a script that takes consistent SQLite
+# `.backup` snapshots immediately before restic snapshots the tree. Empty by
+# default — hosts that do not deploy both DB services do no pre-backup dump.
+# plays/vars/default.yml computes the real path (sqlite_prebackup_dump_script)
+# and roles/restic/tasks/backup.yml passes it to the home template. The rendered
+# script guards on `pre_backup_dump_script is defined and | length > 0`.
+pre_backup_dump_script: ""
+
 # Password-FREE mapping of VW item name <-> controller seed file path.
 # Used by tasks/seed_guard.yml. MUST NOT reference restic_password_* here:
 # iterating this list must never trigger the lookup() that generates a seed.
