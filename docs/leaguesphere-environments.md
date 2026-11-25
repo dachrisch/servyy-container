@@ -549,7 +549,7 @@ share the stage database:
 
 | container | image | updates |
 |---|---|---|
-| `ls_agent_stage.ref` | `leaguesphere/backend:v5.27.6` (pinned in `ls_agent_stage/defaults/main.yml`) | never — this is the phase's baseline |
+| `ls_agent_stage.ref` | `leaguesphere/backend:v5.27.7` (pinned in `ls_agent_stage/defaults/main.yml`) | never — this is the phase's baseline |
 | `ls_agent_stage.cand` | `leaguesphere/backend:agent-candidate` | `watchtower-dev` (scope `dev`, 300 s, health-gated) |
 
 Both sit behind one nginx basic-auth proxy (`ls_agent_stage.proxy`, loopback

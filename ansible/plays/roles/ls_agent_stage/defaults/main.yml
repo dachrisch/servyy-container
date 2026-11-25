@@ -18,7 +18,7 @@ ls_agent_stage_project: ls_agent_stage
 # The ref image is pinned on purpose: a phase compares the stack against the
 # image master had when the phase started. Bump this in the phase's PR, never
 # automatically.
-ls_agent_stage_ref_image: leaguesphere/backend:v5.27.6
+ls_agent_stage_ref_image: leaguesphere/backend:v5.27.7
 ls_agent_stage_cand_image: leaguesphere/backend:agent-candidate
 ls_agent_stage_proxy_image: nginx:1.29.3-alpine
 
