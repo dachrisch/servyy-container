@@ -288,6 +288,12 @@ portainer_rbac_host: servy.lehel.xyz
 # NOTE: renders as a string via Jinja; ALWAYS consume with `| bool`.
 leaguesphere_enabled: "{{ services_enabled.leaguesphere | default(false) }}"
 
+# On-demand LeagueSphere roles. A tag alone does NOT keep a role out of an
+# unfiltered deploy, so these flags gate the two tagged roles in leaguesphere.yml.
+# Both default off: enable the relevant one with -e for its one-off operation.
+ls_maintenance_probe_enabled: false
+ls_stage_restore_enabled: false
+
 # moodle_enabled: does this host run the Moodle instance (OFFD / Flag Academy)?
 # Owns the moodle restic scopes (moodle-files + moodle-db), their dump/backup
 # timers, system_probe moodle entries and the restic forget/check moodle

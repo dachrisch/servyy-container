@@ -151,14 +151,18 @@
         - ls.app.stage
         - ls.app
 
-    # Hourly maintenance-mode / active-games probe - tag-only, not in default ls run.
-    # Pushes metrics to Pushgateway; Grafana alerts on them.
+    # Hourly maintenance-mode / active-games probe. Opt-in via
+    # ls_maintenance_probe_enabled (default false); the tag selects this role
+    # when the flag is enabled. Pushes metrics to Pushgateway; Grafana alerts on them.
     - role: ls_maintenance_probe
+      when: ls_maintenance_probe_enabled | default(false) | bool
       tags:
         - ls.maintenance.probe
 
-    # DB restore to stage from a physical mariadb-backup (tag-only, not in default ls run)
+    # DB restore to stage from a physical mariadb-backup. Opt-in via
+    # ls_stage_restore_enabled (default false); the tag selects this role when enabled.
     - role: ls_stage_restore
+      when: ls_stage_restore_enabled | default(false) | bool
       tags:
         - ls.stage.restore
   tags:
