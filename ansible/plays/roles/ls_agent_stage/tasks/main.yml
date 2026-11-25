@@ -1,0 +1,320 @@
+---
+# No `name:` here: the file already namespaces its values under a top-level
+# `agent_stage:` key, so `name: agent_stage` would double-nest them
+# (`agent_stage.agent_stage.*`) and every `agent_stage.*` below would fail.
+- name: Load the agent stage secrets
+  include_vars:
+    file: "{{ playbook_dir }}/roles/ls_agent_stage/vars/secret_agent_stage.yaml"
+
+# `name: stage_app` IS right here: secret_stage.yaml's top-level key is `app`,
+# so this exposes `stage_app.app.*` (the same shape ls_db_sync uses).
+- name: Load the stage app variables (same database as the agent stage)
+  include_vars:
+    file: "{{ playbook_dir }}/roles/ls_app/vars/secret_stage.yaml"
+    name: stage_app
+
+- name: Ensure the agent stage directory exists
+  file:
+    path: "{{ ls_agent_stage_dir }}"
+    state: directory
+    mode: "0750"
+  become_user: "{{ ls.user }}"
+
+- name: Render the agent stage compose file
+  template:
+    src: docker-compose.agent-stage.yaml.j2
+    dest: "{{ (ls_agent_stage_dir, 'docker-compose.agent-stage.yaml') | path_join }}"
+    mode: "0640"
+  become_user: "{{ ls.user }}"
+
+- name: Render the basic-auth proxy config
+  template:
+    src: nginx.agent-stage.conf.j2
+    dest: "{{ (ls_agent_stage_dir, 'agent-stage-nginx.conf') | path_join }}"
+    mode: "0640"
+  become_user: "{{ ls.user }}"
+
+- name: Render the basic-auth user file
+  copy:
+    content: "{{ agent_stage.basic_auth_htpasswd }}\n"
+    dest: "{{ (ls_agent_stage_dir, 'agent-stage.htpasswd') | path_join }}"
+    # World-readable on purpose: nginx workers run as uid 101 inside the proxy
+    # container and must open this bind-mounted file (0640 gave "Permission
+    # denied" -> 500 on every authenticated request). It holds only a bcrypt
+    # hash, and the parent directory is 0750, so host users cannot reach it.
+    mode: "0644"
+  become_user: "{{ ls.user }}"
+  no_log: true
+
+- name: Start the agent stage stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ ls_agent_stage_dir }}"
+    project_name: "{{ ls_agent_stage_project }}"
+    files:
+      - docker-compose.agent-stage.yaml
+    pull: always
+    state: present
+    recreate: auto
+  become_user: "{{ ls.user }}"
+
+# ref and cand share the stage database, and neither runs migrations
+# (RUN_MIGRATIONS=false). A base/head with migrations the stage deploy has not
+# applied would compare a half-migrated database. `migrate --check` is the
+# authoritative test: it exits non-zero when the image has unapplied migrations.
+- name: Wait for ref and cand to be healthy before the schema check
+  community.docker.docker_container_info:
+    name: "{{ ls_agent_stage_project }}.{{ item }}"
+  register: ls_agent_stage_health
+  until: >-
+    ls_agent_stage_health.container is not none and
+    ls_agent_stage_health.container.State.Health.Status | default('') == 'healthy'
+  retries: 30
+  delay: 5
+  loop:
+    - ref
+    - cand
+  when: ls_agent_stage_schema_check | bool
+
+- name: Check ref for migrations the stage database has not applied
+  community.docker.docker_container_exec:
+    container: "{{ ls_agent_stage_project }}.ref"
+    command: python manage.py migrate --check
+  register: ls_agent_stage_ref_migrations
+  changed_when: false
+  failed_when: false
+  when: ls_agent_stage_schema_check | bool
+
+- name: Check cand for migrations the stage database has not applied
+  community.docker.docker_container_exec:
+    container: "{{ ls_agent_stage_project }}.cand"
+    command: python manage.py migrate --check
+  register: ls_agent_stage_cand_migrations
+  changed_when: false
+  failed_when: false
+  when: ls_agent_stage_schema_check | bool
+
+- name: Fail when the phase baseline or head needs unapplied migrations
+  ansible.builtin.assert:
+    that:
+      - ls_agent_stage_ref_migrations.rc == 0
+      - ls_agent_stage_cand_migrations.rc == 0
+    fail_msg: >-
+      ref ({{ ls_agent_stage_ref_image }}) exited
+      {{ ls_agent_stage_ref_migrations.rc }} and cand
+      ({{ ls_agent_stage_cand_image }}) exited
+      {{ ls_agent_stage_cand_migrations.rc }} on `manage.py migrate --check`.
+      The stage database was migrated by the stage deploy; a non-zero result
+      means the image carries migrations it has not applied, so the comparison
+      would run against a half-migrated database. Deploy the stage stack from a
+      build at least as new as the phase base (or provide the phase's own DB
+      copy), then re-apply. Output (first lines): ref
+      {{ ls_agent_stage_ref_migrations.stderr | default('') | truncate(300) }};
+      cand {{ ls_agent_stage_cand_migrations.stderr | default('') | truncate(300) }}.
+    quiet: true
+  when: ls_agent_stage_schema_check | bool
+
+- name: Wait for the stage app to be healthy before seeding harness users
+  community.docker.docker_container_info:
+    name: "{{ ls_agent_stage_stage_container }}"
+  register: ls_agent_stage_stage_info
+  until: >-
+    ls_agent_stage_stage_info.container is not none and
+    ls_agent_stage_stage_info.container.State.Health.Status | default('') == 'healthy'
+  retries: 30
+  delay: 5
+
+# The generated script contains the harness passwords. It is written 0600,
+# piped into the container over stdin and removed even when the exec fails, so
+# a failed apply never leaves secrets behind in /tmp.
+- name: Provision the harness users
+  block:
+    - name: Render the harness user provisioning script
+      template:
+        src: create_harness_users.py.j2
+        dest: "/tmp/ls-agent-stage-users.py"
+        mode: "0600"
+      no_log: true
+
+    - name: Create or update the harness role users in the stage database
+      shell: >
+        docker exec -i {{ ls_agent_stage_stage_container }}
+        python manage.py shell < /tmp/ls-agent-stage-users.py
+      register: ls_agent_stage_users
+      changed_when: "'created' in ls_agent_stage_users.stdout"
+      no_log: true
+  always:
+    - name: Remove the harness user provisioning script
+      file:
+        path: "/tmp/ls-agent-stage-users.py"
+        state: absent
+      no_log: true
+
+# servyy-test runs no watchtower, so `cand` is updated by this SYSTEM timer.
+# It must run as the stack owner ({{ ls.user }}), not `create_user`: the compose
+# directory lives in the ssh jail (0750, owned by {{ ls.user }}) and a user timer
+# under create_user cannot even enter it - the first version failed silently in
+# exactly that way. A system unit also needs no lingering.
+# The play runs this role with become_user {{ ls.user }}; the system unit and
+# its script live in root-owned paths, so these tasks switch back to root.
+- name: Install the candidate updater as a system unit
+  become_user: root
+  block:
+    - name: Render the candidate auto-update script
+      ansible.builtin.template:
+        src: cand-update.sh.j2
+        dest: /usr/local/bin/ls-agent-cand-update
+        mode: "0755"
+
+    - name: Render the candidate auto-update unit and timer
+      ansible.builtin.template:
+        src: "{{ item.src }}"
+        dest: "{{ ('/etc/systemd/system', item.dest) | path_join }}"
+        mode: "0644"
+      loop:
+        - {src: cand-update.service.j2, dest: ls-agent-cand-update.service}
+        - {src: cand-update.timer.j2, dest: ls-agent-cand-update.timer}
+
+    - name: Reload the systemd manager
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Enable and start the candidate auto-update timer
+      ansible.builtin.systemd:
+        name: ls-agent-cand-update.timer
+        state: started
+        enabled: true
+
+# The first version installed a per-user timer under create_user. Stop it before
+# removing its files, so no orphaned enabled unit keeps firing.
+- name: Retire the old per-user updater
+  become_user: "{{ create_user }}"
+  block:
+    - name: Stop and disable the old per-user updater timer
+      ansible.builtin.systemd:
+        scope: user
+        name: ls-agent-cand-update.timer
+        state: stopped
+        enabled: false
+      failed_when: false
+
+    - name: Remove the old per-user updater unit and script
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ (remote_user_systemd, 'ls-agent-cand-update.service') | path_join }}"
+        - "{{ (remote_user_systemd, 'ls-agent-cand-update.timer') | path_join }}"
+        - "{{ (remote_user_home, '.local', 'bin', 'ls-agent-cand-update.sh') | path_join }}"
+
+    - name: Reload the user systemd manager after removing the old unit
+      ansible.builtin.systemd:
+        scope: user
+        daemon_reload: true
+      failed_when: false
+
+# opentunnel keeps its own encrypted bridge to the relay, so there is no unit
+# to install. The CLI contract below is the documented one
+# (https://opentunnel.xyz): `route add <port>` creates the tunnel on the first
+# route and prints `added route <id> → 127.0.0.1:<port>` plus the public
+# `https://<id>.<tunnel>.opentunnel.xyz` URL.
+- name: Install the opentunnel CLI
+  shell:
+    cmd: |
+      set -o pipefail
+      curl -fsSL {{ ls_agent_stage_opentunnel_install_url }} | sh
+    creates: "{{ ls_agent_stage_opentunnel_bin }}"
+    executable: /bin/bash
+  become_user: "{{ create_user }}"
+  tags:
+    - ls.agent.stage.tunnel
+
+- name: Read the opentunnel CLI help
+  command: "{{ ls_agent_stage_opentunnel_bin }} --help"
+  register: ls_agent_stage_opentunnel_help
+  changed_when: false
+  failed_when: false
+  become_user: "{{ create_user }}"
+  tags:
+    - ls.agent.stage.tunnel
+
+- name: Read the opentunnel route help
+  command: "{{ ls_agent_stage_opentunnel_bin }} route --help"
+  register: ls_agent_stage_opentunnel_route_help
+  changed_when: false
+  failed_when: false
+  become_user: "{{ create_user }}"
+  tags:
+    - ls.agent.stage.tunnel
+
+- name: Detect whether the CLI can list existing routes
+  set_fact:
+    ls_agent_stage_opentunnel_can_list: >-
+      {{ 'list' in ((ls_agent_stage_opentunnel_help.stdout | default('')) ~
+      (ls_agent_stage_opentunnel_route_help.stdout | default(''))) }}
+  tags:
+    - ls.agent.stage.tunnel
+
+- name: List the existing opentunnel routes
+  command: "{{ ls_agent_stage_opentunnel_bin }} route list"
+  register: ls_agent_stage_opentunnel_routes
+  changed_when: false
+  failed_when: false
+  become_user: "{{ create_user }}"
+  when: ls_agent_stage_opentunnel_can_list | bool
+  tags:
+    - ls.agent.stage.tunnel
+
+- name: Add the ref route when it is not registered yet
+  command: "{{ ls_agent_stage_opentunnel_bin }} route add {{ ls_agent_stage_ref_port }}"
+  register: ls_agent_stage_opentunnel_add_ref
+  become_user: "{{ create_user }}"
+  when:
+    - ls_agent_stage_opentunnel_can_list | bool
+    - ls_agent_stage_opentunnel_routes.rc | default(1) == 0
+    - ls_agent_stage_ref_port | string not in (ls_agent_stage_opentunnel_routes.stdout | default(''))
+  tags:
+    - ls.agent.stage.tunnel
+
+- name: Add the cand route when it is not registered yet
+  command: "{{ ls_agent_stage_opentunnel_bin }} route add {{ ls_agent_stage_cand_port }}"
+  register: ls_agent_stage_opentunnel_add_cand
+  become_user: "{{ create_user }}"
+  when:
+    - ls_agent_stage_opentunnel_can_list | bool
+    - ls_agent_stage_opentunnel_routes.rc | default(1) == 0
+    - ls_agent_stage_cand_port | string not in (ls_agent_stage_opentunnel_routes.stdout | default(''))
+  tags:
+    - ls.agent.stage.tunnel
+
+- name: Read the final opentunnel route list (public URLs)
+  command: "{{ ls_agent_stage_opentunnel_bin }} route list"
+  register: ls_agent_stage_opentunnel_final
+  changed_when: false
+  failed_when: false
+  become_user: "{{ create_user }}"
+  when: ls_agent_stage_opentunnel_can_list | bool
+  tags:
+    - ls.agent.stage.tunnel
+
+- name: Show the opentunnel routes and their public URLs
+  debug:
+    msg: "{{ ls_agent_stage_opentunnel_final.stdout_lines | default([]) }}"
+  when: ls_agent_stage_opentunnel_can_list | bool
+  tags:
+    - ls.agent.stage.tunnel
+
+- name: Warn that the routes need a manual step when the CLI cannot list them
+  debug:
+    msg: >-
+      The opentunnel CLI at {{ ls_agent_stage_opentunnel_bin }} was installed,
+      but its --help does not advertise a `route list` command, so the role
+      cannot tell whether routes already exist and will not add duplicates.
+      Register the two routes once, by hand:
+      `{{ ls_agent_stage_opentunnel_bin }} route add {{ ls_agent_stage_ref_port }}`
+      and
+      `{{ ls_agent_stage_opentunnel_bin }} route add {{ ls_agent_stage_cand_port }}`.
+      Record the printed public URLs in the phase brief (see runbook section
+      "Agent stage (Phase 0c)").
+  when: not (ls_agent_stage_opentunnel_can_list | bool)
+  tags:
+    - ls.agent.stage.tunnel

@@ -1,0 +1,43 @@
+#!/bin/bash
+# Poll leaguesphere/backend:agent-candidate and update only the `cand` service.
+#
+# servyy-test has no watchtower, so this timer is the update path (Phase 0c,
+# leaguesphere#2536). `ref` is never touched: it is the pinned baseline.
+# A changed image is health-gated; on a failed gate the script exits non-zero and
+# systemd records it. The next run retries (and a fixed candidate heals it).
+set -euo pipefail
+
+COMPOSE_DIR="{{ ls_agent_stage_dir }}"
+PROJECT="{{ ls_agent_stage_project }}"
+FILE="docker-compose.agent-stage.yaml"
+SERVICE="cand"
+
+cd "$COMPOSE_DIR"
+
+before_id="$(docker compose -p "$PROJECT" -f "$FILE" ps -q "$SERVICE")"
+before_image="$(docker inspect --format '{{ '{{.Image}}' }}' "$before_id" 2>/dev/null || true)"
+
+docker compose -p "$PROJECT" -f "$FILE" pull "$SERVICE" >/dev/null
+docker compose -p "$PROJECT" -f "$FILE" up -d --no-deps "$SERVICE" >/dev/null
+
+after_id="$(docker compose -p "$PROJECT" -f "$FILE" ps -q "$SERVICE")"
+after_image="$(docker inspect --format '{{ '{{.Image}}' }}' "$after_id")"
+
+if [ -n "$before_image" ] && [ "$before_image" = "$after_image" ]; then
+  echo "cand unchanged ($after_image)"
+  exit 0
+fi
+
+for _ in $(seq 1 36); do
+  status="$(docker inspect \
+    --format '{{ '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' }}' \
+    "$after_id" 2>/dev/null || echo missing)"
+  if [ "$status" = "healthy" ]; then
+    echo "cand updated to $after_image and healthy"
+    exit 0
+  fi
+  sleep 5
+done
+
+echo "cand updated to $after_image but did not become healthy within 3 minutes" >&2
+exit 1

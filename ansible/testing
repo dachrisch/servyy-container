@@ -77,10 +77,13 @@ test:
       shared_services: [redis]
       # DB tiers this host rehearses (roles/db_tier). Same shape as
       # shared_services/finance_services: a list of tier names, each with its
-      # own `--tags user.docker.db-<tier>` invocation. Empty until WP-4..6
-      # commit the tier compose files; enabling a tier whose compose is
-      # missing only sets up its users + dbops (and says so loudly).
-      db_tiers: []
+      # own `--tags user.docker.db-<tier>` invocation.
+      #
+      # nonprod only: the test box rehearses the LeagueSphere stage stack, which
+      # has lived on `db-nonprod.mariadb` since WP-4 (no app-owned mysql
+      # container any more). The high tier stays prod-only; business/private run
+      # other tenants the test box does not need.
+      db_tiers: [nonprod]
       finance_services: [queen]
       # Forgejo rehearsal: ci.lehel.xyz has no test counterpart's TLS — plain
       # `web` entrypoint, no cert, and the runner dials the http instance.

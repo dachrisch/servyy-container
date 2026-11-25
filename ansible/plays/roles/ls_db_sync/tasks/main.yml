@@ -72,42 +72,152 @@
       $IGNORE {{ prod_app.app.db_name }} > "{{ sql_dump_file }}"
   changed_when: true
 
-- name: Wait for the staging database container health
-  shell: >
-    docker inspect {{ ls_db_sync_target_container }}
-    --format='{{ "{{.State.Health.Status}}" }}'
-  register: mysql_health
-  until: mysql_health.stdout == 'healthy'
-  retries: 30
-  delay: 2
-  changed_when: false
+# A host without the prod container (servyy-test.lxd) dumps prod where it runs:
+# read-only, over SSH, through the Ansible controller. The dump is written 0600
+# on prod, fetched to a 0700 controller dir, copied 0600 to this host, and every
+# copy is deleted in the `always` block - including when the import below fails.
+- name: Dump prod on the production host and bring it here (read-only)
+  when: ls_db_sync_source == 'remote_prod'
+  vars:
+    ls_db_sync_remote_dump: "/tmp/leaguesphere_prod_{{ dump_timestamp.stdout }}_{{ inventory_hostname }}.sql"
+  block:
+    - name: Ensure the controller-side landing directory exists
+      ansible.builtin.file:
+        path: "{{ ls_db_sync_fetch_dir }}"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+      become: false
 
-# WP-4b: the tier's stage app user has ALL on its own database, so it can
-# drop/recreate and import it - no root on the tier. MYSQL_PWD goes to the
-# container through the docker CLI's environment, never a host argv.
-- name: Drop and recreate staging database
-  shell: |
-    MYSQL_PWD='{{ stage_app.app.db_password }}' docker exec -e MYSQL_PWD {{ ls_db_sync_target_container }} \
-      mariadb -h 127.0.0.1 -u {{ stage_app.app.db_user }} \
-      -e "DROP DATABASE IF EXISTS {{ stage_app.app.db_name }}; CREATE DATABASE {{ stage_app.app.db_name }} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-  changed_when: true
-  no_log: true
+    - name: Dump the prod database on {{ ls_db_sync_remote_prod_host }} (read-only)
+      ansible.builtin.shell:
+        cmd: |
+          set -eu
+          umask 077
+          IGNORE=$(docker exec {{ ls_db_sync_local_container }} mariadb -u root \
+            -p'{{ prod_app.app.db_root_password }}' -N \
+            -e "SELECT CONCAT('--ignore-table={{ prod_app.app.db_name }}.', table_name) \
+                FROM information_schema.views WHERE table_schema='{{ prod_app.app.db_name }}'")
+          docker exec {{ ls_db_sync_local_container }} mariadb-dump -u root \
+            -p'{{ prod_app.app.db_root_password }}' --single-transaction --quick --lock-tables=false \
+            $IGNORE {{ prod_app.app.db_name }} > "{{ ls_db_sync_remote_dump }}"
+          chmod 600 "{{ ls_db_sync_remote_dump }}"
+      delegate_to: "{{ ls_db_sync_remote_prod_host }}"
+      become: "{{ ls_db_sync_remote_prod_become | bool }}"
+      changed_when: true
+      no_log: true
 
-- name: Import dump into staging database
-  shell: |
-    MYSQL_PWD='{{ stage_app.app.db_password }}' docker exec -i -e MYSQL_PWD {{ ls_db_sync_target_container }} \
-      mariadb -h 127.0.0.1 -u {{ stage_app.app.db_user }} {{ stage_app.app.db_name }} < "{{ sql_dump_file }}"
-  changed_when: true
-  no_log: true
+    - name: Fetch the dump to the controller
+      ansible.builtin.fetch:
+        src: "{{ ls_db_sync_remote_dump }}"
+        dest: "{{ ls_db_sync_fetch_dir }}/"
+        flat: true
+      delegate_to: "{{ ls_db_sync_remote_prod_host }}"
+      become: "{{ ls_db_sync_remote_prod_become | bool }}"
 
-- name: Restart staging app
-  shell: docker restart {{ (stage_app.app.name ~ '.staging-app') if stage_app.app.name == 'leaguesphere_stage' else (stage_app.app.name ~ '.app') }}
+    - name: Restrict the controller-side dump
+      ansible.builtin.file:
+        path: "{{ (ls_db_sync_fetch_dir, ls_db_sync_remote_dump | basename) | path_join }}"
+        mode: "0600"
+      delegate_to: localhost
+      become: false
 
-- name: Cleanup dumps
-  file:
+    - name: Copy the dump to this host
+      ansible.builtin.copy:
+        src: "{{ (ls_db_sync_fetch_dir, ls_db_sync_remote_dump | basename) | path_join }}"
+        dest: "{{ sql_dump_file }}"
+        mode: "0600"
+  always:
+    - name: Remove the dump from {{ ls_db_sync_remote_prod_host }}
+      ansible.builtin.file:
+        path: "{{ ls_db_sync_remote_dump }}"
+        state: absent
+      delegate_to: "{{ ls_db_sync_remote_prod_host }}"
+      become: "{{ ls_db_sync_remote_prod_become | bool }}"
+
+    - name: Remove the controller-side dump
+      ansible.builtin.file:
+        path: "{{ (ls_db_sync_fetch_dir, ls_db_sync_remote_dump | basename) | path_join }}"
+        state: absent
+      delegate_to: localhost
+      become: false
+
+# Never touch the stage database unless a dump actually landed: an empty/missing
+# file used to mean "drop the DB and import nothing".
+- name: Check that the dump exists before touching the stage database
+  ansible.builtin.stat:
     path: "{{ sql_dump_file }}"
-    state: absent
+  register: ls_db_sync_dump
+
+- name: Fail when the dump is missing
+  ansible.builtin.fail:
+    msg: >-
+      No dump at {{ sql_dump_file }} (source '{{ ls_db_sync_source }}'). Refusing
+      to drop and recreate {{ stage_app.app.db_name }} without data.
+  when: not ls_db_sync_dump.stat.exists
+
+- name: Import the dump into the stage database
+  block:
+    - name: Wait for the staging database container health
+      shell: >
+        docker inspect {{ ls_db_sync_target_container }}
+        --format='{{ "{{.State.Health.Status}}" }}'
+      register: mysql_health
+      until: mysql_health.stdout == 'healthy'
+      retries: 30
+      delay: 2
+      changed_when: false
+
+    # WP-4b: the tier's stage app user has ALL on its own database, so it can
+    # drop/recreate and import it - no root on the tier. MYSQL_PWD goes to the
+    # container through the docker CLI's environment, never a host argv.
+    - name: Drop and recreate staging database
+      shell: |
+        MYSQL_PWD='{{ stage_app.app.db_password }}' docker exec -e MYSQL_PWD {{ ls_db_sync_target_container }} \
+          mariadb -h 127.0.0.1 -u {{ stage_app.app.db_user }} \
+          -e "DROP DATABASE IF EXISTS {{ stage_app.app.db_name }}; CREATE DATABASE {{ stage_app.app.db_name }} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+      changed_when: true
+      no_log: true
+
+    - name: Import dump into staging database
+      shell: |
+        MYSQL_PWD='{{ stage_app.app.db_password }}' docker exec -i -e MYSQL_PWD {{ ls_db_sync_target_container }} \
+          mariadb -h 127.0.0.1 -u {{ stage_app.app.db_user }} {{ stage_app.app.db_name }} < "{{ sql_dump_file }}"
+      changed_when: true
+      no_log: true
+
+    - name: Restart staging app
+      shell: docker restart {{ (stage_app.app.name ~ '.staging-app') if stage_app.app.name == 'leaguesphere_stage' else (stage_app.app.name ~ '.app') }}
+  always:
+    - name: Cleanup dumps
+      file:
+        path: "{{ sql_dump_file }}"
+        state: absent
+
+# The nightly timer is a PRODUCTION convenience. On a test host it would
+# re-clone prod every night and delete the Phase 0c agent-stage harness
+# accounts (leaguesphere#2536), so it is never installed there; an existing
+# unit from before this guard is stopped and masked below.
+- name: Disable and mask a leftover nightly sync timer on test hosts
+  when: is_test_host | default(false) | bool
+  become_user: "{{ create_user }}"
+  block:
+    - name: Stop an existing ls-db-sync-nightly.timer
+      systemd:
+        scope: user
+        name: ls-db-sync-nightly.timer
+        state: stopped
+        enabled: no
+      failed_when: false
+
+    - name: Mask ls-db-sync-nightly.timer so a stray start cannot re-enable it
+      systemd:
+        scope: user
+        name: ls-db-sync-nightly.timer
+        masked: yes
+      failed_when: false
 
 - import_tasks: timer.yml
+  when: not (is_test_host | default(false) | bool)
   tags:
     - ls.db.sync.timer

@@ -199,9 +199,18 @@ with it. To deploy stage on its own:
 cd ansible
 ./servyy.sh --tags ls.app.stage --limit lehel.xyz
 ```
-Stage runs `docker-compose.staging.yaml` with its **own** MySQL container
-(`leaguesphere_stage.mysql`). On first boot the role removes the MySQL volume and runs the
-init script so the `leaguesphere_stage` database is created automatically.
+Stage runs `docker-compose.staging.yaml` and has **no database container of its own** since
+WP-4: it reaches `db-nonprod.mariadb` on the host's nonprod DB tier (`db_nonprod_backend`,
+internal). The app-owned `leaguesphere_stage.mysql` is retired (kept stopped for one week as
+the cutover rollback); `ls_db_sync` now refuses to run while it is running again.
+
+Prerequisite on any host that should run stage (including `servyy-test.lxd`): the nonprod tier
+must be enabled (`db_tiers` in the inventory) and deployed before the stage stack:
+
+```bash
+cd ansible
+./servyy.sh --tags user.docker.db-nonprod --limit lehel.xyz   # server + stage/demo users
+```
 
 ### 3. Demo — `demo.leaguesphere.app`
 
@@ -219,18 +228,23 @@ confuse them:
 **(a) Run the pytest / molecule suites** against a light, synthetic-data MariaDB. This is a
 single bare `mysql` container seeded from `test_db_dump.sql` — *not* the app stack.
 
-**(b) Stand up a full prod-data reproduction** by deploying the **stage stack** here and syncing
-prod into it (same `ls_app` + `ls_db_sync` roles as public stage, just targeted at the test
-inventory):
+**(b) Stand up a full prod-data reproduction.** Post-WP-4 this is a three-step sequence: the
+test box has no prod container, so `ls_db_sync` dumps prod **on `lehel.xyz`** (read-only,
+`--single-transaction`, views ignored), fetches the dump through the Ansible controller and
+imports it into the test box's own nonprod tier.
 
 ```bash
 cd ansible
-./servyy-test.sh --tags ls.app.stage   # deploy stage stack on servyy-test + pull prod data
-./servyy-test.sh --tags ls.db.sync     # later: re-pull fresh prod data
+# 1. nonprod DB tier: db-nonprod.mariadb + the stage/demo users (idempotent)
+./servyy-test.sh --tags user.docker.db-nonprod
+# 2. stage stack; its ls.db.sync step pulls the read-only prod dump
+./servyy-test.sh --tags ls.app.stage
+# 3. later: refresh the data only
+./servyy-test.sh --tags ls.db.sync
 ```
-This gives you `leaguesphere_stage.*` containers on `servyy-test.lxd` holding a clone of prod —
-fully isolated, nothing exposed publicly. (Stage host name derives from `inventory_hostname`,
-i.e. `stage.leaguesphere.servyy-test.lxd`.) See
+This gives you the stage stack on `servyy-test.lxd` (`leaguesphere_stage.*` app containers plus
+`db-nonprod.mariadb`) holding a clone of prod - fully isolated, nothing exposed publicly. (Stage
+host name derives from `inventory_hostname`, i.e. `stage.leaguesphere.servyy-test.lxd`.) See
 [Reproduce a prod issue with real data](#reproduce-a-prod-issue-with-real-data-ls_db_sync).
 
 **Spin up / reset the pytest test DB** — purpose (a), run from the `leaguesphere` repo:
@@ -257,12 +271,22 @@ groups, "Gewinner/Verlierer HF…", etc.). If you see `Team.DoesNotExist`, re-ru
 
 1. Dump the **prod** DB (single-transaction, `--lock-tables=false`, **all views ignored**) into
    `/tmp/leaguesphere_prod_<epoch>.sql`. The dump source is controlled by `ls_db_sync_source`:
-   - `external` (default pre-cutover): `mysqldump` from `s207.goserver.host`
-   - `local` (default post-cutover): `mariadb-dump` from the `leaguesphere.db` container
-2. Wait for `leaguesphere_stage.mysql` to be healthy.
-3. **Drop & recreate** the `leaguesphere_stage` database (utf8mb4).
-4. `docker cp` the dump in and import it.
-5. Restart `leaguesphere_stage.staging-app`, then clean up the dump.
+   - `local` (default post-cutover): `mariadb-dump` from the `leaguesphere.db` container on this
+     host (prod, public stage on lehel.xyz).
+   - `external` (recovery only): `mysqldump` from `s207.goserver.host`.
+   - `remote_prod` (default on test hosts): the dump runs **on `lehel.xyz`** (read-only,
+     same flags/views), is fetched to the Ansible controller, copied to the target and imported.
+     `ls_db_sync_remote_prod_host` defaults to the `lehel.xyz` SSH alias; nothing is written to
+     prod except the dump file in `/tmp`, which is removed in an `always` block.
+2. Refuse to continue when no dump landed (never drop the DB without data).
+3. Wait for `db-nonprod.mariadb` to be healthy.
+4. **Drop & recreate** the `leaguesphere_stage` database (utf8mb4) as the stage app user.
+5. Import the dump, restart `leaguesphere_stage.staging-app`, then clean up the dump (also when
+   the import fails).
+
+**Privacy:** in `remote_prod` mode a prod dump crosses three hosts. It is written 0600 on prod,
+fetched into a 0700 controller directory as 0600, copied 0600 to the target, and every copy is
+deleted in an `always` block — including on failure. Never move it to a world-readable path.
 
 Run it against either host (the playbook is `hosts: all`, so the target is just the inventory):
 
@@ -276,8 +300,11 @@ cd ansible
 ./servyy.sh --tags ls.db.sync --limit lehel.xyz -e ls_db_sync_source=local
 ./servyy.sh --tags ls.db.sync --limit lehel.xyz -e ls_db_sync_source=external
 
-# Isolated copy on the test box:
+# Isolated copy on the test box (source defaults to remote_prod there):
 ./servyy-test.sh --tags ls.db.sync
+# Explicit override if needed:
+./servyy-test.sh --tags ls.db.sync -e ls_db_sync_source=remote_prod
+./servyy-test.sh --tags ls.db.sync -e ls_db_sync_remote_prod_host=lehel.xyz
 ```
 
 The stage **stack must already exist** on the target host. Deploying the stack runs the sync
@@ -525,8 +552,8 @@ PROD    leaguesphere.app          host lehel.xyz   db leaguesphere.db (internal 
         logs:    docker logs leaguesphere.app   | Grafana "leaguesphere"
         [¹] Prod DB is the local leaguesphere.db container since the 2026-07-08 cutover
 
-STAGE   stage.leaguesphere.app    host lehel.xyz   db leaguesphere_stage.mysql (container)
-        containers: leaguesphere_stage.staging-app / .www / .mysql
+STAGE   stage.leaguesphere.app    host lehel.xyz   db db-nonprod.mariadb (nonprod tier)
+        containers: leaguesphere_stage.staging-app / .www (no db container since WP-4)
         deploy:  ./servyy.sh --tags ls.app.stage --limit lehel.xyz
         prod-data clone: ./servyy.sh --tags ls.db.sync --limit lehel.xyz
 
@@ -536,6 +563,247 @@ DEMO    demo.leaguesphere.app     host lehel.xyz   resets nightly
 TEST    servyy-test.lxd           two modes:
         (a) pytest DB — bare MariaDB `mysql`, synthetic fixtures
             setup:   ./container/spinup_test_db.sh --fresh   (from leaguesphere repo)
-        (b) prod-data repro — deploy STAGE stack here + sync prod data
-            setup:   ./servyy-test.sh --tags ls.app.stage     (then ls.db.sync to refresh)
+        (b) prod-data repro — STAGE stack + nonprod tier here, prod dump over SSH
+            setup:   ./servyy-test.sh --tags user.docker.db-nonprod
+                     ./servyy-test.sh --tags ls.app.stage      (runs ls.db.sync)
+                     later: ./servyy-test.sh --tags ls.db.sync
 ```
+
+---
+
+## Agent stage (Phase 0c, leaguesphere#2536)
+
+A long-lived comparison stage on **servyy-test.lxd only**. Two app containers
+share the stage database:
+
+| container | image | updates |
+|---|---|---|
+| `ls_agent_stage.ref` | `leaguesphere/backend:agent-ref` (pinned in `ls_agent_stage/defaults/main.yml`) | never automatically — rebuilt per phase from the stack's **base commit**, then `ls.agent.stage` is re-applied |
+| `ls_agent_stage.cand` | `leaguesphere/backend:agent-candidate` | `ls-agent-cand-update.timer` (system timer as `leaguesphere`, 5 min, health-gated) |
+
+Both sit behind one nginx basic-auth proxy (`ls_agent_stage.proxy`, loopback
+ports 18081/18082) and read/write **the same** stage database. The equivalence
+harness (`scripts/equivalence/` in the leaguesphere repo) diffs ref against
+cand.
+
+### Initial setup (once per phase, in this exact order)
+
+The test box has **no LeagueSphere containers by default**, and a fresh host needs more than
+one pass: the stage app cannot become healthy before its database exists, and `www` starts only
+after the database is imported. Each step is idempotent; only the sync (step 4) is destructive
+to the stage data.
+
+```bash
+cd ansible
+
+# 1. Nonprod DB tier: db-nonprod.mariadb + the stage/demo users. Creates the
+#    db_nonprod_backend network the stage stack and the agent stage attach to.
+#    The role now waits for a just-created datadir to finish initialising before
+#    its root-password guard; before that fix the very first run could fail in
+#    that guard, and a plain re-run passed.
+./servyy-test.sh --limit servyy-test.lxd --tags user.docker.db-nonprod
+
+# 2. dba.env for the stage compose. `deploy/docker-compose.staging.yaml` has
+#    `env_file: dba.env`, which only ls_dbeaver_access writes; `up` fails
+#    without it. The `provision` tag writes the files only - it skips the SSH
+#    tunnel accounts, the sshd restart and the Vaultwarden push.
+./servyy-test.sh --limit servyy-test.lxd --tags ls.dbeaver.provision
+
+# 3. Stage stack WITHOUT the sync. On a fresh tier leaguesphere_stage does not
+#    exist yet, so staging-app starts unhealthy and www waits; that is expected.
+#    This pass creates the `leaguesphere_stage_media` volume the agent stage
+#    mounts as external.
+./servyy-test.sh --limit servyy-test.lxd --tags ls.app.stage --skip-tags ls.db.sync
+
+# 4. Sync: creates the database, imports the read-only prod dump from lehel.xyz
+#    (see the sync section) and restarts staging-app.
+./servyy-test.sh --limit servyy-test.lxd --tags ls.db.sync
+
+# 5. Stage again WITHOUT the sync: now that the DB exists, www comes up too.
+./servyy-test.sh --limit servyy-test.lxd --tags ls.app.stage --skip-tags ls.db.sync
+
+# 5b. PRE-APPLY SCHEMA CHECK. ref and cand share the stage database, and neither
+#     runs migrations, so the phase BASE must not carry migrations the stage
+#     deploy has not applied. Compare the stage stack's release with the base
+#     (replace the tag with the release the stage stack was deployed from):
+cd <leaguesphere-checkout>
+git fetch origin
+BASE=$(git rev-parse origin/phase0-docs)        # the stack's base commit
+git diff --name-only <stage-release-tag>..$BASE | grep migrations && {
+  echo "base adds migrations the stage DB lacks - deploy stage from a newer release first"; exit 1; }
+cd -   # back to ansible/
+#     `ls.agent.stage` enforces the authoritative version after the containers
+#     are up: `python manage.py migrate --check` in both ref and cand against
+#     the shared DB (ls_agent_stage_schema_check).
+
+# 6. Build BOTH agent images BEFORE the agent stage (the role pulls them with
+#    `pull: always`). `agent-ref` is the phase baseline: build it from the stack
+#    BASE commit, not from a release tag (a tag always lags a moving master).
+#    `agent-candidate` is the stack HEAD. Environment is not needed for either:
+cd <leaguesphere-checkout>
+gh workflow run deploy.yaml --ref phase0c-equivalence \
+  -f agent_candidate_ref=$BASE -f agent_tag=agent-ref
+gh workflow run deploy.yaml --ref phase0c-equivalence \
+  -f agent_candidate_ref=phase0c-equivalence -f agent_tag=agent-candidate
+cd -   # back to ansible/
+#    Wait for both workflow runs to finish before step 7.
+
+# 7. Agent stage (ref/cand/proxy + harness users + candidate timer + tunnel).
+#    Harvest the credentials first, they live in git-crypt:
+#      ansible/plays/roles/ls_agent_stage/vars/secret_agent_stage.yaml
+./servyy-test.sh --limit servyy-test.lxd --tags ls.agent.stage
+```
+
+During a phase, never re-run step 4, and never run `ls.app.stage` **without**
+`--skip-tags ls.db.sync`: the sync drops and recreates the stage DB and deletes the harness
+accounts. After a deliberate refresh, re-run step 7.
+
+Verify each step:
+
+```bash
+# 1. tier
+ssh servyy-test.lxd 'docker ps --filter name=db-nonprod --format "{{.Names}} {{.Status}}"'
+#    (if the first run stopped in the root-password guard, it was the fresh
+#     datadir: the role now waits; just re-run step 1)
+# 3-5. stage (containers healthy + the prod clone actually landed)
+ssh servyy-test.lxd 'docker ps --filter name=leaguesphere_stage --format "{{.Names}} {{.Status}}"'
+ssh servyy-test.lxd 'docker inspect -f "{{.State.Health.Status}}" leaguesphere_stage.staging-app'
+ssh servyy-test.lxd 'docker exec leaguesphere_stage.staging-app python manage.py shell \
+  -c "from gamedays.models import Gameday; print(Gameday.objects.count())"'
+#    The stage UI on the test box is a plain-HTTP local router
+#    (leaguesphere_stage.<hostname>) without a public certificate; the harness
+#    does not depend on it - it compares ref/cand through the opentunnel proxy.
+# 5b. no migrations between the stage release and the stack base
+# 7. agent stage; then verify both sides pass the authoritative check:
+ssh servyy-test.lxd 'docker exec ls_agent_stage.ref python manage.py migrate --check && echo ref-ok'
+ssh servyy-test.lxd 'docker exec ls_agent_stage.cand python manage.py migrate --check && echo cand-ok'
+#    `agent-ref` predates /health/version/, so verify the baked commit from the
+#    image label instead:
+ssh servyy-test.lxd 'docker image inspect leaguesphere/backend:agent-ref \
+  --format "{{index .Config.Labels \"org.opencontainers.image.revision\"}}"'
+ssh servyy-test.lxd 'docker ps --filter name=ls_agent_stage --format "{{.Names}} {{.Status}}"'
+ssh servyy-test.lxd 'systemctl status ls-agent-cand-update.timer'
+```
+
+The role creates/updates the harness users (`agent_staff`,
+`agent_team_manager`, `agent_official`) in the stage database. Passwords are
+throwaway and live only in that git-crypt file — never real prod accounts.
+
+**Harness role limits:** `agent_team_manager` and `agent_official` are plain
+logged-in users — they are not linked to a team (teammanager) or an
+`Official` row (officials) in the clone yet, so their probes exercise the
+logged-in baseline, not team-manager/official-specific pages. TODO(Phase 1):
+link them to a small test team/official in the clone if a phase's probes need
+that surface.
+
+### Per phase: moving `ref` to the new base
+
+Renovate keeps master moving, so the phase baseline is a **commit-pinned build**,
+not a release tag. When a phase starts (or the agreed base changes):
+
+```bash
+cd <leaguesphere-checkout>
+git fetch origin
+BASE=$(git rev-parse origin/phase0-docs)                 # the stack's base commit
+gh workflow run deploy.yaml --ref <stack branch> \
+  -f agent_candidate_ref=$BASE -f agent_tag=agent-ref     # rebuild the baseline
+# wait for the run, then, in ansible/:
+./servyy-test.sh --limit servyy-test.lxd --tags ls.agent.stage
+```
+
+Before rebuilding, confirm the base adds no migrations the stage DB lacks
+(`git diff --name-only <stage-release-tag>..$BASE | grep migrations`); the role
+also runs `manage.py migrate --check` in both containers after starting them.
+`ref` has no update timer or watchtower label: it only changes on this
+deliberate rebuild + re-apply.
+
+### Credentials
+
+`secret_agent_stage.yaml` (git-crypt) holds the basic-auth credential and the
+role passwords. Rotate the basic-auth password by editing
+`basic_auth_password` and regenerating the hash:
+
+```bash
+htpasswd -nbB ls-agent-stage '<new password>'   # nginx accepts $2y$ and $apr1$
+```
+
+then replace `basic_auth_htpasswd` and re-run `--tags ls.agent.stage`.
+
+### Nightly sync guard (verify once)
+
+`ls_db_sync` installs `ls-db-sync-nightly.timer` at 02:00 on hosts where the
+role runs, and `servyy-test.lxd` runs LeagueSphere, so historically it would
+have re-cloned prod nightly and wiped the harness accounts. The role now
+skips the timer on `is_test_host` and stops/masks a leftover unit:
+
+```bash
+ssh servyy-test.lxd 'sudo -u cda systemctl --user status ls-db-sync-nightly.timer'
+# expect: Unit ... could not be found.  (or "masked")
+```
+
+### Rolling out a candidate
+
+`servyy-test` runs no watchtower, so `ls_agent_stage` installs the
+`ls-agent-cand-update.timer` **system** timer, running as the stack user (the
+compose directory is in the 0750 ssh jail; a `create_user` timer cannot enter
+it). Interval: `ls_agent_stage_cand_update_interval`, default 5 min. It pulls
+`leaguesphere/backend:agent-candidate` and restarts **only** `cand`, only when
+the image id changed, then waits up to 3 minutes for the container healthcheck.
+`ref` is never touched.
+
+```bash
+# from the leaguesphere checkout (the stack head branch)
+gh workflow run deploy.yaml --ref <branch> -f agent_candidate_ref=<branch-or-sha>
+
+# watch the timer pick it up
+ssh servyy-test.lxd 'systemctl list-timers ls-agent-cand-update.timer'
+ssh servyy-test.lxd 'journalctl -u ls-agent-cand-update.service -n 20'
+
+# then wait until cand reports the new SHA:
+curl -u "$LS_AGENT_BASIC_USER:$LS_AGENT_BASIC_PASSWORD" https://<cand-route>/health/version/
+```
+
+The helper `container/deploy.sh` still drives the version-bump deploy; the
+agent candidate uses the `agent_candidate_ref` input above.
+
+A failed health gate exits non-zero in the journal and leaves `cand` on the new
+image; the next timer run retries. Roll back by dispatching a known-good ref.
+
+### opentunnel
+
+Route names are **not** authentication (the hostname appears in Certificate
+Transparency logs), hence the basic-auth proxy.
+
+The role installs the CLI idempotently (official installer,
+`~/.local/bin/opentunnel` as the deploy user) and registers the two routes:
+
+```text
+ref  -> 127.0.0.1:18081
+cand -> 127.0.0.1:18082
+```
+
+`opentunnel route add <port>` creates the tunnel on the first route, prints
+`added route <id> → 127.0.0.1:<port>` and the public
+`https://<id>.<tunnel>.opentunnel.xyz` URL, and leaves the encrypted bridge
+running as its own service (no systemd unit from this role). The role only
+adds a route when `opentunnel route list` does not already contain the port.
+
+Read the current URLs with:
+
+```bash
+ssh servyy-test.lxd 'sudo -u cda ~/.local/bin/opentunnel route list'
+```
+
+If the installed CLI's `--help` does not advertise `route list`, the role
+installs the CLI but skips the routes (to avoid duplicates) and prints the two
+manual `route add` commands; run them once and record the URLs. The two HTTPS
+tunnel URLs and the basic-auth credential are what the equivalence session
+needs.
+
+### What not to do
+
+- Do **not** re-run `ls.app.stage` or `ls.db.sync` on servyy-test during a
+  phase; both reset the stage DB.
+- Do **not** point watchtower at `ref`; a moving baseline makes every report
+  meaningless.
+- Do **not** expose the ports beyond loopback; opentunnel is the only ingress.

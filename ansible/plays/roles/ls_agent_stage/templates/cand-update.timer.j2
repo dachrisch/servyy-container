@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll leaguesphere/backend:agent-candidate every {{ ls_agent_stage_cand_update_interval }}
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec={{ ls_agent_stage_cand_update_interval }}
+AccuracySec=30s
+Unit=ls-agent-cand-update.service
+
+[Install]
+WantedBy=timers.target

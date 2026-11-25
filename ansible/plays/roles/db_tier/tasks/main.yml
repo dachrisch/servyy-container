@@ -47,6 +47,24 @@
   ansible.builtin.set_fact:
     db_tier_compose_exists: "{{ lookup('ansible.builtin.fileglob', db_tier_compose_hint) }}"
 
+# A tier server that was just created is still initialising its datadir; the
+# guard below would then read a connection error as a password mismatch
+# (measured on servyy-test's first nonprod deploy, 2026-11-25). Wait while the
+# healthcheck reports `starting`; missing/stopped/unhealthy pass through so the
+# guard keeps its own diagnosis.
+- name: Wait while a just-created tier server initialises its datadir
+  ansible.builtin.shell: >
+    docker inspect --format
+    '{{ "{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}" }}'
+    {{ db_tier_server_name }} 2>/dev/null || true
+  register: db_tier_server_precheck
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  until: (db_tier_server_precheck.stdout | default('') | trim) != 'starting'
+  retries: 24
+  delay: 5
+
 # --- pass 0: the rendered root password must match the datadir ----------------
 # Runs first, and only acts when the tier server is already running. See the
 # header of root_password_guard.yml for the 2026-11-19 incident it prevents.

@@ -1,0 +1,11 @@
+[Unit]
+Description=Update the LeagueSphere agent-stage candidate image
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# The compose directory is in the ssh jail, owned by the stack user (0750).
+User={{ ls.user }}
+Group={{ ls.group }}
+ExecStart=/usr/local/bin/ls-agent-cand-update
