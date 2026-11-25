@@ -1,8 +1,9 @@
 # ADR: Quiet the alert emails and give codey its own monitoring
 
 **Date:** 2026-11-25
-**Status:** Proposed — implementation and `servyy-test.lxd` deployment are complete
-and verified; production deployment is pending explicit approval.
+**Status:** Accepted — merged as PR #368 (`2bb8f5ad`), verified on
+`servyy-test.lxd`, and rolled out from `master` to `codey.lehel.xyz` and
+`servy.lehel.xyz` on 2026-11-25.
 **Relates to:** [`2026-11-20_grafana-loki-to-codey.md`](2026-11-20_grafana-loki-to-codey.md),
 [`2026-10-30_load-alert-tuning.md`](2026-10-30_load-alert-tuning.md),
 [`2026-11-18_db-tier-r2b-alert-truth.md`](2026-11-18_db-tier-r2b-alert-truth.md)
@@ -101,7 +102,7 @@ file.
 **Commits:** design/plan `12174567`; notifications `561d3a6f`; compose `2c060905`;
 datasource/rules `a4d6094f`; password render `90d8fd6d`; reload `4d7a1ffb`;
 probe `f2d5bcbd`; docs/map `4c6f1e52`; skip-missing `c7b8d99d`; ui-only gate
-`74754c47`.
+`74754c47`; Molecule assertion `4b9137a2`; PR #368 merge `2bb8f5ad`.
 
 **Testing & verification (done on the branch):**
 - All new unit tests written first, watched RED, then GREEN; 18 tests pass.
@@ -143,10 +144,11 @@ probe `f2d5bcbd`; docs/map `4c6f1e52`; skip-missing `c7b8d99d`; ui-only gate
 - Molecule scenarios were extended but could not run locally (no Docker daemon);
   CI runs them, and the test-host deploy exercised the same role changes.
 
-**Production:** not deployed. Requires explicit approval, then
-`--tags user.docker.repo,user.docker.monitor,system.probe --limit codey.lehel.xyz`
-and the collect-side reload on `--limit servy.lehel.xyz`. Update this ADR to
-Accepted with the real results after that deploy.
+### Production (2026-11-25, from `master` after PR #368 merged)
+
+- `codey.lehel.xyz`: `--tags user.docker.repo,user.docker.monitor,user.docker.env.monitor,system.probe` → `failed=0`, 14 changes. All eight new `monitor.*-codey` containers Up; `prometheus-codey` scrapes cadvisor/node-exporter/pushgateway/itself with `health=up`; rendered datasources contain `prometheus-codey`; contact points `disableResolveMessage: true`; Grafana has 84 rules (19 codey) all `health=ok`, `group_by ['severity']`, repeats `1h/4h/12h`, **0 firing / 0 pending alerts**; the rendered probe has `SKIP_MISSING_CONTAINERS=1` and pushes to `localhost:9092`.
+- `servy.lehel.xyz`: `--tags user.docker.repo,system.probe` → `failed=0`, 3 changes; remote checkout at merge commit `2bb8f5ad`; collect containers unchanged and Up; probe still pushes to `localhost:9091` with `SKIP_MISSING_CONTAINERS=0`.
+- CI on the PR: all 40 checks pass including `CI Gate`, both changed Molecule scenarios, git-crypt validation and YAML lint. The first CI run failed on a bad Molecule assertion (hyphenated unit name in a script that uses the underscore job name); fixed in `4b9137a2`.
 
 ### Key learnings
 1. A branch deploy from a worktree syncs the **remote** checkout from the branch,
@@ -172,4 +174,4 @@ Accepted with the real results after that deploy.
 - Molecule scenarios were not executed locally (no Docker); CI/test-host proves them.
 - The rule file was generated from a template, so descriptions are repetitive;
   this is cosmetic.
-- Production has not been deployed; the ADR stays Proposed until that happens.
+- The worktree branch was merged and removed; `master` is the only branch left.
