@@ -1,0 +1,766 @@
+# Alert rules for codey's OWN host and containers (2026-11-25).
+#
+# These use the local `prometheus-codey` datasource, not the cross-host one. A
+# servy outage must not turn codey's alerts into 50 Error emails. The fleet rules
+# stay in alert-rules.yml and keep using `prometheus` on servy.
+#
+# Thresholds mirror the servy rules in alert-rules.yml, normalised per core where
+# appropriate. `for:` and noDataState: OK are deliberate: these are ranges of a
+# series that always exists, and an absent series (e.g. PSI on an older kernel)
+# must stay quiet rather than page.
+apiVersion: 1
+groups:
+- orgId: 1
+  name: codey-system-alerts
+  folder: Infrastructure
+  interval: 1m
+  rules:
+  - uid: codey_high_load_average_5m
+    title: Codey High System Load (5 min)
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus-codey
+      model:
+        expr: node_load5 / count without (cpu, mode) (node_cpu_seconds_total{mode="idle"})
+        refId: A
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        expression: B
+        refId: C
+        type: threshold
+        conditions:
+        - evaluator:
+            params:
+            - 2
+            type: gt
+    noDataState: OK
+    execErrState: Error
+    for: 10m
+    annotations:
+      summary: Codey load (5 min) above 2x CPU count
+      description: "Load per core on codey is above 2.0 for 10 minutes \u2014 check for runaway processes."
+    labels:
+      severity: high
+    isPaused: false
+  - uid: codey_high_load_average_15m
+    title: Codey High System Load (15 min)
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus-codey
+      model:
+        expr: node_load15 / count without (cpu, mode) (node_cpu_seconds_total{mode="idle"})
+        refId: A
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        expression: B
+        refId: C
+        type: threshold
+        conditions:
+        - evaluator:
+            params:
+            - 1.5
+            type: gt
+    noDataState: OK
+    execErrState: Error
+    for: 15m
+    annotations:
+      summary: Codey load (15 min) above 1.5x CPU count
+      description: Sustained queueing on codey for 15 minutes.
+    labels:
+      severity: high
+    isPaused: false
+  - uid: codey_high_memory_usage
+    title: Codey High Memory Usage
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus-codey
+      model:
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100
+        refId: A
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        expression: B
+        refId: C
+        type: threshold
+        conditions:
+        - evaluator:
+            params:
+            - 80
+            type: gt
+    noDataState: OK
+    execErrState: Error
+    for: 10m
+    annotations:
+      summary: Codey memory usage above 80%
+      description: Codey has less than 20% memory available for 10 minutes.
+    labels:
+      severity: critical
+    isPaused: false
+  - uid: codey_high_swap_usage
+    title: Codey High Swap Usage
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus-codey
+      model:
+        expr: (1 - node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes) * 100
+        refId: A
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        expression: B
+        refId: C
+        type: threshold
+        conditions:
+        - evaluator:
+            params:
+            - 80
+            type: gt
+    noDataState: OK
+    execErrState: Error
+    for: 15m
+    annotations:
+      summary: Codey swap usage above 80%
+      description: Codey's swap cushion is nearly gone; check capped containers.
+    labels:
+      severity: medium
+    isPaused: false
+  - uid: codey_high_cpu_user
+    title: Codey High CPU Usage (user)
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus-codey
+      model:
+        expr: avg by (instance) (rate(node_cpu_seconds_total{mode="user"}[5m])) * 100
+        refId: A
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        expression: B
+        refId: C
+        type: threshold
+        conditions:
+        - evaluator:
+            params:
+            - 80
+            type: gt
+    noDataState: OK
+    execErrState: Error
+    for: 5m
+    annotations:
+      summary: Codey user CPU above 80%
+      description: A compute-heavy workload on codey is saturating user CPU.
+    labels:
+      severity: high
+    isPaused: false
+  - uid: codey_high_cpu_system
+    title: Codey High CPU Usage (system)
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus-codey
+      model:
+        expr: avg by (instance) (rate(node_cpu_seconds_total{mode="system"}[5m])) * 100
+        refId: A
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        expression: B
+        refId: C
+        type: threshold
+        conditions:
+        - evaluator:
+            params:
+            - 30
+            type: gt
+    noDataState: OK
+    execErrState: Error
+    for: 10m
+    annotations:
+      summary: Codey system CPU above 30%
+      description: Kernel-side CPU on codey is above its normal churn for 10 minutes.
+    labels:
+      severity: high
+    isPaused: false
+  - uid: codey_high_cpu_iowait
+    title: Codey High CPU I/O Wait
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus-codey
+      model:
+        expr: avg by (instance) (rate(node_cpu_seconds_total{mode="iowait"}[5m])) * 100
+        refId: A
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        expression: B
+        refId: C
+        type: threshold
+        conditions:
+        - evaluator:
+            params:
+            - 80
+            type: gt
+    noDataState: OK
+    execErrState: Error
+    for: 5m
+    annotations:
+      summary: Codey CPU I/O wait above 80%
+      description: Codey's storage subsystem may be saturated.
+    labels:
+      severity: high
+    isPaused: false
+  - uid: codey_high_cpu_total
+    title: Codey High Total CPU Usage
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus-codey
+      model:
+        expr: 100 * sum without (cpu, mode) (rate(node_cpu_seconds_total{mode=~"user|system|iowait"}[5m])) / count without (cpu, mode) (node_cpu_seconds_total{mode="idle"})
+        refId: A
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        expression: B
+        refId: C
+        type: threshold
+        conditions:
+        - evaluator:
+            params:
+            - 80
+            type: gt
+    noDataState: OK
+    execErrState: Error
+    for: 15m
+    annotations:
+      summary: Codey total CPU above 80% of capacity
+      description: Codey is close to running out of CPU for 15 minutes.
+    labels:
+      severity: high
+    isPaused: false
+  - uid: codey_cpu_pressure_high
+    title: Codey High CPU Pressure (PSI)
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus-codey
+      model:
+        expr: rate(node_pressure_cpu_waiting_seconds_total[5m]) * 100
+        refId: A
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        expression: B
+        refId: C
+        type: threshold
+        conditions:
+        - evaluator:
+            params:
+            - 50
+            type: gt
+    noDataState: OK
+    execErrState: Error
+    for: 15m
+    annotations:
+      summary: Codey tasks waiting for CPU over half the time
+      description: Some task on codey was runnable but waiting for a core for most of 15 minutes.
+    labels:
+      severity: high
+    isPaused: false
+  - uid: codey_memory_pressure_full
+    title: Codey Memory Pressure Stalled (full)
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus-codey
+      model:
+        expr: rate(node_pressure_memory_stalled_seconds_total[5m]) * 100
+        refId: A
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        expression: B
+        refId: C
+        type: threshold
+        conditions:
+        - evaluator:
+            params:
+            - 5
+            type: gt
+    noDataState: OK
+    execErrState: Error
+    for: 5m
+    annotations:
+      summary: Codey all tasks stalled on memory
+      description: Every non-idle task on codey waited on page reclaim for over 5% of 5 minutes.
+    labels:
+      severity: critical
+    isPaused: false
+  - uid: codey_memory_pressure_some
+    title: Codey Memory Pressure Stalled (some)
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus-codey
+      model:
+        expr: rate(node_pressure_memory_waiting_seconds_total[5m]) * 100
+        refId: A
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        expression: B
+        refId: C
+        type: threshold
+        conditions:
+        - evaluator:
+            params:
+            - 10
+            type: gt
+    noDataState: OK
+    execErrState: Error
+    for: 10m
+    annotations:
+      summary: Codey some tasks stalled on memory
+      description: Page reclaim on codey is no longer just retained cache.
+    labels:
+      severity: high
+    isPaused: false
+  - uid: codey_root_disk_usage
+    title: Codey Root Disk Usage High
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus-codey
+      model:
+        expr: (1 - node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|fuse.lxcfs"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|fuse.lxcfs"}) * 100
+        refId: A
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        expression: B
+        refId: C
+        type: threshold
+        conditions:
+        - evaluator:
+            params:
+            - 90
+            type: gt
+    noDataState: OK
+    execErrState: Error
+    for: 2m
+    annotations:
+      summary: Codey root filesystem above 90%
+      description: Cleanup needed on codey before the root filesystem fills.
+    labels:
+      severity: medium
+    isPaused: false
+  - uid: codey_root_disk_critical
+    title: Codey Root Disk Almost Full
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus-codey
+      model:
+        expr: (1 - node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|fuse.lxcfs"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|fuse.lxcfs"}) * 100
+        refId: A
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        expression: B
+        refId: C
+        type: threshold
+        conditions:
+        - evaluator:
+            params:
+            - 95
+            type: gt
+    noDataState: OK
+    execErrState: Error
+    for: 5m
+    annotations:
+      summary: Codey root filesystem above 95%
+      description: Immediate cleanup required on codey.
+    labels:
+      severity: critical
+    isPaused: false
+- orgId: 1
+  name: codey-container-alerts
+  folder: Infrastructure
+  interval: 1m
+  rules:
+  - uid: codey_cadvisor_down
+    title: Codey cAdvisor Down
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus-codey
+      model:
+        expr: up{job="cadvisor-codey"}
+        refId: A
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        expression: B
+        refId: C
+        type: threshold
+        conditions:
+        - evaluator:
+            params:
+            - 0.5
+            type: lt
+    noDataState: OK
+    execErrState: Error
+    for: 5m
+    annotations:
+      summary: Codey cAdvisor scrape is down
+      description: Container metrics from codey are unavailable.
+    labels:
+      severity: critical
+    isPaused: false
+  - uid: codey_container_oom_killed
+    title: Codey Container OOM Kill
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus-codey
+      model:
+        expr: sum by (name) (increase(container_oom_events_total{name!=""}[30m]))
+        refId: A
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        expression: B
+        refId: C
+        type: threshold
+        conditions:
+        - evaluator:
+            params:
+            - 0
+            type: gt
+    noDataState: OK
+    execErrState: Error
+    for: 1m
+    annotations:
+      summary: Codey container {{ $labels.name }} was OOM-killed
+      description: The cgroup OOM killer fired for a codey container in the last 30 minutes.
+    labels:
+      severity: critical
+    isPaused: false
+  - uid: codey_container_memory_near_limit
+    title: Codey Container Near Memory Limit
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus-codey
+      model:
+        expr: max by (name) ((container_memory_working_set_bytes{name!=""} / clamp_min(container_spec_memory_limit_bytes{name!=""}, 1)) and (container_spec_memory_limit_bytes{name!=""} > 0) and (container_spec_memory_limit_bytes{name!=""}
+          < 1e12))
+        refId: A
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        expression: B
+        refId: C
+        type: threshold
+        conditions:
+        - evaluator:
+            params:
+            - 0.9
+            type: gt
+    noDataState: OK
+    execErrState: Error
+    for: 15m
+    annotations:
+      summary: Codey container {{ $labels.name }} near memory limit
+      description: Working set above 90% of mem_limit on codey for 15 minutes.
+    labels:
+      severity: medium
+    isPaused: false
+  - uid: codey_container_not_running
+    title: Codey Container Not Running
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus-codey
+      model:
+        expr: system_container_running
+        refId: A
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        expression: B
+        refId: C
+        type: threshold
+        conditions:
+        - evaluator:
+            params:
+            - 0.5
+            type: lt
+    noDataState: OK
+    execErrState: Error
+    for: 2m
+    annotations:
+      summary: Codey container {{ $labels.name }} is not running
+      description: The container-health probe on codey reports a stopped container.
+    labels:
+      severity: medium
+    isPaused: false
+    missingSeriesEvalsToResolve: 3
+  - uid: codey_container_unhealthy
+    title: Codey Container Unhealthy
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus-codey
+      model:
+        expr: system_container_healthy
+        refId: A
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        expression: B
+        refId: C
+        type: threshold
+        conditions:
+        - evaluator:
+            params:
+            - 0.5
+            type: lt
+    noDataState: OK
+    execErrState: Error
+    for: 10m
+    annotations:
+      summary: Codey container {{ $labels.name }} is unhealthy
+      description: The container runs but its healthcheck is failing on codey.
+    labels:
+      severity: medium
+    isPaused: false
+    missingSeriesEvalsToResolve: 3
+  - uid: codey_container_health_probe_stale
+    title: Codey Container-Health Probe Stale
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 300
+        to: 0
+      datasourceUid: prometheus-codey
+      model:
+        expr: time() - (push_time_seconds{job="system_container_health"} > 0)
+        refId: A
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        expression: A
+        reducer: last
+        refId: B
+        type: reduce
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        expression: B
+        refId: C
+        type: threshold
+        conditions:
+        - evaluator:
+            params:
+            - 5400
+            type: gt
+    noDataState: OK
+    execErrState: Error
+    for: 1m
+    annotations:
+      summary: Codey container-health probe has stopped
+      description: No successful push from system-container-health.timer on codey in 90 minutes.
+    labels:
+      severity: medium
+    isPaused: false
