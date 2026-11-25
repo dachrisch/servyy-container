@@ -298,7 +298,9 @@ groups:
         to: 0
       datasourceUid: prometheus-codey
       model:
-        expr: 100 * sum without (cpu, mode) (rate(node_cpu_seconds_total{mode=~"user|system|iowait"}[5m])) / count without (cpu, mode) (node_cpu_seconds_total{mode="idle"})
+        expr: >-
+          100 * sum without (cpu, mode) (rate(node_cpu_seconds_total{mode=~"user|system|iowait"}[5m]))
+          / count without (cpu, mode) (node_cpu_seconds_total{mode="idle"})
         refId: A
     - refId: B
       datasourceUid: __expr__
@@ -454,7 +456,9 @@ groups:
         to: 0
       datasourceUid: prometheus-codey
       model:
-        expr: (1 - node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|fuse.lxcfs"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|fuse.lxcfs"}) * 100
+        expr: >-
+          (1 - node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|fuse.lxcfs"}
+          / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|fuse.lxcfs"}) * 100
         refId: A
     - refId: B
       datasourceUid: __expr__
@@ -493,7 +497,9 @@ groups:
         to: 0
       datasourceUid: prometheus-codey
       model:
-        expr: (1 - node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|fuse.lxcfs"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|fuse.lxcfs"}) * 100
+        expr: >-
+          (1 - node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|fuse.lxcfs"}
+          / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|fuse.lxcfs"}) * 100
         refId: A
     - refId: B
       datasourceUid: __expr__
@@ -615,8 +621,11 @@ groups:
         to: 0
       datasourceUid: prometheus-codey
       model:
-        expr: max by (name) ((container_memory_working_set_bytes{name!=""} / clamp_min(container_spec_memory_limit_bytes{name!=""}, 1)) and (container_spec_memory_limit_bytes{name!=""} > 0) and (container_spec_memory_limit_bytes{name!=""}
-          < 1e12))
+        expr: >-
+          max by (name) ((container_memory_working_set_bytes{name!=""} /
+          clamp_min(container_spec_memory_limit_bytes{name!=""}, 1)) and
+          (container_spec_memory_limit_bytes{name!=""} > 0) and
+          (container_spec_memory_limit_bytes{name!=""} < 1e12))
         refId: A
     - refId: B
       datasourceUid: __expr__

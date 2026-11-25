@@ -7,8 +7,13 @@ runs, and `monitor/.env` carries it as `COMPOSE_PROFILES`:
 
 | Profile | Services | Host | Why there |
 |---|---|---|---|
-| `ui` | `grafana`, `loki` | **codey** | Alerting must survive a servy outage; Loki is where servy's logs are shipped to. |
+| `ui` | `grafana`, `loki`, **`prometheus-codey`**, **`node-exporter-codey`**, **`cadvisor-codey`**, **`pushgateway-codey`** (+bridge), **`promtail-codey`** | **codey** | Alerting must survive a servy outage; since 2026-11-25 codey also collects its OWN metrics/logs/container health instead of only reporting on servy. |
 | `collect` | `prometheus`, `pushgateway` (+`pushgateway-bridge`), `node-exporter`, `cadvisor`, `promtail` | **servy** | Every one of them reads *servy*: `/proc`, `/sys`, the Docker socket, `/var/log`, and the probes push to `localhost:9091`. |
+
+Both profiles run on `servyy-test.lxd`, so the codey services must use **distinct
+container names** and the codey bridge binds `127.0.0.1:9092` (9091 belongs to the
+collect bridge there). The codey stack uses its own volumes
+(`prometheus_codey_data`, `promtail_codey_data`, `pushgateway_codey_data`).
 
 `servyy-test.lxd` runs **both** profiles, so the cross-host routes and their auth
 are rehearsed before production — though there the clients connect over the docker
@@ -26,6 +31,10 @@ routes below.
 | `monitor.cadvisor` | `cadvisor:latest` | `container_*` metrics (working set, limits, OOM events) | servy |
 | `monitor.pushgateway` (+ `monitor.pushgateway-bridge`) | `prom/pushgateway` | probe gauges | servy |
 | `monitor.node-exporter` | `prom/node-exporter` | host CPU/mem/disk | servy |
+| `monitor.prometheus-codey` | `prom/prometheus:latest` | codey's local TSDB; Grafana datasource `prometheus-codey` | codey |
+| `monitor.node-exporter-codey` / `monitor.cadvisor-codey` | `prom/node-exporter` / `cadvisor` | codey host + container metrics | codey |
+| `monitor.pushgateway-codey` (+ `monitor.pushgateway-bridge-codey`) | `prom/pushgateway` | codey's container-health probe sink on `127.0.0.1:9092` | codey |
+| `monitor.promtail-codey` | `grafana/promtail:latest` | ships codey's container + system logs to Loki | codey |
 
 ## The only network surface between the hosts — do not widen it
 
@@ -35,7 +44,7 @@ taken off Traefik in 2026-09 because it had no auth; it is back only behind
 
 | Route | Host serving it | Who calls it | Auth user |
 |---|---|---|---|
-| `loki.lehel.xyz` | codey → `monitor.loki:3100` | servy's promtail (push), servy's Prometheus (`/metrics`), fail2ban on servy **and** codey (query) | `promtail` |
+| `loki.lehel.xyz` | codey → `monitor.loki:3100` | servy's promtail + codey's promtail (push), servy's Prometheus (`/metrics`), fail2ban on servy **and** codey (query) | `promtail` |
 | `prometheus.lehel.xyz` | servy → `monitor.prometheus:9090` | codey's Grafana datasource | `grafana` |
 
 - The credentials are literal values in `plays/vars/secrets.yml`
@@ -61,6 +70,22 @@ taken off Traefik in 2026-09 because it had no auth; it is back only behind
   inventory-only `monitor_local_traefik` selects the test shape — keep it out of
   `vars/default.yml`: play vars_files outrank inventory host vars, so a key
   defined there can never be overridden per host.
+
+## Two datasources, two rule files, one quiet inbox (2026-11-25)
+
+Grafana has **`prometheus`** (servy's Prometheus, via `prometheus.lehel.xyz`) for
+the fleet rules in `alert-rules.yml`, and **`prometheus-codey`** (local container,
+internal `backend` network) for codey's own host/container rules in
+`alert-rules-codey.yml`. Do not swap a rule to the wrong datasource: a codey rule
+on `prometheus` would go Error whenever servy is unreachable, which is the exact
+email storm this split removes.
+
+`notification-policies.yml` groups by **`severity` only** — 65 unique alertnames
+grouped by `alertname` meant one mail per rule; a datasource blip that errored
+50 rules at once produced ~50 mails plus ~50 resolves. Both contact points set
+`disableResolveMessage: true`, and repeats are critical 1h / high 4h / medium 12h.
+Do not "restore" alertname grouping or resolve messages without measuring the
+inbox again.
 
 ## Load-bearing invariants — do not "clean these up"
 
@@ -272,7 +297,8 @@ root-owned DB. Before that, the honest alternative is to leave the rule in the f
 
 ## Layout notes
 
-- `prometheus.yml` — scrape config + `rule_files`. `rules/` — recording rules (mounted read-only).
+- `prometheus.yml` — servy scrape config + `rule_files`. `rules/` — recording rules (mounted read-only).
+- `prometheus-codey.yml` — codey's scrape config (local node-exporter/cadvisor/Pushgateway only). No `rule_files`; it is read at startup and needs `monitor_reload`'s codey half (a third state file, `prometheus-codey.state`) to restart on change.
 - The `loki` scrape job has no `static_configs` any more: host+scheme come from the
   Ansible-rendered `rendered/loki-target.json` (`file_sd_configs`), because production
   scrapes `https://loki.lehel.xyz:443` and servyy-test its own Traefik over `http`.
@@ -280,7 +306,8 @@ root-owned DB. Before that, the honest alternative is to leave the rule in the f
   config before relabeling), hence the one `relabel_configs` rule copying
   `loki_scheme` → `__scheme__`. The file must stay strict JSON — the `.json`
   extension selects Prometheus' JSON parser, which rejects comments.
-- `provisioning/alerting/alert-rules.yml` — every alert rule (one file, groups by area).
+- `provisioning/alerting/alert-rules.yml` — the fleet rules (one file, groups by area), all on the `prometheus` datasource.
+- `provisioning/alerting/alert-rules-codey.yml` — codey's host/container rules, all on `prometheus-codey`. `monitor_reload` fingerprints `provisioning/alerting/*.yml`, so adding this file bounced Grafana on the deploy.
   `contact-points.yml` is rendered into `rendered/` by Ansible and mounted separately.
 - `provisioning/datasources/datasources.yml` is the **Jinja source** — Ansible renders
   it to `rendered/datasources.yml`, and compose mounts that over the tracked path. It
