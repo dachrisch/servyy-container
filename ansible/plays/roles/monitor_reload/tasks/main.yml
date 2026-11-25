@@ -51,3 +51,7 @@
 - name: Reload Grafana (ui profile)
   ansible.builtin.import_tasks: grafana.yml
   when: monitor_reload_grafana_enabled | bool
+
+- name: Reload codey's Prometheus (ui profile)
+  ansible.builtin.import_tasks: prometheus-codey.yml
+  when: monitor_reload_prometheus_codey_enabled | bool

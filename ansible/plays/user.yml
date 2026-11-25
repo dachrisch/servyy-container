@@ -998,11 +998,13 @@
         # with SERVICE_NAME=monitor.
         monitor_reload_prometheus_container: monitor.prometheus
         monitor_reload_grafana_container: monitor.grafana
+        monitor_reload_prometheus_codey_container: monitor.prometheus-codey
         # One half of the stack now runs per host (2026-11-20). Without these the
         # role would `docker inspect`/`docker restart` a container this host does
         # not run: prometheus on codey, grafana on servy.
         monitor_reload_prometheus_enabled: "{{ 'collect' in (monitor_profiles | default([])) }}"
         monitor_reload_grafana_enabled: "{{ 'ui' in (monitor_profiles | default([])) }}"
+        monitor_reload_prometheus_codey_enabled: "{{ 'ui' in (monitor_profiles | default([])) }}"
       when: "'monitor' in (services | default([]))"
       tags: [user.docker, user.docker.monitor]
 
