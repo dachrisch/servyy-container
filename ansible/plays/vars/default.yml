@@ -105,7 +105,8 @@ world_readable_paths_by_service:
     - serve                       # nginx worker (uid 101)
   monitor:
     - provisioning                # grafana (uid 472): dashboards, alerting
-    - prometheus.yml              # prometheus (uid 65534)
+    - prometheus.yml              # prometheus (uid 65534) on servy
+    - prometheus-codey.yml        # the second Prometheus in codey's ui profile
     # Recording rules. Prometheus (uid 65534) GLOBS this directory, and a glob it
     # cannot traverse matches nothing WITHOUT an error: on 2026-11-18 the rule
     # file landed 0660/0770 from the checkout umask and Prometheus started with

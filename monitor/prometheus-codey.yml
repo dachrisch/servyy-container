@@ -1,0 +1,30 @@
+# Prometheus on codey (ui profile, since 2026-11-25).
+#
+# It scrapes ONLY codey-local targets over the internal `backend` network. The
+# `prometheus` datasource in Grafana still points at servy's Prometheus for the
+# fleet rules; `prometheus-codey` points here for codey's own host/container
+# rules. Keeping the two TSDBs separate means a servy outage cannot error codey's
+# alerts — which is the whole point of putting Grafana on codey in the first place.
+#
+# Like servy's Prometheus this container runs WITHOUT --web.enable-lifecycle, so
+# a change here needs `monitor_reload`'s codey half to restart it (or a
+# `--tags user.docker.monitor` deploy).
+global:
+  scrape_interval: 15s
+scrape_configs:
+  - job_name: 'prometheus-codey'
+    static_configs:
+      - targets: ['localhost:9090']
+  # honor_labels: the container-health probe pushes per-container labels; the
+  # Pushgateway must not rewrite them with its own job/instance labels.
+  - job_name: 'pushgateway-codey'
+    honor_labels: true
+    static_configs:
+      - targets: ['pushgateway-codey:9091']
+    scrape_interval: 5s
+  - job_name: 'node-exporter-codey'
+    static_configs:
+      - targets: ['node-exporter-codey:9100']
+  - job_name: 'cadvisor-codey'
+    static_configs:
+      - targets: ['cadvisor-codey:8080']
