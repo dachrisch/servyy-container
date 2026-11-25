@@ -9,8 +9,18 @@ set -uo pipefail
 # Deliberately no `set -e`: each step below handles its own failure explicitly so a
 # problem in one check can't abort the script before it pushes anything.
 
-PUSHGATEWAY_URL="{{ system_probe_pushgateway_url }}"
+PUSHGATEWAY_URL="{{ system_probe_container_pushgateway_url }}"
 JOB_NAME="system_container_health"
+# The service list below comes from the global `docker.services` inventory, which
+# describes the WHOLE fleet. On a host running only the `ui` half, most of those
+# containers were never created here and are not incidents. Skip only containers
+# that do not exist at all: a container that exists but is STOPPED still passes
+# the existence check in check_container and is reported down exactly as before.
+{% if 'ui' in (monitor_profiles | default([])) and 'collect' not in (monitor_profiles | default([])) %}
+SKIP_MISSING_CONTAINERS=1
+{% else %}
+SKIP_MISSING_CONTAINERS=0
+{% endif %}
 
 probe_success=1
 all_running=1
@@ -28,6 +38,12 @@ fi
 check_container() {
   local container_name="$1" service_dir="$2" tier="$3"
   local state running health healthy
+  # Codey only: a container that was never created on this host is not down.
+  # `docker inspect` succeeds for STOPPED containers too, so real failures still
+  # produce system_container_running=0 below.
+  if [ "$SKIP_MISSING_CONTAINERS" = 1 ] && ! docker container inspect "$container_name" >/dev/null 2>&1; then
+    return 0
+  fi
   # One string, used by both the first attempt and the retry below: two inline
   # copies could silently diverge, and the health branch is what decides
   # "healthy" vs "unhealthy".

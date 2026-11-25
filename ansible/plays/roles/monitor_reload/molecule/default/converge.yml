@@ -33,6 +33,7 @@
         mode: "0644"
       loop:
         - {dest: prometheus.yml, content: "global:\n  scrape_interval: 15s\n"}
+        - {dest: prometheus-codey.yml, content: "global:\n  scrape_interval: 15s\n"}
         - {dest: rules/container-memory.yml, content: "groups: []\n"}
         - {dest: provisioning/alerting/alert-rules.yml, content: "groups: []\n"}
         - {dest: rendered/contact-points.yml, content: "contactPoints: []\n"}
@@ -46,6 +47,7 @@
       vars:
         monitor_reload_prometheus_enabled: true
         monitor_reload_grafana_enabled: false
+        monitor_reload_prometheus_codey_enabled: false
 
     - name: Run only the Grafana (ui) half
       ansible.builtin.include_role:
@@ -53,3 +55,12 @@
       vars:
         monitor_reload_prometheus_enabled: false
         monitor_reload_grafana_enabled: true
+        monitor_reload_prometheus_codey_enabled: false
+
+    - name: Run only codey's Prometheus half
+      ansible.builtin.include_role:
+        name: monitor_reload
+      vars:
+        monitor_reload_prometheus_enabled: false
+        monitor_reload_grafana_enabled: false
+        monitor_reload_prometheus_codey_enabled: true

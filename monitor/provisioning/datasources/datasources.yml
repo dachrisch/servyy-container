@@ -13,6 +13,10 @@
 # The Loki datasource is unchanged: Loki runs in this same compose project on
 # codey, so Grafana reaches it over the internal `backend` network. Its tenant
 # header is the public tenant id (see plays/vars/default.yml), not a secret.
+#
+# `prometheus-codey` (2026-11-25) is a SECOND, local Prometheus in the ui profile.
+# Rules in alert-rules-codey.yml use it; the fleet rules keep `prometheus`. This
+# is deliberate: codey's own alerts must not depend on servy being reachable.
 apiVersion: 1
 
 datasources:
@@ -29,6 +33,17 @@ datasources:
       timeInterval: 15s
     secureJsonData:
       basicAuthPassword: "{{ monitor_remote_auth.prometheus_password }}"
+
+  - name: Prometheus (codey)
+    type: prometheus
+    uid: prometheus-codey
+    access: proxy
+    # Same compose project, internal network only — no route, no auth.
+    url: http://prometheus-codey:9090
+    isDefault: false
+    editable: false
+    jsonData:
+      timeInterval: 15s
 
   - name: Loki
     type: loki

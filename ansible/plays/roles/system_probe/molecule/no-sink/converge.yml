@@ -1,7 +1,8 @@
 ---
-# Codey shape: no monitor sink, no LeagueSphere, storagebox mount configured,
-# containers enabled. Stale probe units (pre-seeded below, simulating a host
-# that previously had the sink) must be removed; nothing may be deployed.
+# Codey shape since 2026-11-25: no COLLECT sink (no restic/dump/log/Moodle/storagebox
+# probes), but the `ui` profile has a local Pushgateway, so the container-health
+# probe must be deployed. Stale units for the other probes (pre-seeded below,
+# simulating a host that previously had the collect sink) must be removed.
 - name: Converge
   hosts: all
   become: true
@@ -12,6 +13,11 @@
     leaguesphere_enabled: false
     skip_storagebox: false
     with_containers: true
+    monitor_profiles: [ui]
+    docker:
+      services:
+        - dir: probetest
+    system_probe_docker_local_dir: "{{ playbook_dir }}/files"
     services_enabled:
       devhub: true
     storagebox:

@@ -1,0 +1,4 @@
+services:
+  app:
+    container_name: probetest.app
+    image: example/probetest:latest

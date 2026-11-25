@@ -7,7 +7,11 @@
 # SPLIT ACROSS TWO HOSTS (2026-11-20). Compose `profiles` select one half per host;
 # COMPOSE_PROFILES comes from monitor/.env (rendered per host) and is also passed to
 # the compose module, so a hand-run `docker compose up -d` selects the same half.
-#   ui      → grafana, loki                     (codey)
+#   ui      → grafana, loki, prometheus-codey, node-exporter-codey,
+#             cadvisor-codey, pushgateway-codey (+bridge), promtail-codey
+#                                                (codey; since 2026-11-25 it too
+#                                                gets local metrics, a probe sink
+#                                                and log shipping)
 #   collect → prometheus, pushgateway, pushgateway-bridge, node-exporter,
 #             cadvisor, promtail                (servy; they read its /proc, docker
 #                                                socket and logs)
@@ -281,12 +285,134 @@ services:
     networks:
       - backend
 
+  # ---- codey's local collector half (ui profile) ----------------------------
+  # The 2026-11-20 split left the `ui` host with no metrics of its own: Grafana
+  # could only ask servy's Prometheus about servy. These services read codey's
+  # /proc, Docker socket and logs locally. Names are distinct from the `collect`
+  # services because servyy-test runs BOTH profiles on one host (2026-11-25).
+  prometheus-codey:
+    image: prom/prometheus:latest
+    profiles: ["ui"]
+    restart: unless-stopped
+    mem_limit: 512m
+    container_name: ${COMPOSE_PROJECT_NAME}.prometheus-codey
+    labels:
+      - com.centurylinklabs.watchtower.scope=prod
+    volumes:
+      - ./prometheus-codey.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_codey_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/ready"]
+
+  node-exporter-codey:
+    image: prom/node-exporter:latest
+    profiles: ["ui"]
+    restart: unless-stopped
+    container_name: ${COMPOSE_PROJECT_NAME}.node-exporter-codey
+    labels:
+      - traefik.enable=false
+      - com.centurylinklabs.watchtower.scope=prod
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.ignored-mount-points="^/(sys|proc|dev|host|etc)($$|/)"'
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9100/metrics"]
+
+  cadvisor-codey:
+    image: gcr.io/cadvisor/cadvisor:latest
+    profiles: ["ui"]
+    restart: unless-stopped
+    container_name: ${COMPOSE_PROJECT_NAME}.cadvisor-codey
+    labels:
+      - traefik.enable=false
+      - com.centurylinklabs.watchtower.scope=prod
+    command:
+      - --housekeeping_interval=30s
+      - --store_container_labels=false
+      - --disable_metrics=advtcp,cpu_topology,memory_numa,sched
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - backend
+
+  pushgateway-codey:
+    image: prom/pushgateway:latest
+    profiles: ["ui"]
+    restart: unless-stopped
+    container_name: ${COMPOSE_PROJECT_NAME}.pushgateway-codey
+    labels:
+      - com.centurylinklabs.watchtower.scope=prod
+    volumes:
+      - pushgateway_codey_data:/pushgateway
+    command:
+      - "--persistence.file=/pushgateway/metrics"
+      - "--persistence.interval=5m"
+    expose:
+      - "9091"
+    networks:
+      - backend
+
+  pushgateway-bridge-codey:
+    image: alpine/socat:latest
+    profiles: ["ui"]
+    restart: unless-stopped
+    container_name: ${COMPOSE_PROJECT_NAME}.pushgateway-bridge-codey
+    depends_on:
+      - pushgateway-codey
+    command: TCP-LISTEN:9091,reuseaddr,fork TCP:pushgateway-codey:9091
+    # 9092, not 9091: servyy-test enables both profiles and the collect bridge
+    # already owns 127.0.0.1:9091 there. See system_probe's per-profile URL.
+    ports:
+      - "127.0.0.1:9092:9091"
+    networks:
+      - backend
+      - pushgateway_codey_publish
+
+  promtail-codey:
+    image: grafana/promtail:latest
+    profiles: ["ui"]
+    restart: unless-stopped
+    container_name: ${COMPOSE_PROJECT_NAME}.promtail-codey
+    labels:
+      - traefik.enable=false
+      - com.centurylinklabs.watchtower.scope=prod
+    volumes:
+      - ./promtail.yml:/etc/promtail/config.yml
+      - ./rendered/loki-password:/etc/promtail/loki-password:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/log:/var/log:ro
+      - promtail_codey_data:/var/lib/promtail
+    environment:
+      - LOKI_PUSH_URL=${LOKI_PUSH_URL}
+    command: -config.file=/etc/promtail/config.yml -config.expand-env=true
+    networks:
+      - backend
+      - proxy
+
 volumes:
   prometheus_data: { }
+  prometheus_codey_data: { }
   grafana_data: { }
   loki_data: { }
   promtail_data: { }
+  promtail_codey_data: { }
   pushgateway_data: { }
+  pushgateway_codey_data: { }
 
 networks:
   backend:
@@ -301,3 +427,6 @@ networks:
   # until the container also joins a non-internal network). Used only by
   # pushgateway-bridge; backend stays internal for every other service.
   pushgateway_publish: {}
+  # Same reason as pushgateway_publish: socat's host port only gets wired when the
+  # container also joins a non-internal network.
+  pushgateway_codey_publish: {}

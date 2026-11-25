@@ -1,9 +1,12 @@
 ---
-- name: "Verify (codey shape: all probes cleaned, none deployed)"
+# Verify the codey shape (2026-11-25): every stale probe that reads servy-only
+# state is removed, but the container-health probe is deployed against codey's
+# own Pushgateway on 9092 and its stale units were NOT deleted by the cleanup.
+- name: "Verify (codey shape: only the local container-health probe remains)"
   hosts: all
   become: true
   tasks:
-    - name: Check stale probe files are gone
+    - name: Check stale probe files that must be gone
       stat:
         path: "{{ item }}"
       loop:
@@ -16,15 +19,42 @@
         - /home/testuser/.config/systemd/user/system-storagebox.service
         - /home/testuser/.config/systemd/user/system-storagebox.timer
         - /home/testuser/.system-probes/system-storagebox.sh
-        - /home/testuser/.config/systemd/user/system-container-health.service
-        - /home/testuser/.config/systemd/user/system-container-health.timer
-        - /home/testuser/.system-probes/system-container-health.sh
       register: stale_files
 
-    - name: Assert every stale probe file was removed
+    - name: Assert every stale servy-only probe file was removed
       assert:
         that:
           - not item.stat.exists
       loop: "{{ stale_files.results }}"
       loop_control:
         label: "{{ item.item }}"
+
+    - name: The container-health probe was deployed, not cleaned up
+      stat:
+        path: "{{ item }}"
+      loop:
+        - /home/testuser/.config/systemd/user/system-container-health.service
+        - /home/testuser/.config/systemd/user/system-container-health.timer
+        - /home/testuser/.system-probes/system-container-health.sh
+      register: container_probe_files
+
+    - name: Assert all three container-health files exist
+      assert:
+        that: item.stat.exists
+      loop: "{{ container_probe_files.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Read the rendered container-health script
+      slurp:
+        src: /home/testuser/.system-probes/system-container-health.sh
+      register: container_probe_script
+
+    - name: The probe pushes to codey's local bridge on 9092 and reports success
+      assert:
+        that:
+          - "'localhost:9092' in (container_probe_script.content | b64decode)"
+          - "'pushed=1' in (container_probe_script.content | b64decode)"
+          # The script uses the Prometheus job name (underscores), not the
+          # systemd unit name (hyphens).
+          - "'system_container_health' in (container_probe_script.content | b64decode)"

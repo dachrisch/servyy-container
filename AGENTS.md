@@ -952,7 +952,7 @@ When responding to requests like "deploy X" or "fix error in X":
 | Service | Container Name | URL | Purpose |
 |---------|---------------|-----|---------|
 | traefik | traefik.traefik | traefik.lehel.xyz | Reverse proxy, SSL. Dashboard is behind HTTP basic auth (`traefik-auth` file-provider middleware, credentials in Vaultwarden — see `history/2026-10-22_traefik-dashboard-password-rotation.md`) |
-| monitor | `monitor.grafana` + `monitor.loki` on `codey.lehel.xyz`; `monitor.prometheus`, `monitor.promtail`, `monitor.{cadvisor,node-exporter,pushgateway}` on `servy.lehel.xyz` (one compose project, two profiles — see `monitor/AGENTS.md`) | monitor.lehel.xyz | Observability stack; the two authenticated cross-host routes are `loki.lehel.xyz` (codey) and `prometheus.lehel.xyz` (servy) |
+| monitor | `monitor.{grafana,loki,prometheus-codey,node-exporter-codey,cadvisor-codey,pushgateway-codey,pushgateway-bridge-codey,promtail-codey}` on `codey.lehel.xyz` (`ui`); `monitor.{prometheus,promtail,cadvisor,node-exporter,pushgateway,pushgateway-bridge}` on `servy.lehel.xyz` (`collect`) — one compose project, two profiles, see `monitor/AGENTS.md` | monitor.lehel.xyz | Observability stack; the two authenticated cross-host routes are `loki.lehel.xyz` (codey) and `prometheus.lehel.xyz` (servy); codey also has a local Prometheus/datasource for its own metrics since 2026-11-25 |
 | photoprism | photoprism.photoprism | photoprism.lehel.xyz | Photo library |
 | git | git.www | git.lehel.xyz | Git hosting (EOL nginx-git; Forgejo is its planned successor) |
 | ci | ci.forgejo | ci.lehel.xyz | Forgejo Git + Actions (SQLite, private; runners on codey + runny). Git over HTTPS (token) and SSH `git@ci.lehel.xyz` on port 22 through servy's host sshd (passthrough as host user `git`, no published port). See `ci/AGENTS.md` "Git over SSH" |
@@ -978,10 +978,10 @@ When responding to requests like "deploy X" or "fix error in X":
 - PhotoPrism DB: 02:00 UTC daily
 
 **Monitoring Stack** (split across two hosts since 2026-11-20 — see `monitor/AGENTS.md`):
-- **Prometheus:** Metrics collection (Traefik, cAdvisor, Node Exporter) — on servy
-- **Grafana:** Dashboards (HTTP Errors, Security, Services & Infra) — on codey
+- **Prometheus:** Metrics collection (Traefik, cAdvisor, Node Exporter) — on servy; a second local Prometheus collects codey's own host/container metrics — on codey
+- **Grafana:** Dashboards (HTTP Errors, Security, Services & Infra) + alerts — on codey; two datasources: `prometheus` (servy, fleet rules) and `prometheus-codey` (local, codey rules)
 - **Loki:** Log aggregation (31-day retention) — on codey
-- **Promtail:** Log collection (Docker + system logs) — on servy, pushes to `loki.lehel.xyz`
+- **Promtail:** Log collection (Docker + system logs) — on servy and codey, both push to `loki.lehel.xyz`
 - **monit:** System health monitoring (SSH, disk, memory)
 - **fail2ban:** Intrusion prevention
   - Loki-based: SSH brute force, scanners, Traefik rate limiting, malicious bots

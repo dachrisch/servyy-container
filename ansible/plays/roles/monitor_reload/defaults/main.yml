@@ -8,5 +8,10 @@
 # Molecule scenario.
 monitor_reload_prometheus_container: monitor.prometheus
 monitor_reload_grafana_container: monitor.grafana
+# Third half (2026-11-25): codey runs its own Prometheus in the ui profile.
+monitor_reload_prometheus_codey_container: monitor.prometheus-codey
 monitor_reload_prometheus_enabled: true
 monitor_reload_grafana_enabled: true
+# Default false: the play enables it only where the ui profile is active, so a
+# host running just `collect` never inspects a container it does not have.
+monitor_reload_prometheus_codey_enabled: false

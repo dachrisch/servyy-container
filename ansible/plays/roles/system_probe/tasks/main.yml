@@ -150,9 +150,11 @@
     dest: "{{ (system_probe_scripts_dir, 'system-container-health.sh') | path_join }}"
     mode: '0750'
   become_user: "{{ create_user }}"
+  # Since 2026-11-25 this probe may run on the `ui` host too: codey has its own
+  # Pushgateway, while every other probe still needs the collect-only sink.
   when:
     - with_containers | default(false)
-    - system_probe_push_enabled | default(false) | bool
+    - (system_probe_push_enabled | default(false) | bool) or (system_probe_container_push_enabled | default(false) | bool)
   tags:
     - system.probe
     - system.probe.container
@@ -168,7 +170,7 @@
       command: "{{ (system_probe_scripts_dir, 'system-container-health.sh') | path_join }}"
   when:
     - with_containers | default(false)
-    - system_probe_push_enabled | default(false) | bool
+    - (system_probe_push_enabled | default(false) | bool) or (system_probe_container_push_enabled | default(false) | bool)
   tags:
     - system.probe
     - system.probe.container
@@ -288,6 +290,8 @@
       # `failed_when: false` this aborted the whole system play on 2026-11-20 and
       # silently skipped the fail2ban tasks queued behind it.
       failed_when: false
+      # Codey's container-health probe has its own local sink; keep its timer.
+      when: not (item == 'system-container-health' and (system_probe_container_push_enabled | default(false) | bool))
       loop:
         - system-log-freshness
         - system-restic-snapshots
@@ -303,6 +307,8 @@
         path: "{{ item }}"
         state: absent
       become_user: "{{ create_user }}"
+      # Same exemption as the timer above: paths for codey's kept probe.
+      when: not ('system-container-health' in item and (system_probe_container_push_enabled | default(false) | bool))
       loop:
         - "{{ (remote_user_systemd, 'system-log-freshness.service') | path_join }}"
         - "{{ (remote_user_systemd, 'system-log-freshness.timer') | path_join }}"

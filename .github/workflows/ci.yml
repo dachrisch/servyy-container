@@ -383,6 +383,17 @@ jobs:
           cd ansible/tests/fail2ban
           python -m unittest -v test_blocklist_regex
 
+      # Monitor notification tuning and codey's local collector stack (2026-11-25).
+      # These are static tests over the provisioning/compose/role files: a bad
+      # group_by or a missing reload half silently mails too much or leaves the
+      # new Prometheus running an old config, with no error anywhere.
+      - name: Run monitor config tests
+        run: |
+          for d in monitor_alerts monitor_codey monitor_reload; do
+            (cd "ansible/tests/$d" && python -m unittest discover -s . -p "test_*.py" -v)
+          done
+          (cd ansible/tests/system_probe && python -m unittest -v test_codey_probe)
+
       # WP-8R R8: `dbops dump-due` decides who the one db-backup@<tier> unit
       # dumps. The test renders the real template and proves the three behaviours
       # the unit depends on: nothing due on an immediate re-run, a missed run is
