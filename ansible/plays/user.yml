@@ -278,6 +278,8 @@
         - user.docker.env.monitor
 
     - name: Render the Loki basic-auth password for promtail and Prometheus
+      # Since 2026-11-25 both halves need it: servy's promtail/Prometheus (collect)
+      # and codey's promtail (ui), which pushes to the same authenticated route.
       ansible.builtin.copy:
         content: "{{ monitor_remote_auth.loki_password }}\n"
         dest: "{{ docker.remote_dir }}/monitor/rendered/loki-password"
@@ -287,7 +289,7 @@
         mode: "0644"
       when:
         - "'monitor' in (services | default([]))"
-        - "'collect' in (monitor_profiles | default([]))"
+        - "'collect' in (monitor_profiles | default([])) or 'ui' in (monitor_profiles | default([]))"
       no_log: true
       tags:
         - user.docker.monitor
