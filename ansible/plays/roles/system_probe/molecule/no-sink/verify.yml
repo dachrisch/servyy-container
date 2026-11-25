@@ -55,4 +55,6 @@
         that:
           - "'localhost:9092' in (container_probe_script.content | b64decode)"
           - "'pushed=1' in (container_probe_script.content | b64decode)"
-          - "'system-container-health' in (container_probe_script.content | b64decode)"
+          # The script uses the Prometheus job name (underscores), not the
+          # systemd unit name (hyphens).
+          - "'system_container_health' in (container_probe_script.content | b64decode)"
