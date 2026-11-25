@@ -1,0 +1,89 @@
+# Agent stage for the Phase 0c equivalence harness (leaguesphere#2536).
+#
+# ref  - master image at phase start, pinned, never auto-updated.
+# cand - leaguesphere/backend:agent-candidate, updated by watchtower-dev
+#        (scope=dev, 300 s poll, health-gated).
+# Both read and write the SAME stage database; the basic-auth proxy is the
+# only externally reachable part (through opentunnel).
+name: {{ ls_agent_stage_project }}
+
+services:
+  ref:
+    image: {{ ls_agent_stage_ref_image }}
+    container_name: {{ ls_agent_stage_project }}.ref
+    # Same runtime shape as the stage app so behaviour differences come from
+    # the code, not from a different worker model.
+    command: gunicorn -b 0.0.0.0:8000 -w 1 --worker-class gthread --threads 2 league_manager.wsgi
+    mem_limit: 512m
+    env_file: {{ ls_agent_stage_stage_env_file }}
+    environment:
+      DJANGO_SETTINGS_MODULE: league_manager.settings.stage
+      # Never let a comparison container migrate or seed: ref and cand share
+      # the stage database and migrations belong to the stage deploy.
+      RUN_MIGRATIONS: "false"
+      LIVETICKER_V2_ENABLED: "true"
+      LIVETICKER_STREAM_ENABLED: "true"
+    labels:
+      - traefik.enable=false
+      - io.portainer.accesscontrol.teams=leaguesphere
+    networks:
+      - backend
+      - db_nonprod_backend
+      - egress
+    volumes:
+      - media:/app/league_manager/media
+    restart: unless-stopped
+
+  cand:
+    image: {{ ls_agent_stage_cand_image }}
+    container_name: {{ ls_agent_stage_project }}.cand
+    command: gunicorn -b 0.0.0.0:8000 -w 1 --worker-class gthread --threads 2 league_manager.wsgi
+    mem_limit: 512m
+    env_file: {{ ls_agent_stage_stage_env_file }}
+    environment:
+      DJANGO_SETTINGS_MODULE: league_manager.settings.stage
+      RUN_MIGRATIONS: "false"
+      LIVETICKER_V2_ENABLED: "true"
+      LIVETICKER_STREAM_ENABLED: "true"
+    labels:
+      - traefik.enable=false
+      - io.portainer.accesscontrol.teams=leaguesphere
+      # watchtower-dev polls scope=dev every 300 s and updates health-gated.
+      - com.centurylinklabs.watchtower.scope=dev
+    networks:
+      - backend
+      - db_nonprod_backend
+      - egress
+    volumes:
+      - media:/app/league_manager/media
+    restart: unless-stopped
+
+  proxy:
+    image: {{ ls_agent_stage_proxy_image }}
+    container_name: {{ ls_agent_stage_project }}.proxy
+    labels:
+      - traefik.enable=false
+      - io.portainer.accesscontrol.teams=leaguesphere
+    ports:
+      # Loopback only: opentunnel routes ref/cand at these host ports.
+      - "127.0.0.1:{{ ls_agent_stage_ref_port }}:8081"
+      - "127.0.0.1:{{ ls_agent_stage_cand_port }}:8082"
+    volumes:
+      - ./agent-stage-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./agent-stage.htpasswd:/etc/nginx/agent-stage.htpasswd:ro
+    networks:
+      - backend
+    restart: unless-stopped
+
+networks:
+  backend:
+    name: {{ ls_agent_stage_project }}_backend
+    internal: true
+  db_nonprod_backend:
+    external: true
+  egress: {}
+
+volumes:
+  media:
+    external: true
+    name: leaguesphere_stage_media

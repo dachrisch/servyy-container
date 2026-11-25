@@ -1,0 +1,113 @@
+---
+- name: Load the agent stage secrets
+  include_vars:
+    file: "{{ playbook_dir }}/roles/ls_agent_stage/vars/secret_agent_stage.yaml"
+    name: agent_stage
+
+- name: Load the stage app variables (same database as the agent stage)
+  include_vars:
+    file: "{{ playbook_dir }}/roles/ls_app/vars/secret_stage.yaml"
+    name: stage_app
+
+- name: Ensure the agent stage directory exists
+  file:
+    path: "{{ ls_agent_stage_dir }}"
+    state: directory
+    mode: "0750"
+  become_user: "{{ ls.user }}"
+
+- name: Render the agent stage compose file
+  template:
+    src: docker-compose.agent-stage.yaml.j2
+    dest: "{{ (ls_agent_stage_dir, 'docker-compose.agent-stage.yaml') | path_join }}"
+    mode: "0640"
+  become_user: "{{ ls.user }}"
+
+- name: Render the basic-auth proxy config
+  template:
+    src: nginx.agent-stage.conf.j2
+    dest: "{{ (ls_agent_stage_dir, 'agent-stage-nginx.conf') | path_join }}"
+    mode: "0640"
+  become_user: "{{ ls.user }}"
+
+- name: Render the basic-auth user file
+  copy:
+    content: "{{ agent_stage.basic_auth_htpasswd }}\n"
+    dest: "{{ (ls_agent_stage_dir, 'agent-stage.htpasswd') | path_join }}"
+    mode: "0640"
+  become_user: "{{ ls.user }}"
+  no_log: true
+
+- name: Start the agent stage stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ ls_agent_stage_dir }}"
+    project_name: "{{ ls_agent_stage_project }}"
+    files:
+      - docker-compose.agent-stage.yaml
+    pull: always
+    state: present
+    recreate: auto
+  become_user: "{{ ls.user }}"
+
+- name: Wait for the stage app to be healthy before seeding harness users
+  community.docker.docker_container_info:
+    name: "{{ ls_agent_stage_stage_container }}"
+  register: ls_agent_stage_stage_info
+  until: >-
+    ls_agent_stage_stage_info.container is not none and
+    ls_agent_stage_stage_info.container.State.Health.Status | default('') == 'healthy'
+  retries: 30
+  delay: 5
+
+- name: Render the harness user provisioning script
+  template:
+    src: create_harness_users.py.j2
+    dest: "/tmp/ls-agent-stage-users.py"
+    mode: "0600"
+  no_log: true
+
+- name: Create or update the harness role users in the stage database
+  shell: >
+    docker exec -i {{ ls_agent_stage_stage_container }}
+    python manage.py shell < /tmp/ls-agent-stage-users.py
+  register: ls_agent_stage_users
+  changed_when: "'created' in ls_agent_stage_users.stdout"
+  no_log: true
+
+- name: Remove the harness user provisioning script
+  file:
+    path: "/tmp/ls-agent-stage-users.py"
+    state: absent
+
+# opentunnel is installed out of band (runbook: docs/leaguesphere-environments.md).
+# The role only renders the persistent unit once a command is supplied, so a
+# review never depends on a guessed CLI contract.
+- name: Warn when no opentunnel command is configured
+  debug:
+    msg: >-
+      ls_agent_stage_opentunnel_command is empty: the agent stage is running on
+      loopback ports {{ ls_agent_stage_ref_port }}/{{ ls_agent_stage_cand_port }},
+      but no persistent opentunnel route was installed. Follow the runbook
+      section "Agent stage (Phase 0c)" in docs/leaguesphere-environments.md.
+  when: ls_agent_stage_opentunnel_command | default('') | length == 0
+
+- name: Install the opentunnel route unit
+  template:
+    src: opentunnel.service.j2
+    dest: "{{ (remote_user_systemd, ls_agent_stage_opentunnel_unit) | path_join }}"
+    mode: "0644"
+  become_user: "{{ create_user }}"
+  when: ls_agent_stage_opentunnel_command | default('') | length > 0
+  tags:
+    - ls.agent.stage.tunnel
+
+- name: Start the opentunnel route unit
+  systemd:
+    scope: user
+    name: "{{ ls_agent_stage_opentunnel_unit }}"
+    state: started
+    enabled: yes
+  become_user: "{{ create_user }}"
+  when: ls_agent_stage_opentunnel_command | default('') | length > 0
+  tags:
+    - ls.agent.stage.tunnel

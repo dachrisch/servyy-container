@@ -151,6 +151,16 @@
         - ls.app.stage
         - ls.app
 
+    # Phase 0c agent stage (leaguesphere#2536) - TEST HOST ONLY.
+    # Two app containers (ref/cand) share the stage database behind a
+    # basic-auth proxy; the equivalence harness compares them. Applied with
+    # `./servyy-test.sh --tags ls.agent.stage`.
+    - role: ls_agent_stage
+      when: is_test_host | default(false) | bool
+      become_user: "{{ ls.user }}"
+      tags:
+        - ls.agent.stage
+
     # Hourly maintenance-mode / active-games probe. Opt-in via
     # ls_maintenance_probe_enabled (default false); the tag selects this role
     # when the flag is enabled. Pushes metrics to Pushgateway; Grafana alerts on them.

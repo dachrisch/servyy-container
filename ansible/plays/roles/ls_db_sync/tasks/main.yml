@@ -108,6 +108,30 @@
     path: "{{ sql_dump_file }}"
     state: absent
 
+# The nightly timer is a PRODUCTION convenience. On a test host it would
+# re-clone prod every night and delete the Phase 0c agent-stage harness
+# accounts (leaguesphere#2536), so it is never installed there; an existing
+# unit from before this guard is stopped and masked below.
+- name: Disable and mask a leftover nightly sync timer on test hosts
+  when: is_test_host | default(false) | bool
+  become_user: "{{ create_user }}"
+  block:
+    - name: Stop an existing ls-db-sync-nightly.timer
+      systemd:
+        scope: user
+        name: ls-db-sync-nightly.timer
+        state: stopped
+        enabled: no
+      failed_when: false
+
+    - name: Mask ls-db-sync-nightly.timer so a stray start cannot re-enable it
+      systemd:
+        scope: user
+        name: ls-db-sync-nightly.timer
+        masked: yes
+      failed_when: false
+
 - import_tasks: timer.yml
+  when: not (is_test_host | default(false)) | bool
   tags:
     - ls.db.sync.timer

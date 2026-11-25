@@ -539,3 +539,95 @@ TEST    servyy-test.lxd           two modes:
         (b) prod-data repro — deploy STAGE stack here + sync prod data
             setup:   ./servyy-test.sh --tags ls.app.stage     (then ls.db.sync to refresh)
 ```
+
+---
+
+## Agent stage (Phase 0c, leaguesphere#2536)
+
+A long-lived comparison stage on **servyy-test.lxd only**. Two app containers
+share the stage database:
+
+| container | image | updates |
+|---|---|---|
+| `ls_agent_stage.ref` | `leaguesphere/backend:v5.27.6` (pinned in `ls_agent_stage/defaults/main.yml`) | never — this is the phase's baseline |
+| `ls_agent_stage.cand` | `leaguesphere/backend:agent-candidate` | `watchtower-dev` (scope `dev`, 300 s, health-gated) |
+
+Both sit behind one nginx basic-auth proxy (`ls_agent_stage.proxy`, loopback
+ports 18081/18082) and read/write **the same** stage database. The equivalence
+harness (`scripts/equivalence/` in the leaguesphere repo) diffs ref against
+cand.
+
+### Initial setup (once per phase)
+
+```bash
+cd ansible
+
+# 1. Stage stack + prod-data clone (also runs ls.db.sync).
+#    NEVER re-run this during a phase: the sync drops/recreates the stage DB
+#    and deletes the harness accounts.
+./servyy-test.sh --tags ls.app.stage
+
+# 2. Agent stage (ref/cand/proxy + harness users).
+#    Harvest the credentials first, they live in git-crypt:
+#      ansible/plays/roles/ls_agent_stage/vars/secret_agent_stage.yaml
+./servyy-test.sh --tags ls.agent.stage
+```
+
+The role creates/updates the harness users (`agent_staff`,
+`agent_team_manager`, `agent_official`) in the stage database. Passwords are
+throwaway and live only in that git-crypt file — never real prod accounts.
+
+### Credentials
+
+`secret_agent_stage.yaml` (git-crypt) holds the basic-auth credential and the
+role passwords. Rotate the basic-auth password by editing
+`basic_auth_password` and regenerating the hash:
+
+```bash
+htpasswd -nbB ls-agent-stage '<new password>'   # nginx accepts $2y$ and $apr1$
+```
+
+then replace `basic_auth_htpasswd` and re-run `--tags ls.agent.stage`.
+
+### Nightly sync guard (verify once)
+
+`ls_db_sync` installs `ls-db-sync-nightly.timer` at 02:00 on hosts where the
+role runs, and `servyy-test.lxd` runs LeagueSphere, so historically it would
+have re-cloned prod nightly and wiped the harness accounts. The role now
+skips the timer on `is_test_host` and stops/masks a leftover unit:
+
+```bash
+ssh servyy-test.lxd 'sudo -u leaguesphere systemctl --user status ls-db-sync-nightly.timer'
+# expect: Unit ... could not be found.  (or "masked")
+```
+
+### Rolling out a candidate
+
+```bash
+# from the leaguesphere checkout (the stack head branch)
+gh workflow run deploy.yaml --ref <branch> -f agent_candidate_ref=<branch-or-sha>
+# then wait until cand reports the new SHA:
+curl -u "$LS_AGENT_BASIC_USER:$LS_AGENT_BASIC_PASSWORD" https://<cand-route>/health/version/
+```
+
+The helper `container/deploy.sh` still drives the version-bump deploy; the
+agent candidate uses the `agent_candidate_ref` input above.
+
+### opentunnel
+
+Route names are **not** authentication (the hostname appears in Certificate
+Transparency logs), hence the basic-auth proxy. Install/configure the
+`opentunnel` CLI on servyy-test out of band and supply its invocation as
+`ls_agent_stage_opentunnel_command` (host/group var) so the role can install
+the persistent `opentunnel-ls-agent-stage.service`; profile
+`ls-agent-stage`, routes `ref` → `127.0.0.1:18081` and `cand` →
+`127.0.0.1:18082`. The two HTTPS tunnel URLs and the basic-auth credential are
+what the equivalence session needs.
+
+### What not to do
+
+- Do **not** re-run `ls.app.stage` or `ls.db.sync` on servyy-test during a
+  phase; both reset the stage DB.
+- Do **not** point watchtower at `ref`; a moving baseline makes every report
+  meaningless.
+- Do **not** expose the ports beyond loopback; opentunnel is the only ingress.

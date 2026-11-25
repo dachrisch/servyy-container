@@ -1,0 +1,34 @@
+---
+# Defaults for the Phase 0c agent stage (leaguesphere#2536).
+#
+# Two app containers share the stage database:
+#   ref  - the master image the phase started from (no watchtower label)
+#   cand - leaguesphere/backend:agent-candidate (watchtower-dev, scope=dev)
+# Both sit behind one basic-auth proxy; opentunnel publishes the two loopback
+# ports. Applied to servyy-test only (`./servyy-test.sh --tags ls.agent.stage`).
+
+# Host paths (the stage stack and the agent stack live side by side in the jail).
+ls_agent_stage_dir: "{{ (ssh_chroot_jail_path, 'home', ls.user, 'container-agent-stage') | path_join }}"
+ls_agent_stage_stage_dir: "{{ (ssh_chroot_jail_path, 'home', ls.user, 'container-stage') | path_join }}"
+ls_agent_stage_stage_env_file: "{{ (ls_agent_stage_stage_dir, 'deployed', 'ls.env.staging') | path_join }}"
+ls_agent_stage_stage_container: "{{ (stage_app.app.name ~ '.staging-app') if stage_app.app.name == 'leaguesphere_stage' else (stage_app.app.name ~ '.app') }}"
+
+ls_agent_stage_project: ls_agent_stage
+
+# The ref image is pinned on purpose: a phase compares the stack against the
+# image master had when the phase started. Bump this in the phase's PR, never
+# automatically.
+ls_agent_stage_ref_image: leaguesphere/backend:v5.27.6
+ls_agent_stage_cand_image: leaguesphere/backend:agent-candidate
+ls_agent_stage_proxy_image: nginx:1.29.3-alpine
+
+# Loopback ports the proxy publishes; opentunnel routes point at these.
+ls_agent_stage_ref_port: 18081
+ls_agent_stage_cand_port: 18082
+
+# opentunnel: installed/registered once, out of band (runbook
+# docs/leaguesphere-environments.md). Until the coordinator supplies the exact
+# invocation, the role renders no unit instead of guessing a CLI contract.
+ls_agent_stage_opentunnel_profile: ls-agent-stage
+ls_agent_stage_opentunnel_command: ""
+ls_agent_stage_opentunnel_unit: opentunnel-ls-agent-stage.service

@@ -1,0 +1,22 @@
+import os
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "league_manager.settings.stage")
+
+from django.contrib.auth import get_user_model  # noqa: E402
+
+User = get_user_model()
+
+accounts = [
+    ("{{ agent_stage.staff.username }}", "{{ agent_stage.staff.password }}", {"is_staff": True}),
+    ("{{ agent_stage.team_manager.username }}", "{{ agent_stage.team_manager.password }}", {}),
+    ("{{ agent_stage.official.username }}", "{{ agent_stage.official.password }}", {}),
+]
+
+for username, password, extra in accounts:
+    user, created = User.objects.get_or_create(username=username)
+    user.set_password(password)
+    user.is_active = True
+    for field, value in extra.items():
+        setattr(user, field, value)
+    user.save()
+    print(f"{username}: {'created' if created else 'updated'}")
