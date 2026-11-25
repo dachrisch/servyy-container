@@ -5,4 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart={{ (remote_user_home, '.local', 'bin', 'ls-agent-cand-update.sh') | path_join }}
+# The compose directory is in the ssh jail, owned by the stack user (0750).
+User={{ ls.user }}
+Group={{ ls.group }}
+ExecStart=/usr/local/bin/ls-agent-cand-update

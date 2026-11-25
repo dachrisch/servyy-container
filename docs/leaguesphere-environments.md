@@ -579,7 +579,7 @@ share the stage database:
 | container | image | updates |
 |---|---|---|
 | `ls_agent_stage.ref` | `leaguesphere/backend:agent-ref` (pinned in `ls_agent_stage/defaults/main.yml`) | never automatically — rebuilt per phase from the stack's **base commit**, then `ls.agent.stage` is re-applied |
-| `ls_agent_stage.cand` | `leaguesphere/backend:agent-candidate` | `ls-agent-cand-update.timer` (user timer, 5 min, health-gated) |
+| `ls_agent_stage.cand` | `leaguesphere/backend:agent-candidate` | `ls-agent-cand-update.timer` (system timer as `leaguesphere`, 5 min, health-gated) |
 
 Both sit behind one nginx basic-auth proxy (`ls_agent_stage.proxy`, loopback
 ports 18081/18082) and read/write **the same** stage database. The equivalence
@@ -682,7 +682,7 @@ ssh servyy-test.lxd 'docker exec ls_agent_stage.cand python manage.py migrate --
 ssh servyy-test.lxd 'docker image inspect leaguesphere/backend:agent-ref \
   --format "{{index .Config.Labels \"org.opencontainers.image.revision\"}}"'
 ssh servyy-test.lxd 'docker ps --filter name=ls_agent_stage --format "{{.Names}} {{.Status}}"'
-ssh servyy-test.lxd 'sudo -u cda systemctl --user status ls-agent-cand-update.timer'
+ssh servyy-test.lxd 'systemctl status ls-agent-cand-update.timer'
 ```
 
 The role creates/updates the harness users (`agent_staff`,
@@ -744,8 +744,9 @@ ssh servyy-test.lxd 'sudo -u cda systemctl --user status ls-db-sync-nightly.time
 ### Rolling out a candidate
 
 `servyy-test` runs no watchtower, so `ls_agent_stage` installs the
-`ls-agent-cand-update.timer` user timer (every
-`ls_agent_stage_cand_update_interval`, default 5 min). It pulls
+`ls-agent-cand-update.timer` **system** timer, running as the stack user (the
+compose directory is in the 0750 ssh jail; a `create_user` timer cannot enter
+it). Interval: `ls_agent_stage_cand_update_interval`, default 5 min. It pulls
 `leaguesphere/backend:agent-candidate` and restarts **only** `cand`, only when
 the image id changed, then waits up to 3 minutes for the container healthcheck.
 `ref` is never touched.
@@ -755,8 +756,8 @@ the image id changed, then waits up to 3 minutes for the container healthcheck.
 gh workflow run deploy.yaml --ref <branch> -f agent_candidate_ref=<branch-or-sha>
 
 # watch the timer pick it up
-ssh servyy-test.lxd 'sudo -u cda systemctl --user list-timers ls-agent-cand-update.timer'
-ssh servyy-test.lxd 'sudo -u cda journalctl --user -u ls-agent-cand-update.service -n 20'
+ssh servyy-test.lxd 'systemctl list-timers ls-agent-cand-update.timer'
+ssh servyy-test.lxd 'journalctl -u ls-agent-cand-update.service -n 20'
 
 # then wait until cand reports the new SHA:
 curl -u "$LS_AGENT_BASIC_USER:$LS_AGENT_BASIC_PASSWORD" https://<cand-route>/health/version/

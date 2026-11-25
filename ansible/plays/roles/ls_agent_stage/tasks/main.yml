@@ -149,58 +149,44 @@
         state: absent
       no_log: true
 
-# servyy-test runs no watchtower, so `cand` is updated by this user timer:
-# pull agent-candidate, restart only when its image id changed, wait for health.
-- name: Ensure lingering is enabled for {{ create_user }} (user timer)
-  ansible.builtin.command: loginctl enable-linger {{ create_user }}
-  args:
-    creates: "/var/lib/systemd/linger/{{ create_user }}"
-
-- name: Ensure the user systemd directory exists
-  ansible.builtin.file:
-    path: "{{ remote_user_systemd }}"
-    state: directory
-    mode: "0755"
-  become_user: "{{ create_user }}"
-
-- name: Ensure the candidate updater's bin directory exists
-  ansible.builtin.file:
-    path: "{{ (remote_user_home, '.local', 'bin') | path_join }}"
-    state: directory
-    mode: "0755"
-  become_user: "{{ create_user }}"
-
+# servyy-test runs no watchtower, so `cand` is updated by this SYSTEM timer.
+# It must run as the stack owner ({{ ls.user }}), not `create_user`: the compose
+# directory lives in the ssh jail (0750, owned by {{ ls.user }}) and a user timer
+# under create_user cannot even enter it - the first version failed silently in
+# exactly that way. A system unit also needs no lingering.
 - name: Render the candidate auto-update script
   ansible.builtin.template:
     src: cand-update.sh.j2
-    dest: "{{ (remote_user_home, '.local', 'bin', 'ls-agent-cand-update.sh') | path_join }}"
-    mode: "0750"
-  become_user: "{{ create_user }}"
+    dest: /usr/local/bin/ls-agent-cand-update
+    mode: "0755"
 
 - name: Render the candidate auto-update unit and timer
   ansible.builtin.template:
     src: "{{ item.src }}"
-    dest: "{{ (remote_user_systemd, item.dest) | path_join }}"
+    dest: "{{ ('/etc/systemd/system', item.dest) | path_join }}"
     mode: "0644"
   loop:
     - {src: cand-update.service.j2, dest: ls-agent-cand-update.service}
     - {src: cand-update.timer.j2, dest: ls-agent-cand-update.timer}
-  become_user: "{{ create_user }}"
 
-- name: Reload the user systemd manager
+- name: Remove the old per-user updater unit and script
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ (remote_user_systemd, 'ls-agent-cand-update.service') | path_join }}"
+    - "{{ (remote_user_systemd, 'ls-agent-cand-update.timer') | path_join }}"
+    - "{{ (remote_user_home, '.local', 'bin', 'ls-agent-cand-update.sh') | path_join }}"
+
+- name: Reload the systemd manager
   ansible.builtin.systemd:
-    scope: user
-    name: ls-agent-cand-update.timer
     daemon_reload: true
-  become_user: "{{ create_user }}"
 
 - name: Enable and start the candidate auto-update timer
   ansible.builtin.systemd:
-    scope: user
     name: ls-agent-cand-update.timer
     state: started
     enabled: true
-  become_user: "{{ create_user }}"
 
 # opentunnel keeps its own encrypted bridge to the relay, so there is no unit
 # to install. The CLI contract below is the documented one

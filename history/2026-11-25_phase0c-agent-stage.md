@@ -89,6 +89,15 @@ the shared stage database after startup; the role fails when either image
 carries unapplied migrations. The runbook documents the per-phase rebuild plus
 the `git diff ... | grep migrations` pre-check.
 
+## Candidate updater must run as the stack user (Stage 2b)
+
+The first `ls-agent-cand-update` unit was a *user* timer under `create_user`.
+The compose directory lives in the ssh jail (0750, owned by `leaguesphere`), so
+that timer could not enter it and `cand` never updated (observed: new
+`agent-candidate` on Docker Hub, old SHA still served). The updater is now a
+system unit with `User=leaguesphere` (no lingering needed); the stale user unit
+and script are removed by the role.
+
 ## Deliberate limits
 
 - Not applied by the author (no host access from codey; DNS for
