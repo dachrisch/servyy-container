@@ -38,6 +38,10 @@ scenarios:
   - {role: docker_service, scenario: forgejo, baseline: false}
   - {role: forgejo_runner, scenario: default, baseline: false}
   - {role: forgejo_bootstrap, scenario: default, baseline: false}
+  - {role: sqlite_prebackup_dump, scenario: default, baseline: false}
+  # Both-DB pre-backup dump path: pinned sqlite3 image, retention and the
+  # Pushgateway metric contract the DR alert reads.
+  - {role: sqlite_prebackup_dump, scenario: prebackup, baseline: false}
   - {role: user, scenario: no-checkout, baseline: false}
   - {role: monitor_reload, scenario: default, baseline: false}
   - {role: db_tier, scenario: default, baseline: false}

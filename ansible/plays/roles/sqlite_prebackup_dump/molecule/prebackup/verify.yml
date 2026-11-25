@@ -1,0 +1,109 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  vars:
+    script: /home/testuser/.vaultwarden-dump/sqlite-prebackup-dumps.sh
+    wrapper: /home/testuser/.vaultwarden-dump/vaultwarden-dump.sh
+  tasks:
+    - name: Check the pre-backup dump script exists and is executable
+      ansible.builtin.stat:
+        path: "{{ script }}"
+      register: sqlite_prebackup_dump_prebackup_script_stat
+      failed_when: >-
+        not sqlite_prebackup_dump_prebackup_script_stat.stat.exists
+        or sqlite_prebackup_dump_prebackup_script_stat.stat.mode != '0750'
+
+    # One generic dump_one() helper issues the `.backup`, and both DBs call it.
+    - name: Verify both DBs go through the sqlite3 .backup helper
+      ansible.builtin.command:
+        argv:
+          - grep
+          - -qF
+          - "{{ item }}"
+          - "{{ script }}"
+      changed_when: false
+      loop:
+        - ".backup '${dest}'"
+        - 'dump_one forgejo \'
+        - 'dump_one vaultwarden \'
+
+    - name: Verify the two live DB paths are passed to the dumper
+      ansible.builtin.command:
+        argv:
+          - grep
+          - -qF
+          - "{{ item }}"
+          - "{{ script }}"
+      changed_when: false
+      loop:
+        - '"/home/testuser/servyy-container/ci/data/data" gitea.db'
+        - '"/home/testuser/servyy-container/pass/vw-data" db.sqlite3'
+
+    - name: Verify the pinned sqlite3 image
+      ansible.builtin.command:
+        argv:
+          - grep
+          - -qF
+          - keinos/sqlite3:3.46.1
+          - "{{ script }}"
+      changed_when: false
+
+    - name: Verify a throwaway docker container runs the dumper
+      ansible.builtin.command:
+        argv:
+          - grep
+          - -qF
+          - docker run --rm
+          - "{{ script }}"
+      changed_when: false
+
+    - name: Verify retention is configured for both dump prefixes
+      ansible.builtin.command:
+        argv:
+          - grep
+          - -qF
+          - "{{ item }}"
+          - "{{ script }}"
+      changed_when: false
+      loop:
+        - 'KEEP="3"'
+        - 'gitea-db \'
+        - 'vaultwarden-db \'
+        - '"${prefix}-*.sqlite3"'
+
+    - name: Verify the dump directories are deploy-user-owned and writable
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: sqlite_prebackup_dump_dir_stats
+      loop:
+        - /home/testuser/servyy-container/ci/data/backup
+        - /home/testuser/servyy-container/pass/backup
+      failed_when: not sqlite_prebackup_dump_dir_stats.stat.exists
+
+    - name: Verify the Pushgateway job and both metric families
+      ansible.builtin.command:
+        argv:
+          - grep
+          - -qF
+          - "{{ item }}"
+          - "{{ script }}"
+      changed_when: false
+      loop:
+        - 'db_prebackup_dumps'
+        - 'dr_prebackup_dump_failure{db="forgejo"}'
+        - 'dr_prebackup_dump_failure{db="vaultwarden"}'
+        - 'dr_prebackup_dump_age_seconds{db="forgejo"}'
+        - 'dr_prebackup_dump_age_seconds{db="vaultwarden"}'
+
+    - name: Verify dump failure is non-fatal for restic
+      ansible.builtin.command:
+        argv:
+          - grep
+          - -qF
+          - "{{ item }}"
+          - "{{ script }}"
+      changed_when: false
+      loop:
+        - 'set -uo pipefail'
+        - 'exit 0'

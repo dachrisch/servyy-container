@@ -537,6 +537,12 @@
       when: "'pass' in (services | default([]))"
       tags: [user.docker, user.docker.pass]
 
+    # Both-DB SQLite .backup dumps: primary hook in restic's hourly home job,
+    # secondary nightly timer at 23:40. No controller-checkout delivery.
+    - role: sqlite_prebackup_dump
+      when: "'pass' in (services | default([]))"
+      tags: [user.docker, user.docker.pass, user.docker.sqlite.prebackup]
+
     # Services with additional env templates
     - role: docker_service
       vars:

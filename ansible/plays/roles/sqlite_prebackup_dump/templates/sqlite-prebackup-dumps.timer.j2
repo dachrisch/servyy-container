@@ -1,0 +1,10 @@
+[Unit]
+Description=Secondary nightly trigger for SQLite pre-backup dumps (primary hook is restic-home)
+
+[Timer]
+OnCalendar=*-*-* 23:40:00
+RandomizedDelaySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,48 @@
+---
+# sqlite_prebackup_dump — consistent SQLite `.backup` snapshots of BOTH live DBs.
+#
+# PRIMARY: `sqlite-prebackup-dumps.sh` is called immediately before every
+# hourly restic-home run (wired in roles/restic/tasks/backup.yml). Dumping both
+# DBs there means the bare repos, files and both DBs come from the SAME restic
+# snapshot — RPO <= 1 h. Failures are metrics, not a failed restic run.
+#
+# SECONDARY: `sqlite-prebackup-dumps.timer` (23:40) only re-runs the dumps
+# as a fallback schedule; the primary caller is restic-home. The nightly
+# `forgejo dump` timer in forgejo_bootstrap is kept as an independent SQL-format
+# fallback. The old `vaultwarden-dump` units are removed by this role.
+#
+# Runs on the host that deploys `pass/` and `ci/` (servy; servyy-test in
+# rehearsal), after docker_service has brought the containers up.
+
+# Container whose ./vw-data bind mount holds the live Vaultwarden database.
+sqlite_prebackup_dump_container: pass.pass
+
+# Host-side paths. The fallback keeps the role importable on a controller that
+# has no `docker` inventory var defined (Molecule passes its own remote_dir).
+sqlite_prebackup_dump_remote_dir: "{{ (docker | default({})).remote_dir | default('/home/cda/servyy-container') }}"
+sqlite_prebackup_dump_vw_data_dir: "{{ (sqlite_prebackup_dump_remote_dir, 'pass', 'vw-data') | path_join }}"
+# vw-data is root-owned by the container, so the dump dir sits beside it in the
+# deploy-user-owned checkout. Still inside restic-home's source path.
+sqlite_prebackup_dump_dir: "{{ (sqlite_prebackup_dump_remote_dir, 'pass', 'backup') | path_join }}"
+
+# The second DB: Forgejo's SQLite DB (WAL mode). `ci/data` is owned by the
+# deploy user (see ci/docker-compose.yml: uid 1000 rootless image, cda owns
+# ./data), so ci/data/backup is writable without sudo; the live DB lives in
+# ci/data/data/gitea.db, and the bare repos in ci/data/git/repositories are
+# already in restic-home. Both dumps must be inside that same snapshot.
+sqlite_prebackup_dump_forgejo_container: ci.forgejo
+sqlite_prebackup_dump_forgejo_data_dir: "{{ (sqlite_prebackup_dump_remote_dir, 'ci', 'data', 'data') | path_join }}"
+sqlite_prebackup_dump_forgejo_dump_dir: "{{ (sqlite_prebackup_dump_remote_dir, 'ci', 'data', 'backup') | path_join }}"
+
+# Pinned to the exact tag already used by system_probe's Forgejo DB reader.
+sqlite_prebackup_dump_image: keinos/sqlite3:3.46.1
+sqlite_prebackup_dump_keep: 3
+
+# Local Pushgateway sink (the one the other system probes use). Absence of the
+# sink is tolerated by the script; a failed dump is NOT.
+sqlite_prebackup_dump_pushgateway_url: "{{ system_probe_pushgateway_url | default('http://localhost:9091') }}"
+sqlite_prebackup_dump_push_job: db_prebackup_dumps
+
+# Where the dump script and the user systemd units live (~/.vaultwarden-dump
+# and ~/.config/systemd/user, mirroring forgejo_bootstrap's layout).
+sqlite_prebackup_dump_scripts_dir: "{{ (remote_user_home | default('/home/cda'), '.vaultwarden-dump') | path_join }}"

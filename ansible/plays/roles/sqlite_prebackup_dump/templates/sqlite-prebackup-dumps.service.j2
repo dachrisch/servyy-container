@@ -1,0 +1,9 @@
+[Unit]
+Description=SQLite pre-backup dumps (Forgejo + Vaultwarden)
+
+[Service]
+Type=oneshot
+ExecStart={{ (sqlite_prebackup_dump_scripts_dir, 'sqlite-prebackup-dumps.sh') | path_join }}
+
+[Install]
+WantedBy=default.target

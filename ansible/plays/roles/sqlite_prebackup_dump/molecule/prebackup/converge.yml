@@ -1,0 +1,20 @@
+---
+# No Docker daemon or systemd user bus in Molecule: the role installs the dump
+# script, units and dump directories, and its guarded timer-start task is tagged
+# molecule-notest. Harmless test values only — no real secrets and no live DBs.
+- name: Converge
+  hosts: all
+  become: true
+  become_user: testuser
+  vars:
+    create_user: testuser
+    remote_user_home: /home/testuser
+    remote_user_systemd: /home/testuser/.config/systemd/user
+    docker:
+      remote_dir: /home/testuser/servyy-container
+    # The script must push to the local Pushgateway job the Grafana rule reads.
+    sqlite_prebackup_dump_pushgateway_url: http://localhost:9091
+  tasks:
+    - name: Run sqlite_prebackup_dump
+      ansible.builtin.include_role:
+        name: sqlite_prebackup_dump

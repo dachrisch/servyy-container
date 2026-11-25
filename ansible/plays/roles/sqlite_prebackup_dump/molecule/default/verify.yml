@@ -1,0 +1,90 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Check the dump script exists and is executable
+      ansible.builtin.stat:
+        path: /home/testuser/.vaultwarden-dump/sqlite-prebackup-dumps.sh
+      register: sqlite_prebackup_dump_script
+      failed_when: >-
+        not sqlite_prebackup_dump_script.stat.exists
+        or sqlite_prebackup_dump_script.stat.mode != '0750'
+
+    # The dump logic (both DBs) lives in sqlite-prebackup-dumps.sh.
+    - name: Verify the dump script uses the pinned sqlite image
+      ansible.builtin.command:
+        argv:
+          - grep
+          - -qF
+          - keinos/sqlite3:3.46.1
+          - /home/testuser/.vaultwarden-dump/sqlite-prebackup-dumps.sh
+      changed_when: false
+
+    - name: Verify the dump script uses sqlite3 .backup into /out
+      ansible.builtin.command:
+        argv:
+          - grep
+          - -qF
+          - ".backup '${dest}'"
+          - /home/testuser/.vaultwarden-dump/sqlite-prebackup-dumps.sh
+      changed_when: false
+
+    - name: Verify the dump script runs a throwaway docker container
+      ansible.builtin.command:
+        argv:
+          - grep
+          - -qF
+          - docker run --rm
+          - /home/testuser/.vaultwarden-dump/sqlite-prebackup-dumps.sh
+      changed_when: false
+
+    - name: Verify the dump path resolves into the pass bind mount
+      ansible.builtin.command:
+        argv:
+          - grep
+          - -qF
+          - /home/testuser/servyy-container/pass/backup
+          - /home/testuser/.vaultwarden-dump/sqlite-prebackup-dumps.sh
+      changed_when: false
+
+    - name: Verify the legacy single-DB wrapper is gone
+      ansible.builtin.stat:
+        path: /home/testuser/.vaultwarden-dump/vaultwarden-dump.sh
+      register: sqlite_prebackup_dump_legacy_wrapper
+      failed_when: sqlite_prebackup_dump_legacy_wrapper.stat.exists
+
+    - name: Check the systemd service exists
+      ansible.builtin.stat:
+        path: /home/testuser/.config/systemd/user/sqlite-prebackup-dumps.service
+      register: sqlite_prebackup_dump_service
+      failed_when: not sqlite_prebackup_dump_service.stat.exists
+
+    - name: Verify the service ExecStart points at the dump script
+      ansible.builtin.command:
+        argv:
+          - grep
+          - -qF
+          - ExecStart=/home/testuser/.vaultwarden-dump/sqlite-prebackup-dumps.sh
+          - /home/testuser/.config/systemd/user/sqlite-prebackup-dumps.service
+      changed_when: false
+
+    - name: Check the systemd timer exists
+      ansible.builtin.stat:
+        path: /home/testuser/.config/systemd/user/sqlite-prebackup-dumps.timer
+      register: sqlite_prebackup_dump_timer
+      failed_when: not sqlite_prebackup_dump_timer.stat.exists
+
+    - name: Verify the timer fires at 23:40 with delay and persistence
+      ansible.builtin.command:
+        argv:
+          - grep
+          - -qF
+          - "{{ item }}"
+          - /home/testuser/.config/systemd/user/sqlite-prebackup-dumps.timer
+      changed_when: false
+      loop:
+        - 'OnCalendar=*-*-* 23:40:00'
+        - RandomizedDelaySec=5m
+        - Persistent=true
+        - WantedBy=timers.target
