@@ -27,8 +27,11 @@ system_probe_pushgateway_url: "http://localhost:9091"
 system_probe_container_pushgateway_url: >-
   {{ 'http://localhost:9092' if 'ui' in (monitor_profiles | default([]))
      else 'http://localhost:9091' }}
+# ui ONLY, not the both-profiles test host: servyy-test would otherwise report
+# every servy-only service as down and mail its own Grafana about it.
 system_probe_container_push_enabled: >-
-  {{ 'ui' in (monitor_profiles | default([])) }}
+  {{ 'ui' in (monitor_profiles | default([]))
+     and 'collect' not in (monitor_profiles | default([])) }}
 
 # True only on hosts running the monitor stack's Pushgateway sink present).
 # Handles both inventory shapes: bare `monitor: true` and `monitor: {enabled: true}`.

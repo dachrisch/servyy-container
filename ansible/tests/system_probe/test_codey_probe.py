@@ -16,7 +16,9 @@ class CodeyContainerProbe(unittest.TestCase):
     def test_defaults_have_separate_gate_and_local_port(self):
         text = (ROLE / "defaults/main.yml").read_text(encoding="utf-8")
         self.assertIn("system_probe_container_push_enabled:", text)
-        self.assertIn("'ui' in (monitor_profiles | default([]))", text)
+        # ui ONLY: servyy-test enables both profiles and must keep the old
+        # behaviour (no container probe) or it would page for absent services.
+        self.assertIn("'collect' not in (monitor_profiles | default([]))", text)
         self.assertIn("9092", text)
 
     def test_container_probe_tasks_use_the_separate_gate(self):
