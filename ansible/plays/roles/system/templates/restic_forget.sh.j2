@@ -3,6 +3,7 @@
 set -euo pipefail
 
 # Load logdy function
+export LOGDY_LOKI_ENV="/home/{{ create_user }}/.config/logdy/loki.env"
 source "$HOME/.zprezto/custom/functions/logdy"
 
 export LOGDY_ALSO_TO_FILE="{{ restic.logs.forget }}"

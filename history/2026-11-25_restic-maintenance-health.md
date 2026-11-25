@@ -94,6 +94,43 @@ file but is inert: the env file is authoritative and is sourced on every push.
   curl and proves the env file beats a stale zshenv URL (2/2).
 * `yamllint` clean on all changed YAML; molecule-matrix consistency 25/25.
 
+## Review follow-ups (same day)
+
+1. **Credential off curl argv.** The first logdy version passed `-u user:password`
+   to curl, which is world-readable in `/proc/<pid>/cmdline`. The function now
+   sends `curl -K - <<<"user = ..."`, i.e. the config (and credential) goes in
+   on stdin; the log body stays in `--data` so stdin is free. `my-prezto`
+   `tests/test_logdy_auth.py` asserts the stub curl's argv never contains the
+   password and that the config arrives on stdin.
+2. **Explicit env path for root-run/ambiguous-HOME templates.** systemd units
+   with no `User=` (and any wrapper running via sudo) have `HOME=/root`, so
+   `~/.config/logdy/loki.env` was the wrong file. All 12 templates that source
+   logdy now export
+   `LOGDY_LOKI_ENV="/home/{{ create_user }}/.config/logdy/loki.env"` before the
+   first logdy call: `restic/{restic_backup,mariadb_backup,binlog_ship,
+   moodle_dump,dbops_dump,firefly_dump,db-backup-tier}.sh.j2`,
+   `ls_db_sync/ls_db_sync.sh.j2`, `user/{backup,restic_backup}.sh.j2`, plus the
+   two maintenance scripts. `ansible/tests/logdy_loki/test_root_templates.py`
+   discovers every logdy-sourcing template and fails if any lacks the export
+   before its first call (RED: 12 failures → GREEN: 3/3).
+
+### Verification after the review fixes
+
+Local: `logdy_loki` 3/3 (render) + 3/3 (root templates), `restic_maintenance`
+6/6. CI Gate pass on run `45691425357`. Test host (both PR branches deployed
+via `user.repo.zpresto`/`user.zprezto` and `user.docker.repo`/`restic.backup`/
+`system.restic.maintenance`): `failed=0` on both scoped runs; zprezto branch
+`claude/logdy-loki-auth`, infra checkout `38550572`; `restic-backup-home.sh`
+carries the explicit `LOGDY_LOKI_ENV` export; `loki.env` is `0600 cda:cda`.
+Starting `restic-backup-home.service` produced a logdy line with no HTTP 302
+warning (the unit itself fails on the test host because its storagebox restic
+repo is unavailable — unrelated to logdy). Running the same deployed script as
+root with `HOME=/root` and `LOKI_SOURCE=root-path-test` pushed a line that was
+read back from test Loki `query_range` with `{job="shell",host=
+"root-path-test"} |= "Starting restic backup"` — 1 match. No credential was
+printed; query credentials went over SSH stdin into a 0600 netrc deleted in the
+same shell.
+
 ## Files changed
 
 `servyy-container` (branch `claude/restic-maintenance-health`):
