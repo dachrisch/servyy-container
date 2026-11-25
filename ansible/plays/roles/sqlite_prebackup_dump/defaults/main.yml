@@ -1,15 +1,15 @@
 ---
-# vaultwarden_dump — consistent SQLite `.backup` snapshots of BOTH live DBs.
+# sqlite_prebackup_dump — consistent SQLite `.backup` snapshots of BOTH live DBs.
 #
 # PRIMARY: `sqlite-prebackup-dumps.sh` is called immediately before every
 # hourly restic-home run (wired in roles/restic/tasks/backup.yml). Dumping both
 # DBs there means the bare repos, files and both DBs come from the SAME restic
 # snapshot — RPO <= 1 h. Failures are metrics, not a failed restic run.
 #
-# SECONDARY: the original nightly `vaultwarden-dump.timer` (23:40) still fires;
-# `vaultwarden-dump.sh` is now a thin compatibility wrapper around the same
-# script. The nightly `forgejo dump` timer in forgejo_bootstrap is deliberately
-# kept as an independent SQL-format fallback.
+# SECONDARY: `sqlite-prebackup-dumps.timer` (23:40) only re-runs the dumps
+# as a fallback schedule; the primary caller is restic-home. The nightly
+# `forgejo dump` timer in forgejo_bootstrap is kept as an independent SQL-format
+# fallback. The old `vaultwarden-dump` units are removed by this role.
 #
 # Runs on the host that deploys `pass/` and `ci/` (servy; servyy-test in
 # rehearsal), after docker_service has brought the containers up.

@@ -2039,6 +2039,66 @@ groups:
           severity: medium
         isPaused: false
 
+      # MEDIUM: the Pushgateway group itself is stale or absent. The failure
+      # series above can freeze at 0 forever if the hook stops being called
+      # (old master reverts restic_backup.sh, sqlite_prebackup_dump_script
+      # resolves empty, the script is missing, or hourly restic-home stops).
+      # restic-home is hourly, so 7200s = two missed runs. The PromQL `or`
+      # also fires when the job has never pushed (absent -> 1). The final
+      # label-aware vector(0) keeps a healthy push from producing an empty
+      # series (noDataState: Alerting would otherwise page every hour) without
+      # masking the absent() case.
+      - uid: dr_prebackup_dump_stale
+        title: SQLite Pre-backup Dump Hook Stale
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: >-
+                (time() - push_time_seconds{job="db_prebackup_dumps"} > 7200)
+                or absent(push_time_seconds{job="db_prebackup_dumps"})
+                or (vector(0) and on() (push_time_seconds{job="db_prebackup_dumps"}))
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: gt
+        noDataState: Alerting
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'SQLite pre-backup dump hook has not pushed metrics recently'
+          description: >-
+            No push from the hourly restic-home pre-backup hook in 2 hours
+            (job db_prebackup_dumps). The failure series can stay at 0 after
+            the hook stops, so this rule watches Pushgateway push_time_seconds
+            and also fires when the series is absent entirely.
+        labels:
+          severity: medium
+        isPaused: false
+
   # Storagebox monitoring (migrated from Monit monit.storagebox.check.j2)
   - orgId: 1
     name: storagebox-alerts
