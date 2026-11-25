@@ -4,7 +4,7 @@ services:
   # published. All credentials come from renovate.env, rendered by Ansible from
   # git-crypt secrets.yml (never read from Vaultwarden at runtime).
   renovate:
-    image: renovate/renovate:44.261.2
+    image: renovate/renovate:44.262.0
     env_file:
       - renovate.env
     init: true
