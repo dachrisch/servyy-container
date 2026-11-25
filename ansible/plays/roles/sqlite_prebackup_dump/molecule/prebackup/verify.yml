@@ -17,7 +17,7 @@
     # One generic dump_one() helper issues the `.backup`, and both DBs call it.
     - name: Verify both DBs go through the sqlite3 .backup helper
       ansible.builtin.command:
-        cmd:
+        argv:
           - grep
           - -qF
           - "{{ item }}"
@@ -30,7 +30,7 @@
 
     - name: Verify the two live DB paths are passed to the dumper
       ansible.builtin.command:
-        cmd:
+        argv:
           - grep
           - -qF
           - "{{ item }}"
@@ -42,7 +42,7 @@
 
     - name: Verify the pinned sqlite3 image
       ansible.builtin.command:
-        cmd:
+        argv:
           - grep
           - -qF
           - keinos/sqlite3:3.46.1
@@ -51,7 +51,7 @@
 
     - name: Verify a throwaway docker container runs the dumper
       ansible.builtin.command:
-        cmd:
+        argv:
           - grep
           - -qF
           - docker run --rm
@@ -60,7 +60,7 @@
 
     - name: Verify retention is configured for both dump prefixes
       ansible.builtin.command:
-        cmd:
+        argv:
           - grep
           - -qF
           - "{{ item }}"
@@ -85,7 +85,7 @@
 
     - name: Verify the Pushgateway job and both metric families
       ansible.builtin.command:
-        cmd:
+        argv:
           - grep
           - -qF
           - "{{ item }}"
@@ -100,7 +100,7 @@
 
     - name: Verify dump failure is non-fatal for restic
       ansible.builtin.command:
-        cmd:
+        argv:
           - grep
           - -qF
           - "{{ item }}"
