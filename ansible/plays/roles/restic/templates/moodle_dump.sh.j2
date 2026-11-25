@@ -31,6 +31,7 @@ set -euo pipefail
 if [ -f "/home/{{ create_user }}/.zshenv" ]; then
     source "/home/{{ create_user }}/.zshenv"
 fi
+export LOGDY_LOKI_ENV="/home/{{ create_user }}/.config/logdy/loki.env"
 source "/home/{{ create_user }}/.zprezto/custom/functions/logdy"
 
 CONTAINER="{{ moodle_db_container }}"

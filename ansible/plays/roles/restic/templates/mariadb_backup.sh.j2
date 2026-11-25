@@ -30,6 +30,7 @@
 # policies is precisely the "restore disagrees with itself" shape this design
 # avoids.
 set -euo pipefail
+export LOGDY_LOKI_ENV="/home/{{ create_user }}/.config/logdy/loki.env"
 source "/home/{{ create_user }}/.zprezto/custom/functions/logdy" 2>/dev/null || true
 
 CONTAINER="leaguesphere.db"

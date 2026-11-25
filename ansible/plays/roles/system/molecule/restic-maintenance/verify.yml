@@ -1,0 +1,150 @@
+---
+- name: Verify restic maintenance scripts
+  hosts: all
+  become: true
+  vars:
+    calls: /tmp/restic-maint-calls.log
+    fake_bin: /tmp/restic-maint-bin
+  tasks:
+    - name: Clear capture files from any previous run
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ calls }}"
+        - /tmp/restic-maint-logdy.log
+        - /tmp/pushed-forget.txt
+        - /tmp/pushed-check.txt
+        - /tmp/push-args-forget.txt
+        - /tmp/push-args-check.txt
+        - /var/log/restic/forget.log
+        - /var/log/restic/check.log
+
+    - name: Create the stub binary directory
+      ansible.builtin.file:
+        path: "{{ fake_bin }}"
+        state: directory
+        mode: '0755'
+
+    # Records every call with its repo, succeeds for unlock, fails the requested
+    # repo's forget/check. Never accepts --remove-all (the script must not use it).
+    - name: Install the restic stub
+      ansible.builtin.copy:
+        dest: "{{ fake_bin }}/restic"
+        mode: '0755'
+        content: |
+          #!/bin/sh
+          echo "$RESTIC_REPOSITORY|$*" >> "$RESTIC_CALL_LOG"
+          case "$1" in
+            unlock) echo "successfully removed 2 stale locks" ;;
+            forget|check)
+              case "$RESTIC_REPOSITORY" in
+                *"$FAIL_REPO"*) echo "simulated $1 failure" >&2; exit 1 ;;
+              esac ;;
+          esac
+          exit 0
+
+    # Captures the exact Pushgateway PUT body and URL, so the metric contract is
+    # verified without a network sink.
+    - name: Install the curl stub
+      ansible.builtin.copy:
+        dest: "{{ fake_bin }}/curl"
+        mode: '0755'
+        content: |
+          #!/bin/sh
+          printf '%s' "$*" > "$CURL_ARGS_CAPTURE"
+          cat > "$CURL_CAPTURE"
+
+    # The molecule image has no zsh; these scripts are deliberately
+    # bash-compatible and the python fixture tests run them under zsh too.
+    - name: Run forget with the db repo failing
+      ansible.builtin.command:
+        argv: [bash, /usr/local/bin/restic-forget.sh]
+      environment:
+        HOME: /home/testuser
+        PATH: "{{ fake_bin }}:{{ ansible_env.PATH }}"
+        RESTIC_CALL_LOG: "{{ calls }}"
+        CURL_CAPTURE: /tmp/pushed-forget.txt
+        CURL_ARGS_CAPTURE: /tmp/push-args-forget.txt
+        LOGDY_CAPTURE: /tmp/restic-maint-logdy.log
+        FAIL_REPO: db
+      failed_when: false
+      changed_when: false
+      register: forget_run
+
+    - name: Run check with the home repo failing
+      ansible.builtin.command:
+        argv: [bash, /usr/local/bin/restic-check.sh]
+      environment:
+        HOME: /home/testuser
+        PATH: "{{ fake_bin }}:{{ ansible_env.PATH }}"
+        RESTIC_CALL_LOG: "{{ calls }}"
+        CURL_CAPTURE: /tmp/pushed-check.txt
+        CURL_ARGS_CAPTURE: /tmp/push-args-check.txt
+        LOGDY_CAPTURE: /tmp/restic-maint-logdy.log
+        FAIL_REPO: home
+      failed_when: false
+      changed_when: false
+      register: check_run
+
+    - name: Read captured push payloads
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      register: push_bodies
+      loop:
+        - /tmp/pushed-forget.txt
+        - /tmp/pushed-check.txt
+
+    - name: Read captured push URLs
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      register: push_urls
+      loop:
+        - /tmp/push-args-forget.txt
+        - /tmp/push-args-check.txt
+
+    - name: Read the forget log
+      ansible.builtin.slurp:
+        src: /var/log/restic/forget.log
+      register: forget_log
+
+    - name: A failing repo must fail the unit
+      ansible.builtin.assert:
+        that:
+          - forget_run.rc == 1
+          - check_run.rc == 1
+        fail_msg: "a failed repo must make the maintenance unit exit non-zero"
+
+    - name: Unlock runs once per repo and never uses --remove-all
+      ansible.builtin.shell: |
+        set -euo pipefail
+        test "$(grep -c '|unlock' {{ calls }})" -eq 4
+        test "$(grep -c -- '--remove-all' {{ calls }} || true)" -eq 0
+        awk -F'|' '/\/fake\/home\|unlock/{u=NR} /\/fake\/home\|forget/{if(u && NR>u) ok=1} END{exit !ok}' {{ calls }}
+        awk -F'|' '/\/fake\/db\|unlock/{u=NR} /\/fake\/db\|forget/{if(u && NR>u) ok=1} END{exit !ok}' {{ calls }}
+        awk -F'|' '/\/fake\/home\|unlock/{u=NR} /\/fake\/home\|check/{if(u && NR>u) ok=1} END{exit !ok}' {{ calls }}
+        awk -F'|' '/\/fake\/db\|unlock/{u=NR} /\/fake\/db\|check/{if(u && NR>u) ok=1} END{exit !ok}' {{ calls }}
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Both ops push a per-repo success gauge even when one repo fails
+      ansible.builtin.assert:
+        that:
+          - "'restic_maintenance_success{op=\"forget\",repo=\"home\"} 1' in (push_bodies.results[0].content | b64decode)"
+          - "'restic_maintenance_success{op=\"forget\",repo=\"db\"} 0' in (push_bodies.results[0].content | b64decode)"
+          - "'restic_maintenance_success{op=\"check\",repo=\"home\"} 0' in (push_bodies.results[1].content | b64decode)"
+          - "'restic_maintenance_success{op=\"check\",repo=\"db\"} 1' in (push_bodies.results[1].content | b64decode)"
+          - "'# TYPE restic_maintenance_success gauge' in (push_bodies.results[0].content | b64decode)"
+        fail_msg: "Pushgateway payload is missing a per-repo outcome"
+
+    - name: Pushes go to the two distinct job groups
+      ansible.builtin.assert:
+        that:
+          - "'/metrics/job/restic_maintenance_forget' in (push_urls.results[0].content | b64decode)"
+          - "'/metrics/job/restic_maintenance_check' in (push_urls.results[1].content | b64decode)"
+
+    - name: The stale locks removed are written to the maintenance log
+      ansible.builtin.assert:
+        that:
+          - "'removed 2 stale locks' in (forget_log.content | b64decode)"

@@ -27,3 +27,14 @@ blocklist_exempt_ipv4: >-
      | select
      | unique
      | list }}
+
+# Restic maintenance (forget/check) outcome metrics. The scripts push one
+# `restic_maintenance_success{op,repo}` per repo to the LOCAL Pushgateway; Grafana
+# watches `push_time_seconds` on these two job groups for staleness. Separate
+# jobs keep forget (daily) and check (weekly) staleness independent.
+restic_maintenance_pushgateway_url: "http://localhost:9091"
+restic_maintenance_forget_job: restic_maintenance_forget
+restic_maintenance_check_job: restic_maintenance_check
+# Rendered env files are owned by root and hold repo passwords; only the path
+# is templated into the scripts so the fixtures can point at a temporary dir.
+restic_env_dir: /etc/restic

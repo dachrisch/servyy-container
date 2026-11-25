@@ -1,0 +1,24 @@
+---
+# logdy (from the public dachrisch/my-prezto repo) sources this file on every
+# call. Keeping the credential outside that repo and out of the login shell is
+# what lets it authenticate against codey's basicAuth Loki route.
+- name: Ensure the logdy config directory exists
+  ansible.builtin.file:
+    path: "/home/{{ create_user }}/.config/logdy"
+    state: directory
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0700'
+  tags:
+    - user.zprezto.logdy
+
+- name: Render the logdy Loki credentials
+  ansible.builtin.template:
+    src: logdy-loki.env.j2
+    dest: "/home/{{ create_user }}/.config/logdy/loki.env"
+    owner: "{{ create_user }}"
+    group: "{{ create_user }}"
+    mode: '0600'
+  no_log: true
+  tags:
+    - user.zprezto.logdy

@@ -3394,3 +3394,123 @@ groups:
         labels:
           severity: medium
         isPaused: false
+
+  # Restic retention (`forget`, daily) and integrity checks (`check`, weekly)
+  # used to fail silently for weeks: a stale exclusive lock left by a dead
+  # process blocked both, while `forget.log`/`check.log` were still written, so
+  # the log-freshness rule stayed green. The scripts now self-heal STALE locks
+  # and push one `restic_maintenance_success{op,repo}` series per repo plus a
+  # Pushgateway `push_time_seconds` for each job group.
+  - orgId: 1
+    name: restic-maintenance-alerts
+    folder: Infrastructure
+    interval: 1m
+    rules:
+      - uid: restic_maintenance_failure
+        title: Restic Maintenance Failed For A Repository
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'restic_maintenance_success == bool 0'
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: gt
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'Restic {{ $labels.op }} failed for {{ $labels.repo }}'
+          description: >-
+            The {{ $labels.op }} maintenance run reported failure for the
+            {{ $labels.repo }} repository. Check /var/log/restic/forget.log or
+            /var/log/restic/check.log and the systemd unit; backups keep saving
+            snapshots, so snapshot-age alerts alone will not catch this.
+        labels:
+          severity: medium
+        isPaused: false
+
+      # `noDataState: Alerting` on purpose: a dead timer / deleted hook freezes
+      # the success gauge at its last value (or leaves no series at all). Both
+      # `absent()` clauses must be present, and the `vector(0) and on()` tail
+      # keeps a HEALTHY push from returning an empty series (which would page
+      # every evaluation). `push_time_seconds > 0` filters rejected pushes,
+      # which Pushgateway records as 0 (2026-11-19 trap).
+      - uid: restic_maintenance_stale
+        title: Restic Maintenance Run Stale
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: >-
+                ((time() - (push_time_seconds{job="restic_maintenance_forget"} > 0) > 129600)
+                or absent(push_time_seconds{job="restic_maintenance_forget"})
+                or (vector(0) and on() (push_time_seconds{job="restic_maintenance_forget"} > 0)))
+                or
+                ((time() - (push_time_seconds{job="restic_maintenance_check"} > 0) > 691200)
+                or absent(push_time_seconds{job="restic_maintenance_check"})
+                or (vector(0) and on() (push_time_seconds{job="restic_maintenance_check"} > 0)))
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: B
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            queryType: ''
+            datasourceUid: __expr__
+            model:
+              expression: B
+              refId: C
+              type: threshold
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: gt
+        noDataState: Alerting
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: 'Restic maintenance has not reported recently'
+          description: >-
+            No fresh Pushgateway push for the daily forget (> 36 h) or the
+            weekly check (> 8 d). The success gauge can stay at 0 after the
+            script stops, so this rule watches push_time_seconds and also fires
+            when a job has never pushed at all.
+        labels:
+          severity: medium
+        isPaused: false

@@ -3,6 +3,7 @@
 set -euo pipefail
 
 # Load logdy function for structured logging
+export LOGDY_LOKI_ENV="/home/{{ create_user }}/.config/logdy/loki.env"
 source "$HOME/.zprezto/custom/functions/logdy"
 
 # Load restic environment from config file
