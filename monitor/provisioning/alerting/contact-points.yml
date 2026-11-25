@@ -18,9 +18,10 @@ contactPoints:
         type: email
         settings:
           addresses: {{ monitor_admin_email }}
-        # No resolve mail (2026-11-25): every firing already generated a mail,
-        # and a flapping rule doubled the inbox traffic with "resolved" notices.
-        disableResolveMessage: true
+        # Resolve mail stays ON by explicit request (2026-11-25): grouping by
+        # severity keeps the volume bounded, and the admin wants to know when a
+        # firing alert has cleared.
+        disableResolveMessage: false
 
   # Critical alerts with faster repeat interval
   - orgId: 1
@@ -35,9 +36,10 @@ contactPoints:
           # templating, not Jinja — the quoted-brace escapes below keep the
           # ansible render from parsing them.
           subject: '[{{ '{{' }} .Status | toUpper }}] {{ '{{' }} .CommonLabels.severity | toUpper }}: {{ '{{' }} .GroupLabels.rulename }}'
-        # No resolve mail (2026-11-25): every firing already generated a mail,
-        # and a flapping rule doubled the inbox traffic with "resolved" notices.
-        disableResolveMessage: true
+        # Resolve mail stays ON by explicit request (2026-11-25): grouping by
+        # severity keeps the volume bounded, and the admin wants to know when a
+        # firing alert has cleared.
+        disableResolveMessage: false
 
 # Do not delete any existing contact points
 deleteContactPoints: []

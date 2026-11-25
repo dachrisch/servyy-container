@@ -42,12 +42,13 @@ class NotificationTuning(unittest.TestCase):
         }
         self.assertEqual(repeats, {"critical": "1h", "high": "4h", "medium": "12h"})
 
-    def test_resolve_messages_are_suppressed(self):
+    def test_resolve_messages_are_sent(self):
+        """The admin wants the 'resolved' mail as well as the firing mail."""
         points = load("contact-points.yml")
         by_name = {point["name"]: point for point in points["contactPoints"]}
         self.assertEqual(set(by_name), {"email-admin", "email-critical"})
         for point in by_name.values():
-            self.assertIs(point["receivers"][0]["disableResolveMessage"], True)
+            self.assertIs(point["receivers"][0]["disableResolveMessage"], False)
 
     def test_primary_rule_uids_are_unique(self):
         rules = load("alert-rules.yml")
