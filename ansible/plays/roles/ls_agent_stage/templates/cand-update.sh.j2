@@ -12,7 +12,9 @@ set -euo pipefail
 COMPOSE_DIR="{{ ls_agent_stage_dir }}"
 PROJECT="{{ ls_agent_stage_project }}"
 FILE="docker-compose.agent-stage.yaml"
-SERVICES="cand www-cand"
+# stream-cand runs the same backend image as cand (the liveticker SSE worker),
+# so it must move with it or the stream would serve a stale candidate.
+SERVICES="cand stream-cand www-cand"
 
 cd "$COMPOSE_DIR"
 
