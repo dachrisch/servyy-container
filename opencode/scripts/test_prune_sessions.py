@@ -16,6 +16,7 @@ import sqlite3
 import tempfile
 import time
 import unittest
+import unittest.mock
 
 _SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prune-sessions.py")
 
@@ -541,45 +542,70 @@ class PruneSessionsTest(unittest.TestCase):
         self.assertEqual(con.execute("SELECT count(*) FROM session_v2 WHERE id='ses_fresh'").fetchone()[0], 1)
         self.assertEqual(count_rows(con, "part", "session_id", "ses_fresh"), 1)
 
-    def _spy_on_vacuum(self):
-        """Record vacuum() calls instead of running the real VACUUM."""
-        calls = []
-        original = prune.vacuum
-        prune.vacuum = lambda con: calls.append(con)
-        self.addCleanup(setattr, prune, "vacuum", original)
-        return calls
+    def _run_main_with_sql_trace(self, retention_hours):
+        """Run main() on the test DB, recording the SQL its own connection runs.
 
-    def _use_main(self, retention_hours):
+        Tracing at the sqlite3 layer checks the actual statement, not a helper
+        name, so reintroducing VACUUM under a different function would still
+        fail these tests.
+        """
+        statements = []
+        real_connect = prune.sqlite3.connect
+
+        def traced_connect(*args, **kwargs):
+            con = real_connect(*args, **kwargs)
+            con.set_trace_callback(statements.append)
+            return con
+
         prune.DB_PATH = self.db_path
         prune.RETENTION_HOURS = retention_hours
         self.addCleanup(setattr, prune, "DB_PATH", os.environ["OPENCODE_DB"])
         self.addCleanup(setattr, prune, "RETENTION_HOURS", 24.0)
         self.con.commit()
+        with unittest.mock.patch.object(prune.sqlite3, "connect", traced_connect):
+            exit_code = prune.main()
+        return exit_code, statements
 
-    def test_main_prunes_live_sessions_and_vacuums(self):
-        calls = self._spy_on_vacuum()
-        self._use_main(1.0)
-        self.assertEqual(prune.main(), 0)
+    def test_main_does_not_execute_vacuum_when_rows_are_deleted(self):
+        """A prune must not take the DB-wide exclusive lock via VACUUM."""
+        exit_code, statements = self._run_main_with_sql_trace(1.0)
+        self.assertEqual(exit_code, 0)
+        self.assertFalse(
+            any("vacuum" in statement.lower() for statement in statements),
+            "VACUUM was executed while pruning: %s" % statements,
+        )
+        # The bounded DELETE transaction and its busy_timeout are unchanged.
+        self.assertTrue(
+            any("busy_timeout=60000" in statement.lower() for statement in statements),
+            "PRAGMA busy_timeout=60000 no longer applied: %s" % statements,
+        )
         self.assertEqual(
             self.con.execute("SELECT count(*) FROM session_v2 WHERE id = ?", (self.old,)).fetchone()[0], 0
         )
-        # Rows were deleted, so vacuum is required and the fresh and active
-        # sessions must still be there afterwards.
-        self.assertEqual(len(calls), 1, "vacuum was not attempted after deleting rows")
         for session_id in (self.fresh, self.active):
             with self.subTest(session=session_id):
                 self.assertEqual(
                     self.con.execute("SELECT count(*) FROM session_v2 WHERE id = ?", (session_id,)).fetchone()[0], 1
                 )
 
-    def test_main_skips_vacuum_when_nothing_is_deleted(self):
-        calls = self._spy_on_vacuum()
-        self._use_main(100000.0)
-        self.assertEqual(prune.main(), 0)
-        self.assertEqual(calls, [], "vacuum must not run when no rows were deleted")
+    def test_main_does_not_execute_vacuum_when_nothing_is_deleted(self):
+        exit_code, statements = self._run_main_with_sql_trace(100000.0)
+        self.assertEqual(exit_code, 0)
+        self.assertFalse(
+            any("vacuum" in statement.lower() for statement in statements),
+            "VACUUM was executed on a no-op prune: %s" % statements,
+        )
+        self.assertTrue(
+            any("busy_timeout=60000" in statement.lower() for statement in statements),
+            "PRAGMA busy_timeout=60000 no longer applied: %s" % statements,
+        )
         self.assertEqual(
             self.con.execute("SELECT count(*) FROM session_v2 WHERE id = ?", (self.old,)).fetchone()[0], 1
         )
+
+    def test_pruner_has_no_vacuum_helper(self):
+        """The now-unused VACUUM helper must not linger for a future caller."""
+        self.assertFalse(hasattr(prune, "vacuum"), "prune-sessions.py still exposes a vacuum() helper")
 
 
 class FreshInstallTest(unittest.TestCase):

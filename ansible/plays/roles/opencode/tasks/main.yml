@@ -257,6 +257,9 @@
     src: "{{ playbook_dir }}/../../opencode/docker-compose.yml"
     dest: "{{ ('/home/', create_user, 'servyy-container/opencode/docker-compose.yml') | path_join }}"
     mode: '0644'
+  # Labels are read by Ofelia only when the container is recreated; a plain
+  # `docker compose restart` keeps the old labels. See handlers/main.yml.
+  notify: recreate opencode container
   tags: [user.docker.opencode]
 
 - name: Ensure OpenCode bin directory exists
