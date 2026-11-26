@@ -8,6 +8,15 @@
 # SECURE_SSL_REDIRECT, and the harness speaks HTTP to the tunnel.
 # Host is rewritten to localhost, which stage ALLOWED_HOSTS accepts; the
 # tunnel hostname is not in that list and is not needed for the probes.
+#
+# Container names are resolved PER REQUEST through Docker's embedded DNS
+# (resolver + variables). A literal `proxy_pass http://ref:8000` is resolved
+# once at nginx start, so any recreate of ref/cand/www-* (an apply, the cand
+# timer) left the proxy sending to a dead IP and every request got 502
+# (seen 2026-11-26). A variable upstream without a URI part still passes the
+# original request URI unchanged.
+resolver 127.0.0.11 valid=10s ipv6=off;
+
 server {
     listen 8081;
     server_name _;
@@ -18,7 +27,8 @@ server {
     # PWA root assets; everything else still comes from the backend. Basic auth
     # is inherited from the server block, so these routes are not a bypass.
     location ~ ^/(static/|favicon\.ico$|manifest\.json$|sw\.js$|service-worker\.js$) {
-        proxy_pass http://www-ref:80;
+        set $up_www_ref http://www-ref:80;
+        proxy_pass $up_www_ref;
         proxy_set_header Host localhost;
         proxy_set_header X-Forwarded-Proto https;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -27,7 +37,8 @@ server {
     }
 
     location / {
-        proxy_pass http://ref:8000;
+        set $up_ref http://ref:8000;
+        proxy_pass $up_ref;
         proxy_set_header Host localhost;
         proxy_set_header X-Forwarded-Proto https;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -43,7 +54,8 @@ server {
     auth_basic_user_file /etc/nginx/agent-stage.htpasswd;
 
     location ~ ^/(static/|favicon\.ico$|manifest\.json$|sw\.js$|service-worker\.js$) {
-        proxy_pass http://www-cand:80;
+        set $up_www_cand http://www-cand:80;
+        proxy_pass $up_www_cand;
         proxy_set_header Host localhost;
         proxy_set_header X-Forwarded-Proto https;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -52,7 +64,8 @@ server {
     }
 
     location / {
-        proxy_pass http://cand:8000;
+        set $up_cand http://cand:8000;
+        proxy_pass $up_cand;
         proxy_set_header Host localhost;
         proxy_set_header X-Forwarded-Proto https;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

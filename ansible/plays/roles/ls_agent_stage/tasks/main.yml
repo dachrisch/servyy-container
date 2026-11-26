@@ -42,6 +42,7 @@
     src: nginx.agent-stage.conf.j2
     dest: "{{ (ls_agent_stage_dir, 'agent-stage-nginx.conf') | path_join }}"
     mode: "0640"
+  register: ls_agent_stage_proxy_conf
   become_user: "{{ ls.user }}"
 
 - name: Render the basic-auth user file
@@ -53,6 +54,7 @@
     # denied" -> 500 on every authenticated request). It holds only a bcrypt
     # hash, and the parent directory is 0750, so host users cannot reach it.
     mode: "0644"
+  register: ls_agent_stage_htpasswd
   become_user: "{{ ls.user }}"
   no_log: true
 
@@ -65,6 +67,14 @@
     pull: always
     state: present
     recreate: auto
+  become_user: "{{ ls.user }}"
+
+# The proxy reads its bind-mounted config and htpasswd only at start, and a
+# changed file does not make Compose recreate it. Restart it whenever either
+# changed, or the new routes/credentials never take effect.
+- name: Restart the proxy when its config or credentials changed
+  command: docker restart {{ ls_agent_stage_project }}.proxy
+  when: ls_agent_stage_proxy_conf is changed or ls_agent_stage_htpasswd is changed
   become_user: "{{ ls.user }}"
 
 # ref and cand share the stage database, and neither runs migrations
