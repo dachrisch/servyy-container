@@ -57,6 +57,9 @@ services:
       RUN_MIGRATIONS: "false"
       LIVETICKER_V2_ENABLED: "true"
       LIVETICKER_STREAM_ENABLED: "true"
+{% for key, value in ls_agent_stage_cand_env.items() %}
+      {{ key }}: "{{ value }}"
+{% endfor %}
     labels:
       - traefik.enable=false
       - io.portainer.accesscontrol.teams=leaguesphere

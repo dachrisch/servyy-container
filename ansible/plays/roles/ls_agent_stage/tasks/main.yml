@@ -6,6 +6,16 @@
   include_vars:
     file: "{{ playbook_dir }}/roles/ls_agent_stage/vars/secret_agent_stage.yaml"
 
+- name: Refuse to run the agent stage outside a test host
+  assert:
+    that:
+      - is_test_host | default(false) | bool
+    fail_msg: >-
+      ls_agent_stage is for the long-lived agent stage on servyy-test only;
+      it must never touch prod or public stage.
+  tags:
+    - ls.agent.stage
+
 # `name: stage_app` IS right here: secret_stage.yaml's top-level key is `app`,
 # so this exposes `stage_app.app.*` (the same shape ls_db_sync uses).
 - name: Load the stage app variables (same database as the agent stage)

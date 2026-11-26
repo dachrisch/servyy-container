@@ -794,6 +794,32 @@ Read the current URLs with:
 ssh servyy-test.lxd 'sudo -u cda ~/.local/bin/opentunnel route list'
 ```
 
+#### Phase 2 flag-on validation (cand only)
+
+For the Phase 2 event-feed comparisons the flag must be on for `cand` and off
+for `ref`. The `ls_agent_stage` role renders `ls_agent_stage_cand_env` into
+`cand`'s Compose `environment:` block only; a Compose `environment` entry
+overrides the `SCORECARD_EVENT_FEED=false` inherited from the stage env file.
+`ref` has no such block and keeps the baked `96ec02b…` baseline.
+
+```bash
+# on servyy-test, from the servyy-container checkout:
+./servyy-test.sh --tags ls.agent.stage \
+  -e '{"ls_agent_stage_cand_env": {"SCORECARD_EVENT_FEED": "true"}}'
+```
+
+Verify `cand`'s `/health/version/` still reports the layer-head SHA, run the
+comparison, then restore the default and re-apply before any flag-off run:
+
+```bash
+./servyy-test.sh --tags ls.agent.stage -e '{"ls_agent_stage_cand_env": {}}'
+```
+
+`ls_agent_stage_schema_check` stays `true` (Phase 2 has no migration). The role
+asserts `is_test_host`, so an apply to prod or public stage fails before any
+file or container changes. This branch is **never merged**; it is a validation
+aid authored by the agent and applied by the coordinator.
+
 If the installed CLI's `--help` does not advertise `route list`, the role
 installs the CLI but skips the routes (to avoid duplicates) and prints the two
 manual `route add` commands; run them once and record the URLs. The two HTTPS

@@ -45,3 +45,10 @@ ls_agent_stage_cand_update_interval: 5min
 # serving a half-broken comparison. Set false only for a deliberate exception,
 # e.g. a phase that provides its own second DB copy.
 ls_agent_stage_schema_check: true
+
+# Phase 2 flag-on validation. A Compose `environment:` entry overrides the
+# inherited `SCORECARD_EVENT_FEED=false` from the stage env file. Keep this
+# empty except during an agent-stage validation: the coordinator sets
+# `{SCORECARD_EVENT_FEED: "true"}` to turn the flag on for `cand` ONLY, then
+# empties it again before any flag-off comparison. `ref` is never affected.
+ls_agent_stage_cand_env: {}
