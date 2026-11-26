@@ -74,6 +74,38 @@ services:
       - media:/app/league_manager/media
     restart: unless-stopped
 
+  # Phase 3 (#2539): static assets for each side. The frontend image is an
+  # nginx static server; it needs no env_file, no DB network and no schema
+  # check. The proxy routes `/static/` and the PWA root assets to the matching
+  # www service and everything else to the backend. `www-ref` has no update
+  # mechanism (matching `ref`); `www-cand` is pulled by the same timer that
+  # updates `cand`.
+  www-ref:
+    image: {{ ls_agent_stage_www_ref_image }}
+    container_name: {{ ls_agent_stage_project }}.www-ref
+    # The image's own healthcheck probes /login/, which this static-only
+    # stack cannot answer; the proxy's static probe is the real health gate.
+    healthcheck:
+      disable: true
+    labels:
+      - traefik.enable=false
+      - io.portainer.accesscontrol.teams=leaguesphere
+    networks:
+      - backend
+    restart: unless-stopped
+
+  www-cand:
+    image: {{ ls_agent_stage_www_cand_image }}
+    container_name: {{ ls_agent_stage_project }}.www-cand
+    healthcheck:
+      disable: true
+    labels:
+      - traefik.enable=false
+      - io.portainer.accesscontrol.teams=leaguesphere
+    networks:
+      - backend
+    restart: unless-stopped
+
   proxy:
     image: {{ ls_agent_stage_proxy_image }}
     container_name: {{ ls_agent_stage_project }}.proxy

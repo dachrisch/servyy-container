@@ -24,6 +24,13 @@ ls_agent_stage_ref_image: leaguesphere/backend:agent-ref
 ls_agent_stage_cand_image: leaguesphere/backend:agent-candidate
 ls_agent_stage_proxy_image: nginx:1.29.3-alpine
 
+# Phase 3 (#2539): the backend images above have no `/static/` bundles - every
+# asset request 404'd on the agent stage. These two static-only nginx images
+# are built from the SAME commits as their backend counterparts by the
+# leaguesphere `agent-image` job. They carry no DB settings and run no app.
+ls_agent_stage_www_ref_image: leaguesphere/frontend:agent-ref
+ls_agent_stage_www_cand_image: leaguesphere/frontend:agent-candidate
+
 # Loopback ports the proxy publishes; opentunnel routes point at these.
 ls_agent_stage_ref_port: 18081
 ls_agent_stage_cand_port: 18082
