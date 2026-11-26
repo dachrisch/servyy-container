@@ -5,16 +5,17 @@
 snapshots.
 
 Runs inside the opencode.web container via an Ofelia job-exec label
-(schedule: 0 4 * * *). Deletes sessions that have been idle for longer than
-OPENCODE_PRUNE_HOURS (default 24) from the V2 `session_v2` table together
-with all dependent rows; a session counts as idle only when both
-`time_created` and `time_updated` are older than the cutoff, so a
-long-lived session that is still in use is never deleted mid-turn. Purges
-tool-output files past retention, removes checkpoint snapshot repos
-untouched since before that retention window, and vacuums the database only
-when rows were actually deleted. Designed to be idempotent and to never
-interfere with the running web server: it uses a generous busy_timeout and
-logs a one-line summary that ends up in `docker logs portainer.ofelia`.
+(schedule: 0 0 4 * * *, i.e. 04:00 UTC daily — Ofelia's cron is seconds-first).
+Deletes sessions that have been idle for longer than OPENCODE_PRUNE_HOURS
+(default 24) from the V2 `session_v2` table together with all dependent rows;
+a session counts as idle only when both `time_created` and `time_updated` are
+older than the cutoff, so a long-lived session that is still in use is never
+deleted mid-turn. Purges tool-output files past retention and removes
+checkpoint snapshot repos untouched since before that retention window.
+Designed to be idempotent and to never interfere with the running web server:
+it only deletes rows in a short transaction (no VACUUM, which takes a
+DB-wide exclusive lock), uses a generous busy_timeout, and logs a one-line
+summary that ends up in `docker logs portainer.ofelia`.
 
 After an in-place V1 -> V2 migration the legacy V1 tables (`session`,
 `part`, `message`, `todo`, `session_share`) may still sit in the file, dead
@@ -99,8 +100,8 @@ def prune_sessions(con, cutoff):
 
     A session is prunable only when both time_created and time_updated are
     older than cutoff. Returns the number of distinct session rows deleted
-    (V2 plus legacy-only V1 leftovers); anything above zero means the caller
-    should vacuum.
+    (V2 plus legacy-only V1 leftovers), used only for the log summary: the
+    deletes are deliberately never followed by a DB-wide VACUUM.
     """
     tables = _existing_tables(con)
     if SESSION_TABLE not in tables:
@@ -181,15 +182,6 @@ def prune_sessions(con, cutoff):
     return pruned
 
 
-def vacuum(con):
-    """Reclaim disk space; tolerate lock contention with the web server."""
-    try:
-        con.execute("VACUUM")
-        log("vacuum ok")
-    except sqlite3.Error as error:
-        log("vacuum skipped (%s)" % error)
-
-
 def prune_tool_output(cutoff):
     """Remove tool-output files older than cutoff, returning the count."""
     if not os.path.isdir(TOOL_OUTPUT_DIR):
@@ -259,9 +251,7 @@ def main():
         return 1
     try:
         con.execute("PRAGMA busy_timeout=60000")
-        deleted = prune_sessions(con, cutoff)
-        if deleted:
-            vacuum(con)
+        prune_sessions(con, cutoff)
         removed = prune_tool_output(cutoff)
         if removed:
             log("pruned %d tool-output files" % removed)

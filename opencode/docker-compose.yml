@@ -78,14 +78,19 @@ services:
       # Ofelia (portainer.ofelia) auto-discovers these labels and runs the
       # job inside this container. prune-sessions keeps the session DB small;
       # output lands in `docker logs portainer.ofelia`.
+      # Schedules are 6 fields, seconds first: `0 0 4 * * *` is 04:00 UTC daily.
+      # The old 5-field `0 4 * * *` parsed as minute 04 of EVERY hour (the
+      # leading 0 was seconds, not minutes) — see
+      # history/2026-11-26_opencode-prune-vacuum-lock.md.
       - ofelia.enabled=true
-      - ofelia.job-exec.prune-sessions.schedule=0 4 * * *
+      - ofelia.job-exec.prune-sessions.schedule=0 0 4 * * *
       - ofelia.job-exec.prune-sessions.command=python3 /scripts/prune-sessions.py
       # npm's package cache has no size cap or eviction policy of its own and
       # is fully regenerable, so just clear it weekly (offset from the
       # nightly prune-sessions run above). Sunday is 7, NOT 0: this Ofelia
       # build rejects DOW 0/SUN at registration (job silently never runs).
-      - ofelia.job-exec.npm-cache-clean.schedule=0 5 * * 7
+      # Seconds-first form of Sunday 05:00 UTC: `0 0 5 * * 7`.
+      - ofelia.job-exec.npm-cache-clean.schedule=0 0 5 * * 7
       - ofelia.job-exec.npm-cache-clean.command=npm cache clean --force
 
 volumes:

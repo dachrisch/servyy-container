@@ -17,6 +17,22 @@
     state: restarted
   listen: restart opencode container
 
+- name: recreate opencode container to apply compose changes
+  # `restart opencode container` above is deliberately `docker compose
+  # restart` (re-exec only) and must stay that way after incident #109/#110.
+  # It cannot apply a changed compose label: Ofelia reads labels at container
+  # creation. `state: present` is `docker compose up`, which recreates only
+  # containers whose compose config actually changed, from the full compose
+  # definition (volumes/env/networks/labels intact) — no drift from a bare
+  # container-module recreate.
+  community.docker.docker_compose_v2:
+    project_src: "{{ ('/home/', create_user, 'servyy-container/opencode') | path_join }}"
+    project_name: opencode
+    files:
+      - docker-compose.yml
+    state: present
+  listen: recreate opencode container
+
 - name: push opencode ssh key to vaultwarden
   ansible.builtin.include_tasks: vaultwarden_push.yml
   listen: push opencode ssh key to vaultwarden

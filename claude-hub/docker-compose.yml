@@ -56,10 +56,14 @@ services:
       # timer's Sun 06:00 host-local fire instant. Sunday is 7, NOT 0: this
       # Ofelia build rejects DOW 0/SUN at registration (job silently never
       # runs). See history/2026-09-27_codey-ofelia-scheduler.md.
+      # Schedules are 6 fields, seconds first: `0 0 4 * * 7` is Sunday 04:00
+      # UTC. The old 5-field `0 4 * * 7` was parsed as minute 04 of every hour
+      # on Sundays, not once at 04:00 (see
+      # history/2026-11-26_opencode-prune-vacuum-lock.md).
       - ofelia.enabled=true
       - ofelia.job-exec.hub-reaper.schedule=@every 1h
       - ofelia.job-exec.hub-reaper.command=node /opt/vendor/skills/session-reaper/scripts/session-reaper.mjs --action run --text
-      - ofelia.job-exec.hub-force-cleanup.schedule=0 4 * * 7
+      - ofelia.job-exec.hub-force-cleanup.schedule=0 0 4 * * 7
       - ofelia.job-exec.hub-force-cleanup.command=sh /scripts/force-cleanup-stale.sh
 
 volumes:
