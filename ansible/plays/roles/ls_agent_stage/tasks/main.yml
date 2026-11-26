@@ -313,6 +313,39 @@
   tags:
     - ls.agent.stage.tunnel
 
+# `route add` only registers routes; the bridge to the relay is the opentunnel
+# service. Without `opentunnel up` it runs only as long as whatever started it,
+# and both public URLs fail TLS (curl 000) once it dies (seen 2026-11-26,
+# "Service: stopped"). `up` installs and starts the user service and starts it
+# at login; create_user has lingering, so it also survives a reboot.
+- name: Read the opentunnel service state
+  command: "{{ ls_agent_stage_opentunnel_bin }} status"
+  register: ls_agent_stage_opentunnel_status
+  changed_when: false
+  failed_when: false
+  become_user: "{{ create_user }}"
+  tags:
+    - ls.agent.stage.tunnel
+
+- name: Start the opentunnel service persistently
+  command: "{{ ls_agent_stage_opentunnel_bin }} up"
+  become_user: "{{ create_user }}"
+  when: "'Service: stopped' in ls_agent_stage_opentunnel_status.stdout or 'Service:' not in ls_agent_stage_opentunnel_status.stdout"
+  tags:
+    - ls.agent.stage.tunnel
+
+- name: Verify the opentunnel service is connected
+  command: "{{ ls_agent_stage_opentunnel_bin }} status"
+  register: ls_agent_stage_opentunnel_status_after
+  changed_when: false
+  failed_when: "'Service: stopped' in ls_agent_stage_opentunnel_status_after.stdout"
+  retries: 6
+  delay: 5
+  until: "'Service: stopped' not in ls_agent_stage_opentunnel_status_after.stdout"
+  become_user: "{{ create_user }}"
+  tags:
+    - ls.agent.stage.tunnel
+
 - name: Warn that the routes need a manual step when the CLI cannot list them
   debug:
     msg: >-
