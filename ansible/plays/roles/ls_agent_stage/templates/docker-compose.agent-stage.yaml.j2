@@ -57,6 +57,9 @@ services:
       RUN_MIGRATIONS: "false"
       LIVETICKER_V2_ENABLED: "true"
       LIVETICKER_STREAM_ENABLED: "true"
+{% for key, value in ls_agent_stage_cand_env.items() %}
+      {{ key }}: "{{ value }}"
+{% endfor %}
     labels:
       - traefik.enable=false
       - io.portainer.accesscontrol.teams=leaguesphere
@@ -69,6 +72,94 @@ services:
       - egress
     volumes:
       - media:/app/league_manager/media
+    restart: unless-stopped
+
+  # SSE workers for the v2 liveticker, one per side, mirroring the stage
+  # stack's `liveticker-stream` (deployed/docker-compose.staging.yaml). Without
+  # them the proxy sent /api/liveticker/stream/ to ref/cand's 2-thread WSGI
+  # worker; two open streams pinned both threads and every other request on
+  # that side hung (seen 2026-11-26 during the Phase 3 frontend journeys).
+  stream-ref:
+    image: {{ ls_agent_stage_ref_image }}
+    container_name: {{ ls_agent_stage_project }}.stream-ref
+    command: gunicorn -b 0.0.0.0:8001 -w 1 -k uvicorn.workers.UvicornWorker --timeout 0 --graceful-timeout 30 league_manager.asgi:application
+    mem_limit: 192m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -A healthcheck -H 'Accept: application/json' http://localhost:8001/health/stream/"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    env_file: {{ ls_agent_stage_stage_env_file }}
+    environment:
+      DJANGO_SETTINGS_MODULE: league_manager.settings.stage
+      RUN_MIGRATIONS: "false"
+      LIVETICKER_STREAM_ENABLED: "true"
+    labels:
+      - traefik.enable=false
+      - io.portainer.accesscontrol.teams=leaguesphere
+    networks:
+      - backend
+      - db_nonprod_backend
+    restart: unless-stopped
+
+  stream-cand:
+    image: {{ ls_agent_stage_cand_image }}
+    container_name: {{ ls_agent_stage_project }}.stream-cand
+    command: gunicorn -b 0.0.0.0:8001 -w 1 -k uvicorn.workers.UvicornWorker --timeout 0 --graceful-timeout 30 league_manager.asgi:application
+    mem_limit: 192m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -A healthcheck -H 'Accept: application/json' http://localhost:8001/health/stream/"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    env_file: {{ ls_agent_stage_stage_env_file }}
+    environment:
+      DJANGO_SETTINGS_MODULE: league_manager.settings.stage
+      RUN_MIGRATIONS: "false"
+      LIVETICKER_STREAM_ENABLED: "true"
+{% for key, value in ls_agent_stage_cand_env.items() %}
+      {{ key }}: "{{ value }}"
+{% endfor %}
+    labels:
+      - traefik.enable=false
+      - io.portainer.accesscontrol.teams=leaguesphere
+    networks:
+      - backend
+      - db_nonprod_backend
+    restart: unless-stopped
+
+  # Phase 3 (#2539): static assets for each side. The frontend image is an
+  # nginx static server; it needs no env_file, no DB network and no schema
+  # check. The proxy routes `/static/` and the PWA root assets to the matching
+  # www service and everything else to the backend. `www-ref` has no update
+  # mechanism (matching `ref`); `www-cand` is pulled by the same timer that
+  # updates `cand`.
+  www-ref:
+    image: {{ ls_agent_stage_www_ref_image }}
+    container_name: {{ ls_agent_stage_project }}.www-ref
+    # The image's own healthcheck probes /login/, which this static-only
+    # stack cannot answer; the proxy's static probe is the real health gate.
+    healthcheck:
+      disable: true
+    labels:
+      - traefik.enable=false
+      - io.portainer.accesscontrol.teams=leaguesphere
+    networks:
+      - backend
+    restart: unless-stopped
+
+  www-cand:
+    image: {{ ls_agent_stage_www_cand_image }}
+    container_name: {{ ls_agent_stage_project }}.www-cand
+    healthcheck:
+      disable: true
+    labels:
+      - traefik.enable=false
+      - io.portainer.accesscontrol.teams=leaguesphere
+    networks:
+      - backend
     restart: unless-stopped
 
   proxy:

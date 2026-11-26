@@ -6,6 +6,16 @@
   include_vars:
     file: "{{ playbook_dir }}/roles/ls_agent_stage/vars/secret_agent_stage.yaml"
 
+- name: Refuse to run the agent stage outside a test host
+  assert:
+    that:
+      - is_test_host | default(false) | bool
+    fail_msg: >-
+      ls_agent_stage is for the long-lived agent stage on servyy-test only;
+      it must never touch prod or public stage.
+  tags:
+    - ls.agent.stage
+
 # `name: stage_app` IS right here: secret_stage.yaml's top-level key is `app`,
 # so this exposes `stage_app.app.*` (the same shape ls_db_sync uses).
 - name: Load the stage app variables (same database as the agent stage)
@@ -32,6 +42,7 @@
     src: nginx.agent-stage.conf.j2
     dest: "{{ (ls_agent_stage_dir, 'agent-stage-nginx.conf') | path_join }}"
     mode: "0640"
+  register: ls_agent_stage_proxy_conf
   become_user: "{{ ls.user }}"
 
 - name: Render the basic-auth user file
@@ -43,6 +54,7 @@
     # denied" -> 500 on every authenticated request). It holds only a bcrypt
     # hash, and the parent directory is 0750, so host users cannot reach it.
     mode: "0644"
+  register: ls_agent_stage_htpasswd
   become_user: "{{ ls.user }}"
   no_log: true
 
@@ -55,6 +67,14 @@
     pull: always
     state: present
     recreate: auto
+  become_user: "{{ ls.user }}"
+
+# The proxy reads its bind-mounted config and htpasswd only at start, and a
+# changed file does not make Compose recreate it. Restart it whenever either
+# changed, or the new routes/credentials never take effect.
+- name: Restart the proxy when its config or credentials changed
+  command: docker restart {{ ls_agent_stage_project }}.proxy
+  when: ls_agent_stage_proxy_conf is changed or ls_agent_stage_htpasswd is changed
   become_user: "{{ ls.user }}"
 
 # ref and cand share the stage database, and neither runs migrations
@@ -300,6 +320,39 @@
   debug:
     msg: "{{ ls_agent_stage_opentunnel_final.stdout_lines | default([]) }}"
   when: ls_agent_stage_opentunnel_can_list | bool
+  tags:
+    - ls.agent.stage.tunnel
+
+# `route add` only registers routes; the bridge to the relay is the opentunnel
+# service. Without `opentunnel up` it runs only as long as whatever started it,
+# and both public URLs fail TLS (curl 000) once it dies (seen 2026-11-26,
+# "Service: stopped"). `up` installs and starts the user service and starts it
+# at login; create_user has lingering, so it also survives a reboot.
+- name: Read the opentunnel service state
+  command: "{{ ls_agent_stage_opentunnel_bin }} status"
+  register: ls_agent_stage_opentunnel_status
+  changed_when: false
+  failed_when: false
+  become_user: "{{ create_user }}"
+  tags:
+    - ls.agent.stage.tunnel
+
+- name: Start the opentunnel service persistently
+  command: "{{ ls_agent_stage_opentunnel_bin }} up"
+  become_user: "{{ create_user }}"
+  when: "'Service: stopped' in ls_agent_stage_opentunnel_status.stdout or 'Service:' not in ls_agent_stage_opentunnel_status.stdout"
+  tags:
+    - ls.agent.stage.tunnel
+
+- name: Verify the opentunnel service is connected
+  command: "{{ ls_agent_stage_opentunnel_bin }} status"
+  register: ls_agent_stage_opentunnel_status_after
+  changed_when: false
+  failed_when: "'Service: stopped' in ls_agent_stage_opentunnel_status_after.stdout"
+  retries: 6
+  delay: 5
+  until: "'Service: stopped' not in ls_agent_stage_opentunnel_status_after.stdout"
+  become_user: "{{ create_user }}"
   tags:
     - ls.agent.stage.tunnel
 

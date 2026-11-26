@@ -580,11 +580,21 @@ share the stage database:
 |---|---|---|
 | `ls_agent_stage.ref` | `leaguesphere/backend:agent-ref` (pinned in `ls_agent_stage/defaults/main.yml`) | never automatically — rebuilt per phase from the stack's **base commit**, then `ls.agent.stage` is re-applied |
 | `ls_agent_stage.cand` | `leaguesphere/backend:agent-candidate` | `ls-agent-cand-update.timer` (system timer as `leaguesphere`, 5 min, health-gated) |
+| `ls_agent_stage.www-ref` | `leaguesphere/frontend:agent-ref` | never automatically — rebuilt per phase from the same base commit as the backend ref |
+| `ls_agent_stage.www-cand` | `leaguesphere/frontend:agent-candidate` | same `ls-agent-cand-update.timer` as `cand`, pulled in one compose operation |
 
-Both sit behind one nginx basic-auth proxy (`ls_agent_stage.proxy`, loopback
-ports 18081/18082) and read/write **the same** stage database. The equivalence
-harness (`scripts/equivalence/` in the leaguesphere repo) diffs ref against
-cand.
+The backend containers sit behind one nginx basic-auth proxy
+(`ls_agent_stage.proxy`, loopback ports 18081/18082) and read/write **the same**
+stage database. The equivalence harness (`scripts/equivalence/` in the
+leaguesphere repo) diffs ref against cand.
+
+**Phase 3 (#2539):** each side also has a static-only nginx container
+(`www-ref` / `www-cand`) built from the same commit as its backend image. The
+proxy routes `/static/` plus `/favicon.ico`, `/manifest.json`, `/sw.js` and
+`/service-worker.js` to the matching `www` container; **everything else** still
+routes to the backend. Basic auth stays in front of both routes — route names
+are private but are not authentication. There is no DB credential or schema
+check on the `www` containers, and probing stays HTTP-only.
 
 ### Initial setup (once per phase, in this exact order)
 
@@ -636,15 +646,17 @@ cd -   # back to ansible/
 #     are up: `python manage.py migrate --check` in both ref and cand against
 #     the shared DB (ls_agent_stage_schema_check).
 
-# 6. Build BOTH agent images BEFORE the agent stage (the role pulls them with
-#    `pull: always`). `agent-ref` is the phase baseline: build it from the stack
-#    BASE commit, not from a release tag (a tag always lags a moving master).
-#    `agent-candidate` is the stack HEAD. Environment is not needed for either:
+# 6. Build BOTH agent images per side BEFORE the agent stage (the role pulls
+#    them with `pull: always`). `agent-ref` is the phase baseline: build it from
+#    the stack BASE commit, not from a release tag (a tag always lags a moving
+#    master). `agent-candidate` is the stack HEAD. Since Phase 3 Layer 1 each
+#    dispatch builds backend AND frontend from the same full SHA. Run the
+#    workflow from the branch that contains the Layer 1 workflow change:
 cd <leaguesphere-checkout>
-gh workflow run deploy.yaml --ref phase0c-equivalence \
+gh workflow run deploy.yaml --ref phase3-frontend-equivalence \
   -f agent_candidate_ref=$BASE -f agent_tag=agent-ref
-gh workflow run deploy.yaml --ref phase0c-equivalence \
-  -f agent_candidate_ref=phase0c-equivalence -f agent_tag=agent-candidate
+gh workflow run deploy.yaml --ref phase3-frontend-equivalence \
+  -f agent_candidate_ref=phase3-frontend-equivalence -f agent_tag=agent-candidate
 cd -   # back to ansible/
 #    Wait for both workflow runs to finish before step 7.
 
@@ -683,6 +695,16 @@ ssh servyy-test.lxd 'docker image inspect leaguesphere/backend:agent-ref \
   --format "{{index .Config.Labels \"org.opencontainers.image.revision\"}}"'
 ssh servyy-test.lxd 'docker ps --filter name=ls_agent_stage --format "{{.Names}} {{.Status}}"'
 ssh servyy-test.lxd 'systemctl status ls-agent-cand-update.timer'
+# 7. Phase 3 static halves: both images must serve bundles through the proxy.
+for side in ref cand; do
+  route="https://<${side}-route>"    # the opentunnel URL harvested from `route list`
+  curl -u "$LS_AGENT_BASIC_USER:$LS_AGENT_BASIC_PASSWORD" -fsS \
+    "$route/static/league_manager/js/live_nav.js" | wc -c   # non-zero
+  curl -u "$LS_AGENT_BASIC_USER:$LS_AGENT_BASIC_PASSWORD" -fsS \
+    "$route/health/version/"                                 # full SHA
+done
+#    Record the two asset responses' hashes once: ref's `/static/` must never
+#    change during a phase (the frontend agent-ref is not auto-updated).
 ```
 
 The role creates/updates the harness users (`agent_staff`,
@@ -747,9 +769,10 @@ ssh servyy-test.lxd 'sudo -u cda systemctl --user status ls-db-sync-nightly.time
 `ls-agent-cand-update.timer` **system** timer, running as the stack user (the
 compose directory is in the 0750 ssh jail; a `create_user` timer cannot enter
 it). Interval: `ls_agent_stage_cand_update_interval`, default 5 min. It pulls
-`leaguesphere/backend:agent-candidate` and restarts **only** `cand`, only when
-the image id changed, then waits up to 3 minutes for the container healthcheck.
-`ref` is never touched.
+`leaguesphere/backend:agent-candidate` **and**
+`leaguesphere/frontend:agent-candidate` and restarts **only** `cand` and
+`www-cand`, only when an image id changed, then waits up to 3 minutes for the
+backend container healthcheck. `ref` / `www-ref` are never touched.
 
 ```bash
 # from the leaguesphere checkout (the stack head branch)
@@ -768,6 +791,25 @@ agent candidate uses the `agent_candidate_ref` input above.
 
 A failed health gate exits non-zero in the journal and leaves `cand` on the new
 image; the next timer run retries. Roll back by dispatching a known-good ref.
+
+### Static assets and rollback (Phase 3)
+
+Each dispatch of `deploy.yaml` with `agent_candidate_ref` builds backend and
+frontend from the same **full SHA** with `context: .`; a build-time proof starts
+the frontend image and asserts `/static/league_manager/js/live_nav.js` is 200
+and non-empty and that `scorecard_v2`, `gameday_designer`, `passcheck` and
+`liveticker` each have a built JS entry under `/static`. The workflow summary
+records both tags, digests and the resolved SHA. `frontend:agent-ref` is rebuilt
+only deliberately from the phase base SHA, so ref's asset hashes must stay
+constant for the whole phase; `frontend:agent-candidate` tracks each layer head.
+
+Revert without touching any other stack: remove the two `www` services from
+`docker-compose.agent-stage.yaml.j2`, remove the two static `location` blocks
+from `nginx.agent-stage.conf.j2`, restore `cand-update.sh.j2` to pulling only
+`cand`, re-apply with `./servyy-test.sh --limit servyy-test.lxd --tags
+ls.agent.stage`, and stop using the frontend journey harness. Backend ref/cand
+and the shared database are unaffected; this infra branch is never merged to
+`master` nor applied to prod or public stage.
 
 ### opentunnel
 
@@ -793,6 +835,32 @@ Read the current URLs with:
 ```bash
 ssh servyy-test.lxd 'sudo -u cda ~/.local/bin/opentunnel route list'
 ```
+
+#### Phase 2 flag-on validation (cand only)
+
+For the Phase 2 event-feed comparisons the flag must be on for `cand` and off
+for `ref`. The `ls_agent_stage` role renders `ls_agent_stage_cand_env` into
+`cand`'s Compose `environment:` block only; a Compose `environment` entry
+overrides the `SCORECARD_EVENT_FEED=false` inherited from the stage env file.
+`ref` has no such block and keeps the baked `96ec02b…` baseline.
+
+```bash
+# on servyy-test, from the servyy-container checkout:
+./servyy-test.sh --tags ls.agent.stage \
+  -e '{"ls_agent_stage_cand_env": {"SCORECARD_EVENT_FEED": "true"}}'
+```
+
+Verify `cand`'s `/health/version/` still reports the layer-head SHA, run the
+comparison, then restore the default and re-apply before any flag-off run:
+
+```bash
+./servyy-test.sh --tags ls.agent.stage -e '{"ls_agent_stage_cand_env": {}}'
+```
+
+`ls_agent_stage_schema_check` stays `true` (Phase 2 has no migration). The role
+asserts `is_test_host`, so an apply to prod or public stage fails before any
+file or container changes. This branch is **never merged**; it is a validation
+aid authored by the agent and applied by the coordinator.
 
 If the installed CLI's `--help` does not advertise `route list`, the role
 installs the CLI but skips the routes (to avoid duplicates) and prints the two
